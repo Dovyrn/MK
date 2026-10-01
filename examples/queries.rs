@@ -25,7 +25,14 @@ fn main() {
     let samples = device.create_query_heap(query::OCCLUSION, 1).unwrap();
     let out = device.create_buffer(24, memory::READBACK);
     let data = device.create_buffer(1 << 20, memory::DEVICE);
-    let fill = device.create_pipeline(FILL, "fill", [64, 1, 1]).unwrap();
+    let fill = device
+        .create_pipeline(&mk::ComputeInfo {
+            code: FILL,
+            entry: "fill",
+            group: [64, 1, 1],
+            ..Default::default()
+        })
+        .unwrap();
     let color = device.create_texture(&TextureInfo {
         format: format::RGBA8_UNORM,
         width: n,

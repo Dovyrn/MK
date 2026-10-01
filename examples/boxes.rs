@@ -64,12 +64,13 @@ fn build(c: &mut Commands, blas: u32, tlas: u32, bottom: u32, top: u32) {
 #[cfg(feature = "mtl")]
 fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
     let pipeline = device
-        .create_linked_pipeline(
-            include_bytes!("../shaders/out/boxes.metallib"),
-            "trace",
-            [8, 8, 1],
-            &["box"],
-        )
+        .create_pipeline(&mk::ComputeInfo {
+            code: include_bytes!("../shaders/out/boxes.metallib"),
+            entry: "trace",
+            group: [8, 8, 1],
+            functions: &["box"],
+            ..Default::default()
+        })
         .unwrap();
     let table = device
         .create_function_table(pipeline, &["box"], true)

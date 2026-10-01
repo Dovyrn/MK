@@ -11,12 +11,13 @@ fn main() {
     let n = 256u32;
     let mut device = Device::new(1).unwrap();
     let pipeline = device
-        .create_linked_pipeline(
-            include_bytes!("../shaders/out/functions.metallib"),
-            "call",
-            [64, 1, 1],
-            &["add", "twice"],
-        )
+        .create_pipeline(&mk::ComputeInfo {
+            code: include_bytes!("../shaders/out/functions.metallib"),
+            entry: "call",
+            group: [64, 1, 1],
+            functions: &["add", "twice"],
+            ..Default::default()
+        })
         .unwrap();
     let table = device
         .create_function_table(pipeline, &["add", "twice"], false)

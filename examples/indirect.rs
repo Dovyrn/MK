@@ -36,11 +36,12 @@ fn main() {
         })
         .unwrap();
     let encode = device
-        .create_pipeline(
-            include_bytes!("../shaders/out/encode.metallib"),
-            "encode",
-            [64, 1, 1],
-        )
+        .create_pipeline(&mk::ComputeInfo {
+            code: include_bytes!("../shaders/out/encode.metallib"),
+            entry: "encode",
+            group: [64, 1, 1],
+            ..Default::default()
+        })
         .unwrap();
     let icb = device
         .create_indirect(&IndirectInfo {

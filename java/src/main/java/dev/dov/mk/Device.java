@@ -125,14 +125,15 @@ public class Device {
 
     private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
-    public int createPipeline(ByteBuffer code, String entry, int[] group) {
+    public int createPipeline(ComputeInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var entryBytes = stack.UTF8(entry, false);
-            return nCreatePipeline(handle, memAddress(code), code.remaining(), memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(group)));
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreatePipeline(handle, infoAddress, info.size());
         }
     }
 
-    private static native int nCreatePipeline(long device, long code, long codeLength, long entry, int entryLength, long group);
+    private static native int nCreatePipeline(long device, long info, int infoLength);
 
     public void destroyPipeline(int pipeline) {
         try (var stack = MemoryStack.stackPush()) {

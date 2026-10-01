@@ -8,10 +8,10 @@ use crate::mtl::surface::Surface;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, IndirectInfo, MeshInfo, RenderInfo,
-    SamplerInfo, SparseRange, SparseRegion, StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel,
-    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
-    usage,
+    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, SurfaceInfo, TextureInfo,
+    ViewInfo, accel, address, blend, border, dimension, fill, filter, format, index, mask, memory,
+    query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::AllocAnyThread;
@@ -689,15 +689,23 @@ impl Device {
         self.res.buffers.get(buffer).gpuAddress()
     }
 
-    pub fn create_pipeline(
-        &mut self,
-        code: &[u8],
-        entry: &str,
-        group: [u32; 3],
-    ) -> Result<u32, String> {
-        let library = self.library(code)?;
+    pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
+        let library = self.library(info.code)?;
         let desc = MTL4ComputePipelineDescriptor::new();
-        desc.setComputeFunctionDescriptor(Some(&function(&library, entry)));
+        desc.setComputeFunctionDescriptor(Some(&function(&library, info.entry)));
+        if !info.functions.is_empty() {
+            let linked: Vec<_> = info
+                .functions
+                .iter()
+                .map(|f| function(&library, f))
+                .collect();
+            let linking = MTL4StaticLinkingDescriptor::new();
+            linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
+            desc.setStaticLinkingDescriptor(Some(&linking));
+        }
+        if info.indirect {
+            desc.setSupportIndirectCommandBuffers(MTL4IndirectCommandBufferSupportState::Enabled);
+        }
         let state = self
             .compiler
             .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
@@ -705,32 +713,7 @@ impl Device {
                 Some(&self.options),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
-        let group = size(group);
-        Ok(self.res.pipelines.insert(Pipeline { state, group }))
-    }
-
-    pub fn create_linked_pipeline(
-        &mut self,
-        code: &[u8],
-        entry: &str,
-        group: [u32; 3],
-        functions: &[&str],
-    ) -> Result<u32, String> {
-        let library = self.library(code)?;
-        let desc = MTL4ComputePipelineDescriptor::new();
-        desc.setComputeFunctionDescriptor(Some(&function(&library, entry)));
-        let linked: Vec<_> = functions.iter().map(|f| function(&library, f)).collect();
-        let linking = MTL4StaticLinkingDescriptor::new();
-        linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
-        desc.setStaticLinkingDescriptor(Some(&linking));
-        let state = self
-            .compiler
-            .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
-                &desc,
-                Some(&self.options),
-            )
-            .map_err(|e| e.localizedDescription().to_string())?;
-        let group = size(group);
+        let group = size(info.group);
         Ok(self.res.pipelines.insert(Pipeline { state, group }))
     }
 

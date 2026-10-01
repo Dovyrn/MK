@@ -45,7 +45,7 @@ fn scalar(kind: &str) -> bool {
     matches!(kind, "u32" | "u64" | "f32" | "bool" | "u32x3")
 }
 
-fn borrows(info: &Info) -> bool {
+pub fn borrows(info: &Info) -> bool {
     info.fields
         .iter()
         .any(|f| matches!(f.kind.as_str(), "bytes" | "str") || list(&f.kind).is_some())

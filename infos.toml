@@ -266,3 +266,13 @@ fields = [
     ["depth", "u32", "1"],
     ["heap_page", "u32", "0"],
 ]
+
+[[info]]
+name = "ComputeInfo"
+fields = [
+    ["code", "bytes", ""],
+    ["entry", "str", ""],
+    ["group", "u32x3", "[1, 1, 1]"],
+    ["functions", "[str]", ""],
+    ["indirect", "bool", "false"],
+]

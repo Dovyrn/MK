@@ -56,12 +56,17 @@ fn main() {
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
     let list = infos::parse(&fs::read_to_string("infos.toml").unwrap());
+    let borrowing: Vec<String> = list
+        .iter()
+        .filter(|i| infos::borrows(i))
+        .map(|i| i.name.clone())
+        .collect();
     fs::write(out.join("infos.rs"), infos::rust(&list)).unwrap();
     for info in &list {
         save(&dir.join(format!("{}.java", info.name)), &infos::java(info));
     }
     let list = calls::parse(&fs::read_to_string("calls.toml").unwrap());
-    fs::write(out.join("java.rs"), calls::rust(&list)).unwrap();
+    fs::write(out.join("java.rs"), calls::rust(&list, &borrowing)).unwrap();
     save(&dir.join("Device.java"), &calls::java(&list, None));
     save(&dir.join("VkDevice.java"), &calls::java(&list, Some("vk")));
     save(

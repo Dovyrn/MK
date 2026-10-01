@@ -15,7 +15,14 @@ fn main() {
     println!("{:?}", device.caps());
     let n = 1024u32;
     let buffer = device.create_buffer(n as u64 * 4, memory::READBACK);
-    let pipeline = device.create_pipeline(CODE, "fill", [64, 1, 1]).unwrap();
+    let pipeline = device
+        .create_pipeline(&mk::ComputeInfo {
+            code: CODE,
+            entry: "fill",
+            group: [64, 1, 1],
+            ..Default::default()
+        })
+        .unwrap();
     let event = device.create_event();
     let mut push = device.address(buffer).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());

@@ -58,7 +58,14 @@ fn main() {
     let bottom = device.create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE);
     let top = device.create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE);
     let out = device.create_buffer((n * n * 4) as u64, memory::READBACK);
-    let pipeline = device.create_pipeline(CODE, "trace", [8, 8, 1]).unwrap();
+    let pipeline = device
+        .create_pipeline(&mk::ComputeInfo {
+            code: CODE,
+            entry: "trace",
+            group: [8, 8, 1],
+            ..Default::default()
+        })
+        .unwrap();
     let mut push = device.address(out).to_le_bytes().to_vec();
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());

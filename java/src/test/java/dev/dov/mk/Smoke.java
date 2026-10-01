@@ -15,7 +15,11 @@ public class Smoke {
         var buffer = device.createBuffer(n * 4L, Memory.READBACK);
         var bytes = Files.readAllBytes(Path.of(args[1]));
         var code = memAlloc(bytes.length).put(bytes).flip();
-        var pipeline = device.createPipeline(code, "fill", new int[] {64, 1, 1});
+        var info = new ComputeInfo();
+        info.code = code;
+        info.entry = "fill";
+        info.group = new int[] {64, 1, 1};
+        var pipeline = device.createPipeline(info);
         var event = device.createEvent();
         var push = memAlloc(16);
         push.putLong(0, device.address(buffer));
@@ -39,7 +43,8 @@ public class Smoke {
             }
         }
         try {
-            device.createPipeline(push, "fill", new int[] {64, 1, 1});
+            info.code = push;
+            device.createPipeline(info);
             throw new IllegalStateException("bad code was accepted");
         } catch (RuntimeException e) {
             System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));

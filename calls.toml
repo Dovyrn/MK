@@ -59,7 +59,7 @@ result = "u32"
 
 [[call]]
 name = "create_pipeline"
-params = [["code", "bytes"], ["entry", "str"], ["group", "u32x3"]]
+params = [["info", "ComputeInfo"]]
 result = "u32"
 fails = true
 

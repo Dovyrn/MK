@@ -42,10 +42,6 @@ pub fn u32s<'a>(address: jlong, count: i64) -> &'a [u32] {
     unsafe { std::slice::from_raw_parts(address as *const u32, count as usize) }
 }
 
-pub fn u32x3(address: jlong) -> [u32; 3] {
-    unsafe { *(address as *const [u32; 3]) }
-}
-
 pub fn f32x12<'a>(address: jlong) -> &'a [f32; 12] {
     unsafe { &*(address as *const [f32; 12]) }
 }

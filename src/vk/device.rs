@@ -10,9 +10,9 @@ use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, LayoutInfo, MeshInfo, RayInfo, RenderInfo,
-    SamplerInfo, SparseRange, SparseRegion, SurfaceInfo, TextureInfo, ViewInfo, address, border,
-    dimension, fill, filter, format, index, memory, query, token, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, SurfaceInfo, TextureInfo, ViewInfo,
+    address, border, dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{external_memory_host, mesh_shader, mutable_descriptor_type};
@@ -1745,12 +1745,11 @@ impl Device {
         }
     }
 
-    pub fn create_pipeline(
-        &mut self,
-        code: &[u8],
-        entry: &str,
-        _group: [u32; 3],
-    ) -> Result<u32, String> {
+    pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
+        if !info.functions.is_empty() {
+            return Err("linked functions are Metal only".into());
+        }
+        let (code, entry) = (info.code, info.entry);
         unsafe {
             let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
             let info = vk::ShaderModuleCreateInfo::default().code(&words);

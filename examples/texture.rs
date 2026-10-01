@@ -38,7 +38,14 @@ fn main() {
         w: address::CLAMP,
         ..Default::default()
     });
-    let pipeline = device.create_pipeline(CODE, "blit", [8, 8, 1]).unwrap();
+    let pipeline = device
+        .create_pipeline(&mk::ComputeInfo {
+            code: CODE,
+            entry: "blit",
+            group: [8, 8, 1],
+            ..Default::default()
+        })
+        .unwrap();
     let event = device.create_event();
     let pattern: Vec<[u8; 4]> = (0..texels as u32)
         .map(|i| {

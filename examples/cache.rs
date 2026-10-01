@@ -20,7 +20,14 @@ fn build(device: &mut Device) -> f64 {
         ..Default::default()
     }];
     let start = Instant::now();
-    device.create_pipeline(&fill, "fill", [64, 1, 1]).unwrap();
+    device
+        .create_pipeline(&mk::ComputeInfo {
+            code: &fill,
+            entry: "fill",
+            group: [64, 1, 1],
+            ..Default::default()
+        })
+        .unwrap();
     device
         .create_render_pipeline(&RenderInfo {
             code: &mesh,

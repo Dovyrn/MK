@@ -95,7 +95,7 @@ fn natives(p: &Param) -> Vec<(String, String, &'static str, &'static str)> {
     };
     match p.kind.as_str() {
         "u32" | "usize" => one("int", "jint"),
-        "u64" | "handle" | "object" | "f32x12" | "u32x3" => one("long", "jlong"),
+        "u64" | "handle" | "object" | "f32x12" => one("long", "jlong"),
         "f32" => one("float", "jfloat"),
         "bool" => one("boolean", "jboolean"),
         "bytes" | "mutbytes" | "commands" => two("long", "jlong"),
@@ -131,7 +131,6 @@ fn rust_arg(p: &Param) -> String {
         "mutbytes" => format!("{j}::bytes_mut({n}, {n}_length)"),
         "u32s" => format!("{j}::u32s({n}, {n}_length as i64)"),
         "f32x12" => format!("{j}::f32x12({n})"),
-        "u32x3" => format!("{j}::u32x3({n})"),
         "waits" => format!("&{j}::waits({n}, {n}_length as i64)"),
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
         "handle" => format!("ash::vk::Handle::from_raw({n} as u64)"),
@@ -140,7 +139,7 @@ fn rust_arg(p: &Param) -> String {
     }
 }
 
-pub fn rust(calls: &[Call]) -> String {
+pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     let mut s = String::from(
         "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(_: JNIEnv, _: JClass, device: jlong) {\n",
     );
@@ -182,9 +181,7 @@ pub fn rust(calls: &[Call]) -> String {
         } else {
             format!("crate::java::device(device).{}", call.target)
         };
-        let borrowed = call.params.iter().find(|p| {
-            info(&p.kind) && matches!(p.kind.as_str(), "RenderInfo" | "MeshInfo" | "AccelInfo")
-        });
+        let borrowed = call.params.iter().find(|p| borrowing.contains(&p.kind));
         let invoke = match borrowed {
             Some(p) => {
                 let n = p.name.clone();
@@ -270,7 +267,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "str" => "String",
                 "bytes" | "mutbytes" => "ByteBuffer",
                 "commands" => "Commands",
-                "u32s" | "u32x3" | "pairs" => "int[]",
+                "u32s" | "pairs" => "int[]",
                 "f32x12" => "float[]",
                 "waits" => "long[]",
                 k => k,
@@ -333,7 +330,6 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                         format!("{n}.length")
                     });
                 }
-                "u32x3" => args.push(format!("memAddress(stack.ints({n}))")),
                 "f32x12" => args.push(format!("memAddress(stack.floats({n}))")),
                 "waits" => {
                     writeln!(
