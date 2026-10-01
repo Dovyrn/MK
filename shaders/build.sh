@@ -7,7 +7,7 @@ for src in *.slang; do
     if [ -f "$name.glsl" ]; then
         glslangValidator -V "$name.glsl" -o "out/$name.spv"
     else
-        slangc "$src" -target spirv -emit-spirv-directly -fvk-use-entrypoint-name -o "out/$name.spv"
+        slangc "$src" -target spirv -emit-spirv-directly -fvk-use-entrypoint-name -fvk-invert-y -o "out/$name.spv"
     fi
     if [ -f "$name.metal" ]; then
         cp "$name.metal" "out/$name.metal"

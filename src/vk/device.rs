@@ -3,7 +3,10 @@ use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, aspect};
-use crate::{SamplerInfo, TextureInfo, address, border, dimension, filter, format, memory, usage};
+use crate::{
+    DepthInfo, RenderInfo, SamplerInfo, TextureInfo, address, border, dimension, fill, filter,
+    format, memory, topology, usage,
+};
 use ash::ext::debug_utils;
 use ash::ext::mutable_descriptor_type;
 use ash::khr::{portability_enumeration, portability_subset};
@@ -107,6 +110,11 @@ impl Device {
             let supported = instance.get_physical_device_features(physical);
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .fill_mode_non_solid(supported.fill_mode_non_solid != 0)
+                .multi_draw_indirect(supported.multi_draw_indirect != 0)
+                .depth_bias_clamp(supported.depth_bias_clamp != 0)
+                .independent_blend(supported.independent_blend != 0)
+                .dual_src_blend(supported.dual_src_blend != 0)
                 .shader_storage_image_read_without_format(
                     supported.shader_storage_image_read_without_format != 0,
                 )
@@ -269,6 +277,152 @@ impl Device {
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.buffers.get(buffer).address
+    }
+
+    pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        unsafe {
+            let words =
+                ash::util::read_spv(&mut Cursor::new(info.code)).map_err(|e| e.to_string())?;
+            let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
+            let module = self
+                .raw
+                .create_shader_module(&module_info, None)
+                .map_err(|e| e.to_string())?;
+            let vertex = CString::new(info.vertex).unwrap();
+            let fragment = CString::new(info.fragment).unwrap();
+            let mut stages = vec![
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::VERTEX)
+                    .module(module)
+                    .name(&vertex),
+            ];
+            if !info.fragment.is_empty() {
+                stages.push(
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::FRAGMENT)
+                        .module(module)
+                        .name(&fragment),
+                );
+            }
+            let bindings: Vec<_> = info
+                .buffers
+                .iter()
+                .enumerate()
+                .map(|(i, b)| vk::VertexInputBindingDescription {
+                    binding: i as u32,
+                    stride: b.stride,
+                    input_rate: if b.instance {
+                        vk::VertexInputRate::INSTANCE
+                    } else {
+                        vk::VertexInputRate::VERTEX
+                    },
+                })
+                .collect();
+            let attributes: Vec<_> = info
+                .attributes
+                .iter()
+                .map(|a| vk::VertexInputAttributeDescription {
+                    location: a.location,
+                    binding: a.buffer,
+                    format: format::vk(a.format),
+                    offset: a.offset,
+                })
+                .collect();
+            let input = vk::PipelineVertexInputStateCreateInfo::default()
+                .vertex_binding_descriptions(&bindings)
+                .vertex_attribute_descriptions(&attributes);
+            let assembly =
+                vk::PipelineInputAssemblyStateCreateInfo::default().topology(match info.topology {
+                    topology::POINT => vk::PrimitiveTopology::POINT_LIST,
+                    topology::LINE | topology::LINE_STRIP => vk::PrimitiveTopology::LINE_LIST,
+                    _ => vk::PrimitiveTopology::TRIANGLE_LIST,
+                });
+            let viewport = vk::PipelineViewportStateCreateInfo::default()
+                .viewport_count(1)
+                .scissor_count(1);
+            let raster = vk::PipelineRasterizationStateCreateInfo::default()
+                .polygon_mode(match info.fill {
+                    fill::LINE => vk::PolygonMode::LINE,
+                    _ => vk::PolygonMode::FILL,
+                })
+                .line_width(1.0);
+            let multisample = vk::PipelineMultisampleStateCreateInfo::default()
+                .rasterization_samples(vk::SampleCountFlags::from_raw(info.samples))
+                .alpha_to_coverage_enable(info.coverage);
+            let depth = vk::PipelineDepthStencilStateCreateInfo::default();
+            let blends: Vec<_> = info
+                .colors
+                .iter()
+                .map(|c| vk::PipelineColorBlendAttachmentState {
+                    blend_enable: c.blend as u32,
+                    src_color_blend_factor: vk::BlendFactor::from_raw(c.src as i32),
+                    dst_color_blend_factor: vk::BlendFactor::from_raw(c.dst as i32),
+                    color_blend_op: vk::BlendOp::from_raw(c.op as i32),
+                    src_alpha_blend_factor: vk::BlendFactor::from_raw(c.src_alpha as i32),
+                    dst_alpha_blend_factor: vk::BlendFactor::from_raw(c.dst_alpha as i32),
+                    alpha_blend_op: vk::BlendOp::from_raw(c.op_alpha as i32),
+                    color_write_mask: vk::ColorComponentFlags::from_raw(c.mask),
+                })
+                .collect();
+            let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
+            let states = [
+                vk::DynamicState::VIEWPORT,
+                vk::DynamicState::SCISSOR,
+                vk::DynamicState::CULL_MODE,
+                vk::DynamicState::FRONT_FACE,
+                vk::DynamicState::PRIMITIVE_TOPOLOGY,
+                vk::DynamicState::DEPTH_TEST_ENABLE,
+                vk::DynamicState::DEPTH_WRITE_ENABLE,
+                vk::DynamicState::DEPTH_COMPARE_OP,
+                vk::DynamicState::STENCIL_TEST_ENABLE,
+                vk::DynamicState::STENCIL_OP,
+                vk::DynamicState::STENCIL_COMPARE_MASK,
+                vk::DynamicState::STENCIL_WRITE_MASK,
+                vk::DynamicState::STENCIL_REFERENCE,
+                vk::DynamicState::DEPTH_BIAS,
+                vk::DynamicState::DEPTH_BIAS_ENABLE,
+                vk::DynamicState::BLEND_CONSTANTS,
+            ];
+            let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
+            let formats: Vec<_> = info.colors.iter().map(|c| format::vk(c.format)).collect();
+            let mut rendering = vk::PipelineRenderingCreateInfo::default()
+                .color_attachment_formats(&formats)
+                .depth_attachment_format(format::vk(info.depth))
+                .stencil_attachment_format(format::vk(info.stencil));
+            let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+                .stages(&stages)
+                .vertex_input_state(&input)
+                .input_assembly_state(&assembly)
+                .viewport_state(&viewport)
+                .rasterization_state(&raster)
+                .multisample_state(&multisample)
+                .depth_stencil_state(&depth)
+                .color_blend_state(&blend)
+                .dynamic_state(&dynamic)
+                .layout(self.layout)
+                .push_next(&mut rendering);
+            let result = self.raw.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline_info],
+                None,
+            );
+            self.raw.destroy_shader_module(module, None);
+            let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
+            Ok(self.res.renders.insert(pipeline))
+        }
+    }
+
+    pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+        let pipeline = self.res.renders.remove(pipeline);
+        unsafe { self.raw.destroy_pipeline(pipeline, None) };
+    }
+
+    pub fn create_depth_state(&mut self, info: &DepthInfo) -> u32 {
+        self.res.depths.insert(*info)
+    }
+
+    pub fn destroy_depth_state(&mut self, state: u32) {
+        self.res.depths.remove(state);
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
@@ -551,6 +705,9 @@ impl Drop for Device {
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
+            }
+            for pipeline in self.res.renders.drain() {
+                self.raw.destroy_pipeline(pipeline, None);
             }
             for pipeline in self.res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);

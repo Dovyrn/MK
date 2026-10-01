@@ -64,6 +64,9 @@ impl Queue {
             buffer: frame.buffer,
             layout,
             res,
+            colors: Vec::new(),
+            depth: None,
+            stencil: vk::RenderingAttachmentInfo::default(),
         }
         .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };

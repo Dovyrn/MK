@@ -8,23 +8,35 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 ))]
 compile_error!("enable exactly one backend feature");
 
+mod color_target;
 mod command;
 mod commands;
+mod depth_info;
 #[cfg(feature = "mtl")]
 pub mod mtl;
+mod render_info;
 mod sampler_info;
 #[cfg(any(feature = "mtl", feature = "vk"))]
 mod slots;
+mod stencil_face;
 mod texture_info;
+mod vertex_attribute;
+mod vertex_buffer;
 #[cfg(feature = "vk")]
 pub mod vk;
 
+pub use color_target::ColorTarget;
 pub use command::Command;
 pub use commands::Commands;
+pub use depth_info::DepthInfo;
 #[cfg(feature = "mtl")]
 pub use mtl::Device;
+pub use render_info::RenderInfo;
 pub use sampler_info::SamplerInfo;
+pub use stencil_face::StencilFace;
 pub use texture_info::TextureInfo;
+pub use vertex_attribute::VertexAttribute;
+pub use vertex_buffer::VertexBuffer;
 #[cfg(feature = "vk")]
 pub use vk::Device;
 

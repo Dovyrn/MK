@@ -6,7 +6,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLSharedEvent, MTLSize,
+    MTLSharedEvent,
 };
 use std::collections::VecDeque;
 use std::ptr::NonNull;
@@ -36,7 +36,7 @@ impl Queue {
         raw.addResidencySet(shared);
         raw.addResidencySet(&residency);
         let desc = MTL4ArgumentTableDescriptor::new();
-        desc.setMaxBufferBindCount(1);
+        desc.setMaxBufferBindCount(31);
         let table = device
             .newArgumentTableWithDescriptor_error(&desc)
             .map_err(|e| e.localizedDescription().to_string())?;
@@ -69,25 +69,19 @@ impl Queue {
         let mut frame = self.free.pop().unwrap_or_else(|| Frame::new(device));
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
-        let mut recorder = Recorder {
+        let mut recorder = Recorder::new(
             device,
-            residency: &self.residency,
-            buffer: &self.buffer,
-            table: &self.table,
-            frame: &mut frame,
+            &self.residency,
+            &self.buffer,
+            &self.table,
+            &mut frame,
             res,
-            encoder: None,
-            group: MTLSize {
-                width: 1,
-                height: 1,
-                depth: 1,
-            },
-            push: [0; 256],
-            size: 0,
-            dirty: false,
-        };
+        );
         let result = recorder.run(commands);
-        if let Some(e) = recorder.encoder.take() {
+        if let Some(e) = recorder.compute.take() {
+            e.endEncoding();
+        }
+        if let Some(e) = recorder.render.take() {
             e.endEncoding();
         }
         self.buffer.endCommandBuffer();

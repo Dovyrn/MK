@@ -1,9 +1,11 @@
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
-use crate::{Command, layout, stage};
+use crate::{Command, DepthInfo, compare, face, index, layout, load, stage, store};
 use ash::ext::debug_utils;
 use ash::vk;
 use std::ffi::CString;
+
+const NONE: u32 = !0;
 
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
@@ -11,6 +13,32 @@ pub struct Recorder<'a> {
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
     pub res: &'a Resources,
+    pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
+    pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
+    pub stencil: vk::RenderingAttachmentInfo<'static>,
+}
+
+fn load(l: u32) -> vk::AttachmentLoadOp {
+    match l {
+        load::LOAD => vk::AttachmentLoadOp::LOAD,
+        load::CLEAR => vk::AttachmentLoadOp::CLEAR,
+        _ => vk::AttachmentLoadOp::DONT_CARE,
+    }
+}
+
+fn store(s: u32) -> vk::AttachmentStoreOp {
+    match s {
+        store::STORE => vk::AttachmentStoreOp::STORE,
+        _ => vk::AttachmentStoreOp::DONT_CARE,
+    }
+}
+
+fn compare_op(c: u32) -> vk::CompareOp {
+    if c == compare::NONE {
+        vk::CompareOp::ALWAYS
+    } else {
+        vk::CompareOp::from_raw(c as i32 - 1)
+    }
 }
 
 fn stages(bits: u32) -> vk::PipelineStageFlags2 {
@@ -67,6 +95,47 @@ fn layout(l: u32) -> vk::ImageLayout {
 }
 
 impl Recorder<'_> {
+    fn depth_state(&self, d: &DepthInfo) {
+        let (dev, b) = (self.device, self.buffer);
+        unsafe {
+            dev.cmd_set_depth_test_enable(b, d.compare != compare::NONE || d.write);
+            dev.cmd_set_depth_write_enable(b, d.write);
+            dev.cmd_set_depth_compare_op(b, compare_op(d.compare));
+            dev.cmd_set_stencil_test_enable(b, d.stencil);
+            for (mask, f) in [
+                (vk::StencilFaceFlags::FRONT, &d.front),
+                (vk::StencilFaceFlags::BACK, &d.back),
+            ] {
+                dev.cmd_set_stencil_op(
+                    b,
+                    mask,
+                    vk::StencilOp::from_raw(f.fail as i32),
+                    vk::StencilOp::from_raw(f.pass as i32),
+                    vk::StencilOp::from_raw(f.depth_fail as i32),
+                    compare_op(f.compare),
+                );
+                dev.cmd_set_stencil_compare_mask(b, mask, f.read);
+                dev.cmd_set_stencil_write_mask(b, mask, f.write);
+            }
+        }
+    }
+
+    fn attachment(
+        &self,
+        texture: u32,
+        layout: u32,
+        load: u32,
+        store: u32,
+        clear: vk::ClearValue,
+    ) -> vk::RenderingAttachmentInfo<'static> {
+        vk::RenderingAttachmentInfo::default()
+            .image_view(self.res.textures.get(texture).view)
+            .image_layout(self::layout(layout))
+            .load_op(self::load(load))
+            .store_op(self::store(store))
+            .clear_value(clear)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn copy(
         &self,
@@ -298,6 +367,236 @@ impl Recorder<'_> {
                         &[region],
                     )
                 }
+                Command::ColorAttachment {
+                    index,
+                    texture,
+                    layout: l,
+                    load,
+                    store,
+                    r,
+                    g,
+                    b: blue,
+                    a,
+                    resolve,
+                    resolve_layout,
+                } => {
+                    let clear = vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [r, g, blue, a],
+                        },
+                    };
+                    let mut info = self.attachment(texture, l, load, store, clear);
+                    if resolve != NONE {
+                        info = info
+                            .resolve_mode(vk::ResolveModeFlags::AVERAGE)
+                            .resolve_image_view(self.res.textures.get(resolve).view)
+                            .resolve_image_layout(layout(resolve_layout));
+                    }
+                    let i = index as usize;
+                    if self.colors.len() <= i {
+                        self.colors
+                            .resize(i + 1, vk::RenderingAttachmentInfo::default());
+                    }
+                    self.colors[i] = info;
+                }
+                Command::DepthAttachment {
+                    texture,
+                    layout: l,
+                    load,
+                    store,
+                    depth,
+                    stencil_load,
+                    stencil_store,
+                    stencil,
+                } => {
+                    let clear = vk::ClearValue {
+                        depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
+                    };
+                    let info = self.attachment(texture, l, load, store, clear);
+                    let has = self
+                        .res
+                        .textures
+                        .get(texture)
+                        .aspect
+                        .contains(vk::ImageAspectFlags::STENCIL);
+                    self.stencil = self.attachment(texture, l, stencil_load, stencil_store, clear);
+                    self.depth = Some((info, has));
+                }
+                Command::BeginRender {
+                    width,
+                    height,
+                    layers,
+                } => {
+                    let area = vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: vk::Extent2D { width, height },
+                    };
+                    let mut info = vk::RenderingInfo::default()
+                        .render_area(area)
+                        .layer_count(layers)
+                        .color_attachments(&self.colors);
+                    if let Some((depth, has)) = &self.depth {
+                        info = info.depth_attachment(depth);
+                        if *has {
+                            info = info.stencil_attachment(&self.stencil);
+                        }
+                    }
+                    d.cmd_begin_rendering(b, &info);
+                    self.colors.clear();
+                    self.depth = None;
+                    let viewport = vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: width as f32,
+                        height: height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    };
+                    d.cmd_set_viewport(b, 0, &[viewport]);
+                    d.cmd_set_scissor(b, 0, &[area]);
+                    d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
+                    d.cmd_set_front_face(b, vk::FrontFace::COUNTER_CLOCKWISE);
+                    d.cmd_set_primitive_topology(b, vk::PrimitiveTopology::TRIANGLE_LIST);
+                    d.cmd_set_depth_bias_enable(b, false);
+                    d.cmd_set_depth_bias(b, 0.0, 0.0, 0.0);
+                    d.cmd_set_blend_constants(b, &[0.0; 4]);
+                    d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
+                    self.depth_state(&DepthInfo::default());
+                }
+                Command::EndRender => d.cmd_end_rendering(b),
+                Command::BindRenderPipeline { pipeline } => d.cmd_bind_pipeline(
+                    b,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    *self.res.renders.get(pipeline),
+                ),
+                Command::SetViewport {
+                    x,
+                    y,
+                    width,
+                    height,
+                    near,
+                    far,
+                } => d.cmd_set_viewport(
+                    b,
+                    0,
+                    &[vk::Viewport {
+                        x,
+                        y,
+                        width,
+                        height,
+                        min_depth: near,
+                        max_depth: far,
+                    }],
+                ),
+                Command::SetScissor {
+                    x,
+                    y,
+                    width,
+                    height,
+                } => d.cmd_set_scissor(
+                    b,
+                    0,
+                    &[vk::Rect2D {
+                        offset: vk::Offset2D {
+                            x: x as i32,
+                            y: y as i32,
+                        },
+                        extent: vk::Extent2D { width, height },
+                    }],
+                ),
+                Command::SetCull { cull } => {
+                    d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull))
+                }
+                Command::SetFace { face: f } => d.cmd_set_front_face(
+                    b,
+                    match f {
+                        face::CCW => vk::FrontFace::COUNTER_CLOCKWISE,
+                        _ => vk::FrontFace::CLOCKWISE,
+                    },
+                ),
+                Command::SetTopology { topology } => d.cmd_set_primitive_topology(
+                    b,
+                    vk::PrimitiveTopology::from_raw(topology as i32),
+                ),
+                Command::SetDepthState { state } => self.depth_state(self.res.depths.get(state)),
+                Command::SetStencilReference { front, back } => {
+                    d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT, front);
+                    d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::BACK, back);
+                }
+                Command::SetDepthBias {
+                    constant,
+                    slope,
+                    clamp,
+                } => {
+                    d.cmd_set_depth_bias_enable(b, constant != 0.0 || slope != 0.0);
+                    d.cmd_set_depth_bias(b, constant, clamp, slope);
+                }
+                Command::SetBlendColor { r, g, b: blue, a } => {
+                    d.cmd_set_blend_constants(b, &[r, g, blue, a])
+                }
+                Command::BindVertexBuffer {
+                    slot,
+                    buffer,
+                    offset,
+                } => d.cmd_bind_vertex_buffers(
+                    b,
+                    slot,
+                    &[self.res.buffers.get(buffer).raw],
+                    &[offset],
+                ),
+                Command::BindIndexBuffer {
+                    buffer,
+                    offset,
+                    kind,
+                } => d.cmd_bind_index_buffer(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    match kind {
+                        index::U16 => vk::IndexType::UINT16,
+                        _ => vk::IndexType::UINT32,
+                    },
+                ),
+                Command::Draw {
+                    vertices,
+                    instances,
+                    first_vertex,
+                    first_instance,
+                } => d.cmd_draw(b, vertices, instances, first_vertex, first_instance),
+                Command::DrawIndexed {
+                    indices,
+                    instances,
+                    first_index,
+                    base_vertex,
+                    first_instance,
+                } => d.cmd_draw_indexed(
+                    b,
+                    indices,
+                    instances,
+                    first_index,
+                    base_vertex,
+                    first_instance,
+                ),
+                Command::DrawIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => {
+                    d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, count, stride)
+                }
+                Command::DrawIndexedIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => d.cmd_draw_indexed_indirect(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    count,
+                    stride,
+                ),
                 Command::BeginLabel { text } => {
                     if let Some(debug) = self.debug {
                         let name = CString::new(text).unwrap();

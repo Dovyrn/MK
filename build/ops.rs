@@ -45,7 +45,7 @@ pub fn parse(text: &str) -> Vec<Op> {
 fn width(kind: &str) -> usize {
     match kind {
         "u8" => 1,
-        "u32" | "f32" => 4,
+        "u32" | "i32" | "f32" => 4,
         "u64" => 8,
         _ => 0,
     }
@@ -219,7 +219,7 @@ pub fn commands(ops: &[Op]) -> String {
 fn java_type(kind: &str) -> &str {
     match kind {
         "u8" => "byte",
-        "u32" => "int",
+        "u32" | "i32" => "int",
         "u64" => "long",
         "f32" => "float",
         "bytes" => "ByteBuffer",
@@ -310,7 +310,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
             };
             match f.kind.as_str() {
                 "u8" => writeln!(s, "        memPutByte({p}, {n});"),
-                "u32" => writeln!(s, "        memPutInt({p}, {n});"),
+                "u32" | "i32" => writeln!(s, "        memPutInt({p}, {n});"),
                 "u64" => writeln!(s, "        memPutLong({p}, {n});"),
                 "f32" => writeln!(s, "        memPutFloat({p}, {n});"),
                 "bytes" => writeln!(s, "        memCopy(memAddress({n}), {p}, {n}.remaining());"),

@@ -106,3 +106,103 @@ fields = [
     ["row_length", "u32"],
     ["row_count", "u32"],
 ]
+
+[[command]]
+name = "color_attachment"
+fields = [
+    ["index", "u32"],
+    ["texture", "u32"],
+    ["layout", "u32"],
+    ["load", "u32"],
+    ["store", "u32"],
+    ["r", "f32"],
+    ["g", "f32"],
+    ["b", "f32"],
+    ["a", "f32"],
+    ["resolve", "u32"],
+    ["resolve_layout", "u32"],
+]
+
+[[command]]
+name = "depth_attachment"
+fields = [
+    ["texture", "u32"],
+    ["layout", "u32"],
+    ["load", "u32"],
+    ["store", "u32"],
+    ["depth", "f32"],
+    ["stencil_load", "u32"],
+    ["stencil_store", "u32"],
+    ["stencil", "u32"],
+]
+
+[[command]]
+name = "begin_render"
+fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"]]
+
+[[command]]
+name = "end_render"
+
+[[command]]
+name = "bind_render_pipeline"
+fields = [["pipeline", "u32"]]
+
+[[command]]
+name = "set_viewport"
+fields = [["x", "f32"], ["y", "f32"], ["width", "f32"], ["height", "f32"], ["near", "f32"], ["far", "f32"]]
+
+[[command]]
+name = "set_scissor"
+fields = [["x", "u32"], ["y", "u32"], ["width", "u32"], ["height", "u32"]]
+
+[[command]]
+name = "set_cull"
+fields = [["cull", "u32"]]
+
+[[command]]
+name = "set_face"
+fields = [["face", "u32"]]
+
+[[command]]
+name = "set_topology"
+fields = [["topology", "u32"]]
+
+[[command]]
+name = "set_depth_state"
+fields = [["state", "u32"]]
+
+[[command]]
+name = "set_stencil_reference"
+fields = [["front", "u32"], ["back", "u32"]]
+
+[[command]]
+name = "set_depth_bias"
+fields = [["constant", "f32"], ["slope", "f32"], ["clamp", "f32"]]
+
+[[command]]
+name = "set_blend_color"
+fields = [["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"]]
+
+[[command]]
+name = "bind_vertex_buffer"
+fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"]]
+
+[[command]]
+name = "bind_index_buffer"
+fields = [["buffer", "u32"], ["offset", "u64"], ["kind", "u32"]]
+
+[[command]]
+name = "draw"
+fields = [["vertices", "u32"], ["instances", "u32"], ["first_vertex", "u32"], ["first_instance", "u32"]]
+
+[[command]]
+name = "draw_indexed"
+fields = [["indices", "u32"], ["instances", "u32"], ["first_index", "u32"], ["base_vertex", "i32"], ["first_instance", "u32"]]
+
+[[command]]
+name = "draw_indirect"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+
+[[command]]
+name = "draw_indexed_indirect"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
