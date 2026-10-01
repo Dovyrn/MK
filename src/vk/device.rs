@@ -1825,8 +1825,22 @@ impl Device {
             )
             .map_err(|e| e.to_string())?
         };
+        self.surface(raw, true, info)
+    }
+
+    pub fn create_surface_raw(&mut self, surface: u64, info: &SurfaceInfo) -> Result<u32, String> {
+        self.surface(vk::Handle::from_raw(surface), false, info)
+    }
+
+    fn surface(
+        &mut self,
+        raw: vk::SurfaceKHR,
+        own: bool,
+        info: &SurfaceInfo,
+    ) -> Result<u32, String> {
         let mut s = Surface {
             raw,
+            own,
             swapchain: vk::SwapchainKHR::null(),
             format: info.format,
             vsync: info.vsync,
@@ -1962,7 +1976,9 @@ impl Device {
                 self.raw.destroy_semaphore(semaphore, None);
             }
             swapchains.destroy_swapchain(s.swapchain, None);
-            surfaces.destroy_surface(s.raw, None);
+            if s.own {
+                surfaces.destroy_surface(s.raw, None);
+            }
         }
     }
 
@@ -2372,7 +2388,9 @@ impl Drop for Device {
                     self.raw.destroy_semaphore(semaphore, None);
                 }
                 swapchains.destroy_swapchain(s.swapchain, None);
-                surfaces.destroy_surface(s.raw, None);
+                if s.own {
+                    surfaces.destroy_surface(s.raw, None);
+                }
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);

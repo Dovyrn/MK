@@ -2,6 +2,7 @@ use ash::vk;
 
 pub struct Surface {
     pub raw: vk::SurfaceKHR,
+    pub own: bool,
     pub swapchain: vk::SwapchainKHR,
     pub format: u32,
     pub vsync: bool,

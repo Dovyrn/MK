@@ -1106,6 +1106,11 @@ impl Device {
         let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
             return Err("Metal surfaces need an AppKit view".into());
         };
+        self.create_surface_raw(handle.ns_view.as_ptr() as u64, info)
+    }
+
+    pub fn create_surface_raw(&mut self, view: u64, info: &SurfaceInfo) -> Result<u32, String> {
+        let view = std::ptr::NonNull::new(view as *mut AnyObject).ok_or("null view")?;
         let layer = CAMetalLayer::new();
         layer.setDevice(Some(&self.raw));
         layer.setPixelFormat(format::mtl(info.format));
@@ -1113,7 +1118,7 @@ impl Device {
         layer.setDisplaySyncEnabled(info.vsync);
         layer.setMaximumDrawableCount(info.images as usize);
         layer.setDrawableSize(CGSize::new(info.width as f64, info.height as f64));
-        let view: &AnyObject = unsafe { handle.ns_view.cast().as_ref() };
+        let view: &AnyObject = unsafe { view.as_ref() };
         let _: () = unsafe { msg_send![view, setWantsLayer: true] };
         let _: () = unsafe { msg_send![view, setLayer: &*layer] };
         for q in &self.queues {
