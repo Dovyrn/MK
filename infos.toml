@@ -85,6 +85,7 @@ fields = [
     ["fill", "u32", "fill::FILL"],
     ["coverage", "bool", "false"],
     ["views", "u32", "0"],
+    ["indirect", "bool", "false"],
     ["buffers", "[VertexBuffer]", ""],
     ["attributes", "[VertexAttribute]", ""],
 ]
@@ -103,6 +104,7 @@ fields = [
     ["fill", "u32", "fill::FILL"],
     ["coverage", "bool", "false"],
     ["views", "u32", "0"],
+    ["indirect", "bool", "false"],
     ["task_group", "u32x3", "[1, 1, 1]"],
     ["mesh_group", "u32x3", "[1, 1, 1]"],
 ]
@@ -178,4 +180,16 @@ fields = [
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
+]
+
+[[info]]
+name = "IndirectInfo"
+fields = [
+    ["kinds", "u32", "indirect::DRAW"],
+    ["count", "u32", "1"],
+    ["inherit_pipeline", "bool", "true"],
+    ["inherit_buffers", "bool", "true"],
+    ["vertex_buffers", "u32", "0"],
+    ["fragment_buffers", "u32", "0"],
+    ["kernel_buffers", "u32", "0"],
 ]

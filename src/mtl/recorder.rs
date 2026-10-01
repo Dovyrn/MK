@@ -796,6 +796,42 @@ impl<'a> Recorder<'a> {
                     render: self.render.as_deref(),
                 })
             }
+            Command::ExecuteIndirect {
+                indirect,
+                start,
+                count,
+            } => {
+                self.flush();
+                let icb = self.res.indirects.get(indirect);
+                let range = NSRange::new(start as usize, count as usize);
+                unsafe {
+                    match (&self.compute, &self.render) {
+                        (Some(e), _) => e.executeCommandsInBuffer_withRange(icb, range),
+                        (_, Some(e)) => e.executeCommandsInBuffer_withRange(icb, range),
+                        _ => panic!("execute_indirect outside an encoder"),
+                    }
+                }
+            }
+            Command::ResetIndirect {
+                indirect,
+                start,
+                count,
+            } => unsafe {
+                self.compute().resetCommandsInBuffer_withRange(
+                    self.res.indirects.get(indirect),
+                    NSRange::new(start as usize, count as usize),
+                )
+            },
+            Command::OptimizeIndirect {
+                indirect,
+                start,
+                count,
+            } => unsafe {
+                self.compute().optimizeIndirectCommandBuffer_withRange(
+                    self.res.indirects.get(indirect),
+                    NSRange::new(start as usize, count as usize),
+                )
+            },
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

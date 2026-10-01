@@ -30,4 +30,25 @@ public class MtlCommands extends Commands {
         memPutInt(p + 4, offset);
         memPutInt(p + 8, index);
     }
+
+    public void executeIndirect(int indirect, int start, int count) {
+        var p = head(51, 12);
+        memPutInt(p, indirect);
+        memPutInt(p + 4, start);
+        memPutInt(p + 8, count);
+    }
+
+    public void resetIndirect(int indirect, int start, int count) {
+        var p = head(52, 12);
+        memPutInt(p, indirect);
+        memPutInt(p + 4, start);
+        memPutInt(p + 8, count);
+    }
+
+    public void optimizeIndirect(int indirect, int start, int count) {
+        var p = head(53, 12);
+        memPutInt(p, indirect);
+        memPutInt(p + 4, start);
+        memPutInt(p + 8, count);
+    }
 }

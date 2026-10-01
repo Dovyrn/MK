@@ -7,7 +7,10 @@ use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{MTLBuffer, MTLDepthStencilState, MTLHeap, MTLSamplerState, MTLSharedEvent};
+use objc2_metal::{
+    MTLBuffer, MTLDepthStencilState, MTLHeap, MTLIndirectCommandBuffer, MTLSamplerState,
+    MTLSharedEvent,
+};
 
 #[derive(Default)]
 pub struct Resources {
@@ -18,6 +21,7 @@ pub struct Resources {
     pub renders: Slots<Render>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub heaps: Slots<(Retained<ProtocolObject<dyn MTLHeap>>, u32)>,
+    pub indirects: Slots<Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>>,
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub surfaces: Slots<Surface>,

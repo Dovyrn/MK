@@ -266,3 +266,18 @@ fields = [["views", "u32"]]
 name = "callback"
 backend = "rust"
 fields = [["index", "u32"]]
+
+[[command]]
+name = "execute_indirect"
+backend = "mtl"
+fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "reset_indirect"
+backend = "mtl"
+fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "optimize_indirect"
+backend = "mtl"
+fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]

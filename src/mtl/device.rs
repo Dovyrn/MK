@@ -7,9 +7,9 @@ use crate::mtl::resources::Resources;
 use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
-    StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border, dimension,
-    fill, filter, format, index, mask, memory, query, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, IndirectInfo, MeshInfo, RenderInfo,
+    SamplerInfo, StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border,
+    dimension, fill, filter, format, index, mask, memory, query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
@@ -22,8 +22,9 @@ use objc2_metal::{
     MTL4AccelerationStructureTriangleGeometryDescriptor, MTL4AlphaToCoverageState, MTL4BlendState,
     MTL4BufferRange, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
     MTL4CompilerTaskOptions, MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor,
-    MTL4CounterHeapType, MTL4FunctionDescriptor, MTL4InstanceAccelerationStructureDescriptor,
-    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDataSetSerializer,
+    MTL4CounterHeapType, MTL4FunctionDescriptor, MTL4IndirectCommandBufferSupportState,
+    MTL4InstanceAccelerationStructureDescriptor, MTL4LibraryFunctionDescriptor,
+    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDataSetSerializer,
     MTL4PipelineDataSetSerializerConfiguration, MTL4PipelineDataSetSerializerDescriptor,
     MTL4PipelineDescriptor, MTL4PrimitiveAccelerationStructureDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
@@ -31,12 +32,13 @@ use objc2_metal::{
     MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
     MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
     MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
-    MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLLibrary,
-    MTLMatrixLayout, MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
-    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
-    MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation, MTLTexture,
-    MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
+    MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType,
+    MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType,
+    MTLLibrary, MTLMatrixLayout, MTLPrimitiveTopologyClass, MTLResidencySet,
+    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
+    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
+    MTLSamplerState, MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
+    MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
     MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
@@ -554,6 +556,11 @@ impl Device {
             _ => MTLPrimitiveTopologyClass::Triangle,
         });
         desc.setAlphaToCoverageState(coverage(info.coverage));
+        desc.setSupportIndirectCommandBuffers(if info.indirect {
+            MTL4IndirectCommandBufferSupportState::Enabled
+        } else {
+            MTL4IndirectCommandBufferSupportState::Disabled
+        });
         if info.views > 1 {
             unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
         }
@@ -586,6 +593,11 @@ impl Device {
         colors(&desc.colorAttachments(), info.colors);
         unsafe { desc.setRasterSampleCount(info.samples as usize) };
         desc.setAlphaToCoverageState(coverage(info.coverage));
+        desc.setSupportIndirectCommandBuffers(if info.indirect {
+            MTL4IndirectCommandBufferSupportState::Enabled
+        } else {
+            MTL4IndirectCommandBufferSupportState::Disabled
+        });
         if info.views > 1 {
             unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
         }
@@ -944,6 +956,41 @@ impl Device {
         out[56..60].copy_from_slice(&0u32.to_le_bytes());
         out[60..64].copy_from_slice(&id.to_le_bytes());
         out[64..72].copy_from_slice(&self.accel_handle(accel).to_le_bytes());
+    }
+
+    pub fn create_indirect(&mut self, info: &IndirectInfo) -> Result<u32, String> {
+        let desc = MTLIndirectCommandBufferDescriptor::new();
+        desc.setCommandTypes(MTLIndirectCommandType(info.kinds as usize));
+        desc.setInheritPipelineState(info.inherit_pipeline);
+        desc.setInheritBuffers(info.inherit_buffers);
+        desc.setMaxVertexBufferBindCount(info.vertex_buffers as usize);
+        desc.setMaxFragmentBufferBindCount(info.fragment_buffers as usize);
+        desc.setMaxKernelBufferBindCount(info.kernel_buffers as usize);
+        let raw = unsafe {
+            self.raw
+                .newIndirectCommandBufferWithDescriptor_maxCommandCount_options(
+                    &desc,
+                    info.count as usize,
+                    MTLResourceOptions::StorageModePrivate
+                        | MTLResourceOptions::HazardTrackingModeUntracked,
+                )
+                .ok_or("indirect command buffer")?
+        };
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        Ok(self.res.indirects.insert(raw))
+    }
+
+    pub fn destroy_indirect(&mut self, indirect: u32) {
+        let raw = self.res.indirects.remove(indirect);
+        self.residency
+            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+    }
+
+    pub fn indirect_handle(&self, indirect: u32) -> u64 {
+        id(self.res.indirects.get(indirect).gpuResourceID())
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {

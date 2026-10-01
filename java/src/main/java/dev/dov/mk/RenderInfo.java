@@ -17,6 +17,7 @@ public class RenderInfo {
     public int fill = Fill.FILL;
     public boolean coverage = false;
     public int views = 0;
+    public boolean indirect = false;
     public VertexBuffer[] buffers = new VertexBuffer[0];
     public VertexAttribute[] attributes = new VertexAttribute[0];
 
@@ -33,7 +34,7 @@ public class RenderInfo {
         for (var x : attributes) {
             attributesSize += x.size();
         }
-        return 64 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
+        return 68 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
     }
 
     public long write(long p) {
@@ -66,6 +67,8 @@ public class RenderInfo {
         memPutInt(p, coverage ? 1 : 0);
         p += 4;
         memPutInt(p, views);
+        p += 4;
+        memPutInt(p, indirect ? 1 : 0);
         p += 4;
         memPutInt(p, buffers.length);
         p += 4;
