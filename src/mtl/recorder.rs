@@ -242,15 +242,18 @@ impl<'a> Recorder<'a> {
             }
         }
         while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?);
+            self.step(Command::read(&mut bytes)?)?;
         }
         Ok(())
     }
 
-    fn step(&mut self, command: Command) {
+    fn step(&mut self, command: Command) -> Result<(), &'static str> {
         match command {
             Command::BeginCompute => {
-                let encoder = self.buffer.computeCommandEncoder().unwrap();
+                let encoder = self
+                    .buffer
+                    .computeCommandEncoder()
+                    .ok_or("compute encoder creation failed")?;
                 encoder.setArgumentTable(Some(self.table));
                 self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                 self.compute = Some(encoder);
@@ -471,7 +474,7 @@ impl<'a> Recorder<'a> {
                 let encoder = self
                     .buffer
                     .renderCommandEncoderWithDescriptor(&self.pass)
-                    .unwrap();
+                    .ok_or("render encoder creation failed")?;
                 let all = MTLRenderStages::Vertex
                     | MTLRenderStages::Fragment
                     | MTLRenderStages::Object
@@ -752,7 +755,10 @@ impl<'a> Recorder<'a> {
                             )
                     },
                     Query::Buffer(src) => {
-                        let encoder = self.buffer.computeCommandEncoder().unwrap();
+                        let encoder = self
+                            .buffer
+                            .computeCommandEncoder()
+                            .ok_or("compute encoder creation failed")?;
                         self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                         unsafe {
                             encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
@@ -824,7 +830,10 @@ impl<'a> Recorder<'a> {
             Command::Multiview { views } => self.views = views,
             Command::Callback { index } => {
                 self.flush();
-                (self.natives[index as usize])(&Native {
+                (self
+                    .natives
+                    .get(index as usize)
+                    .expect("callback recorded without its closure"))(&Native {
                     buffer: self.buffer,
                     table: self.table,
                     compute: self.compute.as_deref(),
@@ -994,5 +1003,6 @@ impl<'a> Recorder<'a> {
                 _ => self.buffer.popDebugGroup(),
             },
         }
+        Ok(())
     }
 }

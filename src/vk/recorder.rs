@@ -9,6 +9,8 @@ use std::ffi::CString;
 
 const NONE: u32 = !0;
 
+const DEBUG: &str = "VK_EXT_debug_utils is not enabled";
+
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
     pub ext: &'a Extensions,
@@ -200,7 +202,7 @@ impl Recorder<'_> {
             };
         }
         while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?);
+            self.step(Command::read(&mut bytes)?)?;
         }
         Ok(())
     }
@@ -216,7 +218,7 @@ impl Recorder<'_> {
         unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
     }
 
-    fn step(&mut self, command: Command) {
+    fn step(&mut self, command: Command) -> Result<(), &'static str> {
         let (d, b) = (self.device, self.buffer);
         unsafe {
             match command {
@@ -627,7 +629,7 @@ impl Recorder<'_> {
                     .ext
                     .mesh
                     .as_ref()
-                    .unwrap()
+                    .ok_or("VK_EXT_mesh_shader is not enabled")?
                     .cmd_draw_mesh_tasks(b, x, y, z),
                 Command::DrawMeshIndirect {
                     buffer,
@@ -638,7 +640,7 @@ impl Recorder<'_> {
                     .ext
                     .mesh
                     .as_ref()
-                    .unwrap()
+                    .ok_or("VK_EXT_mesh_shader is not enabled")?
                     .cmd_draw_mesh_tasks_indirect(
                         b,
                         self.res.buffers.get(buffer).raw,
@@ -700,14 +702,19 @@ impl Recorder<'_> {
                     self.ext
                         .ray
                         .as_ref()
-                        .unwrap()
+                        .ok_or("VK_KHR_acceleration_structure is not enabled")?
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
                 Command::Multiview { views } => self.views = views,
-                Command::Callback { index } => (self.natives[index as usize])(&Native {
-                    device: d,
-                    buffer: b,
-                }),
+                Command::Callback { index } => (self
+                    .natives
+                    .get(index as usize)
+                    .expect("callback recorded without its closure"))(
+                    &Native {
+                        device: d,
+                        buffer: b,
+                    },
+                ),
                 Command::ExecuteGenerated {
                     layout,
                     indirect,
@@ -752,13 +759,24 @@ impl Recorder<'_> {
                         count: address(count, count_offset),
                         draws,
                     };
-                    (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
+                    let generated = self
+                        .ext
+                        .generated
+                        .as_ref()
+                        .ok_or("VK_EXT_device_generated_commands is not enabled")?;
+                    (generated.execute)(b, vk::FALSE, &info);
                 }
-                Command::BindRayPipeline { pipeline } => d.cmd_bind_pipeline(
-                    b,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    self.res.rays.get(pipeline).0,
-                ),
+                Command::BindRayPipeline { pipeline } => {
+                    self.ext
+                        .rays
+                        .as_ref()
+                        .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
+                    d.cmd_bind_pipeline(
+                        b,
+                        vk::PipelineBindPoint::RAY_TRACING_KHR,
+                        self.res.rays.get(pipeline).0,
+                    )
+                }
                 Command::TraceRays {
                     raygen,
                     raygen_offset,
@@ -791,7 +809,12 @@ impl Recorder<'_> {
                             size,
                         }
                     };
-                    self.ext.rays.as_ref().unwrap().cmd_trace_rays(
+                    let rays = self
+                        .ext
+                        .rays
+                        .as_ref()
+                        .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
+                    rays.cmd_trace_rays(
                         b,
                         &region(raygen, raygen_offset, raygen_stride, raygen_size),
                         &region(miss, miss_offset, miss_stride, miss_size),
@@ -813,7 +836,11 @@ impl Recorder<'_> {
                         vk::FragmentShadingRateCombinerOpKHR::from_raw(primitive as i32),
                         vk::FragmentShadingRateCombinerOpKHR::from_raw(attachment as i32),
                     ];
-                    let rates = self.ext.rates.as_ref().unwrap();
+                    let rates = self
+                        .ext
+                        .rates
+                        .as_ref()
+                        .ok_or("VK_KHR_fragment_shading_rate is not enabled")?;
                     (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &ops);
                 }
                 Command::RateAttachment {
@@ -822,6 +849,10 @@ impl Recorder<'_> {
                     texel_width,
                     texel_height,
                 } => {
+                    self.ext
+                        .rates
+                        .as_ref()
+                        .ok_or("VK_KHR_fragment_shading_rate is not enabled")?;
                     self.rate = Some(
                         vk::RenderingFragmentShadingRateAttachmentInfoKHR::default()
                             .image_view(self.res.textures.get(texture).view)
@@ -833,7 +864,11 @@ impl Recorder<'_> {
                     )
                 }
                 Command::WriteCompactedSize { accel, heap, index } => {
-                    let ray = self.ext.ray.as_ref().unwrap();
+                    let ray = self
+                        .ext
+                        .ray
+                        .as_ref()
+                        .ok_or("VK_KHR_acceleration_structure is not enabled")?;
                     ray.cmd_write_acceleration_structures_properties(
                         b,
                         &[self.res.accels.get(accel).raw],
@@ -854,7 +889,7 @@ impl Recorder<'_> {
                     self.ext
                         .ray
                         .as_ref()
-                        .unwrap()
+                        .ok_or("VK_KHR_acceleration_structure is not enabled")?
                         .cmd_copy_acceleration_structure(b, &info)
                 }
                 Command::SetViewports { data } => {
@@ -914,27 +949,34 @@ impl Recorder<'_> {
                         } else {
                             vk::ConditionalRenderingFlagsEXT::empty()
                         });
-                    let c = self.ext.conditional.as_ref().unwrap();
+                    let c = self
+                        .ext
+                        .conditional
+                        .as_ref()
+                        .ok_or("VK_EXT_conditional_rendering is not enabled")?;
                     (c.fp().cmd_begin_conditional_rendering_ext)(b, &info)
                 }
                 Command::EndConditional => {
-                    let c = self.ext.conditional.as_ref().unwrap();
+                    let c = self
+                        .ext
+                        .conditional
+                        .as_ref()
+                        .ok_or("VK_EXT_conditional_rendering is not enabled")?;
                     (c.fp().cmd_end_conditional_rendering_ext)(b)
                 }
                 Command::BeginLabel { text } => {
-                    if let Some(debug) = &self.ext.debug {
-                        let name = CString::new(text).unwrap();
-                        let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
-                        debug.cmd_begin_debug_utils_label(b, &label);
-                    }
+                    let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
+                    let name = CString::new(text).expect("label contains a nul byte");
+                    let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
+                    debug.cmd_begin_debug_utils_label(b, &label);
                 }
                 Command::EndLabel => {
-                    if let Some(debug) = &self.ext.debug {
-                        debug.cmd_end_debug_utils_label(b);
-                    }
+                    let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
+                    debug.cmd_end_debug_utils_label(b);
                 }
                 Command::SetLineWidth { width } => d.cmd_set_line_width(b, width),
             }
         }
+        Ok(())
     }
 }
