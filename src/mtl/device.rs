@@ -1,4 +1,5 @@
 use crate::mtl::pipeline::Pipeline;
+use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
@@ -7,7 +8,7 @@ use crate::mtl::texture::Texture;
 use crate::{
     Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
     TextureInfo, ViewInfo, address, blend, border, dimension, fill, filter, format, mask, memory,
-    topology, usage,
+    query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
@@ -17,8 +18,9 @@ use objc2_core_foundation::CGSize;
 use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4CommandQueue, MTL4Compiler,
-    MTL4CompilerDescriptor, MTL4ComputePipelineDescriptor, MTL4FunctionDescriptor,
-    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4CompilerDescriptor, MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor,
+    MTL4CounterHeapType, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
+    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor, MTLAllocation,
     MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
     MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily,
@@ -251,6 +253,9 @@ impl Device {
             queues: self.queues.len() as u32,
             samplers: 2048,
             textures: 500_000,
+            tick: 1e9 / self.raw.queryTimestampFrequency() as f32,
+            timestamps: true,
+            precise: true,
         }
     }
 
@@ -650,6 +655,42 @@ impl Device {
         ProtocolObject::<dyn MTLDrawable>::from_ref(drawable).present();
         self.res.textures.remove(texture);
         Ok(())
+    }
+
+    pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        let heap = match kind {
+            query::TIMESTAMP => {
+                let desc = MTL4CounterHeapDescriptor::new();
+                desc.setType(MTL4CounterHeapType::Timestamp);
+                unsafe { desc.setCount(count as usize) };
+                let heap = self
+                    .raw
+                    .newCounterHeapWithDescriptor_error(&desc)
+                    .map_err(|e| e.localizedDescription().to_string())?;
+                Query::Timestamp(heap)
+            }
+            _ => {
+                let options = MTLResourceOptions::StorageModePrivate
+                    | MTLResourceOptions::HazardTrackingModeUntracked;
+                let buffer = self
+                    .raw
+                    .newBufferWithLength_options(count as usize * 8, options)
+                    .ok_or("visibility buffer")?;
+                self.residency
+                    .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
+                self.dirty = true;
+                Query::Occlusion(buffer)
+            }
+        };
+        Ok(self.res.queries.insert(heap))
+    }
+
+    pub fn destroy_query_heap(&mut self, heap: u32) {
+        if let Query::Occlusion(buffer) = self.res.queries.remove(heap) {
+            self.residency
+                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
+            self.dirty = true;
+        }
     }
 
     pub fn create_event(&mut self) -> u32 {

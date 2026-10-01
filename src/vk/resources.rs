@@ -13,6 +13,7 @@ pub struct Resources {
     pub pipelines: Slots<vk::Pipeline>,
     pub renders: Slots<vk::Pipeline>,
     pub depths: Slots<DepthInfo>,
+    pub queries: Slots<(vk::QueryPool, vk::QueryControlFlags)>,
     pub surfaces: Slots<Surface>,
     pub events: Slots<(vk::Semaphore, bool)>,
 }

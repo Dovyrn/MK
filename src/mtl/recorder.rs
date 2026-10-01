@@ -1,15 +1,17 @@
 use crate::mtl::frame::Frame;
+use crate::mtl::query::Query;
 use crate::mtl::resources::Resources;
 use crate::{Command, access, face, format, index, load, stage, store};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
-    MTL4ArgumentTable, MTL4CommandBuffer, MTL4CommandEncoder, MTL4ComputeCommandEncoder,
-    MTL4RenderCommandEncoder, MTL4RenderPassDescriptor, MTL4VisibilityOptions, MTLBuffer,
-    MTLClearColor, MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin,
-    MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLScissorRect, MTLSize, MTLStages,
-    MTLStoreAction, MTLViewport, MTLWinding,
+    MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
+    MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
+    MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
+    MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
+    MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLViewport,
+    MTLVisibilityResultMode, MTLWinding,
 };
 
 pub struct Recorder<'a> {
@@ -55,6 +57,16 @@ fn stages(bits: u32) -> MTLStages {
         s |= stage::FRAGMENT;
     }
     MTLStages(s as usize)
+}
+
+fn render_stage(bits: u32) -> MTLRenderStages {
+    match bits {
+        stage::VERTEX => MTLRenderStages::Vertex,
+        stage::TILE => MTLRenderStages::Tile,
+        stage::TASK => MTLRenderStages::Object,
+        stage::MESH => MTLRenderStages::Mesh,
+        _ => MTLRenderStages::Fragment,
+    }
 }
 
 fn visibility(src: u32, dst: u32) -> MTL4VisibilityOptions {
@@ -618,6 +630,85 @@ impl<'a> Recorder<'a> {
                             self.task,
                             self.mesh,
                         );
+                }
+            }
+            Command::OcclusionHeap { heap } => {
+                if let Query::Occlusion(buffer) = self.res.queries.get(heap) {
+                    unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
+                }
+            }
+            Command::ResetQueries { .. } => {}
+            Command::WriteTimestamp { heap, index, stage } => {
+                let Query::Timestamp(heap) = self.res.queries.get(heap) else {
+                    panic!("write_timestamp needs a timestamp heap");
+                };
+                let index = index as usize;
+                unsafe {
+                    match (&self.compute, &self.render) {
+                        (Some(e), _) => e.writeTimestampWithGranularity_intoHeap_atIndex(
+                            MTL4TimestampGranularity::Precise,
+                            heap,
+                            index,
+                        ),
+                        (_, Some(e)) => e
+                            .writeTimestampWithGranularity_afterStage_intoHeap_atIndex(
+                                MTL4TimestampGranularity::Precise,
+                                render_stage(stage),
+                                heap,
+                                index,
+                            ),
+                        _ => self.buffer.writeTimestampIntoHeap_atIndex(heap, index),
+                    }
+                }
+            }
+            Command::BeginOcclusion { index, .. } => unsafe {
+                self.render().setVisibilityResultMode_offset(
+                    MTLVisibilityResultMode::Counting,
+                    index as usize * 8,
+                )
+            },
+            Command::EndOcclusion { index, .. } => unsafe {
+                self.render().setVisibilityResultMode_offset(
+                    MTLVisibilityResultMode::Disabled,
+                    index as usize * 8,
+                )
+            },
+            Command::ResolveQueries {
+                heap,
+                first,
+                count,
+                buffer,
+                offset,
+            } => {
+                let dst = self.res.buffers.get(buffer);
+                match self.res.queries.get(heap) {
+                    Query::Timestamp(heap) => unsafe {
+                        self.buffer
+                            .resolveCounterHeap_withRange_intoBuffer_waitFence_updateFence(
+                                heap,
+                                NSRange::new(first as usize, count as usize),
+                                MTL4BufferRange {
+                                    bufferAddress: dst.gpuAddress() + offset,
+                                    length: count as u64 * 8,
+                                },
+                                None,
+                                None,
+                            )
+                    },
+                    Query::Occlusion(src) => {
+                        let encoder = self.buffer.computeCommandEncoder().unwrap();
+                        self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
+                        unsafe {
+                            encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+                                src,
+                                first as usize * 8,
+                                dst,
+                                offset as usize,
+                                count as usize * 8,
+                            )
+                        };
+                        encoder.endEncoding();
+                    }
                 }
             }
             Command::BeginLabel { text } => {

@@ -5,4 +5,7 @@ pub struct Caps {
     pub queues: u32,
     pub samplers: u32,
     pub textures: u32,
+    pub tick: f32,
+    pub timestamps: bool,
+    pub precise: bool,
 }

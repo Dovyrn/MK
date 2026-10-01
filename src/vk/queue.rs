@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 pub struct Queue {
     pub raw: vk::Queue,
-    family: u32,
+    pub family: u32,
     semaphore: vk::Semaphore,
     count: u64,
     free: Vec<Frame>,

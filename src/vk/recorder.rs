@@ -611,6 +611,36 @@ impl Recorder<'_> {
                     count,
                     stride,
                 ),
+                Command::OcclusionHeap { .. } => {}
+                Command::ResetQueries { heap, first, count } => {
+                    d.cmd_reset_query_pool(b, self.res.queries.get(heap).0, first, count)
+                }
+                Command::WriteTimestamp { heap, index, stage } => {
+                    d.cmd_write_timestamp2(b, stages(stage), self.res.queries.get(heap).0, index)
+                }
+                Command::BeginOcclusion { heap, index } => {
+                    let (pool, flags) = *self.res.queries.get(heap);
+                    d.cmd_begin_query(b, pool, index, flags)
+                }
+                Command::EndOcclusion { heap, index } => {
+                    d.cmd_end_query(b, self.res.queries.get(heap).0, index)
+                }
+                Command::ResolveQueries {
+                    heap,
+                    first,
+                    count,
+                    buffer,
+                    offset,
+                } => d.cmd_copy_query_pool_results(
+                    b,
+                    self.res.queries.get(heap).0,
+                    first,
+                    count,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    8,
+                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                ),
                 Command::BeginLabel { text } => {
                     if let Some(debug) = self.debug {
                         let name = CString::new(text).unwrap();

@@ -1,6 +1,7 @@
 mod device;
 mod frame;
 mod pipeline;
+mod query;
 mod queue;
 mod recorder;
 mod render;

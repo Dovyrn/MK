@@ -214,3 +214,27 @@ fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 [[command]]
 name = "draw_mesh_indirect"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+
+[[command]]
+name = "occlusion_heap"
+fields = [["heap", "u32"]]
+
+[[command]]
+name = "reset_queries"
+fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "write_timestamp"
+fields = [["heap", "u32"], ["index", "u32"], ["stage", "u32"]]
+
+[[command]]
+name = "begin_occlusion"
+fields = [["heap", "u32"], ["index", "u32"]]
+
+[[command]]
+name = "end_occlusion"
+fields = [["heap", "u32"], ["index", "u32"]]
+
+[[command]]
+name = "resolve_queries"
+fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"], ["buffer", "u32"], ["offset", "u64"]]

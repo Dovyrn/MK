@@ -6,7 +6,7 @@ use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
     Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo,
-    ViewInfo, address, border, dimension, fill, filter, format, memory, topology, usage,
+    ViewInfo, address, border, dimension, fill, filter, format, memory, query, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
@@ -152,6 +152,7 @@ impl Device {
             let supported = instance.get_physical_device_features(physical);
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .occlusion_query_precise(supported.occlusion_query_precise != 0)
                 .fill_mode_non_solid(supported.fill_mode_non_solid != 0)
                 .multi_draw_indirect(supported.multi_draw_indirect != 0)
                 .depth_bias_clamp(supported.depth_bias_clamp != 0)
@@ -278,10 +279,15 @@ impl Device {
     }
 
     pub fn caps(&self) -> Caps {
-        let limits = unsafe {
-            self.instance
-                .get_physical_device_properties(self.physical)
-                .limits
+        let (limits, families, features) = unsafe {
+            (
+                self.instance
+                    .get_physical_device_properties(self.physical)
+                    .limits,
+                self.instance
+                    .get_physical_device_queue_family_properties(self.physical),
+                self.instance.get_physical_device_features(self.physical),
+            )
         };
         Caps {
             mesh: self.mesh.is_some(),
@@ -289,6 +295,12 @@ impl Device {
             queues: self.queues.len() as u32,
             samplers: self.heap.samplers,
             textures: self.heap.images / 2,
+            tick: limits.timestamp_period,
+            timestamps: self
+                .queues
+                .iter()
+                .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
+            precise: features.occlusion_query_precise != 0,
         }
     }
 
@@ -1019,6 +1031,33 @@ impl Device {
         Ok(())
     }
 
+    pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        let precise = unsafe {
+            self.instance
+                .get_physical_device_features(self.physical)
+                .occlusion_query_precise
+        } != 0;
+        let (kind, flags) = match kind {
+            query::TIMESTAMP => (vk::QueryType::TIMESTAMP, vk::QueryControlFlags::empty()),
+            _ if precise => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
+            _ => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::empty()),
+        };
+        let info = vk::QueryPoolCreateInfo::default()
+            .query_type(kind)
+            .query_count(count);
+        let pool = unsafe {
+            self.raw
+                .create_query_pool(&info, None)
+                .map_err(|e| e.to_string())?
+        };
+        Ok(self.res.queries.insert((pool, flags)))
+    }
+
+    pub fn destroy_query_heap(&mut self, heap: u32) {
+        let (pool, _) = self.res.queries.remove(heap);
+        unsafe { self.raw.destroy_query_pool(pool, None) };
+    }
+
     pub fn create_event(&mut self) -> u32 {
         self.res.events.insert((timeline(&self.raw), true))
     }
@@ -1112,6 +1151,9 @@ impl Drop for Device {
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
+            }
+            for (pool, _) in self.res.queries.drain() {
+                self.raw.destroy_query_pool(pool, None);
             }
             for pipeline in self.res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);

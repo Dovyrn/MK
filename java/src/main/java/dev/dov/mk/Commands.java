@@ -322,4 +322,44 @@ public class Commands {
         memPutInt(p + 12, count);
         memPutInt(p + 16, stride);
     }
+
+    public void occlusionHeap(int heap) {
+        var p = head(39, 4);
+        memPutInt(p, heap);
+    }
+
+    public void resetQueries(int heap, int first, int count) {
+        var p = head(40, 12);
+        memPutInt(p, heap);
+        memPutInt(p + 4, first);
+        memPutInt(p + 8, count);
+    }
+
+    public void writeTimestamp(int heap, int index, int stage) {
+        var p = head(41, 12);
+        memPutInt(p, heap);
+        memPutInt(p + 4, index);
+        memPutInt(p + 8, stage);
+    }
+
+    public void beginOcclusion(int heap, int index) {
+        var p = head(42, 8);
+        memPutInt(p, heap);
+        memPutInt(p + 4, index);
+    }
+
+    public void endOcclusion(int heap, int index) {
+        var p = head(43, 8);
+        memPutInt(p, heap);
+        memPutInt(p + 4, index);
+    }
+
+    public void resolveQueries(int heap, int first, int count, int buffer, long offset) {
+        var p = head(44, 24);
+        memPutInt(p, heap);
+        memPutInt(p + 4, first);
+        memPutInt(p + 8, count);
+        memPutInt(p + 12, buffer);
+        memPutLong(p + 16, offset);
+    }
 }

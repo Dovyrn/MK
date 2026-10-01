@@ -171,3 +171,7 @@ G = 2
 B = 4
 A = 8
 ALL = 15
+
+[query]
+TIMESTAMP = 0
+OCCLUSION = 1
