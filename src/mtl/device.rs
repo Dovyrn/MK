@@ -4,8 +4,8 @@ use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 use crate::mtl::texture::Texture;
 use crate::{
-    DepthInfo, RenderInfo, SamplerInfo, StencilFace, TextureInfo, address, blend, border,
-    dimension, fill, filter, format, mask, memory, topology, usage,
+    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, TextureInfo, address,
+    blend, border, dimension, fill, filter, format, mask, memory, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::rc::Retained;
@@ -14,15 +14,16 @@ use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4CompilerDescriptor,
     MTL4ComputePipelineDescriptor, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
-    MTL4PipelineDescriptor, MTL4RenderPipelineDescriptor, MTLAllocation, MTLBlendFactor,
-    MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
+    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor, MTLAllocation,
+    MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
     MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLHazardTrackingMode,
-    MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor, MTLResourceID,
-    MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor,
-    MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize,
-    MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor,
-    MTLTextureType, MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
-    MTLVertexStepFunction,
+    MTLLibrary, MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor,
+    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
+    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
+    MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode, MTLTexture,
+    MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
+    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
 };
 
 fn compare(c: u32) -> MTLCompareFunction {
@@ -114,6 +115,69 @@ fn stencil(face: &StencilFace) -> Retained<MTLStencilDescriptor> {
     desc
 }
 
+fn function(
+    library: &ProtocolObject<dyn MTLLibrary>,
+    name: &str,
+) -> Retained<MTL4FunctionDescriptor> {
+    let f = MTL4LibraryFunctionDescriptor::new();
+    f.setName(Some(&NSString::from_str(name)));
+    f.setLibrary(Some(library));
+    Retained::into_super(f)
+}
+
+fn size(s: [u32; 3]) -> MTLSize {
+    MTLSize {
+        width: s[0] as usize,
+        height: s[1] as usize,
+        depth: s[2] as usize,
+    }
+}
+
+fn fill(f: u32) -> MTLTriangleFillMode {
+    match f {
+        fill::LINE => MTLTriangleFillMode::Lines,
+        _ => MTLTriangleFillMode::Fill,
+    }
+}
+
+fn coverage(on: bool) -> MTL4AlphaToCoverageState {
+    if on {
+        MTL4AlphaToCoverageState::Enabled
+    } else {
+        MTL4AlphaToCoverageState::Disabled
+    }
+}
+
+fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[ColorTarget]) {
+    for (i, c) in targets.iter().enumerate() {
+        let a = unsafe { array.objectAtIndexedSubscript(i) };
+        a.setPixelFormat(format::mtl(c.format));
+        a.setBlendingState(if c.blend {
+            MTL4BlendState::Enabled
+        } else {
+            MTL4BlendState::Disabled
+        });
+        a.setSourceRGBBlendFactor(factor(c.src));
+        a.setDestinationRGBBlendFactor(factor(c.dst));
+        a.setRgbBlendOperation(MTLBlendOperation(c.op as usize));
+        a.setSourceAlphaBlendFactor(factor(c.src_alpha));
+        a.setDestinationAlphaBlendFactor(factor(c.dst_alpha));
+        a.setAlphaBlendOperation(MTLBlendOperation(c.op_alpha as usize));
+        let mut m = MTLColorWriteMask::None;
+        for (bit, flag) in [
+            (mask::R, MTLColorWriteMask::Red),
+            (mask::G, MTLColorWriteMask::Green),
+            (mask::B, MTLColorWriteMask::Blue),
+            (mask::A, MTLColorWriteMask::Alpha),
+        ] {
+            if c.mask & bit != 0 {
+                m |= flag;
+            }
+        }
+        a.setWriteMask(m);
+    }
+}
+
 fn id(id: MTLResourceID) -> u64 {
     unsafe { std::mem::transmute(id) }
 }
@@ -200,25 +264,14 @@ impl Device {
         entry: &str,
         group: [u32; 3],
     ) -> Result<u32, String> {
-        let library = self
-            .raw
-            .newLibraryWithData_error(&DispatchData::from_bytes(code))
-            .map_err(|e| e.localizedDescription().to_string())?;
-        let function = MTL4LibraryFunctionDescriptor::new();
-        function.setName(Some(&NSString::from_str(entry)));
-        function.setLibrary(Some(&library));
+        let library = self.library(code)?;
         let desc = MTL4ComputePipelineDescriptor::new();
-        let function: &MTL4FunctionDescriptor = &function;
-        desc.setComputeFunctionDescriptor(Some(function));
+        desc.setComputeFunctionDescriptor(Some(&function(&library, entry)));
         let state = self
             .compiler
             .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(&desc, None)
             .map_err(|e| e.localizedDescription().to_string())?;
-        let group = MTLSize {
-            width: group[0] as usize,
-            height: group[1] as usize,
-            depth: group[2] as usize,
-        };
+        let group = size(group);
         Ok(self.res.pipelines.insert(Pipeline { state, group }))
     }
 
@@ -226,25 +279,18 @@ impl Device {
         self.res.pipelines.remove(pipeline);
     }
 
+    fn library(&self, code: &[u8]) -> Result<Retained<ProtocolObject<dyn MTLLibrary>>, String> {
+        self.raw
+            .newLibraryWithData_error(&DispatchData::from_bytes(code))
+            .map_err(|e| e.localizedDescription().to_string())
+    }
+
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
-        let library = self
-            .raw
-            .newLibraryWithData_error(&DispatchData::from_bytes(info.code))
-            .map_err(|e| e.localizedDescription().to_string())?;
-        let function = |name: &str| {
-            let f = MTL4LibraryFunctionDescriptor::new();
-            f.setName(Some(&NSString::from_str(name)));
-            f.setLibrary(Some(&library));
-            f
-        };
+        let library = self.library(info.code)?;
         let desc = MTL4RenderPipelineDescriptor::new();
-        let vertex = function(info.vertex);
-        let vertex: &MTL4FunctionDescriptor = &vertex;
-        desc.setVertexFunctionDescriptor(Some(vertex));
+        desc.setVertexFunctionDescriptor(Some(&function(&library, info.vertex)));
         if !info.fragment.is_empty() {
-            let fragment = function(info.fragment);
-            let fragment: &MTL4FunctionDescriptor = &fragment;
-            desc.setFragmentFunctionDescriptor(Some(fragment));
+            desc.setFragmentFunctionDescriptor(Some(&function(&library, info.fragment)));
         }
         if !info.attributes.is_empty() {
             let layout = MTLVertexDescriptor::new();
@@ -271,54 +317,51 @@ impl Device {
             }
             desc.setVertexDescriptor(Some(&layout));
         }
-        for (i, c) in info.colors.iter().enumerate() {
-            let a = unsafe { desc.colorAttachments().objectAtIndexedSubscript(i) };
-            a.setPixelFormat(format::mtl(c.format));
-            a.setBlendingState(if c.blend {
-                MTL4BlendState::Enabled
-            } else {
-                MTL4BlendState::Disabled
-            });
-            a.setSourceRGBBlendFactor(factor(c.src));
-            a.setDestinationRGBBlendFactor(factor(c.dst));
-            a.setRgbBlendOperation(MTLBlendOperation(c.op as usize));
-            a.setSourceAlphaBlendFactor(factor(c.src_alpha));
-            a.setDestinationAlphaBlendFactor(factor(c.dst_alpha));
-            a.setAlphaBlendOperation(MTLBlendOperation(c.op_alpha as usize));
-            let mut m = MTLColorWriteMask::None;
-            for (bit, flag) in [
-                (mask::R, MTLColorWriteMask::Red),
-                (mask::G, MTLColorWriteMask::Green),
-                (mask::B, MTLColorWriteMask::Blue),
-                (mask::A, MTLColorWriteMask::Alpha),
-            ] {
-                if c.mask & bit != 0 {
-                    m |= flag;
-                }
-            }
-            a.setWriteMask(m);
-        }
+        colors(&desc.colorAttachments(), info.colors);
         unsafe { desc.setRasterSampleCount(info.samples as usize) };
         desc.setInputPrimitiveTopology(match info.topology {
             topology::POINT => MTLPrimitiveTopologyClass::Point,
             topology::LINE | topology::LINE_STRIP => MTLPrimitiveTopologyClass::Line,
             _ => MTLPrimitiveTopologyClass::Triangle,
         });
-        desc.setAlphaToCoverageState(if info.coverage {
-            MTL4AlphaToCoverageState::Enabled
-        } else {
-            MTL4AlphaToCoverageState::Disabled
-        });
+        desc.setAlphaToCoverageState(coverage(info.coverage));
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler
             .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
             .map_err(|e| e.localizedDescription().to_string())?;
-        let fill = match info.fill {
-            fill::LINE => MTLTriangleFillMode::Lines,
-            _ => MTLTriangleFillMode::Fill,
-        };
-        Ok(self.res.renders.insert(Render { state, fill }))
+        Ok(self.res.renders.insert(Render {
+            state,
+            fill: fill(info.fill),
+            task: size([1, 1, 1]),
+            mesh: size([1, 1, 1]),
+        }))
+    }
+
+    pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        let library = self.library(info.code)?;
+        let desc = MTL4MeshRenderPipelineDescriptor::new();
+        if !info.task.is_empty() {
+            desc.setObjectFunctionDescriptor(Some(&function(&library, info.task)));
+        }
+        desc.setMeshFunctionDescriptor(Some(&function(&library, info.mesh)));
+        if !info.fragment.is_empty() {
+            desc.setFragmentFunctionDescriptor(Some(&function(&library, info.fragment)));
+        }
+        colors(&desc.colorAttachments(), info.colors);
+        unsafe { desc.setRasterSampleCount(info.samples as usize) };
+        desc.setAlphaToCoverageState(coverage(info.coverage));
+        let base: &MTL4PipelineDescriptor = &desc;
+        let state = self
+            .compiler
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
+            .map_err(|e| e.localizedDescription().to_string())?;
+        Ok(self.res.renders.insert(Render {
+            state,
+            fill: fill(info.fill),
+            task: size(info.task_group),
+            mesh: size(info.mesh_group),
+        }))
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {

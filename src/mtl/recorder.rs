@@ -24,6 +24,8 @@ pub struct Recorder<'a> {
     pass: Retained<MTL4RenderPassDescriptor>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     group: MTLSize,
+    task: MTLSize,
+    mesh: MTLSize,
     primitive: MTLPrimitiveType,
     index: (u64, usize, MTLIndexType, u64),
     push: [u8; 256],
@@ -125,6 +127,8 @@ impl<'a> Recorder<'a> {
             pass: MTL4RenderPassDescriptor::new(),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             group: size(1, 1, 1),
+            task: size(1, 1, 1),
+            mesh: size(1, 1, 1),
             primitive: MTLPrimitiveType::Triangle,
             index: (0, 0, MTLIndexType::UInt16, 2),
             push: [0; 256],
@@ -435,6 +439,8 @@ impl<'a> Recorder<'a> {
                 let p = self.res.renders.get(pipeline);
                 self.render().setRenderPipelineState(&p.state);
                 self.render().setTriangleFillMode(p.fill);
+                self.task = p.task;
+                self.mesh = p.mesh;
             }
             Command::SetViewport {
                 x,
@@ -586,6 +592,32 @@ impl<'a> Recorder<'a> {
                                 address + i * stride as u64,
                             )
                     };
+                }
+            }
+            Command::DrawMesh { x, y, z } => {
+                self.flush();
+                self.render()
+                    .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
+                        size(x, y, z),
+                        self.task,
+                        self.mesh,
+                    );
+            }
+            Command::DrawMeshIndirect {
+                buffer,
+                offset,
+                count,
+                stride,
+            } => {
+                self.flush();
+                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                for i in 0..count as u64 {
+                    self.render()
+                        .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
+                            address + i * stride as u64,
+                            self.task,
+                            self.mesh,
+                        );
                 }
             }
             Command::BeginLabel { text } => {

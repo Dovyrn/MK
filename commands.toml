@@ -206,3 +206,11 @@ fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u3
 [[command]]
 name = "draw_indexed_indirect"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+
+[[command]]
+name = "draw_mesh"
+fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
+
+[[command]]
+name = "draw_mesh_indirect"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]

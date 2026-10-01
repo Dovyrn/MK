@@ -12,6 +12,7 @@ mod color_target;
 mod command;
 mod commands;
 mod depth_info;
+mod mesh_info;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod render_info;
@@ -29,6 +30,7 @@ pub use color_target::ColorTarget;
 pub use command::Command;
 pub use commands::Commands;
 pub use depth_info::DepthInfo;
+pub use mesh_info::MeshInfo;
 #[cfg(feature = "mtl")]
 pub use mtl::Device;
 pub use render_info::RenderInfo;

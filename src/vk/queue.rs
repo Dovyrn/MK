@@ -1,7 +1,7 @@
 use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
-use ash::ext::debug_utils;
+use ash::ext::{debug_utils, mesh_shader};
 use ash::vk;
 use std::collections::VecDeque;
 
@@ -38,6 +38,7 @@ impl Queue {
         &mut self,
         device: &ash::Device,
         debug: Option<&debug_utils::Device>,
+        mesh: Option<&mesh_shader::Device>,
         layout: vk::PipelineLayout,
         heap: vk::DescriptorSet,
         res: &Resources,
@@ -61,6 +62,7 @@ impl Queue {
         let result = Recorder {
             device,
             debug,
+            mesh,
             buffer: frame.buffer,
             layout,
             res,

@@ -307,4 +307,19 @@ public class Commands {
         memPutInt(p + 12, count);
         memPutInt(p + 16, stride);
     }
+
+    public void drawMesh(int x, int y, int z) {
+        var p = head(37, 12);
+        memPutInt(p, x);
+        memPutInt(p + 4, y);
+        memPutInt(p + 8, z);
+    }
+
+    public void drawMeshIndirect(int buffer, long offset, int count, int stride) {
+        var p = head(38, 20);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutInt(p + 16, stride);
+    }
 }

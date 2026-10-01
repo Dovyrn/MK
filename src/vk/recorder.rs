@@ -1,7 +1,7 @@
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
 use crate::{Command, DepthInfo, compare, face, index, layout, load, stage, store};
-use ash::ext::debug_utils;
+use ash::ext::{debug_utils, mesh_shader};
 use ash::vk;
 use std::ffi::CString;
 
@@ -10,6 +10,7 @@ const NONE: u32 = !0;
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
     pub debug: Option<&'a debug_utils::Device>,
+    pub mesh: Option<&'a mesh_shader::Device>,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
     pub res: &'a Resources,
@@ -591,6 +592,19 @@ impl Recorder<'_> {
                     count,
                     stride,
                 } => d.cmd_draw_indexed_indirect(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    count,
+                    stride,
+                ),
+                Command::DrawMesh { x, y, z } => self.mesh.unwrap().cmd_draw_mesh_tasks(b, x, y, z),
+                Command::DrawMeshIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => self.mesh.unwrap().cmd_draw_mesh_tasks_indirect(
                     b,
                     self.res.buffers.get(buffer).raw,
                     offset,
