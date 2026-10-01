@@ -1,11 +1,20 @@
+#[cfg(not(feature = "gl"))]
 use mk::{Command, Commands, Device, Memory, access, stage};
 
+#[cfg(feature = "mtl")]
+const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
+#[cfg(feature = "vk")]
+const CODE: &[u8] = include_bytes!("../shaders/out/fill.spv");
+
+#[cfg(feature = "gl")]
+fn main() {}
+
+#[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = Device::new(1).unwrap();
     let n = 1024u32;
     let buffer = device.create_buffer(n as u64 * 4, Memory::Readback);
-    let code = include_bytes!("../shaders/out/fill.metallib");
-    let pipeline = device.create_pipeline(code, "fill", [64, 1, 1]).unwrap();
+    let pipeline = device.create_pipeline(CODE, "fill", [64, 1, 1]).unwrap();
     let event = device.create_event();
     let mut push = device.address(buffer).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());

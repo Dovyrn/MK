@@ -14,12 +14,16 @@ mod commands;
 mod memory;
 #[cfg(feature = "mtl")]
 pub mod mtl;
-#[cfg(feature = "mtl")]
+#[cfg(any(feature = "mtl", feature = "vk"))]
 mod slots;
 pub mod stage;
+#[cfg(feature = "vk")]
+pub mod vk;
 
 pub use command::Command;
 pub use commands::Commands;
 pub use memory::Memory;
 #[cfg(feature = "mtl")]
 pub use mtl::Device;
+#[cfg(feature = "vk")]
+pub use vk::Device;

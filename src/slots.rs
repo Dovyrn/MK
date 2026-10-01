@@ -35,4 +35,10 @@ impl<T> Slots<T> {
     pub fn get(&self, i: u32) -> &T {
         self.items[i as usize].as_ref().unwrap()
     }
+
+    #[cfg(feature = "vk")]
+    pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
+        self.free.clear();
+        self.items.drain(..).flatten()
+    }
 }
