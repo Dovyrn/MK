@@ -735,7 +735,7 @@ impl Device {
         let info = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
             .values(&values);
-        unsafe { self.raw.wait_semaphores(&info, timeout * 1_000_000).is_ok() }
+        unsafe { self.raw.wait_semaphores(&info, timeout.saturating_mul(1_000_000)).is_ok() }
     }
 
     pub fn submit(
