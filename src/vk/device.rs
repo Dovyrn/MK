@@ -311,12 +311,42 @@ impl Device {
         }
     }
 
+    pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
+        let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
+        let address = unsafe { self.raw.get_buffer_device_address(&info) };
+        self.res.buffers.insert(Buffer {
+            raw,
+            memory: vk::DeviceMemory::null(),
+            address,
+            data: std::ptr::null_mut(),
+        })
+    }
+
     pub fn destroy_buffer(&mut self, buffer: u32) {
         let buffer = self.res.buffers.remove(buffer);
-        unsafe {
-            self.raw.destroy_buffer(buffer.raw, None);
-            self.raw.free_memory(buffer.memory, None);
+        if buffer.memory != vk::DeviceMemory::null() {
+            unsafe {
+                self.raw.destroy_buffer(buffer.raw, None);
+                self.raw.free_memory(buffer.memory, None);
+            }
         }
+    }
+
+    pub fn raw_buffer(&self, buffer: u32) -> vk::Buffer {
+        self.res.buffers.get(buffer).raw
+    }
+
+    pub fn raw_texture(&self, texture: u32) -> (vk::Image, vk::ImageView) {
+        let t = self.res.textures.get(texture);
+        (t.image, t.view)
+    }
+
+    pub fn raw_event(&self, event: u32) -> vk::Semaphore {
+        self.res.events.get(event).0
+    }
+
+    pub fn raw_queue(&self, queue: usize) -> vk::Queue {
+        self.queues[queue].raw
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
@@ -527,15 +557,10 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
-        let (kind, view) = match info.dimension {
-            dimension::D1 => (vk::ImageType::TYPE_1D, vk::ImageViewType::TYPE_1D),
-            dimension::D1_ARRAY => (vk::ImageType::TYPE_1D, vk::ImageViewType::TYPE_1D_ARRAY),
-            dimension::D2 => (vk::ImageType::TYPE_2D, vk::ImageViewType::TYPE_2D),
-            dimension::D2_ARRAY => (vk::ImageType::TYPE_2D, vk::ImageViewType::TYPE_2D_ARRAY),
-            dimension::D3 => (vk::ImageType::TYPE_3D, vk::ImageViewType::TYPE_3D),
-            dimension::CUBE => (vk::ImageType::TYPE_2D, vk::ImageViewType::CUBE),
-            dimension::CUBE_ARRAY => (vk::ImageType::TYPE_2D, vk::ImageViewType::CUBE_ARRAY),
-            d => panic!("unknown dimension {d}"),
+        let kind = match info.dimension {
+            dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
+            dimension::D3 => vk::ImageType::TYPE_3D,
+            _ => vk::ImageType::TYPE_2D,
         };
         let mut flags = vk::ImageCreateFlags::empty();
         if matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY) {
@@ -583,6 +608,27 @@ impl Device {
                 .push_next(&mut dedicated);
             let memory = self.raw.allocate_memory(&alloc, None).unwrap();
             self.raw.bind_image_memory(image, memory, 0).unwrap();
+            self.register(image, memory, info)
+        }
+    }
+
+    pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> u32 {
+        self.register(image, vk::DeviceMemory::null(), info)
+    }
+
+    fn register(&mut self, image: vk::Image, memory: vk::DeviceMemory, info: &TextureInfo) -> u32 {
+        let view = match info.dimension {
+            dimension::D1 => vk::ImageViewType::TYPE_1D,
+            dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
+            dimension::D2 => vk::ImageViewType::TYPE_2D,
+            dimension::D2_ARRAY => vk::ImageViewType::TYPE_2D_ARRAY,
+            dimension::D3 => vk::ImageViewType::TYPE_3D,
+            dimension::CUBE => vk::ImageViewType::CUBE,
+            dimension::CUBE_ARRAY => vk::ImageViewType::CUBE_ARRAY,
+            d => panic!("unknown dimension {d}"),
+        };
+        let native = format::vk(info.format);
+        unsafe {
             let aspect = aspect(info.format);
             let range = vk::ImageSubresourceRange {
                 aspect_mask: if aspect.contains(vk::ImageAspectFlags::DEPTH) {
@@ -942,24 +988,30 @@ impl Device {
     }
 
     pub fn create_event(&mut self) -> u32 {
-        self.res.events.insert(timeline(&self.raw))
+        self.res.events.insert((timeline(&self.raw), true))
+    }
+
+    pub fn import_event(&mut self, raw: vk::Semaphore) -> u32 {
+        self.res.events.insert((raw, false))
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        let event = self.res.events.remove(event);
-        unsafe { self.raw.destroy_semaphore(event, None) };
+        let (event, owned) = self.res.events.remove(event);
+        if owned {
+            unsafe { self.raw.destroy_semaphore(event, None) };
+        }
     }
 
     pub fn event_value(&self, event: u32) -> u64 {
         unsafe {
             self.raw
-                .get_semaphore_counter_value(*self.res.events.get(event))
+                .get_semaphore_counter_value(self.res.events.get(event).0)
                 .unwrap()
         }
     }
 
     pub fn wait(&self, event: u32, value: u64, timeout: u64) -> bool {
-        let semaphores = [*self.res.events.get(event)];
+        let semaphores = [self.res.events.get(event).0];
         let values = [value];
         let info = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
@@ -1002,8 +1054,10 @@ impl Drop for Device {
                 queue.destroy(&self.raw);
             }
             for buffer in self.res.buffers.drain() {
-                self.raw.destroy_buffer(buffer.raw, None);
-                self.raw.free_memory(buffer.memory, None);
+                if buffer.memory != vk::DeviceMemory::null() {
+                    self.raw.destroy_buffer(buffer.raw, None);
+                    self.raw.free_memory(buffer.memory, None);
+                }
             }
             for texture in self.res.textures.drain() {
                 self.raw.destroy_image_view(texture.view, None);
@@ -1033,8 +1087,10 @@ impl Drop for Device {
             for pipeline in self.res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for event in self.res.events.drain() {
-                self.raw.destroy_semaphore(event, None);
+            for (event, owned) in self.res.events.drain() {
+                if owned {
+                    self.raw.destroy_semaphore(event, None);
+                }
             }
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.heap.destroy(&self.raw);

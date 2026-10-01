@@ -249,6 +249,44 @@ impl Device {
         self.res.buffers.insert(buffer)
     }
 
+    pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        self.res.buffers.insert(raw)
+    }
+
+    pub fn import_texture(
+        &mut self,
+        raw: Retained<ProtocolObject<dyn MTLTexture>>,
+        format: u32,
+    ) -> u32 {
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        self.res.textures.insert(Texture { raw, format })
+    }
+
+    pub fn import_event(&mut self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> u32 {
+        self.res.events.insert(raw)
+    }
+
+    pub fn raw_buffer(&self, buffer: u32) -> &ProtocolObject<dyn MTLBuffer> {
+        self.res.buffers.get(buffer)
+    }
+
+    pub fn raw_texture(&self, texture: u32) -> &ProtocolObject<dyn MTLTexture> {
+        &self.res.textures.get(texture).raw
+    }
+
+    pub fn raw_event(&self, event: u32) -> &ProtocolObject<dyn MTLSharedEvent> {
+        self.res.events.get(event)
+    }
+
+    pub fn raw_queue(&self, queue: usize) -> &ProtocolObject<dyn MTL4CommandQueue> {
+        &self.queues[queue].raw
+    }
+
     pub fn destroy_buffer(&mut self, buffer: u32) {
         let buffer = self.res.buffers.remove(buffer);
         self.residency

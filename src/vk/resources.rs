@@ -14,5 +14,5 @@ pub struct Resources {
     pub renders: Slots<vk::Pipeline>,
     pub depths: Slots<DepthInfo>,
     pub surfaces: Slots<Surface>,
-    pub events: Slots<vk::Semaphore>,
+    pub events: Slots<(vk::Semaphore, bool)>,
 }
