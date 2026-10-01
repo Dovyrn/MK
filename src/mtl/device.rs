@@ -310,6 +310,10 @@ impl Device {
             ray: self.raw.supportsRaytracing(),
             instance: 72,
             transient: self.raw.supportsFamily(MTLGPUFamily::Apple2),
+            views: (1..=8)
+                .rev()
+                .find(|&n| self.raw.supportsVertexAmplificationCount(n))
+                .unwrap_or(1) as u32,
         }
     }
 
@@ -500,6 +504,9 @@ impl Device {
             _ => MTLPrimitiveTopologyClass::Triangle,
         });
         desc.setAlphaToCoverageState(coverage(info.coverage));
+        if info.views > 1 {
+            unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
+        }
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler
@@ -526,6 +533,9 @@ impl Device {
         colors(&desc.colorAttachments(), info.colors);
         unsafe { desc.setRasterSampleCount(info.samples as usize) };
         desc.setAlphaToCoverageState(coverage(info.coverage));
+        if info.views > 1 {
+            unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
+        }
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler

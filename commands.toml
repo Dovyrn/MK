@@ -257,3 +257,7 @@ fields = [["width", "u32"], ["height", "u32"]]
 name = "tile_memory"
 backend = "mtl"
 fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
+
+[[command]]
+name = "multiview"
+fields = [["views", "u32"]]

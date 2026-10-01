@@ -11,4 +11,5 @@ pub struct Caps {
     pub ray: bool,
     pub instance: u32,
     pub transient: bool,
+    pub views: u32,
 }

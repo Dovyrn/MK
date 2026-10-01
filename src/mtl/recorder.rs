@@ -10,8 +10,8 @@ use objc2_metal::{
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
     MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
-    MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLViewport,
-    MTLVisibilityResultMode, MTLWinding,
+    MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction,
+    MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 
 pub struct Recorder<'a> {
@@ -25,6 +25,7 @@ pub struct Recorder<'a> {
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
+    views: u32,
     group: MTLSize,
     task: MTLSize,
     mesh: MTLSize,
@@ -138,6 +139,7 @@ impl<'a> Recorder<'a> {
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
+            views: 0,
             group: size(1, 1, 1),
             task: size(1, 1, 1),
             mesh: size(1, 1, 1),
@@ -441,6 +443,21 @@ impl<'a> Recorder<'a> {
                     | MTLRenderStages::Mesh;
                 encoder.setArgumentTable_atStages(self.table, all);
                 encoder.setFrontFacingWinding(MTLWinding::CounterClockwise);
+                if self.views > 1 {
+                    let mappings: Vec<_> = (0..self.views)
+                        .map(|i| MTLVertexAmplificationViewMapping {
+                            viewportArrayIndexOffset: 0,
+                            renderTargetArrayIndexOffset: i,
+                        })
+                        .collect();
+                    unsafe {
+                        encoder.setVertexAmplificationCount_viewMappings(
+                            self.views as usize,
+                            mappings.as_ptr(),
+                        )
+                    };
+                    self.views = 0;
+                }
                 self.opened(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
                 self.pass = MTL4RenderPassDescriptor::new();
@@ -765,6 +782,7 @@ impl<'a> Recorder<'a> {
                     index as usize,
                 )
             },
+            Command::Multiview { views } => self.views = views,
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

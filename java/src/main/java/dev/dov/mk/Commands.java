@@ -370,4 +370,9 @@ public class Commands {
         memPutLong(p + 8, scratchOffset);
         memPutInt(p + 16, update);
     }
+
+    public void multiview(int views) {
+        var p = head(49, 4);
+        memPutInt(p, views);
+    }
 }

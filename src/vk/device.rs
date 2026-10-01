@@ -245,6 +245,9 @@ impl Device {
                 .shader_storage_image_write_without_format(
                     supported.shader_storage_image_write_without_format != 0,
                 );
+            let mut v11 = vk::PhysicalDeviceVulkan11Features::default()
+                .multiview(true)
+                .shader_draw_parameters(true);
             let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
                 .buffer_device_address(true)
                 .timeline_semaphore(true)
@@ -265,6 +268,7 @@ impl Device {
                 .queue_create_infos(&infos)
                 .enabled_extension_names(&extensions)
                 .enabled_features(&features)
+                .push_next(&mut v11)
                 .push_next(&mut v12)
                 .push_next(&mut v13)
                 .push_next(&mut mutable);
@@ -408,6 +412,14 @@ impl Device {
             precise: features.occlusion_query_precise != 0,
             ray: self.ext.ray.is_some(),
             instance: 64,
+            views: unsafe {
+                let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
+                let mut properties =
+                    vk::PhysicalDeviceProperties2::default().push_next(&mut multiview);
+                self.instance
+                    .get_physical_device_properties2(self.physical, &mut properties);
+                multiview.max_multiview_view_count
+            },
             transient: self.memory.memory_types[..self.memory.memory_type_count as usize]
                 .iter()
                 .any(|t| {
@@ -815,6 +827,7 @@ impl Device {
         samples: u32,
         fill: u32,
         coverage: bool,
+        views: u32,
     ) -> Result<u32, String> {
         unsafe {
             let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
@@ -922,6 +935,7 @@ impl Device {
             let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
             let formats: Vec<_> = colors.iter().map(|c| format::vk(c.format)).collect();
             let mut rendering = vk::PipelineRenderingCreateInfo::default()
+                .view_mask(if views > 1 { (1 << views) - 1 } else { 0 })
                 .color_attachment_formats(&formats)
                 .depth_attachment_format(format::vk(depth))
                 .stencil_attachment_format(format::vk(stencil));
@@ -965,6 +979,7 @@ impl Device {
             info.samples,
             info.fill,
             info.coverage,
+            info.views,
         )
     }
 
@@ -986,6 +1001,7 @@ impl Device {
             info.samples,
             info.fill,
             info.coverage,
+            info.views,
         )
     }
 

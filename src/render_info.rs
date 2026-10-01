@@ -11,6 +11,7 @@ pub struct RenderInfo<'a> {
     pub topology: u32,
     pub fill: u32,
     pub coverage: bool,
+    pub views: u32,
     pub buffers: &'a [VertexBuffer],
     pub attributes: &'a [VertexAttribute],
 }
@@ -28,6 +29,7 @@ impl Default for RenderInfo<'_> {
             topology: topology::TRIANGLE,
             fill: fill::FILL,
             coverage: false,
+            views: 0,
             buffers: &[],
             attributes: &[],
         }

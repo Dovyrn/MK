@@ -16,6 +16,7 @@ pub struct Recorder<'a> {
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
+    pub views: u32,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -434,6 +435,11 @@ impl Recorder<'_> {
                     let mut info = vk::RenderingInfo::default()
                         .render_area(area)
                         .layer_count(layers)
+                        .view_mask(if self.views > 1 {
+                            (1 << self.views) - 1
+                        } else {
+                            0
+                        })
                         .color_attachments(&self.colors);
                     if let Some((depth, has)) = &self.depth {
                         info = info.depth_attachment(depth);
@@ -444,6 +450,7 @@ impl Recorder<'_> {
                     d.cmd_begin_rendering(b, &info);
                     self.colors.clear();
                     self.depth = None;
+                    self.views = 0;
                     let viewport = vk::Viewport {
                         x: 0.0,
                         y: 0.0,
@@ -677,6 +684,7 @@ impl Recorder<'_> {
                         .unwrap()
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
+                Command::Multiview { views } => self.views = views,
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();
