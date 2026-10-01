@@ -739,6 +739,32 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
+            Command::TilePass {
+                width,
+                height,
+                imageblock,
+                memory,
+            } => {
+                self.pass.setTileWidth(width as usize);
+                self.pass.setTileHeight(height as usize);
+                self.pass.setImageblockSampleLength(imageblock as usize);
+                self.pass.setThreadgroupMemoryLength(memory as usize);
+            }
+            Command::DispatchTile { width, height } => {
+                self.flush();
+                self.render().dispatchThreadsPerTile(size(width, height, 1));
+            }
+            Command::TileMemory {
+                length,
+                offset,
+                index,
+            } => unsafe {
+                self.render().setThreadgroupMemoryLength_offset_atIndex(
+                    length as usize,
+                    offset as usize,
+                    index as usize,
+                )
+            },
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

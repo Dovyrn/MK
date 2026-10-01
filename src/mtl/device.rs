@@ -25,7 +25,7 @@ use objc2_metal::{
     MTL4FunctionDescriptor, MTL4InstanceAccelerationStructureDescriptor,
     MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
     MTL4PrimitiveAccelerationStructureDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTLAccelerationStructure,
+    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
     MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
     MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
     MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
@@ -536,6 +536,35 @@ impl Device {
             fill: fill(info.fill),
             task: size(info.task_group),
             mesh: size(info.mesh_group),
+        }))
+    }
+
+    pub fn create_tile_pipeline(
+        &mut self,
+        code: &[u8],
+        entry: &str,
+        colors: &[u32],
+        samples: u32,
+    ) -> Result<u32, String> {
+        let library = self.library(code)?;
+        let desc = MTL4TileRenderPipelineDescriptor::new();
+        desc.setTileFunctionDescriptor(Some(&function(&library, entry)));
+        let array = desc.colorAttachments();
+        for (i, f) in colors.iter().enumerate() {
+            unsafe { array.objectAtIndexedSubscript(i) }.setPixelFormat(format::mtl(*f));
+        }
+        unsafe { desc.setRasterSampleCount(samples as usize) };
+        desc.setThreadgroupSizeMatchesTileSize(true);
+        let base: &MTL4PipelineDescriptor = &desc;
+        let state = self
+            .compiler
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
+            .map_err(|e| e.localizedDescription().to_string())?;
+        Ok(self.res.renders.insert(Render {
+            state,
+            fill: MTLTriangleFillMode::Fill,
+            task: size([1, 1, 1]),
+            mesh: size([1, 1, 1]),
         }))
     }
 

@@ -9,4 +9,25 @@ public class MtlCommands extends Commands {
         memPutInt(p + 4, y);
         memPutInt(p + 8, z);
     }
+
+    public void tilePass(int width, int height, int imageblock, int memory) {
+        var p = head(46, 16);
+        memPutInt(p, width);
+        memPutInt(p + 4, height);
+        memPutInt(p + 8, imageblock);
+        memPutInt(p + 12, memory);
+    }
+
+    public void dispatchTile(int width, int height) {
+        var p = head(47, 8);
+        memPutInt(p, width);
+        memPutInt(p + 4, height);
+    }
+
+    public void tileMemory(int length, int offset, int index) {
+        var p = head(48, 12);
+        memPutInt(p, length);
+        memPutInt(p + 4, offset);
+        memPutInt(p + 8, index);
+    }
 }
