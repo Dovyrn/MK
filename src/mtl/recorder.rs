@@ -1,6 +1,8 @@
 use crate::mtl::frame::Frame;
 use crate::mtl::query::Query;
+use crate::mtl::queue::Queue;
 use crate::mtl::resources::Resources;
+use crate::mtl::upscaler::Upscaler;
 use crate::mtl::{Callback, Native};
 use crate::{Command, access, face, format, index, load, stage, store};
 use objc2::rc::Retained;
@@ -10,9 +12,12 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
-    MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
+    MTLDevice, MTLFence, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
     MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction,
     MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
+};
+use objc2_metal_fx::{
+    MTL4FXSpatialScaler, MTL4FXTemporalScaler, MTLFXSpatialScalerBase, MTLFXTemporalScalerBase,
 };
 
 pub struct Recorder<'a> {
@@ -23,6 +28,9 @@ pub struct Recorder<'a> {
     frame: &'a mut Frame,
     res: &'a Resources,
     natives: &'a [Callback],
+    fence: &'a ProtocolObject<dyn MTLFence>,
+    fenced: bool,
+    waiting: bool,
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
@@ -124,21 +132,22 @@ fn store(s: u32, resolve: bool) -> MTLStoreAction {
 impl<'a> Recorder<'a> {
     pub fn new(
         device: &'a ProtocolObject<dyn MTLDevice>,
-        residency: &'a ProtocolObject<dyn MTLResidencySet>,
-        buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
-        table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
+        queue: &'a Queue,
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
     ) -> Self {
         Self {
             device,
-            residency,
-            buffer,
-            table,
+            residency: &queue.residency,
+            buffer: &queue.buffer,
+            table: &queue.table,
             frame,
             res,
             natives,
+            fence: &queue.fence,
+            fenced: false,
+            waiting: false,
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
@@ -171,7 +180,18 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn ended(&self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
+        if self.fenced {
+            encoder.updateFence_afterEncoderStages(self.fence, mask);
+        }
+        encoder.endEncoding();
+    }
+
     fn opened(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
+        if self.waiting {
+            encoder.waitForFence_beforeEncoderStages(self.fence, mask);
+            self.waiting = false;
+        }
         let (after, before, options) = self.pending;
         let before = before & mask;
         if !after.is_empty() && !before.is_empty() {
@@ -213,6 +233,13 @@ impl<'a> Recorder<'a> {
     }
 
     pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+        let mut scan = bytes;
+        while !scan.is_empty() {
+            if let Command::Upscale { .. } = Command::read(&mut scan)? {
+                self.fenced = true;
+                break;
+            }
+        }
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?);
         }
@@ -227,7 +254,10 @@ impl<'a> Recorder<'a> {
                 self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                 self.compute = Some(encoder);
             }
-            Command::EndCompute => self.compute.take().unwrap().endEncoding(),
+            Command::EndCompute => {
+                let encoder = self.compute.take().unwrap();
+                self.ended(ProtocolObject::from_ref(&*encoder), COMPUTE);
+            }
             Command::BindPipeline { pipeline } => {
                 let p = self.res.pipelines.get(pipeline);
                 self.compute().setComputePipelineState(&p.state);
@@ -467,7 +497,10 @@ impl<'a> Recorder<'a> {
                 self.pass = MTL4RenderPassDescriptor::new();
                 self.primitive = MTLPrimitiveType::Triangle;
             }
-            Command::EndRender => self.render.take().unwrap().endEncoding(),
+            Command::EndRender => {
+                let encoder = self.render.take().unwrap();
+                self.ended(ProtocolObject::from_ref(&*encoder), RENDER);
+            }
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);
                 self.render().setRenderPipelineState(&p.state);
@@ -728,7 +761,7 @@ impl<'a> Recorder<'a> {
                                 count as usize * 8,
                             )
                         };
-                        encoder.endEncoding();
+                        self.ended(ProtocolObject::from_ref(&*encoder), COMPUTE);
                     }
                 }
             }
@@ -861,6 +894,40 @@ impl<'a> Recorder<'a> {
                             .copyAccelerationStructure_toAccelerationStructure(s, d)
                     }
                 }
+            }
+            Command::Upscale {
+                upscaler,
+                color,
+                output,
+                depth,
+                motion,
+                jitter_x,
+                jitter_y,
+                reset,
+            } => {
+                let texture = |t: u32| &*self.res.textures.get(t).raw;
+                unsafe {
+                    match self.res.upscalers.get(upscaler) {
+                        Upscaler::Spatial(s) => {
+                            s.setColorTexture(Some(texture(color)));
+                            s.setOutputTexture(Some(texture(output)));
+                            s.setFence(Some(self.fence));
+                            s.encodeToCommandBuffer(self.buffer);
+                        }
+                        Upscaler::Temporal(s) => {
+                            s.setColorTexture(Some(texture(color)));
+                            s.setDepthTexture(Some(texture(depth)));
+                            s.setMotionTexture(Some(texture(motion)));
+                            s.setOutputTexture(Some(texture(output)));
+                            s.setJitterOffsetX(jitter_x);
+                            s.setJitterOffsetY(jitter_y);
+                            s.setReset(reset != 0);
+                            s.setFence(Some(self.fence));
+                            s.encodeToCommandBuffer(self.buffer);
+                        }
+                    }
+                }
+                self.waiting = true;
             }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);

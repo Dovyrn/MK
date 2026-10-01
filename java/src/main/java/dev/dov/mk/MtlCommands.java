@@ -56,4 +56,16 @@ public class MtlCommands extends Commands {
         var p = head(57, 4);
         memPutInt(p, map);
     }
+
+    public void upscale(int upscaler, int color, int output, int depth, int motion, float jitterX, float jitterY, int reset) {
+        var p = head(62, 32);
+        memPutInt(p, upscaler);
+        memPutInt(p + 4, color);
+        memPutInt(p + 8, output);
+        memPutInt(p + 12, depth);
+        memPutInt(p + 16, motion);
+        memPutFloat(p + 20, jitterX);
+        memPutFloat(p + 24, jitterY);
+        memPutInt(p + 28, reset);
+    }
 }

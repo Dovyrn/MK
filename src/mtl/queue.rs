@@ -6,7 +6,7 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
+    MTL4CommandQueue, MTLDevice, MTLEvent, MTLFence, MTLResidencySet, MTLResidencySetDescriptor,
     MTLSharedEvent,
 };
 use std::collections::VecDeque;
@@ -14,10 +14,11 @@ use std::ptr::NonNull;
 
 pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
-    buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
-    table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
-    residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
+    pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
+    pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
+    pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
+    pub fence: Retained<ProtocolObject<dyn MTLFence>>,
     count: u64,
     free: Vec<Frame>,
     busy: VecDeque<(Frame, u64)>,
@@ -47,6 +48,7 @@ impl Queue {
             table,
             residency,
             event: device.newSharedEvent().ok_or("no shared event")?,
+            fence: device.newFence().ok_or("no fence")?,
             count: 0,
             free: Vec::new(),
             busy: VecDeque::new(),
@@ -70,15 +72,7 @@ impl Queue {
         let mut frame = self.free.pop().unwrap_or_else(|| Frame::new(device));
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
-        let mut recorder = Recorder::new(
-            device,
-            &self.residency,
-            &self.buffer,
-            &self.table,
-            &mut frame,
-            res,
-            natives,
-        );
+        let mut recorder = Recorder::new(device, self, &mut frame, res, natives);
         let result = recorder.run(commands);
         if let Some(e) = recorder.compute.take() {
             e.endEncoding();

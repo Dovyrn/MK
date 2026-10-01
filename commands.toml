@@ -351,3 +351,17 @@ fields = [["accel", "u32"], ["heap", "u32"], ["index", "u32"]]
 [[command]]
 name = "copy_accel"
 fields = [["src", "u32"], ["dst", "u32"], ["compact", "u32"]]
+
+[[command]]
+name = "upscale"
+backend = "mtl"
+fields = [
+    ["upscaler", "u32"],
+    ["color", "u32"],
+    ["output", "u32"],
+    ["depth", "u32"],
+    ["motion", "u32"],
+    ["jitter_x", "f32"],
+    ["jitter_y", "f32"],
+    ["reset", "u32"],
+]
