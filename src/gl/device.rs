@@ -2,6 +2,7 @@ use crate::gl::buffer::Buffer;
 use crate::gl::context::Context;
 use crate::gl::event::Event;
 use crate::gl::extra::Extra;
+use crate::gl::native::Callback;
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::query::Query;
@@ -161,6 +162,8 @@ impl Device {
                 alignment(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
             },
             compute: self.at(43, "GL_ARB_compute_shader"),
+            texture_views: self.extra.view.is_some(),
+            occlusion: results,
             ..Default::default()
         }
     }
@@ -189,7 +192,8 @@ impl Device {
                 } else {
                     flags | glow::MAP_PERSISTENT_BIT | glow::MAP_COHERENT_BIT
                 };
-                gl.buffer_storage(glow::COPY_WRITE_BUFFER, size as i32, None, access);
+                let storage = access | glow::DYNAMIC_STORAGE_BIT;
+                gl.buffer_storage(glow::COPY_WRITE_BUFFER, size as i32, None, storage);
                 if flags != 0 {
                     data = gl.map_buffer_range(glow::COPY_WRITE_BUFFER, 0, size as i32, access);
                 }
@@ -613,13 +617,28 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        self.submit_bytes(queue, commands.bytes(), waits, signals)
+        self.replay(
+            queue,
+            (commands.bytes(), commands.natives()),
+            waits,
+            signals,
+        )
     }
 
     pub fn submit_bytes(
         &mut self,
         queue: usize,
         commands: &[u8],
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) -> Result<(), String> {
+        self.replay(queue, (commands, &[]), waits, signals)
+    }
+
+    fn replay(
+        &mut self,
+        queue: usize,
+        (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
@@ -650,6 +669,7 @@ impl Device {
             &caps,
             self.push,
             (self.fbo, self.read),
+            natives,
         );
         let result = recorder.run(commands);
         recorder.finish();

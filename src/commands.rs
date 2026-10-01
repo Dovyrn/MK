@@ -1,3 +1,5 @@
+#[cfg(feature = "gl")]
+use crate::gl::{Callback, Native};
 #[cfg(feature = "mtl")]
 use crate::mtl::{Callback, Native};
 #[cfg(feature = "vk")]
@@ -6,7 +8,6 @@ use crate::vk::{Callback, Native};
 #[derive(Default)]
 pub struct Commands {
     bytes: Vec<u8>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
     natives: Vec<Callback>,
 }
 
@@ -15,18 +16,15 @@ impl Commands {
         &self.bytes
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub fn natives(&self) -> &[Callback] {
         &self.natives
     }
 
     pub fn clear(&mut self) {
         self.bytes.clear();
-        #[cfg(any(feature = "vk", feature = "mtl"))]
         self.natives.clear();
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub fn native(&mut self, f: impl Fn(&Native) + 'static) {
         self.callback(self.natives.len() as u32);
         self.natives.push(Box::new(f));

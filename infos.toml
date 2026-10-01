@@ -222,6 +222,8 @@ fields = [
     ["alignment", "u32", "0"],
     ["buffers", "u32", "0"],
     ["compute", "bool", "false"],
+    ["texture_views", "bool", "false"],
+    ["occlusion", "bool", "false"],
 ]
 
 [[info]]

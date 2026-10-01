@@ -98,7 +98,7 @@ fn save(path: &Path, text: &str) {
 
 fn cfg(backend: Option<&str>) -> Option<String> {
     let list: Vec<&str> = match backend? {
-        "rust" => vec!["vk", "mtl"],
+        "rust" => return None,
         b => b.split_whitespace().collect(),
     };
     let features: Vec<String> = list.iter().map(|b| format!("feature = \"{b}\"")).collect();

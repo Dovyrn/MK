@@ -1,5 +1,6 @@
 use crate::gl::device::compare;
 use crate::gl::extra::Extra;
+use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::resources::Resources;
@@ -52,6 +53,7 @@ pub struct Recorder<'a> {
     stencil: Option<DepthInfo>,
     references: (u32, u32),
     extent: (i32, i32),
+    natives: &'a [Callback],
 }
 
 fn mode(t: u32) -> u32 {
@@ -165,6 +167,7 @@ impl<'a> Recorder<'a> {
         caps: &'a Caps,
         push: glow::Buffer,
         (fbo, read): (glow::Framebuffer, glow::Framebuffer),
+        natives: &'a [Callback],
     ) -> Self {
         Self {
             gl,
@@ -189,6 +192,7 @@ impl<'a> Recorder<'a> {
             stencil: None,
             references: (0, 0),
             extent: (0, 0),
+            natives,
         }
     }
 
@@ -1142,6 +1146,14 @@ impl<'a> Recorder<'a> {
                 }
                 Command::BindSampler { slot, sampler } => {
                     self.samplers[slot as usize] = Some(sampler)
+                }
+                Command::Callback { index } => {
+                    self.prepare();
+                    let f = self
+                        .natives
+                        .get(index as usize)
+                        .expect("callback recorded without its closure");
+                    f(&Native { gl });
                 }
             }
         }

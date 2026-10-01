@@ -5,7 +5,9 @@ use mk::{
 };
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("sparse resources are Vulkan and Metal only");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

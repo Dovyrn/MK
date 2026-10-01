@@ -10,7 +10,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/multiview.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("multiview is Vulkan and Metal only");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

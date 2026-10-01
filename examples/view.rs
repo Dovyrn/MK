@@ -1,15 +1,23 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     Commands, Device, TextureInfo, ViewInfo, access, format, layout, load, memory, stage, store,
     usage,
 };
 
 #[cfg(feature = "gl")]
-fn main() {}
+#[path = "support/host.rs"]
+mod host;
 
-#[cfg(not(feature = "gl"))]
 fn main() {
+    #[cfg(feature = "gl")]
+    let mut device = host::proc()
+        .map_or_else(|| Device::new(1), Device::adopt)
+        .unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
+    if !device.caps().texture_views {
+        println!("no texture views");
+        return;
+    }
     let texture = device
         .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,

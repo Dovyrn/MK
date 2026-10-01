@@ -7,7 +7,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/trace.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/trace.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("ray tracing is Vulkan and Metal only");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

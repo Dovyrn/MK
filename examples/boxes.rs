@@ -2,7 +2,9 @@
 use mk::{AccelInfo, Boxes, Commands, Device, access, memory, stage};
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("ray tracing is Vulkan and Metal only");
+}
 
 #[cfg(not(feature = "gl"))]
 fn scene(device: &mut Device) -> (u32, u32, u32, u32, u32) {

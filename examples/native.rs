@@ -1,8 +1,17 @@
-#[cfg(not(feature = "gl"))]
 use mk::{Commands, Device, access, memory, stage};
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
+    use mk::glow::HasContext;
+    let raw = device.raw_buffer(buffer);
+    c.native(move |n| unsafe {
+        let buffer = mk::glow::NativeBuffer(std::num::NonZeroU32::new(raw).unwrap());
+        n.gl.bind_buffer(mk::glow::COPY_WRITE_BUFFER, Some(buffer));
+        let bytes = vec![7u8; size as usize];
+        n.gl.buffer_sub_data_u8_slice(mk::glow::COPY_WRITE_BUFFER, 0, &bytes);
+        n.gl.bind_buffer(mk::glow::COPY_WRITE_BUFFER, None);
+    });
+}
 
 #[cfg(feature = "vk")]
 fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
@@ -23,7 +32,6 @@ fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
     });
 }
 
-#[cfg(not(feature = "gl"))]
 fn main() {
     let n = 4096u64;
     let mut device = Device::new(1).unwrap();
@@ -52,5 +60,6 @@ fn main() {
     assert!(device.wait(event, 1, 1000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), n as usize) };
     assert!(bytes.iter().all(|b| *b == 7), "first byte {}", bytes[0]);
+    device.unmap(back);
     println!("native fill inside the stream, {n} bytes match");
 }

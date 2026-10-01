@@ -7,7 +7,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/fill.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("GL has one queue");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

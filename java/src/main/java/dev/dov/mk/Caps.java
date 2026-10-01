@@ -43,9 +43,11 @@ public class Caps {
     public int alignment = 0;
     public int buffers = 0;
     public boolean compute = false;
+    public boolean textureViews = false;
+    public boolean occlusion = false;
 
     public int size() {
-        return 160;
+        return 168;
     }
 
     public long write(long p) {
@@ -128,6 +130,10 @@ public class Caps {
         memPutInt(p, buffers);
         p += 4;
         memPutInt(p, compute ? 1 : 0);
+        p += 4;
+        memPutInt(p, textureViews ? 1 : 0);
+        p += 4;
+        memPutInt(p, occlusion ? 1 : 0);
         p += 4;
         return p;
     }
@@ -213,6 +219,10 @@ public class Caps {
         r.buffers = memGetInt(p);
         p += 4;
         r.compute = memGetInt(p) != 0;
+        p += 4;
+        r.textureViews = memGetInt(p) != 0;
+        p += 4;
+        r.occlusion = memGetInt(p) != 0;
         p += 4;
         return r;
     }

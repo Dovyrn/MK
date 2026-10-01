@@ -7,7 +7,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/handles.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/handles.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("GL has no bindless heap");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

@@ -10,7 +10,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("depth bounds, conditional rendering and statistics are not on GL");
+}
 
 #[cfg(not(feature = "gl"))]
 fn draw(

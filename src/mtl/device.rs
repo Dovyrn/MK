@@ -391,6 +391,8 @@ impl Device {
             alignment: 256,
             buffers: 500_000,
             compute: true,
+            texture_views: true,
+            occlusion: true,
         }
     }
 

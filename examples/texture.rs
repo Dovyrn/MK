@@ -10,7 +10,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/blit.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/blit.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("needs the bindless heap, which GL lacks");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

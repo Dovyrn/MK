@@ -10,7 +10,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("memory heaps are Vulkan and Metal only");
+}
 
 #[cfg(not(feature = "gl"))]
 fn main() {

@@ -1,26 +1,38 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorTarget, Commands, Device, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access,
     format, layout, load, memory, query, stage, store, usage,
 };
 
 #[cfg(feature = "mtl")]
-const FILL: &[u8] = include_bytes!("../shaders/out/fill.metallib");
+const FILL: &[u8] = include_bytes!("../shaders/out/count.metallib");
 #[cfg(feature = "vk")]
-const FILL: &[u8] = include_bytes!("../shaders/out/fill.spv");
+const FILL: &[u8] = include_bytes!("../shaders/out/count.spv");
+#[cfg(feature = "gl")]
+const FILL: &[u8] = include_bytes!("../shaders/out/count.gl");
 #[cfg(feature = "mtl")]
 const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
 #[cfg(feature = "vk")]
 const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
+#[cfg(feature = "gl")]
+const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
 
 #[cfg(feature = "gl")]
-fn main() {}
+#[path = "support/host.rs"]
+mod host;
 
-#[cfg(not(feature = "gl"))]
 fn main() {
     let n = 64u32;
+    #[cfg(feature = "gl")]
+    let mut device = host::proc()
+        .map_or_else(|| Device::new(1), Device::adopt)
+        .unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let caps = device.caps();
+    if !caps.occlusion || !caps.compute {
+        println!("no occlusion queries or no compute");
+        return;
+    }
     let times = caps
         .timestamps
         .then(|| device.create_query_heap(query::TIMESTAMP, 2).unwrap());
@@ -95,9 +107,9 @@ fn main() {
             size_of_val(&vertices),
         );
     }
+    device.unmap(vbuf);
     let count = 1u32 << 18;
-    let mut push = device.address(data).to_le_bytes().to_vec();
-    push.extend(count.to_le_bytes());
+    let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
     let event = device.create_event().unwrap();
     let all = !0;
@@ -111,6 +123,7 @@ fn main() {
         c.write_timestamp(times, 0, stage::COMPUTE);
     }
     c.bind_pipeline(fill);
+    c.bind_storage(0, data, 0, count as u64 * 4);
     c.push_constants(0, &push);
     c.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
@@ -180,4 +193,5 @@ fn main() {
     } else {
         assert!(r[2] > 0, "occlusion {}", r[2]);
     }
+    device.unmap(out);
 }
