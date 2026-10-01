@@ -18,6 +18,7 @@ pub struct Resources {
     pub heaps: Slots<Heap>,
     pub accels: Slots<Accel>,
     pub layouts: Slots<(u64, vk::ShaderStageFlags)>,
+    pub rays: Slots<(vk::Pipeline, u32)>,
     pub queries: Slots<(vk::QueryPool, vk::QueryControlFlags)>,
     pub surfaces: Slots<Surface>,
     pub events: Slots<(vk::Semaphore, bool)>,

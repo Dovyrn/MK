@@ -13,12 +13,15 @@ public class Caps {
     public boolean precise = false;
     public boolean ray = false;
     public boolean generated = false;
+    public int handleSize = 0;
+    public int handleAlignment = 0;
+    public int tableAlignment = 0;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 52;
+        return 64;
     }
 
     public long write(long p) {
@@ -41,6 +44,12 @@ public class Caps {
         memPutInt(p, ray ? 1 : 0);
         p += 4;
         memPutInt(p, generated ? 1 : 0);
+        p += 4;
+        memPutInt(p, handleSize);
+        p += 4;
+        memPutInt(p, handleAlignment);
+        p += 4;
+        memPutInt(p, tableAlignment);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -72,6 +81,12 @@ public class Caps {
         r.ray = memGetInt(p) != 0;
         p += 4;
         r.generated = memGetInt(p) != 0;
+        p += 4;
+        r.handleSize = memGetInt(p);
+        p += 4;
+        r.handleAlignment = memGetInt(p);
+        p += 4;
+        r.tableAlignment = memGetInt(p);
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

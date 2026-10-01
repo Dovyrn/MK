@@ -178,6 +178,9 @@ fields = [
     ["precise", "bool", "false"],
     ["ray", "bool", "false"],
     ["generated", "bool", "false"],
+    ["handle_size", "u32", "0"],
+    ["handle_alignment", "u32", "0"],
+    ["table_alignment", "u32", "0"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
@@ -211,4 +214,17 @@ fields = [
     ["stride", "u32", "0"],
     ["compute", "bool", "false"],
     ["tokens", "[TokenInfo]", ""],
+]
+
+[[info]]
+name = "RayInfo"
+fields = [
+    ["code", "bytes", ""],
+    ["raygen", "str", ""],
+    ["misses", "[str]", ""],
+    ["closest", "[str]", ""],
+    ["any", "[str]", ""],
+    ["intersection", "[str]", ""],
+    ["callables", "[str]", ""],
+    ["depth", "u32", "1"],
 ]

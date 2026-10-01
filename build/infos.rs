@@ -56,6 +56,7 @@ fn rust_type(kind: &str) -> String {
         "bytes" => "&'a [u8]".into(),
         "str" => "&'a str".into(),
         "u32x3" => "[u32; 3]".into(),
+        "[str]" => "&'a [&'a str]".into(),
         k => match list(k) {
             Some(item) => format!("&'a [{item}]"),
             None => k.into(),
@@ -147,6 +148,9 @@ fn rust_read(kind: &str) -> String {
         "u32" | "u64" | "f32" | "bool" | "bytes" | "str" | "u32x3" => {
             format!("crate::wire::{kind}(b)")
         }
+        "[str]" => {
+            "(0..crate::wire::u32(b)).map(|_| crate::wire::str(b)).collect::<Vec<_>>()".into()
+        }
         k => match list(k) {
             Some(item) => {
                 format!("(0..crate::wire::u32(b)).map(|_| {item}::read(b)).collect::<Vec<_>>()")
@@ -174,6 +178,7 @@ fn java_type(kind: &str) -> String {
         "bytes" => "ByteBuffer".into(),
         "str" => "String".into(),
         "u32x3" => "int[]".into(),
+        "[str]" => "String[]".into(),
         k => match list(k) {
             Some(item) => format!("{item}[]"),
             None => k.into(),
@@ -190,6 +195,7 @@ fn java_value(f: &Field) -> String {
             f.value.trim_matches(|c| c == '[' || c == ']')
         ),
         "f32" => format!("{}f", f.value),
+        "[str]" => "new String[0]".into(),
         k if list(k).is_some() => format!("new {}[0]", list(k).unwrap()),
         k if !scalar(k) => format!("new {k}()"),
         _ => match f.value.split_once("::") {
@@ -207,10 +213,11 @@ pub fn java(info: &Info) -> String {
     if kinds.contains(&"bytes") {
         s += "import java.nio.ByteBuffer;\n";
     }
-    if kinds.contains(&"str") {
+    let strings = kinds.contains(&"str") || kinds.contains(&"[str]");
+    if strings {
         s += "import java.nio.charset.StandardCharsets;\n";
     }
-    if kinds.contains(&"bytes") || kinds.contains(&"str") {
+    if kinds.contains(&"bytes") || strings {
         s += "\n";
     }
     writeln!(s, "public class {} {{", info.name).unwrap();
@@ -237,6 +244,13 @@ pub fn java(info: &Info) -> String {
             "str" => {
                 fixed += 4;
                 parts.push(format!("{n}.getBytes(StandardCharsets.UTF_8).length"));
+            }
+            "[str]" => {
+                fixed += 4;
+                s += &format!(
+                    "        var {n}Size = 0;\n        for (var x : {n}) {{\n            {n}Size += 4 + x.getBytes(StandardCharsets.UTF_8).length;\n        }}\n"
+                );
+                parts.push(format!("{n}Size"));
             }
             k if list(k).is_some() => {
                 fixed += 4;
@@ -269,6 +283,10 @@ pub fn java(info: &Info) -> String {
             "str" => writeln!(
                 s,
                 "        var {n}Bytes = {n}.getBytes(StandardCharsets.UTF_8);\n        memPutInt(p, {n}Bytes.length);\n        memByteBuffer(p + 4, {n}Bytes.length).put({n}Bytes);\n        p += 4 + {n}Bytes.length;"
+            ),
+            "[str]" => writeln!(
+                s,
+                "        memPutInt(p, {n}.length);\n        p += 4;\n        for (var x : {n}) {{\n            var b = x.getBytes(StandardCharsets.UTF_8);\n            memPutInt(p, b.length);\n            memByteBuffer(p + 4, b.length).put(b);\n            p += 4 + b.length;\n        }}"
             ),
             k if list(k).is_some() => writeln!(
                 s,

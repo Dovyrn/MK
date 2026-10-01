@@ -10,7 +10,7 @@ use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, LayoutInfo, MeshInfo, RenderInfo,
+    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, LayoutInfo, MeshInfo, RayInfo, RenderInfo,
     SamplerInfo, SurfaceInfo, TextureInfo, ViewInfo, address, border, dimension, fill, filter,
     format, index, memory, query, token, topology, usage,
 };
@@ -348,6 +348,9 @@ impl Device {
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let ray = loaded.map(|_| acceleration_structure::Device::new(&instance, &raw));
             let generated = Generated::load(&instance, &raw);
+            let name = c"vkCreateRayTracingPipelinesKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let rays = loaded.map(|_| ray_tracing_pipeline::Device::new(&instance, &raw));
             let name = c"vkCreateSwapchainKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let surfaces = loaded.map(|_| {
@@ -389,6 +392,7 @@ impl Device {
                     debug,
                     mesh,
                     ray,
+                    rays,
                     generated,
                     surfaces,
                 },
@@ -443,6 +447,14 @@ impl Device {
     }
 
     pub fn caps(&self) -> Caps {
+        let mut rays = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+        if self.ext.rays.is_some() {
+            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut rays);
+            unsafe {
+                self.instance
+                    .get_physical_device_properties2(self.physical, &mut properties)
+            };
+        }
         let (limits, families, features) = unsafe {
             (
                 self.instance
@@ -467,6 +479,9 @@ impl Device {
             precise: features.occlusion_query_precise != 0,
             ray: self.ext.ray.is_some(),
             generated: self.ext.generated.is_some(),
+            handle_size: rays.shader_group_handle_size,
+            handle_alignment: rays.shader_group_handle_alignment,
+            table_alignment: rays.shader_group_base_alignment,
             instance: 64,
             views: unsafe {
                 let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
@@ -530,6 +545,9 @@ impl Device {
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
         if self.ext.ray.is_some() {
             usage |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+        }
+        if self.ext.rays.is_some() {
+            usage |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
         }
         usage
     }
@@ -1525,6 +1543,118 @@ impl Device {
         Ok(())
     }
 
+    pub fn create_ray_pipeline(&mut self, info: &RayInfo) -> Result<u32, String> {
+        let rays = self
+            .ext
+            .rays
+            .as_ref()
+            .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
+        let words = ash::util::read_spv(&mut Cursor::new(info.code)).map_err(|e| e.to_string())?;
+        let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
+        let module = unsafe {
+            self.raw
+                .create_shader_module(&module_info, None)
+                .map_err(|e| e.to_string())?
+        };
+        let mut names = Vec::new();
+        let mut stages = Vec::new();
+        let mut stage = |name: &str, kind: vk::ShaderStageFlags| {
+            if name.is_empty() {
+                return vk::SHADER_UNUSED_KHR;
+            }
+            names.push(CString::new(name).unwrap());
+            stages.push(kind);
+            stages.len() as u32 - 1
+        };
+        let general = |shader| {
+            vk::RayTracingShaderGroupCreateInfoKHR::default()
+                .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                .general_shader(shader)
+                .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                .intersection_shader(vk::SHADER_UNUSED_KHR)
+        };
+        let mut groups = vec![general(stage(
+            info.raygen,
+            vk::ShaderStageFlags::RAYGEN_KHR,
+        ))];
+        for m in info.misses {
+            groups.push(general(stage(m, vk::ShaderStageFlags::MISS_KHR)));
+        }
+        for i in 0..info
+            .closest
+            .len()
+            .max(info.any.len())
+            .max(info.intersection.len())
+        {
+            let closest = info.closest.get(i).copied().unwrap_or("");
+            let any = info.any.get(i).copied().unwrap_or("");
+            let intersection = info.intersection.get(i).copied().unwrap_or("");
+            let closest = stage(closest, vk::ShaderStageFlags::CLOSEST_HIT_KHR);
+            let any = stage(any, vk::ShaderStageFlags::ANY_HIT_KHR);
+            let intersection = stage(intersection, vk::ShaderStageFlags::INTERSECTION_KHR);
+            groups.push(
+                vk::RayTracingShaderGroupCreateInfoKHR::default()
+                    .ty(if intersection == vk::SHADER_UNUSED_KHR {
+                        vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP
+                    } else {
+                        vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP
+                    })
+                    .general_shader(vk::SHADER_UNUSED_KHR)
+                    .closest_hit_shader(closest)
+                    .any_hit_shader(any)
+                    .intersection_shader(intersection),
+            );
+        }
+        for c in info.callables {
+            groups.push(general(stage(c, vk::ShaderStageFlags::CALLABLE_KHR)));
+        }
+        let infos: Vec<_> = stages
+            .iter()
+            .zip(&names)
+            .map(|(kind, name)| {
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(*kind)
+                    .module(module)
+                    .name(name)
+            })
+            .collect();
+        let create = vk::RayTracingPipelineCreateInfoKHR::default()
+            .stages(&infos)
+            .groups(&groups)
+            .max_pipeline_ray_recursion_depth(info.depth)
+            .layout(self.layout);
+        let result = unsafe {
+            rays.create_ray_tracing_pipelines(
+                vk::DeferredOperationKHR::null(),
+                self.cache,
+                &[create],
+                None,
+            )
+        };
+        unsafe { self.raw.destroy_shader_module(module, None) };
+        let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
+        Ok(self.res.rays.insert((pipeline, groups.len() as u32)))
+    }
+
+    pub fn ray_handles(&self, pipeline: u32) -> Result<Vec<u8>, String> {
+        let (raw, count) = *self.res.rays.get(pipeline);
+        let size = self.caps().handle_size as usize;
+        unsafe {
+            self.ext
+                .rays
+                .as_ref()
+                .unwrap()
+                .get_ray_tracing_shader_group_handles(raw, 0, count, size * count as usize)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    pub fn destroy_ray_pipeline(&mut self, pipeline: u32) {
+        let (raw, _) = self.res.rays.remove(pipeline);
+        unsafe { self.raw.destroy_pipeline(raw, None) };
+    }
+
     pub fn create_commands_layout(&mut self, info: &LayoutInfo) -> Result<u32, String> {
         let generated = self
             .ext
@@ -1771,6 +1901,9 @@ impl Drop for Device {
             }
             for (pool, _) in self.res.queries.drain() {
                 self.raw.destroy_query_pool(pool, None);
+            }
+            for (pipeline, _) in self.res.rays.drain() {
+                self.raw.destroy_pipeline(pipeline, None);
             }
             for pipeline in self.res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);

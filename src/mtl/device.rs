@@ -322,6 +322,9 @@ impl Device {
             precise: true,
             ray: self.raw.supportsRaytracing(),
             generated: false,
+            handle_size: 0,
+            handle_alignment: 0,
+            table_alignment: 0,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)

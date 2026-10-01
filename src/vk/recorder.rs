@@ -179,10 +179,14 @@ impl Recorder<'_> {
     }
 
     pub fn run(&mut self, heap: vk::DescriptorSet, mut bytes: &[u8]) -> Result<(), &'static str> {
-        for point in [
+        let mut points = vec![
             vk::PipelineBindPoint::COMPUTE,
             vk::PipelineBindPoint::GRAPHICS,
-        ] {
+        ];
+        if self.ext.rays.is_some() {
+            points.push(vk::PipelineBindPoint::RAY_TRACING_KHR);
+        }
+        for point in points {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
                     self.buffer,
@@ -736,6 +740,54 @@ impl Recorder<'_> {
                         draws,
                     };
                     (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
+                }
+                Command::BindRayPipeline { pipeline } => d.cmd_bind_pipeline(
+                    b,
+                    vk::PipelineBindPoint::RAY_TRACING_KHR,
+                    self.res.rays.get(pipeline).0,
+                ),
+                Command::TraceRays {
+                    raygen,
+                    raygen_offset,
+                    raygen_stride,
+                    raygen_size,
+                    miss,
+                    miss_offset,
+                    miss_stride,
+                    miss_size,
+                    hit,
+                    hit_offset,
+                    hit_stride,
+                    hit_size,
+                    callable,
+                    callable_offset,
+                    callable_stride,
+                    callable_size,
+                    width,
+                    height,
+                    depth,
+                } => {
+                    let region = |buffer: u32, offset: u64, stride: u64, size: u64| {
+                        vk::StridedDeviceAddressRegionKHR {
+                            device_address: if buffer == NONE {
+                                0
+                            } else {
+                                self.res.buffers.get(buffer).address + offset
+                            },
+                            stride,
+                            size,
+                        }
+                    };
+                    self.ext.rays.as_ref().unwrap().cmd_trace_rays(
+                        b,
+                        &region(raygen, raygen_offset, raygen_stride, raygen_size),
+                        &region(miss, miss_offset, miss_stride, miss_size),
+                        &region(hit, hit_offset, hit_stride, hit_size),
+                        &region(callable, callable_offset, callable_stride, callable_size),
+                        width,
+                        height,
+                        depth,
+                    )
                 }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {

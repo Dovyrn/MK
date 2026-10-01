@@ -298,3 +298,33 @@ fields = [
     ["count_offset", "u64"],
     ["draws", "u32"],
 ]
+
+[[command]]
+name = "bind_ray_pipeline"
+backend = "vk"
+fields = [["pipeline", "u32"]]
+
+[[command]]
+name = "trace_rays"
+backend = "vk"
+fields = [
+    ["raygen", "u32"],
+    ["raygen_offset", "u64"],
+    ["raygen_stride", "u64"],
+    ["raygen_size", "u64"],
+    ["miss", "u32"],
+    ["miss_offset", "u64"],
+    ["miss_stride", "u64"],
+    ["miss_size", "u64"],
+    ["hit", "u32"],
+    ["hit_offset", "u64"],
+    ["hit_stride", "u64"],
+    ["hit_size", "u64"],
+    ["callable", "u32"],
+    ["callable_offset", "u64"],
+    ["callable_stride", "u64"],
+    ["callable_size", "u64"],
+    ["width", "u32"],
+    ["height", "u32"],
+    ["depth", "u32"],
+]
