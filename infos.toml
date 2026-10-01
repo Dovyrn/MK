@@ -156,9 +156,20 @@ fields = [
 ]
 
 [[info]]
+name = "Boxes"
+fields = [
+    ["buffer", "u32", "0"],
+    ["offset", "u64", "0"],
+    ["stride", "u32", "24"],
+    ["count", "u32", "0"],
+    ["opaque", "bool", "true"],
+]
+
+[[info]]
 name = "AccelInfo"
 fields = [
     ["triangles", "[Triangles]", ""],
+    ["boxes", "[Boxes]", ""],
     ["instances", "u32", "!0"],
     ["instance_offset", "u64", "0"],
     ["instance_count", "u32", "0"],

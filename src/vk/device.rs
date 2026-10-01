@@ -1071,7 +1071,35 @@ impl Device {
             .ray
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
-        let (kind, geometry, ranges) = if info.triangles.is_empty() {
+        let (kind, geometry, ranges) = if !info.boxes.is_empty() {
+            let mut geometry = Vec::new();
+            let mut ranges = Vec::new();
+            for b in info.boxes {
+                let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::default()
+                    .data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: self.res.buffers.get(b.buffer).address + b.offset,
+                    })
+                    .stride(b.stride as u64);
+                geometry.push(
+                    vk::AccelerationStructureGeometryKHR::default()
+                        .geometry_type(vk::GeometryTypeKHR::AABBS)
+                        .geometry(vk::AccelerationStructureGeometryDataKHR { aabbs })
+                        .flags(if b.opaque {
+                            vk::GeometryFlagsKHR::OPAQUE
+                        } else {
+                            vk::GeometryFlagsKHR::empty()
+                        }),
+                );
+                ranges.push(
+                    vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(b.count),
+                );
+            }
+            (
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                geometry,
+                ranges,
+            )
+        } else if info.triangles.is_empty() {
             let instances = vk::AccelerationStructureGeometryInstancesDataKHR::default().data(
                 vk::DeviceOrHostAddressConstKHR {
                     device_address: self.res.buffers.get(info.instances).address

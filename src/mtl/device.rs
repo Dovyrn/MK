@@ -24,7 +24,8 @@ use objc2_io_surface::{
     IOSurfaceRef, kIOSurfaceBytesPerElement, kIOSurfaceHeight, kIOSurfaceWidth,
 };
 use objc2_metal::{
-    MTL4AccelerationStructureDescriptor, MTL4AccelerationStructureGeometryDescriptor,
+    MTL4AccelerationStructureBoundingBoxGeometryDescriptor, MTL4AccelerationStructureDescriptor,
+    MTL4AccelerationStructureGeometryDescriptor,
     MTL4AccelerationStructureTriangleGeometryDescriptor, MTL4AlphaToCoverageState, MTL4BlendState,
     MTL4BufferRange, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
     MTL4CompilerTaskOptions, MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor,
@@ -1175,7 +1176,25 @@ impl Device {
     }
 
     pub fn create_accel(&mut self, info: &AccelInfo) -> Result<u32, String> {
-        let desc: Retained<MTL4AccelerationStructureDescriptor> = if info.triangles.is_empty() {
+        let desc: Retained<MTL4AccelerationStructureDescriptor> = if !info.boxes.is_empty() {
+            let geometry: Vec<Retained<MTL4AccelerationStructureGeometryDescriptor>> = info
+                .boxes
+                .iter()
+                .map(|b| {
+                    let g = MTL4AccelerationStructureBoundingBoxGeometryDescriptor::new();
+                    g.setBoundingBoxBuffer(self.range(b.buffer, b.offset, !0));
+                    unsafe {
+                        g.setBoundingBoxStride(b.stride as usize);
+                        g.setBoundingBoxCount(b.count as usize);
+                    }
+                    g.setOpaque(b.opaque);
+                    Retained::into_super(g)
+                })
+                .collect();
+            let d = MTL4PrimitiveAccelerationStructureDescriptor::new();
+            d.setGeometryDescriptors(Some(&NSArray::from_retained_slice(&geometry)));
+            Retained::into_super(d)
+        } else if info.triangles.is_empty() {
             let d = MTL4InstanceAccelerationStructureDescriptor::new();
             unsafe {
                 d.setInstanceDescriptorBuffer(self.range(
