@@ -238,3 +238,7 @@ fields = [["heap", "u32"], ["index", "u32"]]
 [[command]]
 name = "resolve_queries"
 fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"], ["buffer", "u32"], ["offset", "u64"]]
+
+[[command]]
+name = "build_accel"
+fields = [["accel", "u32"], ["scratch", "u32"], ["scratch_offset", "u64"], ["update", "u32"]]

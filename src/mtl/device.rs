@@ -1,3 +1,4 @@
+use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
@@ -6,30 +7,35 @@ use crate::mtl::resources::Resources;
 use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
-    Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
-    TextureInfo, ViewInfo, address, blend, border, dimension, fill, filter, format, mask, memory,
-    query, topology, usage,
+    AccelInfo, Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace,
+    SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border, dimension, fill, filter,
+    format, index, mask, memory, query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2_core_foundation::CGSize;
-use objc2_foundation::{NSRange, NSString};
+use objc2_foundation::{NSArray, NSRange, NSString};
 use objc2_metal::{
-    MTL4AlphaToCoverageState, MTL4BlendState, MTL4CommandQueue, MTL4Compiler,
-    MTL4CompilerDescriptor, MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor,
-    MTL4CounterHeapType, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
-    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
-    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor, MTLAllocation,
-    MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
-    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily,
-    MTLHazardTrackingMode, MTLLibrary, MTLPrimitiveTopologyClass, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
-    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
-    MTLSamplerState, MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
-    MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
+    MTL4AccelerationStructureDescriptor, MTL4AccelerationStructureGeometryDescriptor,
+    MTL4AccelerationStructureTriangleGeometryDescriptor, MTL4AlphaToCoverageState, MTL4BlendState,
+    MTL4BufferRange, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
+    MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor, MTL4CounterHeapType,
+    MTL4FunctionDescriptor, MTL4InstanceAccelerationStructureDescriptor,
+    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4PrimitiveAccelerationStructureDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
+    MTL4RenderPipelineDescriptor, MTLAccelerationStructure,
+    MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
+    MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
+    MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
+    MTLDrawable, MTLGPUFamily, MTLHazardTrackingMode, MTLIndexType, MTLLibrary, MTLMatrixLayout,
+    MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor, MTLResourceID,
+    MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor,
+    MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize,
+    MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor,
+    MTLTextureType, MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
+    MTLVertexStepFunction,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -256,6 +262,8 @@ impl Device {
             tick: 1e9 / self.raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,
+            ray: self.raw.supportsRaytracing(),
+            instance: 72,
         }
     }
 
@@ -655,6 +663,123 @@ impl Device {
         ProtocolObject::<dyn MTLDrawable>::from_ref(drawable).present();
         self.res.textures.remove(texture);
         Ok(())
+    }
+
+    fn range(&self, buffer: u32, offset: u64, length: u64) -> MTL4BufferRange {
+        MTL4BufferRange {
+            bufferAddress: self.res.buffers.get(buffer).gpuAddress() + offset,
+            length,
+        }
+    }
+
+    pub fn create_accel(&mut self, info: &AccelInfo) -> Result<u32, String> {
+        let desc: Retained<MTL4AccelerationStructureDescriptor> = if info.triangles.is_empty() {
+            let d = MTL4InstanceAccelerationStructureDescriptor::new();
+            unsafe {
+                d.setInstanceDescriptorBuffer(self.range(
+                    info.instances,
+                    info.instance_offset,
+                    info.instance_count as u64 * 72,
+                ));
+                d.setInstanceDescriptorStride(72);
+                d.setInstanceCount(info.instance_count as usize);
+            }
+            d.setInstanceDescriptorType(MTLAccelerationStructureInstanceDescriptorType::Indirect);
+            d.setInstanceTransformationMatrixLayout(MTLMatrixLayout::RowMajor);
+            Retained::into_super(d)
+        } else {
+            let geometry: Vec<Retained<MTL4AccelerationStructureGeometryDescriptor>> = info
+                .triangles
+                .iter()
+                .map(|t| {
+                    let g = MTL4AccelerationStructureTriangleGeometryDescriptor::new();
+                    unsafe {
+                        g.setVertexBuffer(self.range(t.vertices, t.vertex_offset, !0));
+                        g.setVertexStride(t.stride as usize);
+                        g.setTriangleCount(t.count as usize);
+                    }
+                    g.setVertexFormat(MTLAttributeFormat(vertex_format(t.format).0));
+                    if t.indices != !0 {
+                        unsafe { g.setIndexBuffer(self.range(t.indices, t.index_offset, !0)) };
+                        g.setIndexType(match t.index_kind {
+                            index::U16 => MTLIndexType::UInt16,
+                            _ => MTLIndexType::UInt32,
+                        });
+                    }
+                    g.setOpaque(t.opaque);
+                    Retained::into_super(g)
+                })
+                .collect();
+            let d = MTL4PrimitiveAccelerationStructureDescriptor::new();
+            d.setGeometryDescriptors(Some(&NSArray::from_retained_slice(&geometry)));
+            Retained::into_super(d)
+        };
+        let mut usage = MTLAccelerationStructureUsage::None;
+        for (bit, flag) in [
+            (accel::UPDATE, MTLAccelerationStructureUsage::Refit),
+            (
+                accel::FAST_BUILD,
+                MTLAccelerationStructureUsage::PreferFastBuild,
+            ),
+            (
+                accel::FAST_TRACE,
+                MTLAccelerationStructureUsage::PreferFastIntersection,
+            ),
+        ] {
+            if info.flags & bit != 0 {
+                usage |= flag;
+            }
+        }
+        desc.setUsage(usage);
+        let sizes = self.raw.accelerationStructureSizesWithDescriptor(&desc);
+        let raw = self
+            .raw
+            .newAccelerationStructureWithSize(sizes.accelerationStructureSize)
+            .ok_or("acceleration structure")?;
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        Ok(self.res.accels.insert(Accel {
+            raw,
+            desc,
+            build: sizes.buildScratchBufferSize as u64,
+            update: sizes.refitScratchBufferSize as u64,
+        }))
+    }
+
+    pub fn destroy_accel(&mut self, accel: u32) {
+        let a = self.res.accels.remove(accel);
+        self.residency
+            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*a.raw));
+        self.dirty = true;
+    }
+
+    pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
+        let a = self.res.accels.get(accel);
+        (a.build, a.update)
+    }
+
+    pub fn accel_handle(&self, accel: u32) -> u64 {
+        id(self.res.accels.get(accel).raw.gpuResourceID())
+    }
+
+    pub fn write_instance(
+        &self,
+        out: &mut [u8],
+        accel: u32,
+        transform: &[f32; 12],
+        id: u32,
+        mask: u32,
+        flags: u32,
+    ) {
+        for (i, v) in transform.iter().enumerate() {
+            out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        out[48..52].copy_from_slice(&flags.to_le_bytes());
+        out[52..56].copy_from_slice(&mask.to_le_bytes());
+        out[56..60].copy_from_slice(&0u32.to_le_bytes());
+        out[60..64].copy_from_slice(&id.to_le_bytes());
+        out[64..72].copy_from_slice(&self.accel_handle(accel).to_le_bytes());
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {

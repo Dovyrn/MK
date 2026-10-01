@@ -8,4 +8,6 @@ pub struct Caps {
     pub tick: f32,
     pub timestamps: bool,
     pub precise: bool,
+    pub ray: bool,
+    pub instance: u32,
 }

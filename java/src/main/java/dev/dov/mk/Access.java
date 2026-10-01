@@ -21,4 +21,6 @@ public class Access {
     public final int HOST_WRITE = 16384;
     public final int MEMORY_READ = 32768;
     public final int MEMORY_WRITE = 65536;
+    public final int ACCEL_READ = 2097152;
+    public final int ACCEL_WRITE = 4194304;
 }

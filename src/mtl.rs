@@ -1,3 +1,4 @@
+mod accel;
 mod device;
 mod frame;
 mod pipeline;

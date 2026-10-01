@@ -1,3 +1,4 @@
+use crate::vk::accel::Accel;
 use crate::vk::buffer::Buffer;
 use crate::vk::extensions::Extensions;
 use crate::vk::heap::Heap;
@@ -6,12 +7,16 @@ use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo,
-    ViewInfo, address, border, dimension, fill, filter, format, memory, query, topology, usage,
+    AccelInfo, Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo,
+    TextureInfo, ViewInfo, address, border, dimension, fill, filter, format, index, memory, query,
+    topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
-use ash::khr::{portability_enumeration, portability_subset, surface, swapchain};
+use ash::khr::{
+    acceleration_structure, deferred_host_operations, portability_enumeration, portability_subset,
+    ray_query, ray_tracing_pipeline, surface, swapchain,
+};
 use ash::vk;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::ffi::{CStr, CString};
@@ -145,12 +150,42 @@ impl Device {
                 .task_shader(supported_mesh.task_shader != 0)
                 .mesh_shader(supported_mesh.mesh_shader != 0);
             let meshes = has(&available, mesh_shader::NAME) && supported_mesh.mesh_shader != 0;
+            let mut supported_accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+            let mut supported_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
+            let mut supported_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+            let mut query = vk::PhysicalDeviceFeatures2::default()
+                .push_next(&mut supported_accel)
+                .push_next(&mut supported_query)
+                .push_next(&mut supported_pipeline);
+            instance.get_physical_device_features2(physical, &mut query);
+            let rays = has(&available, acceleration_structure::NAME)
+                && has(&available, deferred_host_operations::NAME)
+                && has(&available, ray_query::NAME)
+                && supported_accel.acceleration_structure != 0
+                && supported_query.ray_query != 0;
+            let mut accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
+                .acceleration_structure(true);
+            let mut rq = vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
+            let pipelines = rays
+                && has(&available, ray_tracing_pipeline::NAME)
+                && supported_pipeline.ray_tracing_pipeline != 0;
+            let mut rt = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
+                .ray_tracing_pipeline(true);
+            if rays {
+                extensions.push(acceleration_structure::NAME.as_ptr());
+                extensions.push(deferred_host_operations::NAME.as_ptr());
+                extensions.push(ray_query::NAME.as_ptr());
+            }
+            if pipelines {
+                extensions.push(ray_tracing_pipeline::NAME.as_ptr());
+            }
             if meshes {
                 extensions.push(mesh_shader::NAME.as_ptr());
             }
             let supported = instance.get_physical_device_features(physical);
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .shader_int64(supported.shader_int64 != 0)
                 .occlusion_query_precise(supported.occlusion_query_precise != 0)
                 .fill_mode_non_solid(supported.fill_mode_non_solid != 0)
                 .multi_draw_indirect(supported.multi_draw_indirect != 0)
@@ -191,6 +226,16 @@ impl Device {
             } else {
                 info
             };
+            let info = if rays {
+                info.push_next(&mut accel).push_next(&mut rq)
+            } else {
+                info
+            };
+            let info = if pipelines {
+                info.push_next(&mut rt)
+            } else {
+                info
+            };
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
@@ -214,6 +259,9 @@ impl Device {
             let name = c"vkCmdDrawMeshTasksEXT";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let mesh = loaded.map(|_| mesh_shader::Device::new(&instance, &raw));
+            let name = c"vkCmdBuildAccelerationStructuresKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let ray = loaded.map(|_| acceleration_structure::Device::new(&instance, &raw));
             let name = c"vkCreateSwapchainKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let surfaces = loaded.map(|_| {
@@ -249,6 +297,7 @@ impl Device {
                 ext: Extensions {
                     debug,
                     mesh,
+                    ray,
                     surfaces,
                 },
                 owned: false,
@@ -302,19 +351,29 @@ impl Device {
                 .iter()
                 .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
             precise: features.occlusion_query_precise != 0,
+            ray: self.ext.ray.is_some(),
+            instance: 64,
         }
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
+        let mut usage = vk::BufferUsageFlags::TRANSFER_SRC
+            | vk::BufferUsageFlags::TRANSFER_DST
+            | vk::BufferUsageFlags::UNIFORM_BUFFER
+            | vk::BufferUsageFlags::STORAGE_BUFFER
+            | vk::BufferUsageFlags::INDEX_BUFFER
+            | vk::BufferUsageFlags::VERTEX_BUFFER
+            | vk::BufferUsageFlags::INDIRECT_BUFFER
+            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
+        if self.ext.ray.is_some() {
+            usage |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+        }
+        let buffer = self.allocate(size, memory, usage);
+        self.res.buffers.insert(buffer)
+    }
+
+    fn allocate(&self, size: u64, memory: u32, usage: vk::BufferUsageFlags) -> Buffer {
         unsafe {
-            let usage = vk::BufferUsageFlags::TRANSFER_SRC
-                | vk::BufferUsageFlags::TRANSFER_DST
-                | vk::BufferUsageFlags::UNIFORM_BUFFER
-                | vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::INDEX_BUFFER
-                | vk::BufferUsageFlags::VERTEX_BUFFER
-                | vk::BufferUsageFlags::INDIRECT_BUFFER
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
             let info = vk::BufferCreateInfo::default().size(size).usage(usage);
             let raw = self.raw.create_buffer(&info, None).unwrap();
             let needs = self.raw.get_buffer_memory_requirements(raw);
@@ -342,13 +401,165 @@ impl Device {
             };
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
             let address = self.raw.get_buffer_device_address(&info);
-            self.res.buffers.insert(Buffer {
+            Buffer {
                 raw,
                 memory,
                 address,
                 data,
-            })
+            }
         }
+    }
+
+    pub fn create_accel(&mut self, info: &AccelInfo) -> Result<u32, String> {
+        let ray = self
+            .ext
+            .ray
+            .as_ref()
+            .ok_or("VK_KHR_acceleration_structure is not enabled")?;
+        let (kind, geometry, ranges) = if info.triangles.is_empty() {
+            let instances = vk::AccelerationStructureGeometryInstancesDataKHR::default().data(
+                vk::DeviceOrHostAddressConstKHR {
+                    device_address: self.res.buffers.get(info.instances).address
+                        + info.instance_offset,
+                },
+            );
+            let geometry = vk::AccelerationStructureGeometryKHR::default()
+                .geometry_type(vk::GeometryTypeKHR::INSTANCES)
+                .geometry(vk::AccelerationStructureGeometryDataKHR { instances });
+            let range = vk::AccelerationStructureBuildRangeInfoKHR::default()
+                .primitive_count(info.instance_count);
+            (
+                vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+                vec![geometry],
+                vec![range],
+            )
+        } else {
+            let mut geometry = Vec::new();
+            let mut ranges = Vec::new();
+            for t in info.triangles {
+                let address = |b: u32, o: u64| vk::DeviceOrHostAddressConstKHR {
+                    device_address: self.res.buffers.get(b).address + o,
+                };
+                let mut triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+                    .vertex_format(format::vk(t.format))
+                    .vertex_data(address(t.vertices, t.vertex_offset))
+                    .vertex_stride(t.stride as u64)
+                    .max_vertex(t.vertex_count.saturating_sub(1))
+                    .index_type(vk::IndexType::NONE_KHR);
+                if t.indices != !0 {
+                    triangles = triangles
+                        .index_type(match t.index_kind {
+                            index::U16 => vk::IndexType::UINT16,
+                            _ => vk::IndexType::UINT32,
+                        })
+                        .index_data(address(t.indices, t.index_offset));
+                }
+                geometry.push(
+                    vk::AccelerationStructureGeometryKHR::default()
+                        .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+                        .geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
+                        .flags(if t.opaque {
+                            vk::GeometryFlagsKHR::OPAQUE
+                        } else {
+                            vk::GeometryFlagsKHR::empty()
+                        }),
+                );
+                ranges.push(
+                    vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(t.count),
+                );
+            }
+            (
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                geometry,
+                ranges,
+            )
+        };
+        let flags = vk::BuildAccelerationStructureFlagsKHR::from_raw(info.flags);
+        let build = vk::AccelerationStructureBuildGeometryInfoKHR::default()
+            .ty(kind)
+            .flags(flags)
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+            .geometries(&geometry);
+        let counts: Vec<_> = ranges.iter().map(|r| r.primitive_count).collect();
+        let mut sizes = vk::AccelerationStructureBuildSizesInfoKHR::default();
+        unsafe {
+            ray.get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &build,
+                &counts,
+                &mut sizes,
+            )
+        };
+        let buffer = self.allocate(
+            sizes.acceleration_structure_size,
+            memory::DEVICE,
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
+        let create = vk::AccelerationStructureCreateInfoKHR::default()
+            .buffer(buffer.raw)
+            .size(sizes.acceleration_structure_size)
+            .ty(kind);
+        let raw = unsafe {
+            ray.create_acceleration_structure(&create, None)
+                .map_err(|e| e.to_string())?
+        };
+        let address = unsafe {
+            ray.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR::default()
+                    .acceleration_structure(raw),
+            )
+        };
+        Ok(self.res.accels.insert(Accel {
+            raw,
+            buffer,
+            address,
+            kind,
+            flags,
+            geometry,
+            ranges,
+            build: sizes.build_scratch_size,
+            update: sizes.update_scratch_size,
+        }))
+    }
+
+    pub fn destroy_accel(&mut self, accel: u32) {
+        let a = self.res.accels.remove(accel);
+        unsafe {
+            self.ext
+                .ray
+                .as_ref()
+                .unwrap()
+                .destroy_acceleration_structure(a.raw, None);
+            self.raw.destroy_buffer(a.buffer.raw, None);
+            self.raw.free_memory(a.buffer.memory, None);
+        }
+    }
+
+    pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
+        let a = self.res.accels.get(accel);
+        (a.build, a.update)
+    }
+
+    pub fn accel_handle(&self, accel: u32) -> u64 {
+        self.res.accels.get(accel).address
+    }
+
+    pub fn write_instance(
+        &self,
+        out: &mut [u8],
+        accel: u32,
+        transform: &[f32; 12],
+        id: u32,
+        mask: u32,
+        flags: u32,
+    ) {
+        for (i, v) in transform.iter().enumerate() {
+            out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        out[48..52].copy_from_slice(&(id & 0xff_ffff | mask << 24).to_le_bytes());
+        out[52..56].copy_from_slice(&(flags << 24).to_le_bytes());
+        out[56..64].copy_from_slice(&self.accel_handle(accel).to_le_bytes());
     }
 
     pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
@@ -1154,6 +1365,16 @@ impl Drop for Device {
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
+            }
+            let accels: Vec<_> = self.res.accels.drain().collect();
+            for a in accels {
+                self.ext
+                    .ray
+                    .as_ref()
+                    .unwrap()
+                    .destroy_acceleration_structure(a.raw, None);
+                self.raw.destroy_buffer(a.buffer.raw, None);
+                self.raw.free_memory(a.buffer.memory, None);
             }
             for (pool, _) in self.res.queries.drain() {
                 self.raw.destroy_query_pool(pool, None);

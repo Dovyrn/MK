@@ -711,6 +711,34 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
+            Command::BuildAccel {
+                accel,
+                scratch,
+                scratch_offset,
+                update,
+            } => {
+                let a = self.res.accels.get(accel);
+                let range = MTL4BufferRange {
+                    bufferAddress: self.res.buffers.get(scratch).gpuAddress() + scratch_offset,
+                    length: if update != 0 { a.update } else { a.build },
+                };
+                unsafe {
+                    if update != 0 {
+                        self.compute()
+                            .refitAccelerationStructure_descriptor_destination_scratchBuffer(
+                                &a.raw,
+                                &a.desc,
+                                Some(&a.raw),
+                                range,
+                            )
+                    } else {
+                        self.compute()
+                            .buildAccelerationStructure_descriptor_scratchBuffer(
+                                &a.raw, &a.desc, range,
+                            )
+                    }
+                }
+            }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

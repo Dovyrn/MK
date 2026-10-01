@@ -1,3 +1,4 @@
+use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
@@ -16,6 +17,7 @@ pub struct Resources {
     pub pipelines: Slots<Pipeline>,
     pub renders: Slots<Render>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
+    pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub surfaces: Slots<Surface>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,

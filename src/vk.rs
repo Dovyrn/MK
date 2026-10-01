@@ -1,3 +1,4 @@
+mod accel;
 mod buffer;
 mod device;
 mod extensions;

@@ -362,4 +362,12 @@ public class Commands {
         memPutInt(p + 12, buffer);
         memPutLong(p + 16, offset);
     }
+
+    public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
+        var p = head(45, 20);
+        memPutInt(p, accel);
+        memPutInt(p + 4, scratch);
+        memPutLong(p + 8, scratchOffset);
+        memPutInt(p + 16, update);
+    }
 }

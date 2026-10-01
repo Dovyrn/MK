@@ -1,5 +1,6 @@
 use crate::DepthInfo;
 use crate::slots::Slots;
+use crate::vk::accel::Accel;
 use crate::vk::buffer::Buffer;
 use crate::vk::surface::Surface;
 use crate::vk::texture::Texture;
@@ -13,6 +14,7 @@ pub struct Resources {
     pub pipelines: Slots<vk::Pipeline>,
     pub renders: Slots<vk::Pipeline>,
     pub depths: Slots<DepthInfo>,
+    pub accels: Slots<Accel>,
     pub queries: Slots<(vk::QueryPool, vk::QueryControlFlags)>,
     pub surfaces: Slots<Surface>,
     pub events: Slots<(vk::Semaphore, bool)>,

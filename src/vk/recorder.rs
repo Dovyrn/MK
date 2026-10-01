@@ -650,6 +650,33 @@ impl Recorder<'_> {
                     8,
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 ),
+                Command::BuildAccel {
+                    accel,
+                    scratch,
+                    scratch_offset,
+                    update,
+                } => {
+                    let a = self.res.accels.get(accel);
+                    let mut info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
+                        .ty(a.kind)
+                        .flags(a.flags)
+                        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+                        .dst_acceleration_structure(a.raw)
+                        .geometries(&a.geometry)
+                        .scratch_data(vk::DeviceOrHostAddressKHR {
+                            device_address: self.res.buffers.get(scratch).address + scratch_offset,
+                        });
+                    if update != 0 {
+                        info = info
+                            .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
+                            .src_acceleration_structure(a.raw);
+                    }
+                    self.ext
+                        .ray
+                        .as_ref()
+                        .unwrap()
+                        .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
+                }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();

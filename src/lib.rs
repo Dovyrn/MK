@@ -8,6 +8,7 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 ))]
 compile_error!("enable exactly one backend feature");
 
+mod accel_info;
 mod caps;
 mod color_target;
 mod command;
@@ -23,12 +24,14 @@ mod slots;
 mod stencil_face;
 mod surface_info;
 mod texture_info;
+mod triangles;
 mod vertex_attribute;
 mod vertex_buffer;
 mod view_info;
 #[cfg(feature = "vk")]
 pub mod vk;
 
+pub use accel_info::AccelInfo;
 #[cfg(feature = "vk")]
 pub use ash;
 pub use caps::Caps;
@@ -48,6 +51,7 @@ pub use sampler_info::SamplerInfo;
 pub use stencil_face::StencilFace;
 pub use surface_info::SurfaceInfo;
 pub use texture_info::TextureInfo;
+pub use triangles::Triangles;
 pub use vertex_attribute::VertexAttribute;
 pub use vertex_buffer::VertexBuffer;
 pub use view_info::ViewInfo;
