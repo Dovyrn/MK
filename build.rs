@@ -70,7 +70,16 @@ fn main() {
     );
 }
 
+static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+
 fn save(path: &Path, text: &str) {
+    let mut saved = SAVED.lock().unwrap();
+    assert!(
+        !saved.iter().any(|p| p == path),
+        "{} is generated twice",
+        path.display()
+    );
+    saved.push(path.to_path_buf());
     if fs::read_to_string(path).ok().as_deref() != Some(text) {
         fs::write(path, text).unwrap();
     }
