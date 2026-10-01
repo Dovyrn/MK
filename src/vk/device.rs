@@ -2,15 +2,17 @@ use crate::vk::buffer::Buffer;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
+use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, address, border,
-    dimension, fill, filter, format, memory, topology, usage,
+    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo, address,
+    border, dimension, fill, filter, format, memory, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
-use ash::khr::{portability_enumeration, portability_subset};
+use ash::khr::{portability_enumeration, portability_subset, surface, swapchain};
 use ash::vk;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
 
@@ -21,6 +23,7 @@ pub struct Device {
     pub raw: ash::Device,
     debug: Option<debug_utils::Device>,
     mesh: Option<mesh_shader::Device>,
+    surfaces: Option<(surface::Instance, swapchain::Device)>,
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
     heap: Heap,
@@ -44,6 +47,19 @@ impl Device {
             let mut flags = vk::InstanceCreateFlags::empty();
             if has(&available, debug_utils::NAME) {
                 extensions.push(debug_utils::NAME.as_ptr());
+            }
+            for name in [
+                surface::NAME,
+                c"VK_EXT_metal_surface",
+                c"VK_KHR_win32_surface",
+                c"VK_KHR_xlib_surface",
+                c"VK_KHR_xcb_surface",
+                c"VK_KHR_wayland_surface",
+                c"VK_KHR_android_surface",
+            ] {
+                if has(&available, name) {
+                    extensions.push(name.as_ptr());
+                }
             }
             if has(&available, portability_enumeration::NAME) {
                 extensions.push(portability_enumeration::NAME.as_ptr());
@@ -105,6 +121,9 @@ impl Device {
                 .enumerate_device_extension_properties(physical)
                 .map_err(|e| e.to_string())?;
             let mut extensions = vec![mutable_descriptor_type::NAME.as_ptr()];
+            if has(&available, swapchain::NAME) {
+                extensions.push(swapchain::NAME.as_ptr());
+            }
             if has(&available, portability_subset::NAME) {
                 extensions.push(portability_subset::NAME.as_ptr());
             }
@@ -183,6 +202,14 @@ impl Device {
             let name = c"vkCmdDrawMeshTasksEXT";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let mesh = loaded.map(|_| mesh_shader::Device::new(&instance, &raw));
+            let name = c"vkCreateSwapchainKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let surfaces = loaded.map(|_| {
+                (
+                    surface::Instance::new(&entry, &instance),
+                    swapchain::Device::new(&instance, &raw),
+                )
+            });
             let limits = instance.get_physical_device_properties(physical).limits;
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
@@ -209,6 +236,7 @@ impl Device {
                 raw,
                 debug,
                 mesh,
+                surfaces,
                 owned: false,
                 heap,
                 layout,
@@ -611,8 +639,10 @@ impl Device {
         let texture = self.res.textures.remove(texture);
         unsafe {
             self.raw.destroy_image_view(texture.view, None);
-            self.raw.destroy_image(texture.image, None);
-            self.raw.free_memory(texture.memory, None);
+            if texture.memory != vk::DeviceMemory::null() {
+                self.raw.destroy_image(texture.image, None);
+                self.raw.free_memory(texture.memory, None);
+            }
         }
     }
 
@@ -712,6 +742,205 @@ impl Device {
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
+    pub fn create_surface(
+        &mut self,
+        window: &(impl HasWindowHandle + HasDisplayHandle),
+        info: &SurfaceInfo,
+    ) -> Result<u32, String> {
+        let display = window.display_handle().map_err(|e| e.to_string())?;
+        let handle = window.window_handle().map_err(|e| e.to_string())?;
+        let raw = unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                display.as_raw(),
+                handle.as_raw(),
+                None,
+            )
+            .map_err(|e| e.to_string())?
+        };
+        let mut s = Surface {
+            raw,
+            swapchain: vk::SwapchainKHR::null(),
+            format: info.format,
+            vsync: info.vsync,
+            count: info.images,
+            images: Vec::new(),
+            acquires: Vec::new(),
+            presents: Vec::new(),
+            next: 0,
+            index: 0,
+        };
+        self.swapchain(&mut s, info.width, info.height)?;
+        Ok(self.res.surfaces.insert(s))
+    }
+
+    fn swapchain(&mut self, s: &mut Surface, width: u32, height: u32) -> Result<(), String> {
+        let (surfaces, swapchains) = self
+            .surfaces
+            .as_ref()
+            .ok_or("VK_KHR_swapchain is not enabled")?;
+        unsafe {
+            let caps = surfaces
+                .get_physical_device_surface_capabilities(self.physical, s.raw)
+                .map_err(|e| e.to_string())?;
+            let modes = surfaces
+                .get_physical_device_surface_present_modes(self.physical, s.raw)
+                .map_err(|e| e.to_string())?;
+            let mode = if s.vsync {
+                vk::PresentModeKHR::FIFO
+            } else {
+                [vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
+                    .into_iter()
+                    .find(|m| modes.contains(m))
+                    .unwrap_or(vk::PresentModeKHR::FIFO)
+            };
+            let mut count = s.count.max(caps.min_image_count);
+            if caps.max_image_count > 0 {
+                count = count.min(caps.max_image_count);
+            }
+            let extent = if caps.current_extent.width == u32::MAX {
+                vk::Extent2D { width, height }
+            } else {
+                caps.current_extent
+            };
+            let usage = caps.supported_usage_flags
+                & (vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::STORAGE);
+            let native = format::vk(s.format);
+            let old = s.swapchain;
+            let info = vk::SwapchainCreateInfoKHR::default()
+                .surface(s.raw)
+                .min_image_count(count)
+                .image_format(native)
+                .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                .image_extent(extent)
+                .image_array_layers(1)
+                .image_usage(usage)
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(caps.current_transform)
+                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                .present_mode(mode)
+                .clipped(true)
+                .old_swapchain(old);
+            s.swapchain = swapchains
+                .create_swapchain(&info, None)
+                .map_err(|e| e.to_string())?;
+            for slot in s.images.drain(..) {
+                let t = self.res.textures.remove(slot);
+                self.raw.destroy_image_view(t.view, None);
+            }
+            if old != vk::SwapchainKHR::null() {
+                swapchains.destroy_swapchain(old, None);
+            }
+            for image in swapchains
+                .get_swapchain_images(s.swapchain)
+                .map_err(|e| e.to_string())?
+            {
+                let view_info = vk::ImageViewCreateInfo::default()
+                    .image(image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(native)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+                let view = self.raw.create_image_view(&view_info, None).unwrap();
+                s.images.push(self.res.textures.insert(Texture {
+                    image,
+                    memory: vk::DeviceMemory::null(),
+                    view,
+                    aspect: vk::ImageAspectFlags::COLOR,
+                }));
+            }
+            let binary = vk::SemaphoreCreateInfo::default();
+            while s.presents.len() < s.images.len() {
+                s.presents
+                    .push(self.raw.create_semaphore(&binary, None).unwrap());
+            }
+            while s.acquires.len() < s.images.len() + 1 {
+                s.acquires
+                    .push((self.raw.create_semaphore(&binary, None).unwrap(), 0));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn resize_surface(&mut self, surface: u32, width: u32, height: u32) -> Result<(), String> {
+        let mut s = self.res.surfaces.remove(surface);
+        let result = self.swapchain(&mut s, width, height);
+        self.res.surfaces.insert(s);
+        result
+    }
+
+    pub fn destroy_surface(&mut self, surface: u32) {
+        let s = self.res.surfaces.remove(surface);
+        let (surfaces, swapchains) = self.surfaces.as_ref().unwrap();
+        unsafe {
+            for slot in s.images {
+                let t = self.res.textures.remove(slot);
+                self.raw.destroy_image_view(t.view, None);
+            }
+            for (semaphore, _) in s.acquires {
+                self.raw.destroy_semaphore(semaphore, None);
+            }
+            for semaphore in s.presents {
+                self.raw.destroy_semaphore(semaphore, None);
+            }
+            swapchains.destroy_swapchain(s.swapchain, None);
+            surfaces.destroy_surface(s.raw, None);
+        }
+    }
+
+    pub fn acquire(&mut self, queue: usize, surface: u32) -> Result<u32, String> {
+        let (_, swapchains) = self
+            .surfaces
+            .as_ref()
+            .ok_or("VK_KHR_swapchain is not enabled")?;
+        let s = self.res.surfaces.get_mut(surface);
+        let q = &mut self.queues[queue];
+        let (semaphore, used) = s.acquires[s.next];
+        q.done(&self.raw, used);
+        let (index, _) = unsafe {
+            swapchains
+                .acquire_next_image(s.swapchain, u64::MAX, semaphore, vk::Fence::null())
+                .map_err(|e| e.to_string())?
+        };
+        s.acquires[s.next].1 = q.sync(&self.raw, semaphore, vk::Semaphore::null());
+        s.next = (s.next + 1) % s.acquires.len();
+        s.index = index;
+        Ok(s.images[index as usize])
+    }
+
+    pub fn present(&mut self, queue: usize, surface: u32) -> Result<(), String> {
+        let (_, swapchains) = self
+            .surfaces
+            .as_ref()
+            .ok_or("VK_KHR_swapchain is not enabled")?;
+        let s = self.res.surfaces.get(surface);
+        let q = &mut self.queues[queue];
+        let semaphore = s.presents[s.index as usize];
+        q.sync(&self.raw, vk::Semaphore::null(), semaphore);
+        let waits = [semaphore];
+        let swapchain = [s.swapchain];
+        let indices = [s.index];
+        let info = vk::PresentInfoKHR::default()
+            .wait_semaphores(&waits)
+            .swapchains(&swapchain)
+            .image_indices(&indices);
+        unsafe {
+            swapchains
+                .queue_present(q.raw, &info)
+                .map_err(|e| e.to_string())?
+        };
+        Ok(())
+    }
+
     pub fn create_event(&mut self) -> u32 {
         self.res.events.insert(timeline(&self.raw))
     }
@@ -735,7 +964,11 @@ impl Device {
         let info = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
             .values(&values);
-        unsafe { self.raw.wait_semaphores(&info, timeout.saturating_mul(1_000_000)).is_ok() }
+        unsafe {
+            self.raw
+                .wait_semaphores(&info, timeout.saturating_mul(1_000_000))
+                .is_ok()
+        }
     }
 
     pub fn submit(
@@ -774,8 +1007,22 @@ impl Drop for Device {
             }
             for texture in self.res.textures.drain() {
                 self.raw.destroy_image_view(texture.view, None);
-                self.raw.destroy_image(texture.image, None);
-                self.raw.free_memory(texture.memory, None);
+                if texture.memory != vk::DeviceMemory::null() {
+                    self.raw.destroy_image(texture.image, None);
+                    self.raw.free_memory(texture.memory, None);
+                }
+            }
+            let surfaces: Vec<_> = self.res.surfaces.drain().collect();
+            for s in surfaces {
+                let (surfaces, swapchains) = self.surfaces.as_ref().unwrap();
+                for (semaphore, _) in s.acquires {
+                    self.raw.destroy_semaphore(semaphore, None);
+                }
+                for semaphore in s.presents {
+                    self.raw.destroy_semaphore(semaphore, None);
+                }
+                swapchains.destroy_swapchain(s.swapchain, None);
+                surfaces.destroy_surface(s.raw, None);
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);

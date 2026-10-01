@@ -20,6 +20,7 @@ mod sampler_info;
 #[cfg(any(feature = "mtl", feature = "vk"))]
 mod slots;
 mod stencil_face;
+mod surface_info;
 mod texture_info;
 mod vertex_attribute;
 mod vertex_buffer;
@@ -36,6 +37,7 @@ pub use mtl::Device;
 pub use render_info::RenderInfo;
 pub use sampler_info::SamplerInfo;
 pub use stencil_face::StencilFace;
+pub use surface_info::SurfaceInfo;
 pub use texture_info::TextureInfo;
 pub use vertex_attribute::VertexAttribute;
 pub use vertex_buffer::VertexBuffer;

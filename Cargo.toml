@@ -7,16 +7,30 @@ edition = "2024"
 crate-type = ["rlib", "cdylib"]
 
 [features]
-vk = ["dep:ash"]
-mtl = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-metal", "dep:dispatch2"]
+vk = ["dep:ash", "dep:ash-window"]
+mtl = [
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-core-foundation",
+    "dep:objc2-metal",
+    "dep:objc2-quartz-core",
+    "dep:dispatch2",
+]
 gl = []
 
 [dependencies]
 ash = { version = "0.38", optional = true }
+ash-window = { version = "0.13", optional = true }
 objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true }
+objc2-core-foundation = { version = "0.3", optional = true }
 objc2-metal = { version = "0.3", optional = true }
+objc2-quartz-core = { version = "0.3", optional = true, features = ["objc2-metal"] }
 dispatch2 = { version = "0.3", optional = true }
+raw-window-handle = "0.6"
+
+[dev-dependencies]
+winit = "0.30"
 
 [build-dependencies]
 toml = { version = "0.8", features = ["preserve_order"] }

@@ -6,7 +6,7 @@ use ash::vk;
 use std::collections::VecDeque;
 
 pub struct Queue {
-    raw: vk::Queue,
+    pub raw: vk::Queue,
     family: u32,
     semaphore: vk::Semaphore,
     count: u64,
@@ -105,6 +105,48 @@ impl Queue {
         };
         self.busy.push_back((frame, self.count));
         Ok(())
+    }
+
+    pub fn done(&self, device: &ash::Device, value: u64) {
+        let semaphores = [self.semaphore];
+        let values = [value];
+        let info = vk::SemaphoreWaitInfo::default()
+            .semaphores(&semaphores)
+            .values(&values);
+        unsafe { device.wait_semaphores(&info, u64::MAX).unwrap() };
+    }
+
+    pub fn sync(
+        &mut self,
+        device: &ash::Device,
+        wait: vk::Semaphore,
+        signal: vk::Semaphore,
+    ) -> u64 {
+        let info = |semaphore, value| {
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(semaphore)
+                .value(value)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+        };
+        self.count += 1;
+        let waits: Vec<_> = [wait]
+            .into_iter()
+            .filter(|w| *w != vk::Semaphore::null())
+            .map(|w| info(w, 0))
+            .collect();
+        let mut signals = vec![info(self.semaphore, self.count)];
+        if signal != vk::Semaphore::null() {
+            signals.push(info(signal, 0));
+        }
+        let submit = vk::SubmitInfo2::default()
+            .wait_semaphore_infos(&waits)
+            .signal_semaphore_infos(&signals);
+        unsafe {
+            device
+                .queue_submit2(self.raw, &[submit], vk::Fence::null())
+                .unwrap()
+        };
+        self.count
     }
 
     pub fn destroy(&mut self, device: &ash::Device) {

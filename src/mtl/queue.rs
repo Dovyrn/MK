@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::ptr::NonNull;
 
 pub struct Queue {
-    raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
+    pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
     buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     residency: Retained<ProtocolObject<dyn MTLResidencySet>>,

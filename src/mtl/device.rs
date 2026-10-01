@@ -2,29 +2,35 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
+use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
-    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, TextureInfo, address,
-    blend, border, dimension, fill, filter, format, mask, memory, topology, usage,
+    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
+    TextureInfo, address, blend, border, dimension, fill, filter, format, mask, memory, topology,
+    usage,
 };
 use dispatch2::DispatchData;
+use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2_core_foundation::CGSize;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4CompilerDescriptor,
-    MTL4ComputePipelineDescriptor, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
-    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4AlphaToCoverageState, MTL4BlendState, MTL4CommandQueue, MTL4Compiler,
+    MTL4CompilerDescriptor, MTL4ComputePipelineDescriptor, MTL4FunctionDescriptor,
+    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor, MTLAllocation,
     MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
-    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLHazardTrackingMode,
-    MTLLibrary, MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
-    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
-    MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode, MTLTexture,
-    MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
-    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
+    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable,
+    MTLHazardTrackingMode, MTLLibrary, MTLPrimitiveTopologyClass, MTLResidencySet,
+    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
+    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
+    MTLSamplerState, MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
+    MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
 };
+use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 fn compare(c: u32) -> MTLCompareFunction {
     MTLCompareFunction(c.saturating_sub(1) as usize)
@@ -499,6 +505,80 @@ impl Device {
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {
         id(self.res.samplers.get(sampler).gpuResourceID())
+    }
+
+    pub fn create_surface(
+        &mut self,
+        window: &impl HasWindowHandle,
+        info: &SurfaceInfo,
+    ) -> Result<u32, String> {
+        let handle = window.window_handle().map_err(|e| e.to_string())?;
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return Err("Metal surfaces need an AppKit view".into());
+        };
+        let layer = CAMetalLayer::new();
+        layer.setDevice(Some(&self.raw));
+        layer.setPixelFormat(format::mtl(info.format));
+        layer.setFramebufferOnly(false);
+        layer.setDisplaySyncEnabled(info.vsync);
+        layer.setMaximumDrawableCount(info.images as usize);
+        layer.setDrawableSize(CGSize::new(info.width as f64, info.height as f64));
+        let view: &AnyObject = unsafe { handle.ns_view.cast().as_ref() };
+        let _: () = unsafe { msg_send![view, setWantsLayer: true] };
+        let _: () = unsafe { msg_send![view, setLayer: &*layer] };
+        for q in &self.queues {
+            q.raw.addResidencySet(&layer.residencySet());
+        }
+        Ok(self.res.surfaces.insert(Surface {
+            layer,
+            format: info.format,
+            drawable: None,
+        }))
+    }
+
+    pub fn resize_surface(&mut self, surface: u32, width: u32, height: u32) -> Result<(), String> {
+        let s = self.res.surfaces.get(surface);
+        s.layer
+            .setDrawableSize(CGSize::new(width as f64, height as f64));
+        Ok(())
+    }
+
+    pub fn destroy_surface(&mut self, surface: u32) {
+        let s = self.res.surfaces.remove(surface);
+        for q in &self.queues {
+            q.raw.removeResidencySet(&s.layer.residencySet());
+        }
+    }
+
+    pub fn acquire(&mut self, queue: usize, surface: u32) -> Result<u32, String> {
+        let s = self.res.surfaces.get(surface);
+        let drawable = s.layer.nextDrawable().ok_or("no drawable")?;
+        let texture = self.res.textures.insert(Texture {
+            raw: drawable.texture(),
+            format: s.format,
+        });
+        self.queues[queue]
+            .raw
+            .waitForDrawable(ProtocolObject::from_ref(&*drawable));
+        self.res.surfaces.get_mut(surface).drawable = Some((drawable, texture));
+        Ok(texture)
+    }
+
+    pub fn present(&mut self, queue: usize, surface: u32) -> Result<(), String> {
+        let (drawable, texture) = self
+            .res
+            .surfaces
+            .get_mut(surface)
+            .drawable
+            .take()
+            .ok_or("present without acquire")?;
+        let drawable: &ProtocolObject<dyn CAMetalDrawable> = &drawable;
+        self.queues[queue]
+            .raw
+            .signalDrawable(ProtocolObject::from_ref(drawable));
+        ProtocolObject::<dyn MTLDrawable>::from_ref(drawable).present();
+        self.res.textures.remove(texture);
+        Ok(())
     }
 
     pub fn create_event(&mut self) -> u32 {

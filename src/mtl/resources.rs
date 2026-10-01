@@ -1,5 +1,6 @@
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::render::Render;
+use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
@@ -14,5 +15,6 @@ pub struct Resources {
     pub pipelines: Slots<Pipeline>,
     pub renders: Slots<Render>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
+    pub surfaces: Slots<Surface>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
 }
