@@ -614,6 +614,25 @@ impl Device {
         }
     }
 
+    pub fn sparse_tile(&self, info: &TextureInfo) -> [u32; 3] {
+        let create = image_info(info);
+        let formats = unsafe {
+            self.instance
+                .get_physical_device_sparse_image_format_properties(
+                    self.physical,
+                    create.format,
+                    create.image_type,
+                    create.samples,
+                    create.usage,
+                    vk::ImageTiling::OPTIMAL,
+                )
+        };
+        formats.first().map_or([0; 3], |f| {
+            let g = f.image_granularity;
+            [g.width, g.height, g.depth]
+        })
+    }
+
     pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
         let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
         let info = self

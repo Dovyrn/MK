@@ -371,6 +371,19 @@ impl Device {
             .sparseTileSizeInBytesForSparsePageSize(MTLSparsePageSize::Size64) as u64
     }
 
+    pub fn sparse_tile(&self, info: &TextureInfo) -> [u32; 3] {
+        let s = unsafe {
+            self.raw
+                .sparseTileSizeWithTextureType_pixelFormat_sampleCount_sparsePageSize(
+                    kind(info.dimension, info.samples),
+                    format::mtl(info.format),
+                    info.samples as usize,
+                    MTLSparsePageSize::Size64,
+                )
+        };
+        [s.width as u32, s.height as u32, s.depth as u32]
+    }
+
     pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
         let buffer = unsafe {
             self.raw
