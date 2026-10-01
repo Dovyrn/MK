@@ -16,16 +16,18 @@ use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2_core_foundation::CGSize;
-use objc2_foundation::{NSArray, NSRange, NSString};
+use objc2_foundation::{NSArray, NSRange, NSString, NSURL};
 use objc2_metal::{
     MTL4AccelerationStructureDescriptor, MTL4AccelerationStructureGeometryDescriptor,
     MTL4AccelerationStructureTriangleGeometryDescriptor, MTL4AlphaToCoverageState, MTL4BlendState,
     MTL4BufferRange, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
-    MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor, MTL4CounterHeapType,
-    MTL4FunctionDescriptor, MTL4InstanceAccelerationStructureDescriptor,
-    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
-    MTL4PrimitiveAccelerationStructureDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
+    MTL4CompilerTaskOptions, MTL4ComputePipelineDescriptor, MTL4CounterHeapDescriptor,
+    MTL4CounterHeapType, MTL4FunctionDescriptor, MTL4InstanceAccelerationStructureDescriptor,
+    MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDataSetSerializer,
+    MTL4PipelineDataSetSerializerConfiguration, MTL4PipelineDataSetSerializerDescriptor,
+    MTL4PipelineDescriptor, MTL4PrimitiveAccelerationStructureDescriptor,
+    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
+    MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
     MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
     MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
     MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
@@ -259,6 +261,8 @@ fn id(id: MTLResourceID) -> u64 {
 pub struct Device {
     pub raw: Retained<ProtocolObject<dyn MTLDevice>>,
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
+    options: Retained<MTL4CompilerTaskOptions>,
+    serializer: Option<Retained<ProtocolObject<dyn MTL4PipelineDataSetSerializer>>>,
     residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     dirty: bool,
     res: Resources,
@@ -289,6 +293,8 @@ impl Device {
         Ok(Self {
             raw,
             compiler,
+            options: MTL4CompilerTaskOptions::new(),
+            serializer: None,
             residency,
             dirty: false,
             res: Resources::default(),
@@ -448,7 +454,10 @@ impl Device {
         desc.setComputeFunctionDescriptor(Some(&function(&library, entry)));
         let state = self
             .compiler
-            .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(&desc, None)
+            .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
+                &desc,
+                Some(&self.options),
+            )
             .map_err(|e| e.localizedDescription().to_string())?;
         let group = size(group);
         Ok(self.res.pipelines.insert(Pipeline { state, group }))
@@ -456,6 +465,42 @@ impl Device {
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
         self.res.pipelines.remove(pipeline);
+    }
+
+    pub fn record_cache(&mut self) -> Result<(), String> {
+        let desc = MTL4PipelineDataSetSerializerDescriptor::new();
+        desc.setConfiguration(MTL4PipelineDataSetSerializerConfiguration::CaptureBinaries);
+        let serializer = self.raw.newPipelineDataSetSerializerWithDescriptor(&desc);
+        let desc = MTL4CompilerDescriptor::new();
+        desc.setPipelineDataSetSerializer(Some(&serializer));
+        self.compiler = self
+            .raw
+            .newCompilerWithDescriptor_error(&desc)
+            .map_err(|e| e.localizedDescription().to_string())?;
+        self.serializer = Some(serializer);
+        Ok(())
+    }
+
+    pub fn save_cache(&self, path: &str) -> Result<(), String> {
+        let serializer = self
+            .serializer
+            .as_ref()
+            .ok_or("record_cache was not called")?;
+        serializer
+            .serializeAsArchiveAndFlushToURL_error(&NSURL::fileURLWithPath(&NSString::from_str(
+                path,
+            )))
+            .map_err(|e| e.localizedDescription().to_string())
+    }
+
+    pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
+        let archive = self
+            .raw
+            .newArchiveWithURL_error(&NSURL::fileURLWithPath(&NSString::from_str(path)))
+            .map_err(|e| e.localizedDescription().to_string())?;
+        self.options
+            .setLookupArchives(Some(&NSArray::from_retained_slice(&[archive])));
+        Ok(())
     }
 
     fn library(&self, code: &[u8]) -> Result<Retained<ProtocolObject<dyn MTLLibrary>>, String> {
@@ -510,7 +555,10 @@ impl Device {
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
+                base,
+                Some(&self.options),
+            )
             .map_err(|e| e.localizedDescription().to_string())?;
         Ok(self.res.renders.insert(Render {
             state,
@@ -539,7 +587,10 @@ impl Device {
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
+                base,
+                Some(&self.options),
+            )
             .map_err(|e| e.localizedDescription().to_string())?;
         Ok(self.res.renders.insert(Render {
             state,
@@ -568,7 +619,10 @@ impl Device {
         let base: &MTL4PipelineDescriptor = &desc;
         let state = self
             .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(base, None)
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
+                base,
+                Some(&self.options),
+            )
             .map_err(|e| e.localizedDescription().to_string())?;
         Ok(self.res.renders.insert(Render {
             state,

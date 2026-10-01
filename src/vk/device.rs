@@ -32,6 +32,7 @@ pub struct Device {
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
+    cache: vk::PipelineCache,
     bindless: Bindless,
     layout: vk::PipelineLayout,
     res: Resources,
@@ -345,6 +346,7 @@ impl Device {
             Self {
                 memory: instance.get_physical_device_memory_properties(physical),
                 families,
+                cache: vk::PipelineCache::null(),
                 entry,
                 instance,
                 physical,
@@ -954,11 +956,9 @@ impl Device {
                     .vertex_input_state(&input)
                     .input_assembly_state(&assembly);
             }
-            let result = self.raw.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[pipeline_info],
-                None,
-            );
+            let result = self
+                .raw
+                .create_graphics_pipelines(self.cache, &[pipeline_info], None);
             self.raw.destroy_shader_module(module, None);
             let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
             Ok(self.res.renders.insert(pipeline))
@@ -1196,6 +1196,39 @@ impl Device {
         sampler as u64
     }
 
+    pub fn record_cache(&mut self) -> Result<(), String> {
+        if self.cache == vk::PipelineCache::null() {
+            self.cache = self.new_cache(&[])?;
+        }
+        Ok(())
+    }
+
+    pub fn save_cache(&self, path: &str) -> Result<(), String> {
+        let data = unsafe {
+            self.raw
+                .get_pipeline_cache_data(self.cache)
+                .map_err(|e| e.to_string())?
+        };
+        std::fs::write(path, data).map_err(|e| e.to_string())
+    }
+
+    pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        let cache = self.new_cache(&data)?;
+        unsafe { self.raw.destroy_pipeline_cache(self.cache, None) };
+        self.cache = cache;
+        Ok(())
+    }
+
+    fn new_cache(&self, data: &[u8]) -> Result<vk::PipelineCache, String> {
+        let info = vk::PipelineCacheCreateInfo::default().initial_data(data);
+        unsafe {
+            self.raw
+                .create_pipeline_cache(&info, None)
+                .map_err(|e| e.to_string())
+        }
+    }
+
     pub fn create_pipeline(
         &mut self,
         code: &[u8],
@@ -1217,9 +1250,7 @@ impl Device {
             let info = vk::ComputePipelineCreateInfo::default()
                 .stage(stage)
                 .layout(self.layout);
-            let result =
-                self.raw
-                    .create_compute_pipelines(vk::PipelineCache::null(), &[info], None);
+            let result = self.raw.create_compute_pipelines(self.cache, &[info], None);
             self.raw.destroy_shader_module(module, None);
             let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
             Ok(self.res.pipelines.insert(pipeline))
@@ -1576,6 +1607,7 @@ impl Drop for Device {
             for heap in self.res.heaps.drain() {
                 self.raw.free_memory(heap.memory, None);
             }
+            self.raw.destroy_pipeline_cache(self.cache, None);
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
             if self.owned {
