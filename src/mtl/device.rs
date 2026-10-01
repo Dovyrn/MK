@@ -5,6 +5,7 @@ use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 use crate::mtl::surface::Surface;
+use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
     AccelInfo, Caps, ColorTarget, Commands, DepthInfo, IndirectInfo, MeshInfo, RenderInfo,
@@ -28,18 +29,20 @@ use objc2_metal::{
     MTL4PipelineDataSetSerializerConfiguration, MTL4PipelineDataSetSerializerDescriptor,
     MTL4PipelineDescriptor, MTL4PrimitiveAccelerationStructureDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
-    MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
+    MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
     MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
     MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
-    MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
-    MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType,
-    MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType,
+    MTLCompareFunction, MTLComputePipelineState, MTLCreateSystemDefaultDevice,
+    MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor,
+    MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
+    MTLIndirectCommandType, MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor,
     MTLLibrary, MTLMatrixLayout, MTLPrimitiveTopologyClass, MTLResidencySet,
     MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
     MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
     MTLSamplerState, MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
     MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
-    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
+    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction, MTLVisibleFunctionTable,
+    MTLVisibleFunctionTableDescriptor,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -472,6 +475,94 @@ impl Device {
             .map_err(|e| e.localizedDescription().to_string())?;
         let group = size(group);
         Ok(self.res.pipelines.insert(Pipeline { state, group }))
+    }
+
+    pub fn create_linked_pipeline(
+        &mut self,
+        code: &[u8],
+        entry: &str,
+        group: [u32; 3],
+        functions: &[&str],
+    ) -> Result<u32, String> {
+        let library = self.library(code)?;
+        let desc = MTL4ComputePipelineDescriptor::new();
+        desc.setComputeFunctionDescriptor(Some(&function(&library, entry)));
+        let linked: Vec<_> = functions.iter().map(|f| function(&library, f)).collect();
+        let linking = MTL4StaticLinkingDescriptor::new();
+        linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
+        desc.setStaticLinkingDescriptor(Some(&linking));
+        let state = self
+            .compiler
+            .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
+                &desc,
+                Some(&self.options),
+            )
+            .map_err(|e| e.localizedDescription().to_string())?;
+        let group = size(group);
+        Ok(self.res.pipelines.insert(Pipeline { state, group }))
+    }
+
+    pub fn create_function_table(
+        &mut self,
+        pipeline: u32,
+        functions: &[&str],
+        intersection: bool,
+    ) -> Result<u32, String> {
+        let state = &self.res.pipelines.get(pipeline).state;
+        let handles = functions
+            .iter()
+            .map(|f| {
+                state
+                    .functionHandleWithName(&NSString::from_str(f))
+                    .ok_or(format!("{f} is not linked into the pipeline"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let table = if intersection {
+            let desc = MTLIntersectionFunctionTableDescriptor::new();
+            desc.setFunctionCount(handles.len());
+            let table = state
+                .newIntersectionFunctionTableWithDescriptor(&desc)
+                .ok_or("intersection function table")?;
+            for (i, h) in handles.iter().enumerate() {
+                table.setFunction_atIndex(Some(h), i);
+            }
+            self.residency
+                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*table));
+            Table::Intersection(table)
+        } else {
+            let desc = MTLVisibleFunctionTableDescriptor::new();
+            unsafe { desc.setFunctionCount(handles.len()) };
+            let table = state
+                .newVisibleFunctionTableWithDescriptor(&desc)
+                .ok_or("visible function table")?;
+            for (i, h) in handles.iter().enumerate() {
+                unsafe { table.setFunction_atIndex(Some(h), i) };
+            }
+            self.residency
+                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*table));
+            Table::Visible(table)
+        };
+        self.dirty = true;
+        Ok(self.res.tables.insert(table))
+    }
+
+    pub fn destroy_function_table(&mut self, table: u32) {
+        match self.res.tables.remove(table) {
+            Table::Visible(t) => self
+                .residency
+                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*t)),
+            Table::Intersection(t) => self
+                .residency
+                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*t)),
+        }
+        self.dirty = true;
+    }
+
+    pub fn function_table_handle(&self, table: u32) -> u64 {
+        match self.res.tables.get(table) {
+            Table::Visible(t) => id(t.gpuResourceID()),
+            Table::Intersection(t) => id(t.gpuResourceID()),
+        }
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {

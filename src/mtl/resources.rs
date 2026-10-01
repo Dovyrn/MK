@@ -3,6 +3,7 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
 use crate::mtl::surface::Surface;
+use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
@@ -22,6 +23,7 @@ pub struct Resources {
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub heaps: Slots<(Retained<ProtocolObject<dyn MTLHeap>>, u32)>,
     pub indirects: Slots<Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>>,
+    pub tables: Slots<Table>,
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub surfaces: Slots<Surface>,
