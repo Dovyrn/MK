@@ -19,4 +19,4 @@ objc2-metal = { version = "0.3", optional = true }
 dispatch2 = { version = "0.3", optional = true }
 
 [build-dependencies]
-toml = "0.8"
+toml = { version = "0.8", features = ["preserve_order"] }

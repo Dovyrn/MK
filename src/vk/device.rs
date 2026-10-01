@@ -1,4 +1,4 @@
-use crate::Memory;
+use crate::memory;
 use crate::slots::Slots;
 use crate::vk::buffer::Buffer;
 use crate::vk::queue::{Queue, timeline};
@@ -162,15 +162,16 @@ impl Device {
         }
     }
 
-    fn memory_type(&self, bits: u32, memory: Memory) -> u32 {
+    fn memory_type(&self, bits: u32, memory: u32) -> u32 {
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
         let (want, prefer) = match memory {
-            Memory::Device => (
+            memory::DEVICE => (
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
                 vk::MemoryPropertyFlags::empty(),
             ),
-            Memory::Upload => (host, vk::MemoryPropertyFlags::empty()),
-            Memory::Readback => (host, vk::MemoryPropertyFlags::HOST_CACHED),
+            memory::UPLOAD => (host, vk::MemoryPropertyFlags::empty()),
+            memory::READBACK => (host, vk::MemoryPropertyFlags::HOST_CACHED),
+            _ => panic!("unknown memory {memory}"),
         };
         let types = &self.memory.memory_types[..self.memory.memory_type_count as usize];
         let find = |flags: vk::MemoryPropertyFlags| {
@@ -180,7 +181,7 @@ impl Device {
         find(want | prefer).or_else(|| find(want)).unwrap()
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: Memory) -> u32 {
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
         unsafe {
             let usage = vk::BufferUsageFlags::TRANSFER_SRC
                 | vk::BufferUsageFlags::TRANSFER_DST

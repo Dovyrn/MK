@@ -1,4 +1,4 @@
-use crate::Memory;
+use crate::memory;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::queue::Queue;
 use crate::slots::Slots;
@@ -57,15 +57,16 @@ impl Device {
         })
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: Memory) -> u32 {
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
         let options = MTLResourceOptions::HazardTrackingModeUntracked
             | match memory {
-                Memory::Device => MTLResourceOptions::StorageModePrivate,
-                Memory::Upload => {
+                memory::DEVICE => MTLResourceOptions::StorageModePrivate,
+                memory::UPLOAD => {
                     MTLResourceOptions::StorageModeShared
                         | MTLResourceOptions::CPUCacheModeWriteCombined
                 }
-                Memory::Readback => MTLResourceOptions::StorageModeShared,
+                memory::READBACK => MTLResourceOptions::StorageModeShared,
+                _ => panic!("unknown memory {memory}"),
             };
         let buffer = self
             .raw
