@@ -5,7 +5,7 @@ use crate::mtl::resources::Resources;
 use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
-    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
+    Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
     TextureInfo, address, blend, border, dimension, fill, filter, format, mask, memory, topology,
     usage,
 };
@@ -21,7 +21,7 @@ use objc2_metal::{
     MTL4LibraryFunctionDescriptor, MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor, MTLAllocation,
     MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction,
-    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable,
+    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily,
     MTLHazardTrackingMode, MTLLibrary, MTLPrimitiveTopologyClass, MTLResidencySet,
     MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
     MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
@@ -226,6 +226,17 @@ impl Device {
             res: Resources::default(),
             queues,
         })
+    }
+
+    pub fn caps(&self) -> Caps {
+        Caps {
+            mesh: self.raw.supportsFamily(MTLGPUFamily::Apple7)
+                || self.raw.supportsFamily(MTLGPUFamily::Mac2),
+            push: 256,
+            queues: self.queues.len() as u32,
+            samplers: 2048,
+            textures: 500_000,
+        }
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {

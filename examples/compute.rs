@@ -12,6 +12,7 @@ fn main() {}
 #[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = Device::new(1).unwrap();
+    println!("{:?}", device.caps());
     let n = 1024u32;
     let buffer = device.create_buffer(n as u64 * 4, memory::READBACK);
     let pipeline = device.create_pipeline(CODE, "fill", [64, 1, 1]).unwrap();

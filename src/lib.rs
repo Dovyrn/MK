@@ -8,6 +8,7 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 ))]
 compile_error!("enable exactly one backend feature");
 
+mod caps;
 mod color_target;
 mod command;
 mod commands;
@@ -29,6 +30,7 @@ pub mod vk;
 
 #[cfg(feature = "vk")]
 pub use ash;
+pub use caps::Caps;
 pub use color_target::ColorTarget;
 pub use command::Command;
 pub use commands::Commands;

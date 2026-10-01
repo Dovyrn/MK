@@ -4,6 +4,8 @@ pub struct Heap {
     pub layout: vk::DescriptorSetLayout,
     pub pool: vk::DescriptorPool,
     pub set: vk::DescriptorSet,
+    pub samplers: u32,
+    pub images: u32,
 }
 
 const SAMPLERS: u32 = 4096;
@@ -71,7 +73,13 @@ impl Heap {
                 .descriptor_pool(pool)
                 .set_layouts(&layouts);
             let set = device.allocate_descriptor_sets(&info).unwrap()[0];
-            Self { layout, pool, set }
+            Self {
+                layout,
+                pool,
+                set,
+                samplers,
+                images,
+            }
         }
     }
 

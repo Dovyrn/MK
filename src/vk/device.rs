@@ -5,8 +5,8 @@ use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo, address,
-    border, dimension, fill, filter, format, memory, topology, usage,
+    Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo,
+    address, border, dimension, fill, filter, format, memory, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
@@ -263,6 +263,21 @@ impl Device {
                 .find(|&i| bits & (1 << i) != 0 && types[i as usize].property_flags.contains(flags))
         };
         find(want | prefer).or_else(|| find(want)).unwrap()
+    }
+
+    pub fn caps(&self) -> Caps {
+        let limits = unsafe {
+            self.instance
+                .get_physical_device_properties(self.physical)
+                .limits
+        };
+        Caps {
+            mesh: self.mesh.is_some(),
+            push: limits.max_push_constants_size.min(256),
+            queues: self.queues.len() as u32,
+            samplers: self.heap.samplers,
+            textures: self.heap.images / 2,
+        }
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
