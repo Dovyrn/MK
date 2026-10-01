@@ -19,6 +19,7 @@ for src in *.slang *.metal; do
         rm "out/$name.air"
         continue
     fi
+    grep -q 'shader("raygeneration")' "$src" && continue
     entries=$(awk '/\[shader\(/{s=1;next} s&&!/^\[/{match($0,/[A-Za-z_][A-Za-z0-9_]*\(/); print substr($0,RSTART,RLENGTH-1); s=0}' "$src")
     airs=""
     for entry in $entries; do
