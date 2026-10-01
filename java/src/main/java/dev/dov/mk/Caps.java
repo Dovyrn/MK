@@ -22,12 +22,15 @@ public class Caps {
     public int hostAlignment = 0;
     public boolean sharedMemory = false;
     public int viewports = 1;
+    public boolean depthBounds = false;
+    public boolean conditional = false;
+    public boolean statistics = false;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 88;
+        return 100;
     }
 
     public long write(long p) {
@@ -68,6 +71,12 @@ public class Caps {
         memPutInt(p, sharedMemory ? 1 : 0);
         p += 4;
         memPutInt(p, viewports);
+        p += 4;
+        memPutInt(p, depthBounds ? 1 : 0);
+        p += 4;
+        memPutInt(p, conditional ? 1 : 0);
+        p += 4;
+        memPutInt(p, statistics ? 1 : 0);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -117,6 +126,12 @@ public class Caps {
         r.sharedMemory = memGetInt(p) != 0;
         p += 4;
         r.viewports = memGetInt(p);
+        p += 4;
+        r.depthBounds = memGetInt(p) != 0;
+        p += 4;
+        r.conditional = memGetInt(p) != 0;
+        p += 4;
+        r.statistics = memGetInt(p) != 0;
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

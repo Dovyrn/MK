@@ -399,4 +399,10 @@ public class Commands {
         var p = head(64, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
     }
+
+    public void setDepthBounds(float min, float max) {
+        var p = head(65, 8);
+        memPutFloat(p, min);
+        memPutFloat(p + 4, max);
+    }
 }

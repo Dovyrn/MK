@@ -977,6 +977,9 @@ impl<'a> Recorder<'a> {
                     )
                 }
             }
+            Command::SetDepthBounds { min, max } => {
+                self.render().setDepthTestMinBound_maxBound(min, max)
+            }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

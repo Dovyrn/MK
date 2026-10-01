@@ -373,3 +373,16 @@ fields = [["data", "bytes"]]
 [[command]]
 name = "set_scissors"
 fields = [["data", "bytes"]]
+
+[[command]]
+name = "set_depth_bounds"
+fields = [["min", "f32"], ["max", "f32"]]
+
+[[command]]
+name = "begin_conditional"
+backend = "vk"
+fields = [["buffer", "u32"], ["offset", "u64"], ["inverted", "u32"]]
+
+[[command]]
+name = "end_conditional"
+backend = "vk"

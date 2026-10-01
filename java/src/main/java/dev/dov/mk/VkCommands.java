@@ -66,4 +66,15 @@ public class VkCommands extends Commands {
         memPutInt(p + 8, texelWidth);
         memPutInt(p + 12, texelHeight);
     }
+
+    public void beginConditional(int buffer, long offset, int inverted) {
+        var p = head(66, 16);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, inverted);
+    }
+
+    public void endConditional() {
+        head(67, 0);
+    }
 }

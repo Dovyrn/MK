@@ -15,7 +15,7 @@ use crate::{
     address, border, dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
-use ash::ext::{external_memory_host, mesh_shader, mutable_descriptor_type};
+use ash::ext::{conditional_rendering, external_memory_host, mesh_shader, mutable_descriptor_type};
 use ash::khr::{
     acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
     maintenance5, portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline,
@@ -220,6 +220,9 @@ impl Device {
                 extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
                 extensions.push(maintenance5::NAME.as_ptr());
             }
+            if has(&available, conditional_rendering::NAME) {
+                extensions.push(conditional_rendering::NAME.as_ptr());
+            }
             if has(&available, external_memory_fd::NAME) {
                 extensions.push(external_memory_fd::NAME.as_ptr());
             }
@@ -285,6 +288,8 @@ impl Device {
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
                 .multi_viewport(supported.multi_viewport != 0)
+                .depth_bounds(supported.depth_bounds != 0)
+                .pipeline_statistics_query(supported.pipeline_statistics_query != 0)
                 .depth_clamp(supported.depth_clamp != 0)
                 .sparse_binding(supported.sparse_binding != 0)
                 .sparse_residency_buffer(supported.sparse_residency_buffer != 0)
@@ -390,6 +395,9 @@ impl Device {
             let name = c"vkGetMemoryHostPointerPropertiesEXT";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let host = loaded.map(|_| external_memory_host::Device::new(&instance, &raw));
+            let name = c"vkCmdBeginConditionalRenderingEXT";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let conditional = loaded.map(|_| conditional_rendering::Device::new(&instance, &raw));
             let name = c"vkGetMemoryFdKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let fds = loaded.map(|_| external_memory_fd::Device::new(&instance, &raw));
@@ -441,6 +449,7 @@ impl Device {
                     rates,
                     host,
                     fds,
+                    conditional,
                     generated,
                     surfaces,
                 },
@@ -541,6 +550,9 @@ impl Device {
             shading_rate: self.ext.rates.is_some(),
             host_memory: self.ext.host.is_some(),
             shared_memory: self.ext.fds.is_some(),
+            depth_bounds: features.depth_bounds != 0,
+            conditional: self.ext.conditional.is_some(),
+            statistics: features.pipeline_statistics_query != 0,
             viewports: if features.multi_viewport != 0 {
                 limits.max_viewports
             } else {
@@ -620,6 +632,9 @@ impl Device {
         }
         if self.ext.rays.is_some() {
             usage |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
+        }
+        if self.ext.conditional.is_some() {
+            usage |= vk::BufferUsageFlags::CONDITIONAL_RENDERING_EXT;
         }
         usage
     }
@@ -1454,6 +1469,8 @@ impl Device {
                 vk::DynamicState::DEPTH_BIAS,
                 vk::DynamicState::DEPTH_BIAS_ENABLE,
                 vk::DynamicState::BLEND_CONSTANTS,
+                vk::DynamicState::DEPTH_BOUNDS,
+                vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE,
             ];
             if vertex.is_some() {
                 states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
@@ -2210,6 +2227,10 @@ impl Device {
         } != 0;
         let (kind, flags) = match kind {
             query::TIMESTAMP => (vk::QueryType::TIMESTAMP, vk::QueryControlFlags::empty()),
+            query::STATISTICS => (
+                vk::QueryType::PIPELINE_STATISTICS,
+                vk::QueryControlFlags::empty(),
+            ),
             query::COMPACTED => (
                 vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
                 vk::QueryControlFlags::empty(),
@@ -2219,17 +2240,33 @@ impl Device {
         };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
-            .query_count(count);
+            .query_count(count)
+            .pipeline_statistics(if kind == vk::QueryType::PIPELINE_STATISTICS {
+                vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
+                    | vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
+                    | vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
+                    | vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
+                    | vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
+                    | vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS
+                    | vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS
+            } else {
+                vk::QueryPipelineStatisticFlags::empty()
+            });
         let pool = unsafe {
             self.raw
                 .create_query_pool(&info, None)
                 .map_err(|e| e.to_string())?
         };
-        Ok(self.res.queries.insert((pool, flags)))
+        let stride = if kind == vk::QueryType::PIPELINE_STATISTICS {
+            56
+        } else {
+            8
+        };
+        Ok(self.res.queries.insert((pool, flags, stride)))
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        let (pool, _) = self.res.queries.remove(heap);
+        let (pool, _, _) = self.res.queries.remove(heap);
         unsafe { self.raw.destroy_query_pool(pool, None) };
     }
 
@@ -2355,7 +2392,7 @@ impl Drop for Device {
                 let generated = self.ext.generated.as_ref().unwrap();
                 (generated.destroy)(self.raw.handle(), handle, std::ptr::null());
             }
-            for (pool, _) in self.res.queries.drain() {
+            for (pool, _, _) in self.res.queries.drain() {
                 self.raw.destroy_query_pool(pool, None);
             }
             for (pipeline, _) in self.res.rays.drain() {

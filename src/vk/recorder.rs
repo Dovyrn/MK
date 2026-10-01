@@ -481,6 +481,8 @@ impl Recorder<'_> {
                     d.cmd_set_blend_constants(b, &[0.0; 4]);
                     d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
                     self.depth_state(&DepthInfo::default());
+                    d.cmd_set_depth_bounds_test_enable(b, false);
+                    d.cmd_set_depth_bounds(b, 0.0, 1.0);
                     if let Some(rates) = &self.ext.rates {
                         let size = vk::Extent2D {
                             width: 1,
@@ -652,7 +654,7 @@ impl Recorder<'_> {
                     d.cmd_write_timestamp2(b, stages(stage), self.res.queries.get(heap).0, index)
                 }
                 Command::BeginOcclusion { heap, index } => {
-                    let (pool, flags) = *self.res.queries.get(heap);
+                    let (pool, flags, _) = *self.res.queries.get(heap);
                     d.cmd_begin_query(b, pool, index, flags)
                 }
                 Command::EndOcclusion { heap, index } => {
@@ -671,7 +673,7 @@ impl Recorder<'_> {
                     count,
                     self.res.buffers.get(buffer).raw,
                     offset,
-                    8,
+                    self.res.queries.get(heap).2,
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 ),
                 Command::BuildAccel {
@@ -894,6 +896,30 @@ impl Recorder<'_> {
                         })
                         .collect();
                     d.cmd_set_scissor_with_count(b, &rects)
+                }
+                Command::SetDepthBounds { min, max } => {
+                    d.cmd_set_depth_bounds_test_enable(b, min > 0.0 || max < 1.0);
+                    d.cmd_set_depth_bounds(b, min, max);
+                }
+                Command::BeginConditional {
+                    buffer,
+                    offset,
+                    inverted,
+                } => {
+                    let info = vk::ConditionalRenderingBeginInfoEXT::default()
+                        .buffer(self.res.buffers.get(buffer).raw)
+                        .offset(offset)
+                        .flags(if inverted != 0 {
+                            vk::ConditionalRenderingFlagsEXT::INVERTED
+                        } else {
+                            vk::ConditionalRenderingFlagsEXT::empty()
+                        });
+                    let c = self.ext.conditional.as_ref().unwrap();
+                    (c.fp().cmd_begin_conditional_rendering_ext)(b, &info)
+                }
+                Command::EndConditional => {
+                    let c = self.ext.conditional.as_ref().unwrap();
+                    (c.fp().cmd_end_conditional_rendering_ext)(b)
                 }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {

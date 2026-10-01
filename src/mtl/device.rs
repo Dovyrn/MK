@@ -357,6 +357,9 @@ impl Device {
             host_alignment: 16384,
             shared_memory: false,
             viewports: 16,
+            depth_bounds: self.raw.supportsFamily(MTLGPUFamily::Apple10),
+            conditional: false,
+            statistics: false,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
