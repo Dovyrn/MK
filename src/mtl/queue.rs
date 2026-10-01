@@ -1,3 +1,4 @@
+use crate::mtl::Callback;
 use crate::mtl::frame::Frame;
 use crate::mtl::recorder::Recorder;
 use crate::mtl::resources::Resources;
@@ -56,7 +57,7 @@ impl Queue {
         &mut self,
         device: &ProtocolObject<dyn MTLDevice>,
         res: &Resources,
-        commands: &[u8],
+        (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), &'static str> {
@@ -76,6 +77,7 @@ impl Queue {
             &self.table,
             &mut frame,
             res,
+            natives,
         );
         let result = recorder.run(commands);
         if let Some(e) = recorder.compute.take() {

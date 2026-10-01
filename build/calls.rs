@@ -8,6 +8,7 @@ pub struct Param {
 
 pub struct Call {
     pub name: String,
+    pub target: String,
     pub backend: Option<String>,
     pub params: Vec<Param>,
     pub result: String,
@@ -22,6 +23,12 @@ pub fn parse(text: &str) -> Vec<Call> {
         .iter()
         .map(|c| Call {
             name: c["name"].as_str().unwrap().to_string(),
+            target: c
+                .get("target")
+                .unwrap_or(&c["name"])
+                .as_str()
+                .unwrap()
+                .to_string(),
             backend: c.get("backend").map(|b| b.as_str().unwrap().to_string()),
             params: c
                 .get("params")
@@ -171,9 +178,9 @@ pub fn rust(calls: &[Call]) -> String {
         .unwrap();
         let args: Vec<_> = call.params.iter().map(rust_arg).collect();
         let target = if statics(call) {
-            format!("crate::Device::{}", call.name)
+            format!("crate::Device::{}", call.target)
         } else {
-            format!("crate::java::device(device).{}", call.name)
+            format!("crate::java::device(device).{}", call.target)
         };
         let borrowed = call.params.iter().find(|p| {
             info(&p.kind) && matches!(p.kind.as_str(), "RenderInfo" | "MeshInfo" | "AccelInfo")

@@ -30,6 +30,8 @@ pub use mtl::Device;
 #[cfg(feature = "mtl")]
 pub use objc2;
 #[cfg(feature = "mtl")]
+pub use objc2_foundation;
+#[cfg(feature = "mtl")]
 pub use objc2_metal;
 #[cfg(feature = "vk")]
 pub use vk::Device;

@@ -8,9 +8,9 @@ use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    AccelInfo, Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo,
-    TextureInfo, ViewInfo, address, border, dimension, fill, filter, format, index, memory, query,
-    topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
+    SurfaceInfo, TextureInfo, ViewInfo, address, border, dimension, fill, filter, format, index,
+    memory, query, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
@@ -1549,6 +1549,25 @@ impl Device {
     pub fn submit(
         &mut self,
         queue: usize,
+        commands: &Commands,
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) -> Result<(), &'static str> {
+        self.queues[queue].submit(
+            &self.raw,
+            &self.ext,
+            self.layout,
+            self.bindless.set,
+            &self.res,
+            (commands.bytes(), commands.natives()),
+            waits,
+            signals,
+        )
+    }
+
+    pub fn submit_bytes(
+        &mut self,
+        queue: usize,
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -1559,7 +1578,7 @@ impl Device {
             self.layout,
             self.bindless.set,
             &self.res,
-            commands,
+            (commands, &[]),
             waits,
             signals,
         )

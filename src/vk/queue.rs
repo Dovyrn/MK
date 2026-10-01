@@ -1,3 +1,4 @@
+use crate::vk::Callback;
 use crate::vk::extensions::Extensions;
 use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
@@ -41,7 +42,7 @@ impl Queue {
         layout: vk::PipelineLayout,
         heap: vk::DescriptorSet,
         res: &Resources,
-        commands: &[u8],
+        (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), &'static str> {
@@ -68,6 +69,7 @@ impl Queue {
             depth: None,
             stencil: vk::RenderingAttachmentInfo::default(),
             views: 0,
+            natives,
         }
         .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };

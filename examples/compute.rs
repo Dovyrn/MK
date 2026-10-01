@@ -42,7 +42,7 @@ fn main() {
     c.end_compute();
     c.end_label();
     print!("{}", Command::dump(c.bytes()));
-    device.submit(0, c.bytes(), &[], &[(event, 1)]).unwrap();
+    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
     assert!(device.wait(event, 1, 1000));
     let data = unsafe { std::slice::from_raw_parts(device.map(buffer).cast::<u32>(), n as usize) };
     for (i, v) in data.iter().enumerate() {

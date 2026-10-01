@@ -7,9 +7,9 @@ use crate::mtl::resources::Resources;
 use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace,
-    SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border, dimension, fill, filter,
-    format, index, mask, memory, query, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
+    StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border, dimension,
+    fill, filter, format, index, mask, memory, query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
@@ -1004,6 +1004,21 @@ impl Device {
     pub fn submit(
         &mut self,
         queue: usize,
+        commands: &Commands,
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) -> Result<(), &'static str> {
+        if self.dirty {
+            self.residency.commit();
+            self.dirty = false;
+        }
+        let commands = (commands.bytes(), commands.natives());
+        self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
+    }
+
+    pub fn submit_bytes(
+        &mut self,
+        queue: usize,
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -1012,6 +1027,6 @@ impl Device {
             self.residency.commit();
             self.dirty = false;
         }
-        self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
+        self.queues[queue].submit(&self.raw, &self.res, (commands, &[]), waits, signals)
     }
 }

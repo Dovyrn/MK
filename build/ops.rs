@@ -70,7 +70,8 @@ fn rust_type(kind: &str) -> &str {
 }
 
 fn gate(op: &Op) -> String {
-    match &op.backend {
+    match op.backend.as_deref() {
+        Some("rust") => "    #[cfg(any(feature = \"vk\", feature = \"mtl\"))]\n".into(),
         Some(b) => format!("    #[cfg(feature = \"{b}\")]\n"),
         None => String::new(),
     }
@@ -179,9 +180,14 @@ pub fn commands(ops: &[Op]) -> String {
             .iter()
             .map(|f| format!("{}: {}", f.name, rust_type(&f.kind).replace("'a ", "")))
             .collect();
+        let public = if op.backend.as_deref() == Some("rust") {
+            "pub(crate)"
+        } else {
+            "pub"
+        };
         writeln!(
             s,
-            "    pub fn {}(&mut self, {}) {{",
+            "    {public} fn {}(&mut self, {}) {{",
             op.name,
             params.join(", ")
         )

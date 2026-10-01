@@ -171,7 +171,7 @@ fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, c.bytes(), &[], &[(event, 1)]).unwrap();
+    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
     assert!(device.wait(event, 1, 1000));
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };

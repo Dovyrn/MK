@@ -40,11 +40,9 @@ fn main() {
     );
     copy.end_compute();
     device
-        .submit(0, copy.bytes(), &[(event, 1)], &[(event, 2)])
+        .submit(0, &copy, &[(event, 1)], &[(event, 2)])
         .unwrap();
-    device
-        .submit(1, compute.bytes(), &[], &[(event, 1)])
-        .unwrap();
+    device.submit(1, &compute, &[], &[(event, 1)]).unwrap();
     assert!(device.wait(event, 2, 5000));
     let values = unsafe { std::slice::from_raw_parts(device.map(back).cast::<u32>(), n as usize) };
     for (i, v) in values.iter().enumerate() {

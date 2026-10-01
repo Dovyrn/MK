@@ -179,9 +179,7 @@ impl ApplicationHandler for App {
                     all,
                 );
                 s.frame += 1;
-                s.device
-                    .submit(0, c.bytes(), &[], &[(s.event, s.frame)])
-                    .unwrap();
+                s.device.submit(0, &c, &[], &[(s.event, s.frame)]).unwrap();
                 s.device.present(0, s.surface).unwrap();
                 if s.frame == 120 {
                     s.device.wait(s.event, s.frame, u64::MAX);

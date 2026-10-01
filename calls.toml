@@ -198,6 +198,7 @@ result = "bool"
 
 [[call]]
 name = "submit"
+target = "submit_bytes"
 params = [["queue", "usize"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
 

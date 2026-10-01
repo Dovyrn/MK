@@ -1,6 +1,7 @@
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
+use crate::vk::{Callback, Native};
 use crate::{Command, DepthInfo, compare, face, index, layout, load, stage, store};
 use ash::vk;
 use std::ffi::CString;
@@ -17,6 +18,7 @@ pub struct Recorder<'a> {
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub views: u32,
+    pub natives: &'a [Callback],
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -685,6 +687,10 @@ impl Recorder<'_> {
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
                 Command::Multiview { views } => self.views = views,
+                Command::Callback { index } => (self.natives[index as usize])(&Native {
+                    device: d,
+                    buffer: b,
+                }),
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();

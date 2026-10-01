@@ -5,6 +5,7 @@ mod device;
 mod extensions;
 mod frame;
 mod heap;
+mod native;
 mod queue;
 mod recorder;
 mod resources;
@@ -12,3 +13,4 @@ mod surface;
 mod texture;
 
 pub use device::Device;
+pub use native::{Callback, Native};

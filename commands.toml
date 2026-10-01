@@ -261,3 +261,8 @@ fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
 [[command]]
 name = "multiview"
 fields = [["views", "u32"]]
+
+[[command]]
+name = "callback"
+backend = "rust"
+fields = [["index", "u32"]]

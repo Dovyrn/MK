@@ -1,6 +1,7 @@
 use crate::mtl::frame::Frame;
 use crate::mtl::query::Query;
 use crate::mtl::resources::Resources;
+use crate::mtl::{Callback, Native};
 use crate::{Command, access, face, format, index, load, stage, store};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -21,6 +22,7 @@ pub struct Recorder<'a> {
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     frame: &'a mut Frame,
     res: &'a Resources,
+    natives: &'a [Callback],
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
@@ -127,6 +129,7 @@ impl<'a> Recorder<'a> {
         table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
         frame: &'a mut Frame,
         res: &'a Resources,
+        natives: &'a [Callback],
     ) -> Self {
         Self {
             device,
@@ -135,6 +138,7 @@ impl<'a> Recorder<'a> {
             table,
             frame,
             res,
+            natives,
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
@@ -783,6 +787,15 @@ impl<'a> Recorder<'a> {
                 )
             },
             Command::Multiview { views } => self.views = views,
+            Command::Callback { index } => {
+                self.flush();
+                (self.natives[index as usize])(&Native {
+                    buffer: self.buffer,
+                    table: self.table,
+                    compute: self.compute.as_deref(),
+                    render: self.render.as_deref(),
+                })
+            }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {
