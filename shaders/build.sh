@@ -2,12 +2,16 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p out
-for src in *.slang; do
-    name="${src%.slang}"
-    if [ -f "$name.glsl" ]; then
-        glslangValidator -V "$name.glsl" -o "out/$name.spv"
-    else
-        slangc "$src" -target spirv -emit-spirv-directly -fvk-use-entrypoint-name -fvk-invert-y -o "out/$name.spv"
+for src in *.slang *.metal; do
+    [ -f "$src" ] || continue
+    name="${src%.*}"
+    [ "$src" = "$name.metal" ] && [ -f "$name.slang" ] && continue
+    if [ -f "$name.slang" ]; then
+        if [ -f "$name.glsl" ]; then
+            glslangValidator -V "$name.glsl" -o "out/$name.spv"
+        else
+            slangc "$name.slang" -target spirv -emit-spirv-directly -fvk-use-entrypoint-name -fvk-invert-y -o "out/$name.spv"
+        fi
     fi
     if [ -f "$name.metal" ]; then
         xcrun -sdk macosx metal -std=metal4.0 -c "$name.metal" -o "out/$name.air"
