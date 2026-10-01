@@ -373,7 +373,7 @@ impl Device {
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
-            let mut d = Self::adopt(entry, instance, physical, device, &slots);
+            let mut d = Self::adopt(entry, instance, physical, device, &slots, &features);
             d.owned = true;
             Ok(d)
         }
@@ -385,6 +385,7 @@ impl Device {
         physical: vk::PhysicalDevice,
         raw: ash::Device,
         queues: &[(u32, u32)],
+        features: &vk::PhysicalDeviceFeatures,
     ) -> Self {
         unsafe {
             let name = c"vkCmdBeginDebugUtilsLabelEXT";
@@ -460,6 +461,7 @@ impl Device {
                     conditional,
                     generated,
                     surfaces,
+                    features: *features,
                 },
                 owned: false,
                 bindless,
@@ -498,15 +500,27 @@ impl Device {
         physical: u64,
         device: u64,
         queues: &[(u32, u32)],
+        features: u64,
     ) -> Self {
         unsafe {
+            let features = (features as *const vk::PhysicalDeviceFeatures)
+                .as_ref()
+                .copied()
+                .unwrap_or_default();
             let get = std::mem::transmute::<usize, vk::PFN_vkGetInstanceProcAddr>(proc as usize);
             let entry = ash::Entry::from_static_fn(ash::StaticFn {
                 get_instance_proc_addr: get,
             });
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
-            Self::adopt(entry, instance, vk::Handle::from_raw(physical), raw, queues)
+            Self::adopt(
+                entry,
+                instance,
+                vk::Handle::from_raw(physical),
+                raw,
+                queues,
+                &features,
+            )
         }
     }
 
@@ -527,16 +541,23 @@ impl Device {
                     .get_physical_device_properties2(self.physical, &mut properties)
             };
         }
-        let (limits, families, features) = unsafe {
+        let features = &self.ext.features;
+        let (limits, families) = unsafe {
             (
                 self.instance
                     .get_physical_device_properties(self.physical)
                     .limits,
                 self.instance
                     .get_physical_device_queue_family_properties(self.physical),
-                self.instance.get_physical_device_features(self.physical),
             )
         };
+        let sparse = features.sparse_binding != 0
+            && features.sparse_residency_buffer != 0
+            && self.queues.iter().all(|q| {
+                families[q.family as usize]
+                    .queue_flags
+                    .contains(vk::QueueFlags::SPARSE_BINDING)
+            });
         Caps {
             mesh: self.ext.mesh.is_some(),
             push: limits.max_push_constants_size.min(256),
@@ -566,13 +587,7 @@ impl Device {
                 1
             },
             host_alignment: host.min_imported_host_pointer_alignment as u32,
-            sparse: features.sparse_binding != 0
-                && features.sparse_residency_buffer != 0
-                && self.queues.iter().all(|q| {
-                    families[q.family as usize]
-                        .queue_flags
-                        .contains(vk::QueueFlags::SPARSE_BINDING)
-                }),
+            sparse,
             instance: 64,
             views: unsafe {
                 let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
@@ -588,7 +603,32 @@ impl Device {
                     t.property_flags
                         .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
                 }),
+            graphics: self
+                .queues
+                .iter()
+                .enumerate()
+                .filter(|(_, q)| {
+                    families[q.family as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::GRAPHICS)
+                })
+                .fold(0, |mask, (i, _)| mask | 1 << i),
+            labels: self.ext.debug.is_some(),
+            surfaces: self.ext.surfaces.is_some(),
+            rays: self.ext.rays.is_some(),
+            anisotropy: features.sampler_anisotropy != 0,
+            depth_clamp: features.depth_clamp != 0,
+            line_fill: features.fill_mode_non_solid != 0,
+            multi_draw: features.multi_draw_indirect != 0,
+            sparse_textures: sparse && features.sparse_residency_image2_d != 0,
         }
+    }
+
+    pub fn name(&self) -> String {
+        let properties = unsafe { self.instance.get_physical_device_properties(self.physical) };
+        properties
+            .device_name_as_c_str()
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned())
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
@@ -860,8 +900,8 @@ impl Device {
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        if !self.caps().sparse {
-            return Err("sparse residency is not supported".into());
+        if !self.caps().sparse_textures {
+            return Err("sparse textures are not supported".into());
         }
         let create = image_info(info);
         let create = create.flags(
@@ -1447,6 +1487,12 @@ impl Device {
         views: u32,
         clamp: bool,
     ) -> Result<u32, String> {
+        if clamp && self.ext.features.depth_clamp == 0 {
+            return Err("depth clamp is not supported".into());
+        }
+        if fill == fill::LINE && self.ext.features.fill_mode_non_solid == 0 {
+            return Err("line fill is not supported".into());
+        }
         unsafe {
             let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
             let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
@@ -1798,6 +1844,9 @@ impl Device {
     }
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+        if info.anisotropy > 1 && self.ext.features.sampler_anisotropy == 0 {
+            return Err("anisotropic filtering is not supported".into());
+        }
         let filter = |f| match f {
             filter::NEAREST => vk::Filter::NEAREST,
             filter::LINEAR => vk::Filter::LINEAR,

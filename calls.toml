@@ -9,6 +9,10 @@ name = "caps"
 result = "Caps"
 
 [[call]]
+name = "name"
+result = "str"
+
+[[call]]
 name = "create_buffer"
 params = [["size", "u64"], ["memory", "u32"]]
 result = "u32"
@@ -239,7 +243,7 @@ params = [["surface", "u32"]]
 [[call]]
 name = "adopt_raw"
 backend = "vk"
-params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"]]
+params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]
 result = "device"
 
 [[call]]

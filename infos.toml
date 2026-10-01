@@ -207,6 +207,15 @@ fields = [
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
+    ["graphics", "u32", "0"],
+    ["labels", "bool", "false"],
+    ["surfaces", "bool", "false"],
+    ["rays", "bool", "false"],
+    ["anisotropy", "bool", "false"],
+    ["depth_clamp", "bool", "false"],
+    ["line_fill", "bool", "false"],
+    ["multi_draw", "bool", "false"],
+    ["sparse_textures", "bool", "false"],
 ]
 
 [[info]]

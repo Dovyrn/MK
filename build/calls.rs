@@ -115,6 +115,7 @@ fn result_types(call: &Call) -> (&'static str, &'static str) {
         "u32" | "i32" => ("int", "jint"),
         "u64" | "pointer" | "handle" | "object" | "device" => ("long", "jlong"),
         "bytes" => ("byte[]", "jni::objects::JByteArray<'local>"),
+        "str" => ("String", "jni::objects::JString<'local>"),
         "bool" => ("boolean", "jboolean"),
         _ => ("void", "()"),
     }
@@ -234,6 +235,9 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             "bytes" => format!(
                 "let r = {invoke};\n        env.byte_array_from_slice(&r).map_err(|e| e.to_string())"
             ),
+            "str" => {
+                format!("let r = {invoke};\n        env.new_string(r).map_err(|e| e.to_string())")
+            }
             "u64" => format!("Ok({invoke} as jlong)"),
             "bool" => format!("Ok({invoke} as jboolean)"),
             "pointer" => format!("Ok({invoke} as usize as jlong)"),

@@ -28,9 +28,18 @@ public class Caps {
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
+    public int graphics = 0;
+    public boolean labels = false;
+    public boolean surfaces = false;
+    public boolean rays = false;
+    public boolean anisotropy = false;
+    public boolean depthClamp = false;
+    public boolean lineFill = false;
+    public boolean multiDraw = false;
+    public boolean sparseTextures = false;
 
     public int size() {
-        return 100;
+        return 136;
     }
 
     public long write(long p) {
@@ -83,6 +92,24 @@ public class Caps {
         memPutInt(p, memoryless ? 1 : 0);
         p += 4;
         memPutInt(p, views);
+        p += 4;
+        memPutInt(p, graphics);
+        p += 4;
+        memPutInt(p, labels ? 1 : 0);
+        p += 4;
+        memPutInt(p, surfaces ? 1 : 0);
+        p += 4;
+        memPutInt(p, rays ? 1 : 0);
+        p += 4;
+        memPutInt(p, anisotropy ? 1 : 0);
+        p += 4;
+        memPutInt(p, depthClamp ? 1 : 0);
+        p += 4;
+        memPutInt(p, lineFill ? 1 : 0);
+        p += 4;
+        memPutInt(p, multiDraw ? 1 : 0);
+        p += 4;
+        memPutInt(p, sparseTextures ? 1 : 0);
         p += 4;
         return p;
     }
@@ -138,6 +165,24 @@ public class Caps {
         r.memoryless = memGetInt(p) != 0;
         p += 4;
         r.views = memGetInt(p);
+        p += 4;
+        r.graphics = memGetInt(p);
+        p += 4;
+        r.labels = memGetInt(p) != 0;
+        p += 4;
+        r.surfaces = memGetInt(p) != 0;
+        p += 4;
+        r.rays = memGetInt(p) != 0;
+        p += 4;
+        r.anisotropy = memGetInt(p) != 0;
+        p += 4;
+        r.depthClamp = memGetInt(p) != 0;
+        p += 4;
+        r.lineFill = memGetInt(p) != 0;
+        p += 4;
+        r.multiDraw = memGetInt(p) != 0;
+        p += 4;
+        r.sparseTextures = memGetInt(p) != 0;
         p += 4;
         return r;
     }

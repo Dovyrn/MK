@@ -108,6 +108,13 @@ fn layout(l: u32) -> vk::ImageLayout {
 }
 
 impl Recorder<'_> {
+    fn multi(&self, count: u32) -> Result<(), &'static str> {
+        if count > 1 && self.ext.features.multi_draw_indirect == 0 {
+            return Err("multi draw indirect is not supported");
+        }
+        Ok(())
+    }
+
     fn depth_state(&self, d: &DepthInfo) {
         let (dev, b) = (self.device, self.buffer);
         unsafe {
@@ -633,6 +640,7 @@ impl Recorder<'_> {
                     count,
                     stride,
                 } => {
+                    self.multi(count)?;
                     d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, count, stride)
                 }
                 Command::DrawIndexedIndirect {
@@ -640,13 +648,16 @@ impl Recorder<'_> {
                     offset,
                     count,
                     stride,
-                } => d.cmd_draw_indexed_indirect(
-                    b,
-                    self.res.buffers.get(buffer).raw,
-                    offset,
-                    count,
-                    stride,
-                ),
+                } => {
+                    self.multi(count)?;
+                    d.cmd_draw_indexed_indirect(
+                        b,
+                        self.res.buffers.get(buffer).raw,
+                        offset,
+                        count,
+                        stride,
+                    )
+                }
                 Command::DrawMesh { x, y, z } => self
                     .ext
                     .mesh
@@ -658,18 +669,21 @@ impl Recorder<'_> {
                     offset,
                     count,
                     stride,
-                } => self
-                    .ext
-                    .mesh
-                    .as_ref()
-                    .ok_or("VK_EXT_mesh_shader is not enabled")?
-                    .cmd_draw_mesh_tasks_indirect(
+                } => {
+                    self.multi(count)?;
+                    let mesh = self
+                        .ext
+                        .mesh
+                        .as_ref()
+                        .ok_or("VK_EXT_mesh_shader is not enabled")?;
+                    mesh.cmd_draw_mesh_tasks_indirect(
                         b,
                         self.res.buffers.get(buffer).raw,
                         offset,
                         count,
                         stride,
-                    ),
+                    )
+                }
                 Command::OcclusionHeap { .. } => {}
                 Command::ResetQueries { heap, first, count } => {
                     d.cmd_reset_query_pool(b, self.res.queries.get(heap).0, first, count)
@@ -955,6 +969,9 @@ impl Recorder<'_> {
                     d.cmd_set_scissor_with_count(b, &rects)
                 }
                 Command::SetDepthBounds { min, max } => {
+                    if self.ext.features.depth_bounds == 0 {
+                        return Err("depth bounds are not supported");
+                    }
                     d.cmd_set_depth_bounds_test_enable(b, min > 0.0 || max < 1.0);
                     d.cmd_set_depth_bounds(b, min, max);
                 }

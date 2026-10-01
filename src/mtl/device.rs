@@ -372,7 +372,20 @@ impl Device {
                 .rev()
                 .find(|&n| self.raw.supportsVertexAmplificationCount(n))
                 .unwrap_or(1) as u32,
+            graphics: (1 << self.queues.len()) - 1,
+            labels: true,
+            surfaces: true,
+            rays: false,
+            anisotropy: true,
+            depth_clamp: true,
+            line_fill: true,
+            multi_draw: true,
+            sparse_textures: self.raw.supportsFamily(MTLGPUFamily::Apple6),
         }
+    }
+
+    pub fn name(&self) -> String {
+        self.raw.name().to_string()
     }
 
     fn storage(&self, memory: u32) -> Result<MTLResourceOptions, String> {

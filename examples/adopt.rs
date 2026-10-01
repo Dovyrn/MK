@@ -84,6 +84,7 @@ fn native(
         host.physical,
         host.raw.clone(),
         &[(family, 0)],
+        &vk::PhysicalDeviceFeatures::default(),
     );
     let slot = device
         .import_texture(

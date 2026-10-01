@@ -11,13 +11,13 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class VkDevice {
 
-    public static Device adoptRaw(long proc, long instance, long physical, long device, int[] queues) {
+    public static Device adoptRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
         try (var stack = MemoryStack.stackPush()) {
-            return new Device(nAdoptRaw(proc, instance, physical, device, memAddress(stack.ints(queues)), queues.length / 2));
+            return new Device(nAdoptRaw(proc, instance, physical, device, memAddress(stack.ints(queues)), queues.length / 2, features));
         }
     }
 
-    private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength);
+    private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
     public static int importBuffer(Device device, long raw) {
         try (var stack = MemoryStack.stackPush()) {

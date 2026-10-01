@@ -12,8 +12,8 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
-    MTLDevice, MTLFence, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
-    MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction,
+    MTLDevice, MTLFence, MTLGPUFamily, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
+    MTLRenderStages, MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction,
     MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 use objc2_metal_fx::{
@@ -1015,6 +1015,9 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::SetDepthBounds { min, max } => {
+                if !self.device.supportsFamily(MTLGPUFamily::Apple10) {
+                    return Err("depth bounds are not supported");
+                }
                 self.render().setDepthTestMinBound_maxBound(min, max)
             }
             Command::BeginLabel { text } => {

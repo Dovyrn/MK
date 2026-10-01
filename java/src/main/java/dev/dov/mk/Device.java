@@ -37,6 +37,14 @@ public class Device {
 
     private static native void nCaps(long device, long out);
 
+    public String name() {
+        try (var stack = MemoryStack.stackPush()) {
+            return nName(handle);
+        }
+    }
+
+    private static native String nName(long device);
+
     public int createBuffer(long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
             return nCreateBuffer(handle, size, memory);
