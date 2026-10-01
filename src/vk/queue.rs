@@ -1,8 +1,6 @@
-use crate::slots::Slots;
-use crate::vk::buffer::Buffer;
 use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
-use crate::vk::texture::Texture;
+use crate::vk::resources::Resources;
 use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::VecDeque;
@@ -42,10 +40,7 @@ impl Queue {
         debug: Option<&debug_utils::Device>,
         layout: vk::PipelineLayout,
         heap: vk::DescriptorSet,
-        buffers: &Slots<Buffer>,
-        textures: &Slots<Texture>,
-        pipelines: &Slots<vk::Pipeline>,
-        events: &Slots<vk::Semaphore>,
+        res: &Resources,
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -68,9 +63,7 @@ impl Queue {
             debug,
             buffer: frame.buffer,
             layout,
-            buffers,
-            textures,
-            pipelines,
+            res,
         }
         .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };
@@ -87,12 +80,12 @@ impl Queue {
         };
         let waits: Vec<_> = waits
             .iter()
-            .map(|&(e, v)| info(*events.get(e), v))
+            .map(|&(e, v)| info(*res.events.get(e), v))
             .collect();
         self.count += 1;
         let mut signals: Vec<_> = signals
             .iter()
-            .map(|&(e, v)| info(*events.get(e), v))
+            .map(|&(e, v)| info(*res.events.get(e), v))
             .collect();
         signals.push(info(self.semaphore, self.count));
         let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.buffer)];

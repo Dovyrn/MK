@@ -1,13 +1,11 @@
 use crate::mtl::frame::Frame;
-use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::Recorder;
-use crate::mtl::texture::Texture;
-use crate::slots::Slots;
+use crate::mtl::resources::Resources;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTLBuffer, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
+    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
     MTLSharedEvent, MTLSize,
 };
 use std::collections::VecDeque;
@@ -54,14 +52,10 @@ impl Queue {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn submit(
         &mut self,
         device: &ProtocolObject<dyn MTLDevice>,
-        buffers: &Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
-        textures: &Slots<Texture>,
-        pipelines: &Slots<Pipeline>,
-        events: &Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+        res: &Resources,
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -81,9 +75,7 @@ impl Queue {
             buffer: &self.buffer,
             table: &self.table,
             frame: &mut frame,
-            buffers,
-            textures,
-            pipelines,
+            res,
             encoder: None,
             group: MTLSize {
                 width: 1,
@@ -105,13 +97,13 @@ impl Queue {
             return Err(name);
         }
         for &(event, value) in waits {
-            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**events.get(event));
+            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.waitForEvent_value(event, value);
         }
         let mut buffer = NonNull::from(&*self.buffer);
         unsafe { self.raw.commit_count(NonNull::from(&mut buffer), 1) };
         for &(event, value) in signals {
-            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**events.get(event));
+            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.signalEvent_value(event, value);
         }
         self.count += 1;

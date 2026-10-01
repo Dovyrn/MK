@@ -1,5 +1,4 @@
-use crate::slots::Slots;
-use crate::vk::buffer::Buffer;
+use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
 use crate::{Command, layout, stage};
 use ash::ext::debug_utils;
@@ -11,9 +10,7 @@ pub struct Recorder<'a> {
     pub debug: Option<&'a debug_utils::Device>,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
-    pub buffers: &'a Slots<Buffer>,
-    pub textures: &'a Slots<Texture>,
-    pub pipelines: &'a Slots<vk::Pipeline>,
+    pub res: &'a Resources,
 }
 
 fn stages(bits: u32) -> vk::PipelineStageFlags2 {
@@ -82,7 +79,7 @@ impl Recorder<'_> {
         row_length: u32,
         row_count: u32,
     ) -> (&Texture, vk::BufferImageCopy) {
-        let t = self.textures.get(texture);
+        let t = self.res.textures.get(texture);
         let region = vk::BufferImageCopy {
             buffer_offset,
             buffer_row_length: row_length,
@@ -148,14 +145,14 @@ impl Recorder<'_> {
                 Command::BindPipeline { pipeline } => d.cmd_bind_pipeline(
                     b,
                     vk::PipelineBindPoint::COMPUTE,
-                    *self.pipelines.get(pipeline),
+                    *self.res.pipelines.get(pipeline),
                 ),
                 Command::PushConstants { offset, data } => {
                     d.cmd_push_constants(b, self.layout, vk::ShaderStageFlags::ALL, offset, data)
                 }
                 Command::Dispatch { x, y, z } => d.cmd_dispatch(b, x, y, z),
                 Command::DispatchIndirect { buffer, offset } => {
-                    d.cmd_dispatch_indirect(b, self.buffers.get(buffer).raw, offset)
+                    d.cmd_dispatch_indirect(b, self.res.buffers.get(buffer).raw, offset)
                 }
                 Command::CopyBuffer {
                     src,
@@ -171,8 +168,8 @@ impl Recorder<'_> {
                     };
                     d.cmd_copy_buffer(
                         b,
-                        self.buffers.get(src).raw,
-                        self.buffers.get(dst).raw,
+                        self.res.buffers.get(src).raw,
+                        self.res.buffers.get(dst).raw,
                         &[region],
                     )
                 }
@@ -183,7 +180,7 @@ impl Recorder<'_> {
                     value,
                 } => d.cmd_fill_buffer(
                     b,
-                    self.buffers.get(buffer).raw,
+                    self.res.buffers.get(buffer).raw,
                     offset,
                     size,
                     u32::from_ne_bytes([value; 4]),
@@ -213,7 +210,7 @@ impl Recorder<'_> {
                     base_layer,
                     layers,
                 } => {
-                    let t = self.textures.get(texture);
+                    let t = self.res.textures.get(texture);
                     let barrier = vk::ImageMemoryBarrier2::default()
                         .src_stage_mask(stages(src_stage))
                         .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
@@ -261,7 +258,7 @@ impl Recorder<'_> {
                     );
                     d.cmd_copy_buffer_to_image(
                         b,
-                        self.buffers.get(buffer).raw,
+                        self.res.buffers.get(buffer).raw,
                         t.image,
                         layout(l),
                         &[region],
@@ -297,7 +294,7 @@ impl Recorder<'_> {
                         b,
                         t.image,
                         layout(l),
-                        self.buffers.get(buffer).raw,
+                        self.res.buffers.get(buffer).raw,
                         &[region],
                     )
                 }

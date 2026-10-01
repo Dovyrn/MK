@@ -1,7 +1,7 @@
-use crate::slots::Slots;
 use crate::vk::buffer::Buffer;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
+use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, aspect};
 use crate::{SamplerInfo, TextureInfo, address, border, dimension, filter, format, memory, usage};
 use ash::ext::debug_utils;
@@ -21,11 +21,7 @@ pub struct Device {
     memory: vk::PhysicalDeviceMemoryProperties,
     heap: Heap,
     layout: vk::PipelineLayout,
-    buffers: Slots<Buffer>,
-    textures: Slots<Texture>,
-    samplers: Slots<vk::Sampler>,
-    pipelines: Slots<vk::Pipeline>,
-    events: Slots<vk::Semaphore>,
+    res: Resources,
     queues: Vec<Queue>,
 }
 
@@ -188,11 +184,7 @@ impl Device {
                 owned: false,
                 heap,
                 layout,
-                buffers: Slots::default(),
-                textures: Slots::default(),
-                samplers: Slots::default(),
-                pipelines: Slots::default(),
-                events: Slots::default(),
+                res: Resources::default(),
                 queues,
             }
         }
@@ -254,7 +246,7 @@ impl Device {
             };
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
             let address = self.raw.get_buffer_device_address(&info);
-            self.buffers.insert(Buffer {
+            self.res.buffers.insert(Buffer {
                 raw,
                 memory,
                 address,
@@ -264,7 +256,7 @@ impl Device {
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
-        let buffer = self.buffers.remove(buffer);
+        let buffer = self.res.buffers.remove(buffer);
         unsafe {
             self.raw.destroy_buffer(buffer.raw, None);
             self.raw.free_memory(buffer.memory, None);
@@ -272,11 +264,11 @@ impl Device {
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
-        self.buffers.get(buffer).data
+        self.res.buffers.get(buffer).data
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
-        self.buffers.get(buffer).address
+        self.res.buffers.get(buffer).address
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
@@ -354,7 +346,7 @@ impl Device {
                 .format(native)
                 .subresource_range(range);
             let view = self.raw.create_image_view(&view_info, None).unwrap();
-            let slot = self.textures.insert(Texture {
+            let slot = self.res.textures.insert(Texture {
                 image,
                 memory,
                 view,
@@ -389,7 +381,7 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
-        let texture = self.textures.remove(texture);
+        let texture = self.res.textures.remove(texture);
         unsafe {
             self.raw.destroy_image_view(texture.view, None);
             self.raw.destroy_image(texture.image, None);
@@ -442,7 +434,7 @@ impl Device {
                 _ => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
             });
         let sampler = unsafe { self.raw.create_sampler(&sampler_info, None).unwrap() };
-        let slot = self.samplers.insert(sampler);
+        let slot = self.res.samplers.insert(sampler);
         let image = vk::DescriptorImageInfo::default().sampler(sampler);
         self.heap
             .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
@@ -450,7 +442,7 @@ impl Device {
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
-        let sampler = self.samplers.remove(sampler);
+        let sampler = self.res.samplers.remove(sampler);
         unsafe { self.raw.destroy_sampler(sampler, None) };
     }
 
@@ -484,34 +476,34 @@ impl Device {
                     .create_compute_pipelines(vk::PipelineCache::null(), &[info], None);
             self.raw.destroy_shader_module(module, None);
             let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
-            Ok(self.pipelines.insert(pipeline))
+            Ok(self.res.pipelines.insert(pipeline))
         }
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
-        let pipeline = self.pipelines.remove(pipeline);
+        let pipeline = self.res.pipelines.remove(pipeline);
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
     pub fn create_event(&mut self) -> u32 {
-        self.events.insert(timeline(&self.raw))
+        self.res.events.insert(timeline(&self.raw))
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        let event = self.events.remove(event);
+        let event = self.res.events.remove(event);
         unsafe { self.raw.destroy_semaphore(event, None) };
     }
 
     pub fn event_value(&self, event: u32) -> u64 {
         unsafe {
             self.raw
-                .get_semaphore_counter_value(*self.events.get(event))
+                .get_semaphore_counter_value(*self.res.events.get(event))
                 .unwrap()
         }
     }
 
     pub fn wait(&self, event: u32, value: u64, timeout: u64) -> bool {
-        let semaphores = [*self.events.get(event)];
+        let semaphores = [*self.res.events.get(event)];
         let values = [value];
         let info = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
@@ -531,10 +523,7 @@ impl Device {
             self.debug.as_ref(),
             self.layout,
             self.heap.set,
-            &self.buffers,
-            &self.textures,
-            &self.pipelines,
-            &self.events,
+            &self.res,
             commands,
             waits,
             signals,
@@ -551,22 +540,22 @@ impl Drop for Device {
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);
             }
-            for buffer in self.buffers.drain() {
+            for buffer in self.res.buffers.drain() {
                 self.raw.destroy_buffer(buffer.raw, None);
                 self.raw.free_memory(buffer.memory, None);
             }
-            for texture in self.textures.drain() {
+            for texture in self.res.textures.drain() {
                 self.raw.destroy_image_view(texture.view, None);
                 self.raw.destroy_image(texture.image, None);
                 self.raw.free_memory(texture.memory, None);
             }
-            for sampler in self.samplers.drain() {
+            for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
             }
-            for pipeline in self.pipelines.drain() {
+            for pipeline in self.res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for event in self.events.drain() {
+            for event in self.res.events.drain() {
                 self.raw.destroy_semaphore(event, None);
             }
             self.raw.destroy_pipeline_layout(self.layout, None);

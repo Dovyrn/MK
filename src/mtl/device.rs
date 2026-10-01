@@ -1,7 +1,7 @@
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::queue::Queue;
+use crate::mtl::resources::Resources;
 use crate::mtl::texture::Texture;
-use crate::slots::Slots;
 use crate::{SamplerInfo, TextureInfo, address, border, dimension, filter, format, memory, usage};
 use dispatch2::DispatchData;
 use objc2::rc::Retained;
@@ -26,11 +26,7 @@ pub struct Device {
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
     residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     dirty: bool,
-    buffers: Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
-    pipelines: Slots<Pipeline>,
-    textures: Slots<Texture>,
-    samplers: Slots<Retained<ProtocolObject<dyn MTLSamplerState>>>,
-    events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    res: Resources,
     queues: Vec<Queue>,
 }
 
@@ -60,11 +56,7 @@ impl Device {
             compiler,
             residency,
             dirty: false,
-            buffers: Slots::default(),
-            pipelines: Slots::default(),
-            textures: Slots::default(),
-            samplers: Slots::default(),
-            events: Slots::default(),
+            res: Resources::default(),
             queues,
         })
     }
@@ -87,22 +79,22 @@ impl Device {
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
-        self.buffers.insert(buffer)
+        self.res.buffers.insert(buffer)
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
-        let buffer = self.buffers.remove(buffer);
+        let buffer = self.res.buffers.remove(buffer);
         self.residency
             .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
-        self.buffers.get(buffer).contents().as_ptr().cast()
+        self.res.buffers.get(buffer).contents().as_ptr().cast()
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
-        self.buffers.get(buffer).gpuAddress()
+        self.res.buffers.get(buffer).gpuAddress()
     }
 
     pub fn create_pipeline(
@@ -130,11 +122,11 @@ impl Device {
             height: group[1] as usize,
             depth: group[2] as usize,
         };
-        Ok(self.pipelines.insert(Pipeline { state, group }))
+        Ok(self.res.pipelines.insert(Pipeline { state, group }))
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
-        self.pipelines.remove(pipeline);
+        self.res.pipelines.remove(pipeline);
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
@@ -182,21 +174,21 @@ impl Device {
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
         self.dirty = true;
-        self.textures.insert(Texture {
+        self.res.textures.insert(Texture {
             raw,
             format: info.format,
         })
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
-        let texture = self.textures.remove(texture);
+        let texture = self.res.textures.remove(texture);
         self.residency
             .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*texture.raw));
         self.dirty = true;
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
-        id(self.textures.get(texture).raw.gpuResourceID())
+        id(self.res.textures.get(texture).raw.gpuResourceID())
     }
 
     pub fn image_handle(&self, texture: u32) -> u64 {
@@ -239,31 +231,32 @@ impl Device {
         });
         desc.setSupportArgumentBuffers(true);
         let sampler = self.raw.newSamplerStateWithDescriptor(&desc).unwrap();
-        self.samplers.insert(sampler)
+        self.res.samplers.insert(sampler)
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
-        self.samplers.remove(sampler);
+        self.res.samplers.remove(sampler);
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {
-        id(self.samplers.get(sampler).gpuResourceID())
+        id(self.res.samplers.get(sampler).gpuResourceID())
     }
 
     pub fn create_event(&mut self) -> u32 {
-        self.events.insert(self.raw.newSharedEvent().unwrap())
+        self.res.events.insert(self.raw.newSharedEvent().unwrap())
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        self.events.remove(event);
+        self.res.events.remove(event);
     }
 
     pub fn event_value(&self, event: u32) -> u64 {
-        self.events.get(event).signaledValue()
+        self.res.events.get(event).signaledValue()
     }
 
     pub fn wait(&self, event: u32, value: u64, timeout: u64) -> bool {
-        self.events
+        self.res
+            .events
             .get(event)
             .waitUntilSignaledValue_timeoutMS(value, timeout)
     }
@@ -279,15 +272,6 @@ impl Device {
             self.residency.commit();
             self.dirty = false;
         }
-        self.queues[queue].submit(
-            &self.raw,
-            &self.buffers,
-            &self.textures,
-            &self.pipelines,
-            &self.events,
-            commands,
-            waits,
-            signals,
-        )
+        self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
     }
 }

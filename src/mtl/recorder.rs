@@ -1,7 +1,5 @@
 use crate::mtl::frame::Frame;
-use crate::mtl::pipeline::Pipeline;
-use crate::mtl::texture::Texture;
-use crate::slots::Slots;
+use crate::mtl::resources::Resources;
 use crate::{Command, access, format, stage};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -17,9 +15,7 @@ pub struct Recorder<'a> {
     pub buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     pub table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     pub frame: &'a mut Frame,
-    pub buffers: &'a Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
-    pub textures: &'a Slots<Texture>,
-    pub pipelines: &'a Slots<Pipeline>,
+    pub res: &'a Resources,
     pub encoder: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub group: MTLSize,
     pub push: [u8; 256],
@@ -117,7 +113,7 @@ impl Recorder<'_> {
             }
             Command::EndCompute => self.encoder.take().unwrap().endEncoding(),
             Command::BindPipeline { pipeline } => {
-                let p = self.pipelines.get(pipeline);
+                let p = self.res.pipelines.get(pipeline);
                 self.encoder().setComputePipelineState(&p.state);
                 self.group = p.group;
             }
@@ -134,7 +130,7 @@ impl Recorder<'_> {
             }
             Command::DispatchIndirect { buffer, offset } => {
                 self.flush();
-                let address = self.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.encoder()
                         .dispatchThreadgroupsWithIndirectBuffer_threadsPerThreadgroup(
@@ -156,9 +152,9 @@ impl Recorder<'_> {
             } => unsafe {
                 self.encoder()
                     .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
-                        self.buffers.get(src),
+                        self.res.buffers.get(src),
                         src_offset as usize,
-                        self.buffers.get(dst),
+                        self.res.buffers.get(dst),
                         dst_offset as usize,
                         size as usize,
                     )
@@ -170,7 +166,7 @@ impl Recorder<'_> {
                 value,
             } => unsafe {
                 self.encoder().fillBuffer_range_value(
-                    self.buffers.get(buffer),
+                    self.res.buffers.get(buffer),
                     NSRange::new(offset as usize, size as usize),
                     value,
                 )
@@ -204,12 +200,12 @@ impl Recorder<'_> {
                 depth,
                 ..
             } => {
-                let t = self.textures.get(texture);
+                let t = self.res.textures.get(texture);
                 let (row, image) = pitch(t.format, width, row_length, height, row_count);
                 unsafe {
                     self.encoder()
                         .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            self.buffers.get(buffer),
+                            self.res.buffers.get(buffer),
                             offset as usize,
                             row,
                             image,
@@ -237,7 +233,7 @@ impl Recorder<'_> {
                 row_count,
                 ..
             } => {
-                let t = self.textures.get(texture);
+                let t = self.res.textures.get(texture);
                 let (row, image) = pitch(t.format, width, row_length, height, row_count);
                 unsafe {
                     self.encoder()
@@ -247,7 +243,7 @@ impl Recorder<'_> {
                             mip as usize,
                             origin(x, y, z),
                             size(width, height, depth),
-                            self.buffers.get(buffer),
+                            self.res.buffers.get(buffer),
                             offset as usize,
                             row,
                             image,
