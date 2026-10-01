@@ -336,6 +336,8 @@ impl Device {
             table_alignment: 0,
             sparse: self.raw.supportsFamily(MTLGPUFamily::Apple6),
             shading_rate: false,
+            host_memory: true,
+            host_alignment: 16384,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
@@ -354,6 +356,23 @@ impl Device {
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
         self.res.buffers.insert(buffer)
+    }
+
+    pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
+        let buffer = unsafe {
+            self.raw
+                .newBufferWithBytesNoCopy_length_options_deallocator(
+                    NonNull::new(pointer.cast()).ok_or("null pointer")?,
+                    size as usize,
+                    options(memory::READBACK),
+                    None,
+                )
+                .ok_or("host buffer")?
+        };
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
+        self.dirty = true;
+        Ok(self.res.buffers.insert(buffer))
     }
 
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {

@@ -183,6 +183,8 @@ fields = [
     ["table_alignment", "u32", "0"],
     ["sparse", "bool", "false"],
     ["shading_rate", "bool", "false"],
+    ["host_memory", "bool", "false"],
+    ["host_alignment", "u32", "0"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],

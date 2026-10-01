@@ -15,7 +15,7 @@ use crate::{
     dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
-use ash::ext::{mesh_shader, mutable_descriptor_type};
+use ash::ext::{external_memory_host, mesh_shader, mutable_descriptor_type};
 use ash::khr::{
     acceleration_structure, deferred_host_operations, fragment_shading_rate, maintenance5,
     portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline, surface,
@@ -220,6 +220,9 @@ impl Device {
                 extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
                 extensions.push(maintenance5::NAME.as_ptr());
             }
+            if has(&available, external_memory_host::NAME) {
+                extensions.push(external_memory_host::NAME.as_ptr());
+            }
             let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
             let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
             instance.get_physical_device_features2(physical, &mut query);
@@ -374,6 +377,9 @@ impl Device {
             let name = c"vkCreateRayTracingPipelinesKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let rays = loaded.map(|_| ray_tracing_pipeline::Device::new(&instance, &raw));
+            let name = c"vkGetMemoryHostPointerPropertiesEXT";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let host = loaded.map(|_| external_memory_host::Device::new(&instance, &raw));
             let name = c"vkCmdSetFragmentShadingRateKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let rates = loaded.map(|_| fragment_shading_rate::Device::new(&instance, &raw));
@@ -420,6 +426,7 @@ impl Device {
                     ray,
                     rays,
                     rates,
+                    host,
                     generated,
                     surfaces,
                 },
@@ -474,6 +481,14 @@ impl Device {
     }
 
     pub fn caps(&self) -> Caps {
+        let mut host = vk::PhysicalDeviceExternalMemoryHostPropertiesEXT::default();
+        if self.ext.host.is_some() {
+            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut host);
+            unsafe {
+                self.instance
+                    .get_physical_device_properties2(self.physical, &mut properties)
+            };
+        }
         let mut rays = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         if self.ext.rays.is_some() {
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut rays);
@@ -510,6 +525,8 @@ impl Device {
             handle_alignment: rays.shader_group_handle_alignment,
             table_alignment: rays.shader_group_base_alignment,
             shading_rate: self.ext.rates.is_some(),
+            host_memory: self.ext.host.is_some(),
+            host_alignment: host.min_imported_host_pointer_alignment as u32,
             sparse: features.sparse_binding != 0
                 && features.sparse_residency_buffer != 0
                 && self.queues.iter().all(|q| {
@@ -595,6 +612,70 @@ impl Device {
             if buffer.memory != vk::DeviceMemory::null() {
                 self.raw.free_memory(buffer.memory, None);
             }
+        }
+    }
+
+    pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
+        let host = self
+            .ext
+            .host
+            .as_ref()
+            .ok_or("VK_EXT_external_memory_host is not enabled")?;
+        let kind = vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
+        let mut properties = vk::MemoryHostPointerPropertiesEXT::default();
+        let result = unsafe {
+            (host.fp().get_memory_host_pointer_properties_ext)(
+                self.raw.handle(),
+                kind,
+                pointer.cast(),
+                &mut properties,
+            )
+        };
+        if result != vk::Result::SUCCESS {
+            return Err(result.to_string());
+        }
+        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+        let mut external = vk::ExternalMemoryBufferCreateInfo::default().handle_types(kind);
+        let info = self
+            .buffer_info(size, self.usage(), &mut wide)
+            .push_next(&mut external);
+        unsafe {
+            let raw = self
+                .raw
+                .create_buffer(&info, None)
+                .map_err(|e| e.to_string())?;
+            let needs = self.raw.get_buffer_memory_requirements(raw);
+            let index = self.memory_type(
+                needs.memory_type_bits & properties.memory_type_bits,
+                memory::READBACK,
+            );
+            let mut import = vk::ImportMemoryHostPointerInfoEXT::default()
+                .handle_type(kind)
+                .host_pointer(pointer.cast());
+            let mut flags = vk::MemoryAllocateFlagsInfo::default()
+                .flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
+            let alloc = vk::MemoryAllocateInfo::default()
+                .allocation_size(size)
+                .memory_type_index(index)
+                .push_next(&mut import)
+                .push_next(&mut flags);
+            let memory = self
+                .raw
+                .allocate_memory(&alloc, None)
+                .map_err(|e| e.to_string())?;
+            self.raw
+                .bind_buffer_memory(raw, memory, 0)
+                .map_err(|e| e.to_string())?;
+            let address = self
+                .raw
+                .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
+            Ok(self.res.buffers.insert(Buffer {
+                raw,
+                memory,
+                address,
+                data: pointer,
+                own: true,
+            }))
         }
     }
 
