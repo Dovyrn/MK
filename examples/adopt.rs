@@ -84,7 +84,7 @@ fn native(
         host.physical,
         host.raw.clone(),
         &[(family, 0)],
-        &vk::PhysicalDeviceFeatures::default(),
+        &vk::PhysicalDeviceFeatures2::default(),
     )
     .unwrap();
     let slot = device

@@ -6,27 +6,37 @@ pub struct Bindless {
     pub set: vk::DescriptorSet,
     pub samplers: u32,
     pub images: u32,
+    pub buffers: u32,
 }
 
 const SAMPLERS: u32 = 4096;
 const IMAGES: u32 = 1 << 17;
+const BUFFERS: u32 = 1 << 16;
 
 impl Bindless {
     pub fn new(
         device: &ash::Device,
         limits: &vk::PhysicalDeviceVulkan12Properties,
+        buffers: bool,
     ) -> Result<Self, vk::Result> {
         let samplers = SAMPLERS.min(limits.max_descriptor_set_update_after_bind_samplers);
         let images = IMAGES
             .min(limits.max_descriptor_set_update_after_bind_sampled_images)
             .min(limits.max_descriptor_set_update_after_bind_storage_images);
+        let buffers = if buffers {
+            BUFFERS.min(limits.max_descriptor_set_update_after_bind_storage_buffers)
+        } else {
+            0
+        };
         let types = [
             vk::DescriptorType::SAMPLED_IMAGE,
             vk::DescriptorType::STORAGE_IMAGE,
+            vk::DescriptorType::STORAGE_BUFFER,
         ];
+        let used = if buffers > 0 { 3 } else { 2 };
         let lists = [
             vk::MutableDescriptorTypeListEXT::default(),
-            vk::MutableDescriptorTypeListEXT::default().descriptor_types(&types),
+            vk::MutableDescriptorTypeListEXT::default().descriptor_types(&types[..used]),
         ];
         let bindings = [
             vk::DescriptorSetLayoutBinding::default()
@@ -37,7 +47,7 @@ impl Bindless {
             vk::DescriptorSetLayoutBinding::default()
                 .binding(2)
                 .descriptor_type(vk::DescriptorType::MUTABLE_EXT)
-                .descriptor_count(images)
+                .descriptor_count(images + buffers)
                 .stage_flags(vk::ShaderStageFlags::ALL),
         ];
         let flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
@@ -58,7 +68,7 @@ impl Bindless {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::MUTABLE_EXT,
-                descriptor_count: images,
+                descriptor_count: images + buffers,
             },
         ];
         let mut mutable =
@@ -95,6 +105,7 @@ impl Bindless {
                 set,
                 samplers,
                 images,
+                buffers,
             })
         }
     }
@@ -114,6 +125,17 @@ impl Bindless {
             .dst_array_element(index)
             .descriptor_type(kind)
             .image_info(&infos);
+        unsafe { device.update_descriptor_sets(&[write], &[]) };
+    }
+
+    pub fn write_buffer(&self, device: &ash::Device, index: u32, info: vk::DescriptorBufferInfo) {
+        let infos = [info];
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(self.set)
+            .dst_binding(2)
+            .dst_array_element(self.images + index)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(&infos);
         unsafe { device.update_descriptor_sets(&[write], &[]) };
     }
 

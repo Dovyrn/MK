@@ -47,6 +47,20 @@ pub struct Device {
 
 const FDS: &str = "VK_KHR_external_memory_fd is not enabled";
 
+unsafe fn chained<'a, T>(
+    features: &'a vk::PhysicalDeviceFeatures2,
+    kind: vk::StructureType,
+) -> Option<&'a T> {
+    let mut next = features.p_next as *const vk::BaseInStructure;
+    while let Some(s) = unsafe { next.as_ref() } {
+        if s.s_type == kind {
+            return Some(unsafe { &*(next as *const T) });
+        }
+        next = s.p_next;
+    }
+    None
+}
+
 fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
         (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
@@ -348,6 +362,12 @@ impl Device {
                 .descriptor_binding_storage_image_update_after_bind(true)
                 .shader_sampled_image_array_non_uniform_indexing(true)
                 .shader_storage_image_array_non_uniform_indexing(true)
+                .descriptor_binding_storage_buffer_update_after_bind(
+                    supported_v12.descriptor_binding_storage_buffer_update_after_bind != 0,
+                )
+                .shader_storage_buffer_array_non_uniform_indexing(
+                    supported_v12.shader_storage_buffer_array_non_uniform_indexing != 0,
+                )
                 .shader_output_viewport_index(supported_v12.shader_output_viewport_index != 0)
                 .shader_output_layer(supported_v12.shader_output_layer != 0);
             let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
@@ -393,13 +413,15 @@ impl Device {
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
+            let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
+            enabled.p_next = info.p_next as *mut _;
             match Self::adopt(
                 entry,
                 instance.clone(),
                 physical,
                 device.clone(),
                 &slots,
-                &features,
+                &enabled,
             ) {
                 Ok(mut d) => {
                     d.owned = true;
@@ -420,7 +442,7 @@ impl Device {
         physical: vk::PhysicalDevice,
         raw: ash::Device,
         queues: &[(u32, u32)],
-        features: &vk::PhysicalDeviceFeatures,
+        features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
         unsafe {
             let name = c"vkCmdBeginDebugUtilsLabelEXT";
@@ -463,11 +485,18 @@ impl Device {
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
                 .size(limits.max_push_constants_size.min(256));
-            let mut v12 = vk::PhysicalDeviceVulkan12Properties::default();
-            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut v12);
+            let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
+            let mut properties =
+                vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
             instance.get_physical_device_properties2(physical, &mut properties);
             let slots = bindings::layout(&raw, push.is_some()).map_err(|e| e.to_string())?;
-            let bindless = match Bindless::new(&raw, &v12) {
+            let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(
+                features,
+                vk::StructureType::PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+            );
+            let buffers =
+                v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
+            let bindless = match Bindless::new(&raw, &properties12, buffers) {
                 Ok(b) => b,
                 Err(e) => {
                     raw.destroy_descriptor_set_layout(slots, None);
@@ -522,7 +551,7 @@ impl Device {
                     conditional,
                     generated,
                     surfaces,
-                    features: *features,
+                    features: features.features,
                     push,
                 },
                 slots,
@@ -566,10 +595,10 @@ impl Device {
         features: u64,
     ) -> Result<Self, String> {
         unsafe {
-            let features = (features as *const vk::PhysicalDeviceFeatures)
+            let none = vk::PhysicalDeviceFeatures2::default();
+            let features = (features as *const vk::PhysicalDeviceFeatures2)
                 .as_ref()
-                .copied()
-                .unwrap_or_default();
+                .unwrap_or(&none);
             let get = std::mem::transmute::<usize, vk::PFN_vkGetInstanceProcAddr>(proc as usize);
             let entry = ash::Entry::from_static_fn(ash::StaticFn {
                 get_instance_proc_addr: get,
@@ -582,7 +611,7 @@ impl Device {
                 vk::Handle::from_raw(physical),
                 raw,
                 queues,
-                &features,
+                features,
             )
         }
     }
@@ -684,6 +713,7 @@ impl Device {
             line_fill: features.fill_mode_non_solid != 0,
             multi_draw: features.multi_draw_indirect != 0,
             sparse_textures: sparse && features.sparse_residency_image2_d != 0,
+            buffers: self.bindless.buffers,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,
@@ -702,7 +732,7 @@ impl Device {
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         let buffer = self.allocate(size, memory, self.usage())?;
-        Ok(self.res.buffers.insert(buffer))
+        Ok(self.insert_buffer(buffer))
     }
 
     fn buffer_info<'a>(
@@ -821,7 +851,7 @@ impl Device {
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            Ok(self.res.buffers.insert(Buffer {
+            Ok(self.insert_buffer(Buffer {
                 raw,
                 memory,
                 address,
@@ -956,7 +986,7 @@ impl Device {
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            Ok(self.res.buffers.insert(Buffer {
+            Ok(self.insert_buffer(Buffer {
                 raw,
                 memory: vk::DeviceMemory::null(),
                 address,
@@ -1169,7 +1199,7 @@ impl Device {
             } else {
                 h.data.add(offset as usize)
             };
-            Ok(self.res.buffers.insert(Buffer {
+            Ok(self.insert_buffer(Buffer {
                 raw,
                 memory: vk::DeviceMemory::null(),
                 address,
@@ -1500,7 +1530,7 @@ impl Device {
     pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
         let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
         let address = unsafe { self.raw.get_buffer_device_address(&info) };
-        self.res.buffers.insert(Buffer {
+        self.insert_buffer(Buffer {
             raw,
             memory: vk::DeviceMemory::null(),
             address,
@@ -1536,6 +1566,24 @@ impl Device {
     }
 
     pub fn unmap(&self, _buffer: u32) {}
+
+    fn insert_buffer(&mut self, buffer: Buffer) -> u32 {
+        let info = vk::DescriptorBufferInfo::default()
+            .buffer(buffer.raw)
+            .range(vk::WHOLE_SIZE);
+        let slot = self.res.buffers.insert(buffer);
+        if slot < self.bindless.buffers {
+            self.bindless.write_buffer(&self.raw, slot, info);
+        }
+        slot
+    }
+
+    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
+        if buffer >= self.bindless.buffers {
+            return Err("the bindless heap has no slot for this buffer".into());
+        }
+        Ok((self.bindless.images + buffer) as u64)
+    }
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.buffers.get(buffer).address

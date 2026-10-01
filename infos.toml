@@ -220,6 +220,7 @@ fields = [
     ["storage", "bool", "false"],
     ["persistent", "bool", "false"],
     ["alignment", "u32", "0"],
+    ["buffers", "u32", "0"],
 ]
 
 [[info]]

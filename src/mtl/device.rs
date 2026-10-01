@@ -389,6 +389,7 @@ impl Device {
             storage: true,
             persistent: true,
             alignment: 256,
+            buffers: 500_000,
         }
     }
 
@@ -772,6 +773,10 @@ impl Device {
     }
 
     pub fn unmap(&self, _buffer: u32) {}
+
+    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
+        Ok(self.res.buffers.get(buffer).gpuAddress())
+    }
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.buffers.get(buffer).gpuAddress()

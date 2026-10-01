@@ -69,6 +69,14 @@ public class Device {
 
     private static native long nMap(long device, int buffer);
 
+    public long bufferHandle(int buffer) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nBufferHandle(handle, buffer);
+        }
+    }
+
+    private static native long nBufferHandle(long device, int buffer);
+
     public void unmap(int buffer) {
         try (var stack = MemoryStack.stackPush()) {
             nUnmap(handle, buffer);
