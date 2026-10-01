@@ -18,8 +18,11 @@ use objc2::AllocAnyThread;
 use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2_core_foundation::CGSize;
+use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGSize};
 use objc2_foundation::{NSArray, NSRange, NSString, NSURL};
+use objc2_io_surface::{
+    IOSurfaceRef, kIOSurfaceBytesPerElement, kIOSurfaceHeight, kIOSurfaceWidth,
+};
 use objc2_metal::{
     MTL4AccelerationStructureDescriptor, MTL4AccelerationStructureGeometryDescriptor,
     MTL4AccelerationStructureTriangleGeometryDescriptor, MTL4AlphaToCoverageState, MTL4BlendState,
@@ -338,6 +341,7 @@ impl Device {
             shading_rate: false,
             host_memory: true,
             host_alignment: 16384,
+            shared_memory: false,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
@@ -404,6 +408,46 @@ impl Device {
                 )
         };
         [s.width as u32, s.height as u32, s.depth as u32]
+    }
+
+    pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
+        let [bytes, _, _] = format::block(info.format);
+        let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
+        let values = [
+            CFNumber::new_i32(info.width as i32),
+            CFNumber::new_i32(info.height as i32),
+            CFNumber::new_i32(bytes as i32),
+        ];
+        let values: Vec<&CFNumber> = values.iter().map(|v| &**v).collect();
+        let properties = CFDictionary::<CFString, CFNumber>::from_slices(&keys, &values);
+        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }.ok_or("IOSurface")?;
+        let id = surface.id();
+        Ok((self.surface_texture(&surface, info)?, id))
+    }
+
+    pub fn import_shared_texture(&mut self, id: u32, info: &TextureInfo) -> Result<u32, String> {
+        let surface = IOSurfaceRef::lookup(id).ok_or("no IOSurface with that id")?;
+        self.surface_texture(&surface, info)
+    }
+
+    fn surface_texture(
+        &mut self,
+        surface: &IOSurfaceRef,
+        info: &TextureInfo,
+    ) -> Result<u32, String> {
+        let desc = texture_desc(info);
+        desc.setResourceOptions(options(memory::READBACK));
+        let raw = self
+            .raw
+            .newTextureWithDescriptor_iosurface_plane(&desc, surface, 0)
+            .ok_or("IOSurface texture")?;
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        Ok(self.res.textures.insert(Texture {
+            raw,
+            format: info.format,
+        }))
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {

@@ -17,9 +17,9 @@ use crate::{
 use ash::ext::debug_utils;
 use ash::ext::{external_memory_host, mesh_shader, mutable_descriptor_type};
 use ash::khr::{
-    acceleration_structure, deferred_host_operations, fragment_shading_rate, maintenance5,
-    portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline, surface,
-    swapchain,
+    acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
+    maintenance5, portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline,
+    surface, swapchain,
 };
 use ash::vk;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -220,6 +220,9 @@ impl Device {
                 extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
                 extensions.push(maintenance5::NAME.as_ptr());
             }
+            if has(&available, external_memory_fd::NAME) {
+                extensions.push(external_memory_fd::NAME.as_ptr());
+            }
             if has(&available, external_memory_host::NAME) {
                 extensions.push(external_memory_host::NAME.as_ptr());
             }
@@ -380,6 +383,9 @@ impl Device {
             let name = c"vkGetMemoryHostPointerPropertiesEXT";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let host = loaded.map(|_| external_memory_host::Device::new(&instance, &raw));
+            let name = c"vkGetMemoryFdKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let fds = loaded.map(|_| external_memory_fd::Device::new(&instance, &raw));
             let name = c"vkCmdSetFragmentShadingRateKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let rates = loaded.map(|_| fragment_shading_rate::Device::new(&instance, &raw));
@@ -427,6 +433,7 @@ impl Device {
                     rays,
                     rates,
                     host,
+                    fds,
                     generated,
                     surfaces,
                 },
@@ -526,6 +533,7 @@ impl Device {
             table_alignment: rays.shader_group_base_alignment,
             shading_rate: self.ext.rates.is_some(),
             host_memory: self.ext.host.is_some(),
+            shared_memory: self.ext.fds.is_some(),
             host_alignment: host.min_imported_host_pointer_alignment as u32,
             sparse: features.sparse_binding != 0
                 && features.sparse_residency_buffer != 0
@@ -680,13 +688,53 @@ impl Device {
     }
 
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.heap(size, memory, false, None)
+    }
+
+    pub fn create_shared_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.heap(size, memory, true, None)
+    }
+
+    pub fn import_heap(&mut self, fd: i32, size: u64, memory: u32) -> Result<u32, String> {
+        self.heap(size, memory, true, Some(fd))
+    }
+
+    pub fn export_heap(&self, heap: u32) -> Result<i32, String> {
+        let fds = self
+            .ext
+            .fds
+            .as_ref()
+            .ok_or("VK_KHR_external_memory_fd is not enabled")?;
+        let info = vk::MemoryGetFdInfoKHR::default()
+            .memory(self.res.heaps.get(heap).memory)
+            .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        unsafe { fds.get_memory_fd(&info).map_err(|e| e.to_string()) }
+    }
+
+    fn heap(
+        &mut self,
+        size: u64,
+        memory: u32,
+        shared: bool,
+        fd: Option<i32>,
+    ) -> Result<u32, String> {
         let index = self.memory_type(!0, memory);
+        let kind = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         let mut flags =
             vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
-        let info = vk::MemoryAllocateInfo::default()
+        let mut export = vk::ExportMemoryAllocateInfo::default().handle_types(kind);
+        let mut import = vk::ImportMemoryFdInfoKHR::default()
+            .handle_type(kind)
+            .fd(fd.unwrap_or(-1));
+        let mut info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
             .memory_type_index(index)
             .push_next(&mut flags);
+        if fd.is_some() {
+            info = info.push_next(&mut import);
+        } else if shared {
+            info = info.push_next(&mut export);
+        }
         unsafe {
             let memory = self
                 .raw
@@ -703,7 +751,11 @@ impl Device {
             } else {
                 std::ptr::null_mut()
             };
-            Ok(self.res.heaps.insert(Heap { memory, data }))
+            Ok(self.res.heaps.insert(Heap {
+                memory,
+                data,
+                shared,
+            }))
         }
     }
 
@@ -932,7 +984,12 @@ impl Device {
         let h = self.res.heaps.get(heap);
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-            let info = self.buffer_info(size, self.usage(), &mut wide);
+            let mut external = vk::ExternalMemoryBufferCreateInfo::default()
+                .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+            let mut info = self.buffer_info(size, self.usage(), &mut wide);
+            if h.shared {
+                info = info.push_next(&mut external);
+            }
             let raw = self.raw.create_buffer(&info, None).unwrap();
             self.raw.bind_buffer_memory(raw, h.memory, offset).unwrap();
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
@@ -953,12 +1010,16 @@ impl Device {
     }
 
     pub fn create_placed_texture(&mut self, heap: u32, offset: u64, info: &TextureInfo) -> u32 {
-        let memory = self.res.heaps.get(heap).memory;
+        let h = self.res.heaps.get(heap);
+        let memory = h.memory;
+        let mut external = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        let mut create = self.share_image(image_info(info));
+        if h.shared {
+            create = create.push_next(&mut external);
+        }
         unsafe {
-            let image = self
-                .raw
-                .create_image(&self.share_image(image_info(info)), None)
-                .unwrap();
+            let image = self.raw.create_image(&create, None).unwrap();
             self.raw.bind_image_memory(image, memory, offset).unwrap();
             self.register(image, vk::DeviceMemory::null(), true, &whole(info))
         }

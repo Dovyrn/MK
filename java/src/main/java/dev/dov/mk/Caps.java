@@ -20,12 +20,13 @@ public class Caps {
     public boolean shadingRate = false;
     public boolean hostMemory = false;
     public int hostAlignment = 0;
+    public boolean sharedMemory = false;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 80;
+        return 84;
     }
 
     public long write(long p) {
@@ -62,6 +63,8 @@ public class Caps {
         memPutInt(p, hostMemory ? 1 : 0);
         p += 4;
         memPutInt(p, hostAlignment);
+        p += 4;
+        memPutInt(p, sharedMemory ? 1 : 0);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -107,6 +110,8 @@ public class Caps {
         r.hostMemory = memGetInt(p) != 0;
         p += 4;
         r.hostAlignment = memGetInt(p);
+        p += 4;
+        r.sharedMemory = memGetInt(p) != 0;
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

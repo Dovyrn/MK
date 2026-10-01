@@ -185,6 +185,7 @@ fields = [
     ["shading_rate", "bool", "false"],
     ["host_memory", "bool", "false"],
     ["host_alignment", "u32", "0"],
+    ["shared_memory", "bool", "false"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
