@@ -134,6 +134,12 @@ fn main() {
     c.draw(3, 1, 0, 0);
     c.end_occlusion(samples, 0);
     c.end_render();
+    c.barrier(
+        stage::FRAGMENT,
+        access::SHADER_WRITE,
+        stage::COPY,
+        access::COPY_READ,
+    );
     if caps.timestamps {
         c.resolve_queries(times, 0, 2, out, 0);
     }
