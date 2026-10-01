@@ -35,7 +35,7 @@ fn main() {
         width: n,
         height: n,
         usage: usage::DEPTH,
-        memory: if caps.transient {
+        memory: if caps.memoryless {
             memory::TRANSIENT
         } else {
             memory::DEVICE
@@ -196,6 +196,6 @@ fn main() {
     assert_eq!(pixels[0], [0, 0, 255, 255], "corner");
     println!(
         "placed target, placed readback, transient depth: {}",
-        caps.transient
+        caps.memoryless
     );
 }

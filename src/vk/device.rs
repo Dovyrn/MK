@@ -422,7 +422,7 @@ impl Device {
                     .get_physical_device_properties2(self.physical, &mut properties);
                 multiview.max_multiview_view_count
             },
-            transient: self.memory.memory_types[..self.memory.memory_type_count as usize]
+            memoryless: self.memory.memory_types[..self.memory.memory_type_count as usize]
                 .iter()
                 .any(|t| {
                     t.property_flags

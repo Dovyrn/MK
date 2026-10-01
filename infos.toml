@@ -1,0 +1,181 @@
+[[info]]
+name = "TextureInfo"
+fields = [
+    ["dimension", "u32", "dimension::D2"],
+    ["format", "u32", "format::NONE"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+    ["layers", "u32", "1"],
+    ["mips", "u32", "1"],
+    ["samples", "u32", "1"],
+    ["usage", "u32", "0"],
+    ["memory", "u32", "memory::DEVICE"],
+]
+
+[[info]]
+name = "SamplerInfo"
+fields = [
+    ["min", "u32", "filter::LINEAR"],
+    ["mag", "u32", "filter::LINEAR"],
+    ["mip", "u32", "filter::LINEAR"],
+    ["u", "u32", "address::REPEAT"],
+    ["v", "u32", "address::REPEAT"],
+    ["w", "u32", "address::REPEAT"],
+    ["anisotropy", "u32", "1"],
+    ["compare", "u32", "compare::NONE"],
+    ["min_lod", "f32", "0.0"],
+    ["max_lod", "f32", "1000.0"],
+    ["border", "u32", "border::TRANSPARENT_BLACK"],
+]
+
+[[info]]
+name = "ViewInfo"
+fields = [
+    ["dimension", "u32", "dimension::D2"],
+    ["format", "u32", "format::NONE"],
+    ["base_mip", "u32", "0"],
+    ["mips", "u32", "1"],
+    ["base_layer", "u32", "0"],
+    ["layers", "u32", "1"],
+    ["usage", "u32", "usage::SAMPLED"],
+]
+
+[[info]]
+name = "ColorTarget"
+fields = [
+    ["format", "u32", "format::NONE"],
+    ["blend", "bool", "false"],
+    ["src", "u32", "blend::ONE"],
+    ["dst", "u32", "blend::ZERO"],
+    ["op", "u32", "op::ADD"],
+    ["src_alpha", "u32", "blend::ONE"],
+    ["dst_alpha", "u32", "blend::ZERO"],
+    ["op_alpha", "u32", "op::ADD"],
+    ["mask", "u32", "mask::ALL"],
+]
+
+[[info]]
+name = "VertexBuffer"
+fields = [
+    ["stride", "u32", "0"],
+    ["instance", "bool", "false"],
+]
+
+[[info]]
+name = "VertexAttribute"
+fields = [
+    ["location", "u32", "0"],
+    ["buffer", "u32", "0"],
+    ["format", "u32", "0"],
+    ["offset", "u32", "0"],
+]
+
+[[info]]
+name = "RenderInfo"
+fields = [
+    ["code", "bytes", ""],
+    ["vertex", "str", ""],
+    ["fragment", "str", ""],
+    ["colors", "[ColorTarget]", ""],
+    ["depth", "u32", "format::NONE"],
+    ["stencil", "u32", "format::NONE"],
+    ["samples", "u32", "1"],
+    ["topology", "u32", "topology::TRIANGLE"],
+    ["fill", "u32", "fill::FILL"],
+    ["coverage", "bool", "false"],
+    ["views", "u32", "0"],
+    ["buffers", "[VertexBuffer]", ""],
+    ["attributes", "[VertexAttribute]", ""],
+]
+
+[[info]]
+name = "MeshInfo"
+fields = [
+    ["code", "bytes", ""],
+    ["task", "str", ""],
+    ["mesh", "str", ""],
+    ["fragment", "str", ""],
+    ["colors", "[ColorTarget]", ""],
+    ["depth", "u32", "format::NONE"],
+    ["stencil", "u32", "format::NONE"],
+    ["samples", "u32", "1"],
+    ["fill", "u32", "fill::FILL"],
+    ["coverage", "bool", "false"],
+    ["views", "u32", "0"],
+    ["task_group", "u32x3", "[1, 1, 1]"],
+    ["mesh_group", "u32x3", "[1, 1, 1]"],
+]
+
+[[info]]
+name = "StencilFace"
+fields = [
+    ["fail", "u32", "stencil::KEEP"],
+    ["depth_fail", "u32", "stencil::KEEP"],
+    ["pass", "u32", "stencil::KEEP"],
+    ["compare", "u32", "compare::ALWAYS"],
+    ["read", "u32", "0xff"],
+    ["write", "u32", "0xff"],
+]
+
+[[info]]
+name = "DepthInfo"
+fields = [
+    ["compare", "u32", "compare::NONE"],
+    ["write", "bool", "false"],
+    ["stencil", "bool", "false"],
+    ["front", "StencilFace", ""],
+    ["back", "StencilFace", ""],
+]
+
+[[info]]
+name = "SurfaceInfo"
+fields = [
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["format", "u32", "format::BGRA8_UNORM"],
+    ["vsync", "bool", "true"],
+    ["images", "u32", "3"],
+]
+
+[[info]]
+name = "Triangles"
+fields = [
+    ["vertices", "u32", "0"],
+    ["vertex_offset", "u64", "0"],
+    ["format", "u32", "format::RGB32_FLOAT"],
+    ["stride", "u32", "12"],
+    ["vertex_count", "u32", "0"],
+    ["indices", "u32", "!0"],
+    ["index_offset", "u64", "0"],
+    ["index_kind", "u32", "index::U32"],
+    ["count", "u32", "0"],
+    ["opaque", "bool", "true"],
+]
+
+[[info]]
+name = "AccelInfo"
+fields = [
+    ["triangles", "[Triangles]", ""],
+    ["instances", "u32", "!0"],
+    ["instance_offset", "u64", "0"],
+    ["instance_count", "u32", "0"],
+    ["flags", "u32", "0"],
+]
+
+[[info]]
+name = "Caps"
+fields = [
+    ["mesh", "bool", "false"],
+    ["push", "u32", "0"],
+    ["queues", "u32", "0"],
+    ["samplers", "u32", "0"],
+    ["textures", "u32", "0"],
+    ["tick", "f32", "0.0"],
+    ["timestamps", "bool", "false"],
+    ["precise", "bool", "false"],
+    ["ray", "bool", "false"],
+    ["instance", "u32", "0"],
+    ["memoryless", "bool", "false"],
+    ["views", "u32", "0"],
+]

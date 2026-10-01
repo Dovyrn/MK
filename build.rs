@@ -2,6 +2,8 @@
 mod constants;
 #[path = "build/formats.rs"]
 mod formats;
+#[path = "build/infos.rs"]
+mod infos;
 #[path = "build/ops.rs"]
 mod ops;
 
@@ -16,6 +18,7 @@ fn main() {
         "commands.toml",
         "constants.toml",
         "formats.toml",
+        "infos.toml",
     ] {
         println!("cargo:rerun-if-changed={file}");
     }
@@ -49,6 +52,11 @@ fn main() {
     let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
+    let list = infos::parse(&fs::read_to_string("infos.toml").unwrap());
+    fs::write(out.join("infos.rs"), infos::rust(&list)).unwrap();
+    for info in &list {
+        save(&dir.join(format!("{}.java", info.name)), &infos::java(info));
+    }
 }
 
 fn save(path: &Path, text: &str) {

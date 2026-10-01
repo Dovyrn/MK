@@ -17,6 +17,7 @@ mtl = [
     "dep:dispatch2",
 ]
 gl = []
+jni = []
 
 [dependencies]
 ash = { version = "0.38", optional = true }

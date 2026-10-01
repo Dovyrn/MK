@@ -315,7 +315,7 @@ impl Device {
             precise: true,
             ray: self.raw.supportsRaytracing(),
             instance: 72,
-            transient: self.raw.supportsFamily(MTLGPUFamily::Apple2),
+            memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
                 .rev()
                 .find(|&n| self.raw.supportsVertexAmplificationCount(n))
