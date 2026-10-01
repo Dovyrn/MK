@@ -137,9 +137,9 @@ fn main() {
     c.bind_render_pipeline(triangle);
     c.bind_vertex_buffer(0, vbuf, 0);
     c.push_constants(0, &0.5f32.to_le_bytes());
-    c.begin_occlusion(samples, 0);
+    c.begin_query(samples, 0);
     c.draw(3, 1, 0, 0);
-    c.end_occlusion(samples, 0);
+    c.end_query(samples, 0);
     c.end_render();
     c.barrier(
         stage::FRAGMENT,

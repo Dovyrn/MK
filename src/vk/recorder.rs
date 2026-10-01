@@ -653,11 +653,11 @@ impl Recorder<'_> {
                 Command::WriteTimestamp { heap, index, stage } => {
                     d.cmd_write_timestamp2(b, stages(stage), self.res.queries.get(heap).0, index)
                 }
-                Command::BeginOcclusion { heap, index } => {
+                Command::BeginQuery { heap, index } => {
                     let (pool, flags, _) = *self.res.queries.get(heap);
                     d.cmd_begin_query(b, pool, index, flags)
                 }
-                Command::EndOcclusion { heap, index } => {
+                Command::EndQuery { heap, index } => {
                     d.cmd_end_query(b, self.res.queries.get(heap).0, index)
                 }
                 Command::ResolveQueries {

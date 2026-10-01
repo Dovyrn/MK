@@ -342,13 +342,13 @@ public class Commands {
         memPutInt(p + 8, stage);
     }
 
-    public void beginOcclusion(int heap, int index) {
+    public void beginQuery(int heap, int index) {
         var p = head(42, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
-    public void endOcclusion(int heap, int index) {
+    public void endQuery(int heap, int index) {
         var p = head(43, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);

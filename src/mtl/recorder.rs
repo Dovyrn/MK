@@ -717,13 +717,13 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
-            Command::BeginOcclusion { index, .. } => unsafe {
+            Command::BeginQuery { index, .. } => unsafe {
                 self.render().setVisibilityResultMode_offset(
                     MTLVisibilityResultMode::Counting,
                     index as usize * 8,
                 )
             },
-            Command::EndOcclusion { index, .. } => unsafe {
+            Command::EndQuery { index, .. } => unsafe {
                 self.render().setVisibilityResultMode_offset(
                     MTLVisibilityResultMode::Disabled,
                     index as usize * 8,

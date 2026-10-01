@@ -157,11 +157,11 @@ fn draw(
         c.set_depth_bounds(bounds.0, bounds.1);
     }
     if let Some(heap) = statistics {
-        c.begin_occlusion(heap, 0);
+        c.begin_query(heap, 0);
     }
     c.draw(3, 1, 0, 0);
     if let Some(heap) = statistics {
-        c.end_occlusion(heap, 0);
+        c.end_query(heap, 0);
     }
     c.end_render();
     #[cfg(feature = "vk")]
