@@ -325,3 +325,186 @@ backend = "mtl"
 params = [["code", "bytes"], ["entry", "str"], ["colors", "u32s"], ["samples", "u32"]]
 result = "u32"
 fails = true
+
+[[call]]
+name = "create_compacted"
+params = [["accel", "u32"], ["size", "u64"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "create_host_buffer"
+params = [["pointer", "pointer"], ["size", "u64"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "sparse_page"
+result = "u64"
+
+[[call]]
+name = "sparse_tile"
+params = [["info", "TextureInfo"]]
+result = "u32x3"
+
+[[call]]
+name = "create_sparse_buffer"
+params = [["size", "u64"]]
+result = "u32"
+
+[[call]]
+name = "create_sparse_texture"
+params = [["info", "TextureInfo"]]
+result = "u32"
+
+[[call]]
+name = "map_sparse_buffer"
+params = [["queue", "usize"], ["buffer", "u32"], ["heap", "u32"], ["ranges", "[SparseRange]"], ["waits", "waits"], ["signals", "waits"]]
+
+[[call]]
+name = "map_sparse_texture"
+params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
+
+[[call]]
+name = "create_surface_raw"
+params = [["handle", "u64"], ["info", "SurfaceInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "create_commands_layout"
+backend = "vk"
+params = [["info", "LayoutInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_commands_layout"
+backend = "vk"
+params = [["layout", "u32"]]
+
+[[call]]
+name = "generated_size"
+backend = "vk"
+params = [["layout", "u32"], ["pipeline", "u32"], ["sequences", "u32"], ["draws", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_ray_pipeline"
+backend = "vk"
+params = [["info", "RayInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_ray_pipeline"
+backend = "vk"
+params = [["pipeline", "u32"]]
+
+[[call]]
+name = "ray_handles"
+backend = "vk"
+params = [["pipeline", "u32"]]
+result = "bytes"
+fails = true
+
+[[call]]
+name = "create_shared_heap"
+backend = "vk"
+params = [["size", "u64"], ["memory", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "export_heap"
+backend = "vk"
+params = [["heap", "u32"]]
+result = "i32"
+fails = true
+
+[[call]]
+name = "import_heap"
+backend = "vk"
+params = [["fd", "i32"], ["size", "u64"], ["memory", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "create_function_table"
+backend = "mtl"
+params = [["pipeline", "u32"], ["functions", "[str]"], ["intersection", "bool"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_function_table"
+backend = "mtl"
+params = [["table", "u32"]]
+
+[[call]]
+name = "function_table_handle"
+backend = "mtl"
+params = [["table", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_indirect"
+backend = "mtl"
+params = [["info", "IndirectInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_indirect"
+backend = "mtl"
+params = [["indirect", "u32"]]
+
+[[call]]
+name = "indirect_handle"
+backend = "mtl"
+params = [["indirect", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_rate_map"
+backend = "mtl"
+params = [["width", "u32"], ["height", "u32"], ["horizontal", "f32s"], ["vertical", "f32s"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "rate_map_size"
+backend = "mtl"
+params = [["map", "u32"]]
+result = "u32x2"
+
+[[call]]
+name = "destroy_rate_map"
+backend = "mtl"
+params = [["map", "u32"]]
+
+[[call]]
+name = "create_shared_texture"
+backend = "mtl"
+params = [["info", "TextureInfo"]]
+result = "pair32"
+fails = true
+
+[[call]]
+name = "import_shared_texture"
+backend = "mtl"
+params = [["id", "u32"], ["info", "TextureInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "create_upscaler"
+backend = "mtl"
+params = [["info", "UpscaleInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_upscaler"
+backend = "mtl"
+params = [["upscaler", "u32"]]

@@ -83,4 +83,133 @@ public class MtlDevice {
     }
 
     private static native int nCreateTilePipeline(long device, long code, long codeLength, long entry, int entryLength, long colors, int colorsLength, int samples);
+
+    public static int createFunctionTable(Device device, int pipeline, String[] functions, boolean intersection) {
+        try (var stack = MemoryStack.stackPush()) {
+            var functionsSize = 4;
+            for (var x : functions) {
+                functionsSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
+            }
+            var functionsAddress = stack.nmalloc(8, functionsSize);
+            memPutInt(functionsAddress, functions.length);
+            var functionsAt = functionsAddress + 4;
+            for (var x : functions) {
+                var b = x.getBytes(StandardCharsets.UTF_8);
+                memPutInt(functionsAt, b.length);
+                memByteBuffer(functionsAt + 4, b.length).put(b);
+                functionsAt += 4 + b.length;
+            }
+            return nCreateFunctionTable(device.handle, pipeline, functionsAddress, functionsSize, intersection);
+        }
+    }
+
+    private static native int nCreateFunctionTable(long device, int pipeline, long functions, int functionsLength, boolean intersection);
+
+    public static void destroyFunctionTable(Device device, int table) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyFunctionTable(device.handle, table);
+        }
+    }
+
+    private static native void nDestroyFunctionTable(long device, int table);
+
+    public static long functionTableHandle(Device device, int table) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nFunctionTableHandle(device.handle, table);
+        }
+    }
+
+    private static native long nFunctionTableHandle(long device, int table);
+
+    public static int createIndirect(Device device, IndirectInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateIndirect(device.handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateIndirect(long device, long info, int infoLength);
+
+    public static void destroyIndirect(Device device, int indirect) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyIndirect(device.handle, indirect);
+        }
+    }
+
+    private static native void nDestroyIndirect(long device, int indirect);
+
+    public static long indirectHandle(Device device, int indirect) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nIndirectHandle(device.handle, indirect);
+        }
+    }
+
+    private static native long nIndirectHandle(long device, int indirect);
+
+    public static int createRateMap(Device device, int width, int height, float[] horizontal, float[] vertical) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nCreateRateMap(device.handle, width, height, memAddress(stack.floats(horizontal)), horizontal.length, memAddress(stack.floats(vertical)), vertical.length);
+        }
+    }
+
+    private static native int nCreateRateMap(long device, int width, int height, long horizontal, int horizontalLength, long vertical, int verticalLength);
+
+    public static int[] rateMapSize(Device device, int map) {
+        try (var stack = MemoryStack.stackPush()) {
+            var out = stack.nmalloc(8, 256);
+            nRateMapSize(device.handle, map, out);
+            return new int[] {memGetInt(out), memGetInt(out + 4)};
+        }
+    }
+
+    private static native void nRateMapSize(long device, int map, long out);
+
+    public static void destroyRateMap(Device device, int map) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyRateMap(device.handle, map);
+        }
+    }
+
+    private static native void nDestroyRateMap(long device, int map);
+
+    public static long[] createSharedTexture(Device device, TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            var out = stack.nmalloc(8, 256);
+            nCreateSharedTexture(device.handle, infoAddress, info.size(), out);
+            return new long[] {memGetLong(out), memGetLong(out + 8)};
+        }
+    }
+
+    private static native void nCreateSharedTexture(long device, long info, int infoLength, long out);
+
+    public static int importSharedTexture(Device device, int id, TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nImportSharedTexture(device.handle, id, infoAddress, info.size());
+        }
+    }
+
+    private static native int nImportSharedTexture(long device, int id, long info, int infoLength);
+
+    public static int createUpscaler(Device device, UpscaleInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateUpscaler(device.handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateUpscaler(long device, long info, int infoLength);
+
+    public static void destroyUpscaler(Device device, int upscaler) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyUpscaler(device.handle, upscaler);
+        }
+    }
+
+    private static native void nDestroyUpscaler(long device, int upscaler);
 }

@@ -78,4 +78,80 @@ public class VkDevice {
     }
 
     private static native long nRawQueue(long device, int queue);
+
+    public static int createCommandsLayout(Device device, LayoutInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateCommandsLayout(device.handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateCommandsLayout(long device, long info, int infoLength);
+
+    public static void destroyCommandsLayout(Device device, int layout) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyCommandsLayout(device.handle, layout);
+        }
+    }
+
+    private static native void nDestroyCommandsLayout(long device, int layout);
+
+    public static long generatedSize(Device device, int layout, int pipeline, int sequences, int draws) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nGeneratedSize(device.handle, layout, pipeline, sequences, draws);
+        }
+    }
+
+    private static native long nGeneratedSize(long device, int layout, int pipeline, int sequences, int draws);
+
+    public static int createRayPipeline(Device device, RayInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateRayPipeline(device.handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateRayPipeline(long device, long info, int infoLength);
+
+    public static void destroyRayPipeline(Device device, int pipeline) {
+        try (var stack = MemoryStack.stackPush()) {
+            nDestroyRayPipeline(device.handle, pipeline);
+        }
+    }
+
+    private static native void nDestroyRayPipeline(long device, int pipeline);
+
+    public static byte[] rayHandles(Device device, int pipeline) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nRayHandles(device.handle, pipeline);
+        }
+    }
+
+    private static native byte[] nRayHandles(long device, int pipeline);
+
+    public static int createSharedHeap(Device device, long size, int memory) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nCreateSharedHeap(device.handle, size, memory);
+        }
+    }
+
+    private static native int nCreateSharedHeap(long device, long size, int memory);
+
+    public static int exportHeap(Device device, int heap) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nExportHeap(device.handle, heap);
+        }
+    }
+
+    private static native int nExportHeap(long device, int heap);
+
+    public static int importHeap(Device device, int fd, long size, int memory) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nImportHeap(device.handle, fd, size, memory);
+        }
+    }
+
+    private static native int nImportHeap(long device, int fd, long size, int memory);
 }

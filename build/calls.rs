@@ -94,8 +94,8 @@ fn natives(p: &Param) -> Vec<(String, String, &'static str, &'static str)> {
         ]
     };
     match p.kind.as_str() {
-        "u32" | "usize" => one("int", "jint"),
-        "u64" | "handle" | "object" | "f32x12" => one("long", "jlong"),
+        "u32" | "usize" | "i32" => one("int", "jint"),
+        "u64" | "handle" | "object" | "f32x12" | "pointer" => one("long", "jlong"),
         "f32" => one("float", "jfloat"),
         "bool" => one("boolean", "jboolean"),
         "bytes" | "mutbytes" | "commands" => two("long", "jlong"),
@@ -104,14 +104,17 @@ fn natives(p: &Param) -> Vec<(String, String, &'static str, &'static str)> {
 }
 
 fn outs(call: &Call) -> bool {
-    matches!(call.result.as_str(), "pair" | "handles")
-        || info(&call.result) && call.result != "device"
+    matches!(
+        call.result.as_str(),
+        "pair" | "handles" | "pair32" | "u32x2" | "u32x3"
+    ) || info(&call.result) && call.result != "device"
 }
 
 fn result_types(call: &Call) -> (&'static str, &'static str) {
     match call.result.as_str() {
-        "u32" => ("int", "jint"),
+        "u32" | "i32" => ("int", "jint"),
         "u64" | "pointer" | "handle" | "object" | "device" => ("long", "jlong"),
+        "bytes" => ("byte[]", "jni::objects::JByteArray<'local>"),
         "bool" => ("boolean", "jboolean"),
         _ => ("void", "()"),
     }
@@ -122,6 +125,10 @@ fn rust_arg(p: &Param) -> String {
     let j = "crate::java";
     match p.kind.as_str() {
         "u32" => format!("{n} as u32"),
+        "i32" => n,
+        "pointer" => format!("{n} as usize as *mut u8"),
+        "f32s" => format!("{j}::f32s({n}, {n}_length as i64)"),
+        "[str]" => format!("&{j}::strs(&mut {j}::bytes({n}, {n}_length as i64))"),
         "usize" => format!("{n} as usize"),
         "u64" => format!("{n} as u64"),
         "f32" => n,
@@ -135,6 +142,10 @@ fn rust_arg(p: &Param) -> String {
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
         "handle" => format!("ash::vk::Handle::from_raw({n} as u64)"),
         "object" => format!("{j}::object({n})"),
+        k if k.starts_with('[') => format!(
+            "&{j}::list(&mut {j}::bytes({n}, {n}_length as i64), crate::{}::read)",
+            &k[1..k.len() - 1]
+        ),
         k => format!("&crate::{k}::read(&mut {j}::bytes({n}, {n}_length as i64))"),
     }
 }
@@ -145,7 +156,10 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     );
     s += "    drop(unsafe { Box::from_raw(device as *mut crate::Device) });\n}\n";
     for call in calls {
-        let mut params = vec!["mut env: JNIEnv".to_string(), "_: JClass".to_string()];
+        let mut params = vec![
+            "mut env: JNIEnv<'local>".to_string(),
+            "_: JClass".to_string(),
+        ];
         if !statics(call) {
             params.push("device: jlong".into());
         }
@@ -169,7 +183,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         }
         writeln!(
             s,
-            "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}({}){ret} {{",
+            "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
             class(call),
             native(call),
             params.join(", ")
@@ -212,7 +226,14 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         };
         let body = match call.result.as_str() {
             "" => format!("{invoke};\n        Ok(())"),
-            "u32" => format!("Ok({invoke} as jint)"),
+            "u32" | "i32" => format!("Ok({invoke} as jint)"),
+            "pair32" => format!(
+                "let r = {invoke};\n        crate::java::pair(out, (r.0 as u64, r.1 as u64));\n        Ok(())"
+            ),
+            "u32x2" | "u32x3" => format!("crate::java::u32s_out(out, &{invoke});\n        Ok(())"),
+            "bytes" => format!(
+                "let r = {invoke};\n        env.byte_array_from_slice(&r).map_err(|e| e.to_string())"
+            ),
             "u64" => format!("Ok({invoke} as jlong)"),
             "bool" => format!("Ok({invoke} as jboolean)"),
             "pointer" => format!("Ok({invoke} as usize as jlong)"),
@@ -229,7 +250,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         };
         writeln!(
             s,
-            "    crate::java::call(&mut env, || {{\n        {body}\n    }})\n}}"
+            "    crate::java::call(&mut env, |env| {{\n        let _ = &env;\n        {body}\n    }})\n}}"
         )
         .unwrap();
     }
@@ -260,8 +281,10 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         }
         for p in &call.params {
             let t = match p.kind.as_str() {
-                "u32" | "usize" => "int",
-                "u64" | "handle" | "object" => "long",
+                "u32" | "usize" | "i32" => "int",
+                "u64" | "handle" | "object" | "pointer" => "long",
+                "f32s" => "float[]",
+                "[str]" => "String[]",
                 "f32" => "float",
                 "bool" => "boolean",
                 "str" => "String",
@@ -270,13 +293,20 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "u32s" | "pairs" => "int[]",
                 "f32x12" => "float[]",
                 "waits" => "long[]",
+                k if k.starts_with('[') => &k[1..k.len() - 1],
                 k => k,
+            };
+            let t = if p.kind.starts_with('[') && p.kind != "[str]" {
+                format!("{t}[]")
+            } else {
+                t.to_string()
             };
             params.push(format!("{t} {}", camel(&p.name)));
         }
         let (java_ret, _) = result_types(call);
         let ret = match call.result.as_str() {
-            "pair" | "handles" => "long[]".to_string(),
+            "pair" | "handles" | "pair32" => "long[]".to_string(),
+            "u32x2" | "u32x3" => "int[]".into(),
             "device" => "Device".into(),
             r if info(r) => r.into(),
             _ => java_ret.into(),
@@ -308,7 +338,30 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         for p in &call.params {
             let n = camel(&p.name);
             match p.kind.as_str() {
-                "u32" | "usize" | "u64" | "handle" | "object" | "f32" | "bool" => args.push(n),
+                "u32" | "usize" | "i32" | "u64" | "handle" | "object" | "pointer" | "f32"
+                | "bool" => args.push(n),
+                "f32s" => {
+                    args.push(format!("memAddress(stack.floats({n}))"));
+                    args.push(format!("{n}.length"));
+                }
+                "[str]" => {
+                    writeln!(
+                        s,
+                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += 4 + x.getBytes(StandardCharsets.UTF_8).length;\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                var b = x.getBytes(StandardCharsets.UTF_8);\n                memPutInt({n}At, b.length);\n                memByteBuffer({n}At + 4, b.length).put(b);\n                {n}At += 4 + b.length;\n            }}"
+                    )
+                    .unwrap();
+                    args.push(format!("{n}Address"));
+                    args.push(format!("{n}Size"));
+                }
+                k if k.starts_with('[') => {
+                    writeln!(
+                        s,
+                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += x.size();\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                {n}At = x.write({n}At);\n            }}"
+                    )
+                    .unwrap();
+                    args.push(format!("{n}Address"));
+                    args.push(format!("{n}Size"));
+                }
                 "str" => {
                     writeln!(s, "            var {n}Bytes = stack.UTF8({n}, false);").unwrap();
                     args.push(format!("memAddress({n}Bytes)"));
@@ -354,8 +407,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let invoke = format!("{}({})", native(call), args.join(", "));
         let line = match call.result.as_str() {
             "" => format!("{invoke};"),
-            "pair" | "handles" => format!(
+            "pair" | "handles" | "pair32" => format!(
                 "{invoke};\n            return new long[] {{memGetLong(out), memGetLong(out + 8)}};"
+            ),
+            "u32x2" => format!(
+                "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4)}};"
+            ),
+            "u32x3" => format!(
+                "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
             ),
             "device" => format!("return new Device({invoke});"),
             r if info(r) => format!("{invoke};\n            return {r}.read(out);"),

@@ -426,4 +426,124 @@ public class Device {
     }
 
     private static native void nDestroySurface(long device, int surface);
+
+    public int createCompacted(int accel, long size) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nCreateCompacted(handle, accel, size);
+        }
+    }
+
+    private static native int nCreateCompacted(long device, int accel, long size);
+
+    public int createHostBuffer(long pointer, long size) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nCreateHostBuffer(handle, pointer, size);
+        }
+    }
+
+    private static native int nCreateHostBuffer(long device, long pointer, long size);
+
+    public long sparsePage() {
+        try (var stack = MemoryStack.stackPush()) {
+            return nSparsePage(handle);
+        }
+    }
+
+    private static native long nSparsePage(long device);
+
+    public int[] sparseTile(TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            var out = stack.nmalloc(8, 256);
+            nSparseTile(handle, infoAddress, info.size(), out);
+            return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
+        }
+    }
+
+    private static native void nSparseTile(long device, long info, int infoLength, long out);
+
+    public int createSparseBuffer(long size) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nCreateSparseBuffer(handle, size);
+        }
+    }
+
+    private static native int nCreateSparseBuffer(long device, long size);
+
+    public int createSparseTexture(TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateSparseTexture(handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateSparseTexture(long device, long info, int infoLength);
+
+    public void mapSparseBuffer(int queue, int buffer, int heap, SparseRange[] ranges, long[] waits, long[] signals) {
+        try (var stack = MemoryStack.stackPush()) {
+            var rangesSize = 4;
+            for (var x : ranges) {
+                rangesSize += x.size();
+            }
+            var rangesAddress = stack.nmalloc(8, rangesSize);
+            memPutInt(rangesAddress, ranges.length);
+            var rangesAt = rangesAddress + 4;
+            for (var x : ranges) {
+                rangesAt = x.write(rangesAt);
+            }
+            var waitsAddress = stack.nmalloc(8, waits.length * 8);
+            for (var i = 0; i < waits.length / 2; i++) {
+                memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
+                memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            var signalsAddress = stack.nmalloc(8, signals.length * 8);
+            for (var i = 0; i < signals.length / 2; i++) {
+                memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
+                memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
+            }
+            nMapSparseBuffer(handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+        }
+    }
+
+    private static native void nMapSparseBuffer(long device, int queue, int buffer, int heap, long ranges, int rangesLength, long waits, int waitsLength, long signals, int signalsLength);
+
+    public void mapSparseTexture(int queue, int texture, int heap, SparseRegion[] regions, long[] waits, long[] signals) {
+        try (var stack = MemoryStack.stackPush()) {
+            var regionsSize = 4;
+            for (var x : regions) {
+                regionsSize += x.size();
+            }
+            var regionsAddress = stack.nmalloc(8, regionsSize);
+            memPutInt(regionsAddress, regions.length);
+            var regionsAt = regionsAddress + 4;
+            for (var x : regions) {
+                regionsAt = x.write(regionsAt);
+            }
+            var waitsAddress = stack.nmalloc(8, waits.length * 8);
+            for (var i = 0; i < waits.length / 2; i++) {
+                memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
+                memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            var signalsAddress = stack.nmalloc(8, signals.length * 8);
+            for (var i = 0; i < signals.length / 2; i++) {
+                memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
+                memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
+            }
+            nMapSparseTexture(handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+        }
+    }
+
+    private static native void nMapSparseTexture(long device, int queue, int texture, int heap, long regions, int regionsLength, long waits, int waitsLength, long signals, int signalsLength);
+
+    public int createSurfaceRaw(long handle, SurfaceInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = stack.nmalloc(8, info.size());
+            info.write(infoAddress);
+            return nCreateSurfaceRaw(handle, handle, infoAddress, info.size());
+        }
+    }
+
+    private static native int nCreateSurfaceRaw(long device, long handle, long info, int infoLength);
 }

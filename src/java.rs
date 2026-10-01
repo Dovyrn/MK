@@ -4,8 +4,11 @@ use jni::objects::JClass;
 use jni::sys::{jboolean, jint, jlong};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-pub fn call<T: Default>(env: &mut JNIEnv, f: impl FnOnce() -> Result<T, String>) -> T {
-    let message = match catch_unwind(AssertUnwindSafe(f)) {
+pub fn call<'local, T: Default>(
+    env: &mut JNIEnv<'local>,
+    f: impl FnOnce(&mut JNIEnv<'local>) -> Result<T, String>,
+) -> T {
+    let message = match catch_unwind(AssertUnwindSafe(|| f(env))) {
         Ok(Ok(v)) => return v,
         Ok(Err(e)) => e,
         Err(p) => p
@@ -63,6 +66,26 @@ pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
         .chunks(2)
         .map(|p| (p[0], p[1]))
         .collect()
+}
+
+#[cfg(feature = "mtl")]
+pub fn f32s<'a>(address: jlong, count: i64) -> &'a [f32] {
+    unsafe { std::slice::from_raw_parts(address as *const f32, count as usize) }
+}
+
+#[cfg(feature = "mtl")]
+pub fn strs<'a>(b: &mut &'a [u8]) -> Vec<&'a str> {
+    (0..crate::wire::u32(b))
+        .map(|_| crate::wire::str(b))
+        .collect()
+}
+
+pub fn list<T>(b: &mut &[u8], f: impl Fn(&mut &[u8]) -> T) -> Vec<T> {
+    (0..crate::wire::u32(b)).map(|_| f(b)).collect()
+}
+
+pub fn u32s_out(out: jlong, v: &[u32]) {
+    unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };
 }
 
 pub fn pair(out: jlong, v: (u64, u64)) {
