@@ -281,3 +281,20 @@ fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
 name = "optimize_indirect"
 backend = "mtl"
 fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "execute_generated"
+backend = "vk"
+fields = [
+    ["layout", "u32"],
+    ["indirect", "u32"],
+    ["offset", "u64"],
+    ["size", "u64"],
+    ["preprocess", "u32"],
+    ["preprocess_offset", "u64"],
+    ["preprocess_size", "u64"],
+    ["sequences", "u32"],
+    ["count", "u32"],
+    ["count_offset", "u64"],
+    ["draws", "u32"],
+]

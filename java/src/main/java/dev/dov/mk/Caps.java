@@ -12,12 +12,13 @@ public class Caps {
     public boolean timestamps = false;
     public boolean precise = false;
     public boolean ray = false;
+    public boolean generated = false;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 48;
+        return 52;
     }
 
     public long write(long p) {
@@ -38,6 +39,8 @@ public class Caps {
         memPutInt(p, precise ? 1 : 0);
         p += 4;
         memPutInt(p, ray ? 1 : 0);
+        p += 4;
+        memPutInt(p, generated ? 1 : 0);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -67,6 +70,8 @@ public class Caps {
         r.precise = memGetInt(p) != 0;
         p += 4;
         r.ray = memGetInt(p) != 0;
+        p += 4;
+        r.generated = memGetInt(p) != 0;
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

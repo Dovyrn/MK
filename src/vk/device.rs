@@ -2,21 +2,23 @@ use crate::vk::accel::Accel;
 use crate::vk::bindless::Bindless;
 use crate::vk::buffer::Buffer;
 use crate::vk::extensions::Extensions;
+use crate::vk::ffi;
+use crate::vk::generated::Generated;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
-    SurfaceInfo, TextureInfo, ViewInfo, address, border, dimension, fill, filter, format, index,
-    memory, query, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, DepthInfo, LayoutInfo, MeshInfo, RenderInfo,
+    SamplerInfo, SurfaceInfo, TextureInfo, ViewInfo, address, border, dimension, fill, filter,
+    format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
 use ash::khr::{
-    acceleration_structure, deferred_host_operations, portability_enumeration, portability_subset,
-    ray_query, ray_tracing_pipeline, surface, swapchain,
+    acceleration_structure, deferred_host_operations, maintenance5, portability_enumeration,
+    portability_subset, ray_query, ray_tracing_pipeline, surface, swapchain,
 };
 use ash::vk;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -191,6 +193,32 @@ impl Device {
             if has(&available, portability_subset::NAME) {
                 extensions.push(portability_subset::NAME.as_ptr());
             }
+            let mut supported_generated = ffi::Features {
+                s_type: ffi::FEATURES,
+                next: std::ptr::null_mut(),
+                generated: 0,
+                dynamic: 0,
+            };
+            let mut query = vk::PhysicalDeviceFeatures2 {
+                p_next: (&raw mut supported_generated).cast(),
+                ..Default::default()
+            };
+            instance.get_physical_device_features2(physical, &mut query);
+            let generated = has(&available, c"VK_EXT_device_generated_commands")
+                && has(&available, maintenance5::NAME)
+                && supported_generated.generated != 0;
+            let mut enabled_generated = ffi::Features {
+                s_type: ffi::FEATURES,
+                next: std::ptr::null_mut(),
+                generated: 1,
+                dynamic: 0,
+            };
+            let mut maintenance =
+                vk::PhysicalDeviceMaintenance5FeaturesKHR::default().maintenance5(true);
+            if generated {
+                extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
+                extensions.push(maintenance5::NAME.as_ptr());
+            }
             let mut supported_mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
             let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_mesh);
             instance.get_physical_device_features2(physical, &mut query);
@@ -283,11 +311,16 @@ impl Device {
             } else {
                 info
             };
-            let info = if pipelines {
+            let mut info = if pipelines {
                 info.push_next(&mut rt)
             } else {
                 info
             };
+            if generated {
+                info = info.push_next(&mut maintenance);
+                enabled_generated.next = info.p_next as *mut _;
+                info.p_next = (&raw const enabled_generated).cast();
+            }
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
@@ -314,6 +347,7 @@ impl Device {
             let name = c"vkCmdBuildAccelerationStructuresKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let ray = loaded.map(|_| acceleration_structure::Device::new(&instance, &raw));
+            let generated = Generated::load(&instance, &raw);
             let name = c"vkCreateSwapchainKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let surfaces = loaded.map(|_| {
@@ -355,6 +389,7 @@ impl Device {
                     debug,
                     mesh,
                     ray,
+                    generated,
                     surfaces,
                 },
                 owned: false,
@@ -431,6 +466,7 @@ impl Device {
                 .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
             precise: features.occlusion_query_precise != 0,
             ray: self.ext.ray.is_some(),
+            generated: self.ext.generated.is_some(),
             instance: 64,
             views: unsafe {
                 let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
@@ -454,13 +490,24 @@ impl Device {
         self.res.buffers.insert(buffer)
     }
 
-    fn share_buffer<'a>(&'a self, info: vk::BufferCreateInfo<'a>) -> vk::BufferCreateInfo<'a> {
+    fn buffer_info<'a>(
+        &'a self,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        wide: &'a mut vk::BufferUsageFlags2CreateInfoKHR<'a>,
+    ) -> vk::BufferCreateInfo<'a> {
+        let mut info = vk::BufferCreateInfo::default().size(size).usage(usage);
         if self.families.len() > 1 {
-            info.sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(&self.families)
-        } else {
-            info
+            info = info
+                .sharing_mode(vk::SharingMode::CONCURRENT)
+                .queue_family_indices(&self.families);
         }
+        if self.ext.generated.is_some() {
+            wide.usage =
+                vk::BufferUsageFlags2KHR::from_raw(usage.as_raw() as u64 | ffi::PREPROCESS);
+            info = info.push_next(wide);
+        }
+        info
     }
 
     fn share_image<'a>(&'a self, info: vk::ImageCreateInfo<'a>) -> vk::ImageCreateInfo<'a> {
@@ -532,11 +579,8 @@ impl Device {
     }
 
     pub fn buffer_size(&self, size: u64, _memory: u32) -> (u64, u64) {
-        let info = self.share_buffer(
-            vk::BufferCreateInfo::default()
-                .size(size)
-                .usage(self.usage()),
-        );
+        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+        let info = self.buffer_info(size, self.usage(), &mut wide);
         let query = vk::DeviceBufferMemoryRequirements::default().create_info(&info);
         let mut needs = vk::MemoryRequirements2::default();
         unsafe {
@@ -566,11 +610,8 @@ impl Device {
     pub fn create_placed_buffer(&mut self, heap: u32, offset: u64, size: u64) -> u32 {
         let h = self.res.heaps.get(heap);
         unsafe {
-            let info = self.share_buffer(
-                vk::BufferCreateInfo::default()
-                    .size(size)
-                    .usage(self.usage()),
-            );
+            let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+            let info = self.buffer_info(size, self.usage(), &mut wide);
             let raw = self.raw.create_buffer(&info, None).unwrap();
             self.raw.bind_buffer_memory(raw, h.memory, offset).unwrap();
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
@@ -604,7 +645,8 @@ impl Device {
 
     fn allocate(&self, size: u64, memory: u32, usage: vk::BufferUsageFlags) -> Buffer {
         unsafe {
-            let info = self.share_buffer(vk::BufferCreateInfo::default().size(size).usage(usage));
+            let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+            let info = self.buffer_info(size, usage, &mut wide);
             let raw = self.raw.create_buffer(&info, None).unwrap();
             let needs = self.raw.get_buffer_memory_requirements(raw);
             let index = self.memory_type(needs.memory_type_bits, memory);
@@ -1483,6 +1525,101 @@ impl Device {
         Ok(())
     }
 
+    pub fn create_commands_layout(&mut self, info: &LayoutInfo) -> Result<u32, String> {
+        let generated = self
+            .ext
+            .generated
+            .as_ref()
+            .ok_or("VK_EXT_device_generated_commands is not enabled")?;
+        let mesh = info
+            .tokens
+            .iter()
+            .any(|t| matches!(t.kind, token::DRAW_MESH | token::DRAW_MESH_COUNT));
+        let stages = if info.compute {
+            vk::ShaderStageFlags::COMPUTE
+        } else if mesh {
+            vk::ShaderStageFlags::TASK_EXT
+                | vk::ShaderStageFlags::MESH_EXT
+                | vk::ShaderStageFlags::FRAGMENT
+        } else {
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT
+        };
+        let data: Vec<[u32; 3]> = info
+            .tokens
+            .iter()
+            .map(|t| match t.kind {
+                token::PUSH | token::SEQUENCE_INDEX => [
+                    vk::ShaderStageFlags::ALL.as_raw(),
+                    t.push_offset,
+                    t.push_size,
+                ],
+                _ => [t.binding, 0, 0],
+            })
+            .collect();
+        let tokens: Vec<_> = info
+            .tokens
+            .iter()
+            .zip(&data)
+            .map(|(t, d)| ffi::Token {
+                s_type: ffi::TOKEN,
+                next: std::ptr::null(),
+                kind: t.kind as i32,
+                data: d.as_ptr().cast(),
+                offset: t.offset,
+            })
+            .collect();
+        let create = ffi::LayoutInfo {
+            s_type: ffi::LAYOUT,
+            next: std::ptr::null(),
+            flags: 0,
+            stages,
+            stride: info.stride,
+            layout: self.layout,
+            count: tokens.len() as u32,
+            tokens: tokens.as_ptr(),
+        };
+        let mut handle = 0;
+        let result = unsafe {
+            (generated.create)(self.raw.handle(), &create, std::ptr::null(), &mut handle)
+        };
+        if result != vk::Result::SUCCESS {
+            return Err(result.to_string());
+        }
+        Ok(self.res.layouts.insert((handle, stages)))
+    }
+
+    pub fn destroy_commands_layout(&mut self, layout: u32) {
+        let (handle, _) = self.res.layouts.remove(layout);
+        let generated = self.ext.generated.as_ref().unwrap();
+        unsafe { (generated.destroy)(self.raw.handle(), handle, std::ptr::null()) };
+    }
+
+    pub fn generated_size(&self, layout: u32, pipeline: u32, sequences: u32, draws: u32) -> u64 {
+        let (handle, stages) = *self.res.layouts.get(layout);
+        let pipeline = if stages == vk::ShaderStageFlags::COMPUTE {
+            *self.res.pipelines.get(pipeline)
+        } else {
+            *self.res.renders.get(pipeline)
+        };
+        let mut bound = ffi::PipelineInfo {
+            s_type: ffi::PIPELINE,
+            next: std::ptr::null_mut(),
+            pipeline,
+        };
+        let info = ffi::RequirementsInfo {
+            s_type: ffi::REQUIREMENTS,
+            next: (&raw mut bound).cast(),
+            set: 0,
+            layout: handle,
+            sequences,
+            draws,
+        };
+        let mut needs = vk::MemoryRequirements2::default();
+        let generated = self.ext.generated.as_ref().unwrap();
+        unsafe { (generated.requirements)(self.raw.handle(), &info, &mut needs) };
+        needs.memory_requirements.size
+    }
+
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
         let precise = unsafe {
             self.instance
@@ -1626,6 +1763,11 @@ impl Drop for Device {
                     .destroy_acceleration_structure(a.raw, None);
                 self.raw.destroy_buffer(a.buffer.raw, None);
                 self.raw.free_memory(a.buffer.memory, None);
+            }
+            let layouts: Vec<_> = self.res.layouts.drain().collect();
+            for (handle, _) in layouts {
+                let generated = self.ext.generated.as_ref().unwrap();
+                (generated.destroy)(self.raw.handle(), handle, std::ptr::null());
             }
             for (pool, _) in self.res.queries.drain() {
                 self.raw.destroy_query_pool(pool, None);

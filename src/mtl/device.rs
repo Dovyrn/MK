@@ -321,6 +321,7 @@ impl Device {
             timestamps: true,
             precise: true,
             ray: self.raw.supportsRaytracing(),
+            generated: false,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)

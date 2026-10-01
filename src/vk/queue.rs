@@ -70,6 +70,7 @@ impl Queue {
             stencil: vk::RenderingAttachmentInfo::default(),
             views: 0,
             natives,
+            bound: (vk::Pipeline::null(), vk::Pipeline::null()),
         }
         .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };

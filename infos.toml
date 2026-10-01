@@ -177,6 +177,7 @@ fields = [
     ["timestamps", "bool", "false"],
     ["precise", "bool", "false"],
     ["ray", "bool", "false"],
+    ["generated", "bool", "false"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
@@ -192,4 +193,22 @@ fields = [
     ["vertex_buffers", "u32", "0"],
     ["fragment_buffers", "u32", "0"],
     ["kernel_buffers", "u32", "0"],
+]
+
+[[info]]
+name = "TokenInfo"
+fields = [
+    ["kind", "u32", "token::DRAW"],
+    ["offset", "u32", "0"],
+    ["push_offset", "u32", "0"],
+    ["push_size", "u32", "0"],
+    ["binding", "u32", "0"],
+]
+
+[[info]]
+name = "LayoutInfo"
+fields = [
+    ["stride", "u32", "0"],
+    ["compute", "bool", "false"],
+    ["tokens", "[TokenInfo]", ""],
 ]

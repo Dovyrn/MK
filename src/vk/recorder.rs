@@ -1,4 +1,5 @@
 use crate::vk::extensions::Extensions;
+use crate::vk::ffi;
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
 use crate::vk::{Callback, Native};
@@ -19,6 +20,7 @@ pub struct Recorder<'a> {
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub views: u32,
     pub natives: &'a [Callback],
+    pub bound: (vk::Pipeline, vk::Pipeline),
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -214,11 +216,10 @@ impl Recorder<'_> {
         unsafe {
             match command {
                 Command::BeginCompute | Command::EndCompute => {}
-                Command::BindPipeline { pipeline } => d.cmd_bind_pipeline(
-                    b,
-                    vk::PipelineBindPoint::COMPUTE,
-                    *self.res.pipelines.get(pipeline),
-                ),
+                Command::BindPipeline { pipeline } => {
+                    self.bound.0 = *self.res.pipelines.get(pipeline);
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, self.bound.0)
+                }
                 Command::PushConstants { offset, data } => {
                     d.cmd_push_constants(b, self.layout, vk::ShaderStageFlags::ALL, offset, data)
                 }
@@ -473,11 +474,10 @@ impl Recorder<'_> {
                     self.depth_state(&DepthInfo::default());
                 }
                 Command::EndRender => d.cmd_end_rendering(b),
-                Command::BindRenderPipeline { pipeline } => d.cmd_bind_pipeline(
-                    b,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    *self.res.renders.get(pipeline),
-                ),
+                Command::BindRenderPipeline { pipeline } => {
+                    self.bound.1 = *self.res.renders.get(pipeline);
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, self.bound.1)
+                }
                 Command::SetViewport {
                     x,
                     y,
@@ -691,6 +691,52 @@ impl Recorder<'_> {
                     device: d,
                     buffer: b,
                 }),
+                Command::ExecuteGenerated {
+                    layout,
+                    indirect,
+                    offset,
+                    size,
+                    preprocess,
+                    preprocess_offset,
+                    preprocess_size,
+                    sequences,
+                    count,
+                    count_offset,
+                    draws,
+                } => {
+                    let (handle, stages) = *self.res.layouts.get(layout);
+                    let mut bound = ffi::PipelineInfo {
+                        s_type: ffi::PIPELINE,
+                        next: std::ptr::null_mut(),
+                        pipeline: if stages == vk::ShaderStageFlags::COMPUTE {
+                            self.bound.0
+                        } else {
+                            self.bound.1
+                        },
+                    };
+                    let address = |buffer: u32, offset: u64| {
+                        if buffer == NONE {
+                            0
+                        } else {
+                            self.res.buffers.get(buffer).address + offset
+                        }
+                    };
+                    let info = ffi::GeneratedInfo {
+                        s_type: ffi::GENERATED,
+                        next: (&raw mut bound).cast(),
+                        stages,
+                        set: 0,
+                        layout: handle,
+                        indirect: address(indirect, offset),
+                        indirect_size: size,
+                        preprocess: address(preprocess, preprocess_offset),
+                        preprocess_size,
+                        sequences,
+                        count: address(count, count_offset),
+                        draws,
+                    };
+                    (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
+                }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();
