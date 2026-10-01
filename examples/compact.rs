@@ -73,7 +73,7 @@ fn main() {
         access::HOST_READ,
     );
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 5000));
+    assert!(device.wait(event, 1, 5000).unwrap());
     let size = unsafe { *device.map(out).cast::<u64>() };
     let compacted = device.create_compacted(blas, size).unwrap();
     let bytes = caps.instance as usize;
@@ -135,7 +135,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 5000));
+    assert!(device.wait(event, 2, 5000).unwrap());
     device.destroy_accel(blas);
     let t = unsafe { std::slice::from_raw_parts(device.map(hits).cast::<f32>(), (n * n) as usize) };
     assert!(

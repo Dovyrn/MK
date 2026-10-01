@@ -174,7 +174,7 @@ fn main() {
         access::HOST_READ,
     );
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 10000));
+    assert!(device.wait(event, 1, 10000).unwrap());
     let t = unsafe { std::slice::from_raw_parts(device.map(out).cast::<f32>(), (n * n) as usize) };
     assert!(
         (t[(8 * n + 8) as usize] - 1.0).abs() < 1e-4,

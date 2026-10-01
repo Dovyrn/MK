@@ -2,6 +2,7 @@ use crate::mtl::Callback;
 use crate::mtl::frame::Frame;
 use crate::mtl::recorder::Recorder;
 use crate::mtl::resources::Resources;
+use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
@@ -9,8 +10,10 @@ use objc2_metal::{
     MTL4CommandQueue, MTLDevice, MTLEvent, MTLFence, MTLResidencySet, MTLResidencySetDescriptor,
     MTLSharedEvent,
 };
+use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
 use std::ptr::NonNull;
+use std::sync::{Arc, Mutex};
 
 pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
@@ -22,12 +25,14 @@ pub struct Queue {
     count: u64,
     free: Vec<Frame>,
     busy: VecDeque<(Frame, u64)>,
+    lost: Arc<Mutex<Option<String>>>,
 }
 
 impl Queue {
     pub fn new(
         device: &ProtocolObject<dyn MTLDevice>,
         shared: &ProtocolObject<dyn MTLResidencySet>,
+        lost: Arc<Mutex<Option<String>>>,
     ) -> Result<Self, String> {
         let raw = device
             .newMTL4CommandQueue()
@@ -52,6 +57,7 @@ impl Queue {
             count: 0,
             free: Vec::new(),
             busy: VecDeque::new(),
+            lost,
         })
     }
 
@@ -62,14 +68,19 @@ impl Queue {
         (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
+        if let Some(e) = self.lost.lock().unwrap().clone() {
+            return Err(e);
+        }
         let done = self.event.signaledValue();
-        while self.busy.front().is_some_and(|(_, v)| *v <= done) {
-            let (mut frame, _) = self.busy.pop_front().unwrap();
+        while let Some((mut frame, _)) = self.busy.pop_front_if(|(_, v)| *v <= done) {
             frame.reset();
             self.free.push(frame);
         }
-        let mut frame = self.free.pop().unwrap_or_else(|| Frame::new(device));
+        let mut frame = match self.free.pop() {
+            Some(f) => f,
+            None => Frame::new(device)?,
+        };
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
         let mut recorder = Recorder::new(device, self, &mut frame, res, natives);
@@ -84,14 +95,28 @@ impl Queue {
         if let Err(name) = result {
             frame.reset();
             self.free.push(frame);
-            return Err(name);
+            return Err(name.into());
         }
         for &(event, value) in waits {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.waitForEvent_value(event, value);
         }
+        let lost = self.lost.clone();
+        let handler = RcBlock::new(
+            move |feedback: NonNull<ProtocolObject<dyn MTL4CommitFeedback>>| {
+                if let Some(e) = unsafe { feedback.as_ref() }.error() {
+                    let mut slot = lost.lock().unwrap();
+                    slot.get_or_insert_with(|| e.localizedDescription().to_string());
+                }
+            },
+        );
+        let options = MTL4CommitOptions::new();
+        unsafe { options.addFeedbackHandler(RcBlock::as_ptr(&handler)) };
         let mut buffer = NonNull::from(&*self.buffer);
-        unsafe { self.raw.commit_count(NonNull::from(&mut buffer), 1) };
+        unsafe {
+            self.raw
+                .commit_count_options(NonNull::from(&mut buffer), 1, &options)
+        };
         for &(event, value) in signals {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.signalEvent_value(event, value);

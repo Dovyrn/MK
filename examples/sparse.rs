@@ -54,7 +54,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[(event, 1)], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 2000));
+    assert!(device.wait(event, 2, 2000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), (page * 4) as usize) };
     let p = page as usize;
     assert!(bytes[..p].iter().all(|b| *b == 7), "page 0");
@@ -160,7 +160,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[(event, 3)], &[(event, 4)]).unwrap();
-    assert!(device.wait(event, 4, 2000));
+    assert!(device.wait(event, 4, 2000).unwrap());
     let values = unsafe { std::slice::from_raw_parts(device.map(readback).cast::<u32>(), texels) };
     assert!(
         values.iter().enumerate().all(|(i, v)| *v == i as u32),

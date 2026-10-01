@@ -102,7 +102,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 2000));
+    assert!(device.wait(event, 1, 2000).unwrap());
     let out = unsafe {
         std::slice::from_raw_parts(
             device.map(back).cast::<[u16; 4]>(),
@@ -192,7 +192,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 2000));
+    assert!(device.wait(event, 2, 2000).unwrap());
     let center = out[(output / 2 * output + output / 2) as usize];
     let close = center.iter().zip(pixel).all(|(a, b)| a.abs_diff(b) <= 64);
     assert!(close, "temporal center {center:x?} vs {pixel:x?}");

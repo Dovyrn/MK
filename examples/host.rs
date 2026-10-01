@@ -49,7 +49,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 2000));
+    assert!(device.wait(event, 1, 2000).unwrap());
     let values = unsafe { std::slice::from_raw_parts(memory.cast::<u32>(), n as usize) };
     for (i, v) in values.iter().enumerate() {
         assert_eq!(*v, 9 + i as u32, "value {i}");

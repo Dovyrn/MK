@@ -202,11 +202,13 @@ params = [["event", "u32"]]
 name = "event_value"
 params = [["event", "u32"]]
 result = "u64"
+fails = true
 
 [[call]]
 name = "wait"
 params = [["event", "u32"], ["value", "u64"], ["timeout", "u64"]]
 result = "bool"
+fails = true
 
 [[call]]
 name = "submit"
@@ -245,6 +247,7 @@ name = "adopt_raw"
 backend = "vk"
 params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]
 result = "device"
+fails = true
 
 [[call]]
 name = "import_buffer"

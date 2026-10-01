@@ -387,9 +387,24 @@ impl Device {
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
-            let mut d = Self::adopt(entry, instance, physical, device, &slots, &features);
-            d.owned = true;
-            Ok(d)
+            match Self::adopt(
+                entry,
+                instance.clone(),
+                physical,
+                device.clone(),
+                &slots,
+                &features,
+            ) {
+                Ok(mut d) => {
+                    d.owned = true;
+                    Ok(d)
+                }
+                Err(e) => {
+                    device.destroy_device(None);
+                    instance.destroy_instance(None);
+                    Err(e)
+                }
+            }
         }
     }
 
@@ -400,7 +415,7 @@ impl Device {
         raw: ash::Device,
         queues: &[(u32, u32)],
         features: &vk::PhysicalDeviceFeatures,
-    ) -> Self {
+    ) -> Result<Self, String> {
         unsafe {
             let name = c"vkCmdBeginDebugUtilsLabelEXT";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
@@ -442,21 +457,35 @@ impl Device {
             let mut v12 = vk::PhysicalDeviceVulkan12Properties::default();
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut v12);
             instance.get_physical_device_properties2(physical, &mut properties);
-            let bindless = Bindless::new(&raw, &v12);
+            let bindless = Bindless::new(&raw, &v12).map_err(|e| e.to_string())?;
             let ranges = [range];
             let sets = [bindless.layout];
             let info = vk::PipelineLayoutCreateInfo::default()
                 .set_layouts(&sets)
                 .push_constant_ranges(&ranges);
-            let layout = raw.create_pipeline_layout(&info, None).unwrap();
+            let layout = match raw.create_pipeline_layout(&info, None) {
+                Ok(l) => l,
+                Err(e) => {
+                    bindless.destroy(&raw);
+                    return Err(e.to_string());
+                }
+            };
             let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
             families.sort();
             families.dedup();
-            let queues = queues
+            let queues = match queues
                 .iter()
                 .map(|&(f, i)| Queue::new(&raw, f, i))
-                .collect();
-            Self {
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(q) => q,
+                Err(e) => {
+                    raw.destroy_pipeline_layout(layout, None);
+                    bindless.destroy(&raw);
+                    return Err(e);
+                }
+            };
+            Ok(Self {
                 memory: instance.get_physical_device_memory_properties(physical),
                 families,
                 cache: vk::PipelineCache::null(),
@@ -482,7 +511,7 @@ impl Device {
                 layout,
                 res: Resources::default(),
                 queues,
-            }
+            })
         }
     }
 
@@ -515,7 +544,7 @@ impl Device {
         device: u64,
         queues: &[(u32, u32)],
         features: u64,
-    ) -> Self {
+    ) -> Result<Self, String> {
         unsafe {
             let features = (features as *const vk::PhysicalDeviceFeatures)
                 .as_ref()
@@ -2188,14 +2217,14 @@ impl Device {
         let s = self.res.surfaces.get_mut(surface);
         let q = &mut self.queues[queue];
         let (semaphore, used) = s.acquires[s.next];
-        q.done(&self.raw, used);
+        q.done(&self.raw, used)?;
         let (index, suboptimal) = unsafe {
             swapchains
                 .acquire_next_image(s.swapchain, u64::MAX, semaphore, vk::Fence::null())
                 .map_err(|e| e.to_string())?
         };
         s.suboptimal = suboptimal;
-        s.acquires[s.next].1 = q.sync(&self.raw, semaphore, vk::Semaphore::null());
+        s.acquires[s.next].1 = q.sync(&self.raw, semaphore, vk::Semaphore::null())?;
         s.next = (s.next + 1) % s.acquires.len();
         s.index = index;
         Ok(s.images[index as usize])
@@ -2214,7 +2243,7 @@ impl Device {
         let s = self.res.surfaces.get(surface);
         let q = &mut self.queues[queue];
         let semaphore = s.presents[s.index as usize];
-        q.sync(&self.raw, vk::Semaphore::null(), semaphore);
+        q.sync(&self.raw, vk::Semaphore::null(), semaphore)?;
         let waits = [semaphore];
         let swapchain = [s.swapchain];
         let indices = [s.index];
@@ -2511,24 +2540,29 @@ impl Device {
         }
     }
 
-    pub fn event_value(&self, event: u32) -> u64 {
+    pub fn event_value(&self, event: u32) -> Result<u64, String> {
         unsafe {
             self.raw
                 .get_semaphore_counter_value(self.res.events.get(event).0)
-                .unwrap()
+                .map_err(|e| e.to_string())
         }
     }
 
-    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> bool {
+    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
         let semaphores = [self.res.events.get(event).0];
         let values = [value];
         let info = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
             .values(&values);
         unsafe {
-            self.raw
+            match self
+                .raw
                 .wait_semaphores(&info, timeout.saturating_mul(1_000_000))
-                .is_ok()
+            {
+                Ok(()) => Ok(true),
+                Err(vk::Result::TIMEOUT) => Ok(false),
+                Err(e) => Err(e.to_string()),
+            }
         }
     }
 
@@ -2538,7 +2572,7 @@ impl Device {
         commands: &Commands,
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
@@ -2557,7 +2591,7 @@ impl Device {
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
@@ -2575,7 +2609,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             if self.owned {
-                self.raw.device_wait_idle().unwrap();
+                self.raw.device_wait_idle().ok();
             }
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);

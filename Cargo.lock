@@ -649,6 +649,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "ash-window",
+ "block2 0.6.2",
  "dispatch2",
  "jni 0.21.1",
  "objc2 0.6.4",

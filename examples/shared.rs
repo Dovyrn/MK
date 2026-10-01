@@ -39,7 +39,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 2000));
+    assert!(device.wait(event, 1, 2000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), n as usize) };
     assert!(
         bytes.iter().enumerate().all(|(i, b)| *b == i as u8),

@@ -163,7 +163,7 @@ fn main() {
     }
     c.resolve_queries(samples, 0, 1, out, 16);
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000));
+    assert!(device.wait(event, 1, 1000).unwrap());
     let r = unsafe { std::slice::from_raw_parts(device.map(out).cast::<u64>(), 3) };
     let ns = (r[1] - r[0]) as f32 * caps.tick;
     println!(

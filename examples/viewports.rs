@@ -133,7 +133,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000));
+    assert!(device.wait(event, 1, 1000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (w * h) as usize) };
     let at = |x: u32, y: u32| pixels[(y * w + x) as usize];

@@ -12,7 +12,10 @@ const SAMPLERS: u32 = 4096;
 const IMAGES: u32 = 1 << 17;
 
 impl Bindless {
-    pub fn new(device: &ash::Device, limits: &vk::PhysicalDeviceVulkan12Properties) -> Self {
+    pub fn new(
+        device: &ash::Device,
+        limits: &vk::PhysicalDeviceVulkan12Properties,
+    ) -> Result<Self, vk::Result> {
         let samplers = SAMPLERS.min(limits.max_descriptor_set_update_after_bind_samplers);
         let images = IMAGES
             .min(limits.max_descriptor_set_update_after_bind_sampled_images)
@@ -66,20 +69,33 @@ impl Bindless {
             .pool_sizes(&sizes)
             .push_next(&mut mutable);
         unsafe {
-            let layout = device.create_descriptor_set_layout(&info, None).unwrap();
-            let pool = device.create_descriptor_pool(&pool_info, None).unwrap();
+            let layout = device.create_descriptor_set_layout(&info, None)?;
+            let pool = match device.create_descriptor_pool(&pool_info, None) {
+                Ok(p) => p,
+                Err(e) => {
+                    device.destroy_descriptor_set_layout(layout, None);
+                    return Err(e);
+                }
+            };
             let layouts = [layout];
             let info = vk::DescriptorSetAllocateInfo::default()
                 .descriptor_pool(pool)
                 .set_layouts(&layouts);
-            let set = device.allocate_descriptor_sets(&info).unwrap()[0];
-            Self {
+            let set = match device.allocate_descriptor_sets(&info) {
+                Ok(list) => list[0],
+                Err(e) => {
+                    device.destroy_descriptor_pool(pool, None);
+                    device.destroy_descriptor_set_layout(layout, None);
+                    return Err(e);
+                }
+            };
+            Ok(Self {
                 layout,
                 pool,
                 set,
                 samplers,
                 images,
-            }
+            })
         }
     }
 

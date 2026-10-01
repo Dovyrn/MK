@@ -123,14 +123,14 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(size) => {
-                s.device.wait(s.event, s.frame, u64::MAX);
+                s.device.wait(s.event, s.frame, u64::MAX).unwrap();
                 s.device
                     .resize_surface(s.surface, size.width, size.height)
                     .unwrap();
                 s.size = (size.width, size.height);
             }
             WindowEvent::RedrawRequested => {
-                s.device.wait(s.event, s.frame, u64::MAX);
+                s.device.wait(s.event, s.frame, u64::MAX).unwrap();
                 let target = s.device.acquire(0, s.surface).unwrap();
                 let t = s.frame as f32 / 60.0;
                 let all = !0;
@@ -184,7 +184,7 @@ impl ApplicationHandler for App {
                 s.device.submit(0, &c, &[], &[(s.event, s.frame)]).unwrap();
                 s.device.present(0, s.surface).unwrap();
                 if s.frame == 120 {
-                    s.device.wait(s.event, s.frame, u64::MAX);
+                    s.device.wait(s.event, s.frame, u64::MAX).unwrap();
                     println!("{} frames presented", s.frame);
                     el.exit();
                 } else {

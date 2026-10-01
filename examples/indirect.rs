@@ -145,7 +145,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000));
+    assert!(device.wait(event, 1, 1000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
     assert_eq!(pixels[(16 * n + 16) as usize], [255, 0, 0, 255], "center");
@@ -212,7 +212,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 1000));
+    assert!(device.wait(event, 2, 1000).unwrap());
     let filled =
         unsafe { std::slice::from_raw_parts(device.map(data).cast::<u32>(), count as usize) };
     assert!(

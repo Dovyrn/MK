@@ -6,27 +6,29 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(device: &ash::Device, family: u32) -> Self {
+    pub fn new(device: &ash::Device, family: u32) -> Result<Self, vk::Result> {
         unsafe {
             let info = vk::CommandPoolCreateInfo::default()
                 .flags(vk::CommandPoolCreateFlags::TRANSIENT)
                 .queue_family_index(family);
-            let pool = device.create_command_pool(&info, None).unwrap();
+            let pool = device.create_command_pool(&info, None)?;
             let info = vk::CommandBufferAllocateInfo::default()
                 .command_pool(pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1);
-            let buffer = device.allocate_command_buffers(&info).unwrap()[0];
-            Self { pool, buffer }
+            let buffer = match device.allocate_command_buffers(&info) {
+                Ok(list) => list[0],
+                Err(e) => {
+                    device.destroy_command_pool(pool, None);
+                    return Err(e);
+                }
+            };
+            Ok(Self { pool, buffer })
         }
     }
 
-    pub fn reset(&self, device: &ash::Device) {
-        unsafe {
-            device
-                .reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
-                .unwrap()
-        };
+    pub fn reset(&self, device: &ash::Device) -> Result<(), vk::Result> {
+        unsafe { device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty()) }
     }
 
     pub fn destroy(&self, device: &ash::Device) {

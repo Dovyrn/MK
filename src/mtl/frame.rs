@@ -14,13 +14,15 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(device: &ProtocolObject<dyn MTLDevice>) -> Self {
-        Self {
-            allocator: device.newCommandAllocator().unwrap(),
+    pub fn new(device: &ProtocolObject<dyn MTLDevice>) -> Result<Self, &'static str> {
+        Ok(Self {
+            allocator: device
+                .newCommandAllocator()
+                .ok_or("command allocator creation failed")?,
             chunks: Vec::new(),
             chunk: 0,
             used: 0,
-        }
+        })
     }
 
     pub fn reset(&mut self) {
@@ -34,7 +36,7 @@ impl Frame {
         device: &ProtocolObject<dyn MTLDevice>,
         residency: &ProtocolObject<dyn MTLResidencySet>,
         data: &[u8],
-    ) -> u64 {
+    ) -> Result<u64, &'static str> {
         let size = data.len() as u64;
         if self.used + size > CHUNK {
             self.chunk += 1;
@@ -46,7 +48,7 @@ impl Frame {
                 | MTLResourceOptions::HazardTrackingModeUntracked;
             let buffer = device
                 .newBufferWithLength_options(CHUNK as usize, options)
-                .unwrap();
+                .ok_or("push constant allocation failed")?;
             residency.addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
             residency.commit();
             self.chunks.push(buffer);
@@ -62,6 +64,6 @@ impl Frame {
         }
         let address = buffer.gpuAddress() + self.used;
         self.used = (self.used + size).next_multiple_of(256);
-        address
+        Ok(address)
     }
 }

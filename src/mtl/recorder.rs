@@ -245,14 +245,15 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), &'static str> {
         if self.dirty {
             let address = self
                 .frame
-                .push(self.device, self.residency, &self.push[..self.size]);
+                .push(self.device, self.residency, &self.push[..self.size])?;
             unsafe { self.table.setAddress_atIndex(address, 0) };
             self.dirty = false;
         }
+        Ok(())
     }
 
     pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
@@ -300,12 +301,12 @@ impl<'a> Recorder<'a> {
                 self.dirty = true;
             }
             Command::Dispatch { x, y, z } => {
-                self.flush();
+                self.flush()?;
                 self.compute()
                     .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), self.group);
             }
             Command::DispatchIndirect { buffer, offset } => {
-                self.flush();
+                self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.compute()
@@ -315,7 +316,7 @@ impl<'a> Recorder<'a> {
                 };
             }
             Command::DispatchThreads { x, y, z } => {
-                self.flush();
+                self.flush()?;
                 self.compute()
                     .dispatchThreads_threadsPerThreadgroup(size(x, y, z), self.group);
             }
@@ -622,7 +623,7 @@ impl<'a> Recorder<'a> {
                 first_vertex,
                 first_instance,
             } => {
-                self.flush();
+                self.flush()?;
                 unsafe {
                     self.render()
                         .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(
@@ -641,7 +642,7 @@ impl<'a> Recorder<'a> {
                 base_vertex,
                 first_instance,
             } => {
-                self.flush();
+                self.flush()?;
                 let (address, length, kind, size) = self.index;
                 let skip = first_index as u64 * size;
                 unsafe {
@@ -664,7 +665,7 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
-                self.flush();
+                self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     self.render()
@@ -677,7 +678,7 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
-                self.flush();
+                self.flush()?;
                 let (index, length, kind, _) = self.index;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
@@ -694,7 +695,7 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::DrawMesh { x, y, z } => {
-                self.flush();
+                self.flush()?;
                 self.render()
                     .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                         size(x, y, z),
@@ -708,7 +709,7 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
-                self.flush();
+                self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     self.render()
@@ -841,7 +842,7 @@ impl<'a> Recorder<'a> {
                 self.pass.setThreadgroupMemoryLength(memory as usize);
             }
             Command::DispatchTile { width, height } => {
-                self.flush();
+                self.flush()?;
                 self.render().dispatchThreadsPerTile(size(width, height, 1));
             }
             Command::TileMemory {
@@ -857,7 +858,7 @@ impl<'a> Recorder<'a> {
             },
             Command::Multiview { views } => self.views = views,
             Command::Callback { index } => {
-                self.flush();
+                self.flush()?;
                 (self
                     .natives
                     .get(index as usize)
@@ -873,7 +874,7 @@ impl<'a> Recorder<'a> {
                 start,
                 count,
             } => {
-                self.flush();
+                self.flush()?;
                 let icb = self.res.indirects.get(indirect);
                 let range = NSRange::new(start as usize, count as usize);
                 unsafe {

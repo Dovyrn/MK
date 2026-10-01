@@ -107,7 +107,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 5000));
+    assert!(device.wait(event, 1, 5000).unwrap());
     let t = unsafe { std::slice::from_raw_parts(device.map(out).cast::<f32>(), (n * n) as usize) };
     let at = |x: u32, y: u32| t[(y * n + x) as usize];
     assert!((at(8, 8) - 1.0).abs() < 1e-4, "center {}", at(8, 8));

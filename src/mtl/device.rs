@@ -62,6 +62,7 @@ use objc2_metal_fx::{
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ptr::NonNull;
+use std::sync::{Arc, Mutex};
 
 fn compare(c: u32) -> MTLCompareFunction {
     match c {
@@ -301,6 +302,7 @@ pub struct Device {
     dirty: bool,
     res: Resources,
     queues: Vec<Queue>,
+    lost: Arc<Mutex<Option<String>>>,
 }
 
 impl Device {
@@ -321,8 +323,9 @@ impl Device {
         let residency = raw
             .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
             .map_err(|e| e.localizedDescription().to_string())?;
+        let lost = Arc::new(Mutex::new(None));
         let queues = (0..queues)
-            .map(|_| Queue::new(&raw, &residency))
+            .map(|_| Queue::new(&raw, &residency, lost.clone()))
             .collect::<Result<_, _>>()?;
         Ok(Self {
             raw,
@@ -333,6 +336,7 @@ impl Device {
             dirty: false,
             res: Resources::default(),
             queues,
+            lost,
         })
     }
 
@@ -1574,15 +1578,26 @@ impl Device {
         self.res.events.remove(event);
     }
 
-    pub fn event_value(&self, event: u32) -> u64 {
-        self.res.events.get(event).signaledValue()
+    fn healthy(&self) -> Result<(), String> {
+        match self.lost.lock().unwrap().clone() {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 
-    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> bool {
-        self.res
+    pub fn event_value(&self, event: u32) -> Result<u64, String> {
+        self.healthy()?;
+        Ok(self.res.events.get(event).signaledValue())
+    }
+
+    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+        let done = self
+            .res
             .events
             .get(event)
-            .waitUntilSignaledValue_timeoutMS(value, timeout)
+            .waitUntilSignaledValue_timeoutMS(value, timeout);
+        self.healthy()?;
+        Ok(done)
     }
 
     pub fn submit(
@@ -1591,7 +1606,7 @@ impl Device {
         commands: &Commands,
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         if self.dirty {
             self.residency.commit();
             self.dirty = false;
@@ -1606,7 +1621,7 @@ impl Device {
         commands: &[u8],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         if self.dirty {
             self.residency.commit();
             self.dirty = false;

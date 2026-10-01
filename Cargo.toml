@@ -10,6 +10,7 @@ default-members = ["."]
 [features]
 vk = ["dep:ash", "dep:ash-window"]
 mtl = [
+    "dep:block2",
     "dep:objc2",
     "dep:objc2-foundation",
     "dep:objc2-core-foundation",
@@ -25,6 +26,7 @@ jni = ["dep:jni"]
 [dependencies]
 ash = { version = "0.38", optional = true }
 ash-window = { version = "0.13", optional = true }
+block2 = { version = "0.6", optional = true }
 objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true }
 objc2-core-foundation = { version = "0.3", optional = true }

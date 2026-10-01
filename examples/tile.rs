@@ -155,7 +155,7 @@ fn main() {
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000));
+    assert!(device.wait(event, 1, 1000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
     assert_eq!(pixels[(32 * n + 32) as usize], [0, 255, 255, 255], "center");

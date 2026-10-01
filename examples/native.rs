@@ -49,7 +49,7 @@ fn main() {
     c.end_compute();
     print!("{}", mk::Command::dump(c.bytes()));
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000));
+    assert!(device.wait(event, 1, 1000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), n as usize) };
     assert!(bytes.iter().all(|b| *b == 7), "first byte {}", bytes[0]);
     println!("native fill inside the stream, {n} bytes match");

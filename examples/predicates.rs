@@ -214,7 +214,7 @@ fn draw(
     );
     c.end_compute();
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 2000));
+    assert!(device.wait(event, 1, 2000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
     pixels[(16 * n + 16) as usize]
@@ -269,7 +269,7 @@ fn main() {
             access::HOST_READ,
         );
         device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-        assert!(device.wait(event, 1, 2000));
+        assert!(device.wait(event, 1, 2000).unwrap());
         let stats = unsafe { std::slice::from_raw_parts(device.map(out).cast::<u64>(), 7) };
         assert_eq!(stats[0], 3, "input assembly vertices {stats:?}");
         println!("depth bounds {bounds}, conditional rendering, pipeline statistics {stats:?}");
