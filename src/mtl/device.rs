@@ -6,15 +6,15 @@ use crate::mtl::surface::Surface;
 use crate::mtl::texture::Texture;
 use crate::{
     Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, StencilFace, SurfaceInfo,
-    TextureInfo, address, blend, border, dimension, fill, filter, format, mask, memory, topology,
-    usage,
+    TextureInfo, ViewInfo, address, blend, border, dimension, fill, filter, format, mask, memory,
+    topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2_core_foundation::CGSize;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4CommandQueue, MTL4Compiler,
     MTL4CompilerDescriptor, MTL4ComputePipelineDescriptor, MTL4FunctionDescriptor,
@@ -181,6 +181,21 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
             }
         }
         a.setWriteMask(m);
+    }
+}
+
+fn kind(dimension: u32, samples: u32) -> MTLTextureType {
+    match (dimension, samples > 1) {
+        (dimension::D1, _) => MTLTextureType::Type1D,
+        (dimension::D1_ARRAY, _) => MTLTextureType::Type1DArray,
+        (dimension::D2, false) => MTLTextureType::Type2D,
+        (dimension::D2, true) => MTLTextureType::Type2DMultisample,
+        (dimension::D2_ARRAY, false) => MTLTextureType::Type2DArray,
+        (dimension::D2_ARRAY, true) => MTLTextureType::Type2DMultisampleArray,
+        (dimension::D3, _) => MTLTextureType::Type3D,
+        (dimension::CUBE, _) => MTLTextureType::TypeCube,
+        (dimension::CUBE_ARRAY, _) => MTLTextureType::TypeCubeArray,
+        (d, _) => panic!("unknown dimension {d}"),
     }
 }
 
@@ -444,18 +459,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
-        let kind = match (info.dimension, info.samples > 1) {
-            (dimension::D1, _) => MTLTextureType::Type1D,
-            (dimension::D1_ARRAY, _) => MTLTextureType::Type1DArray,
-            (dimension::D2, false) => MTLTextureType::Type2D,
-            (dimension::D2, true) => MTLTextureType::Type2DMultisample,
-            (dimension::D2_ARRAY, false) => MTLTextureType::Type2DArray,
-            (dimension::D2_ARRAY, true) => MTLTextureType::Type2DMultisampleArray,
-            (dimension::D3, _) => MTLTextureType::Type3D,
-            (dimension::CUBE, _) => MTLTextureType::TypeCube,
-            (dimension::CUBE_ARRAY, _) => MTLTextureType::TypeCubeArray,
-            (d, _) => panic!("unknown dimension {d}"),
-        };
+        let kind = kind(info.dimension, info.samples);
         let cube = matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
         let mut flags = MTLTextureUsage::Unknown;
         if info.usage & usage::SAMPLED != 0 {
@@ -488,6 +492,24 @@ impl Device {
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
         self.dirty = true;
+        self.res.textures.insert(Texture {
+            raw,
+            format: info.format,
+        })
+    }
+
+    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> u32 {
+        let parent = &self.res.textures.get(texture).raw;
+        let raw = unsafe {
+            parent
+                .newTextureViewWithPixelFormat_textureType_levels_slices(
+                    format::mtl(info.format),
+                    kind(info.dimension, parent.sampleCount() as u32),
+                    NSRange::new(info.base_mip as usize, info.mips as usize),
+                    NSRange::new(info.base_layer as usize, info.layers as usize),
+                )
+                .unwrap()
+        };
         self.res.textures.insert(Texture {
             raw,
             format: info.format,

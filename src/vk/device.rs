@@ -6,7 +6,7 @@ use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
     Caps, ColorTarget, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo, TextureInfo,
-    address, border, dimension, fill, filter, format, memory, topology, usage,
+    ViewInfo, address, border, dimension, fill, filter, format, memory, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
@@ -30,6 +30,18 @@ pub struct Device {
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
+}
+
+fn whole(info: &TextureInfo) -> ViewInfo {
+    ViewInfo {
+        dimension: info.dimension,
+        format: info.format,
+        base_mip: 0,
+        mips: vk::REMAINING_MIP_LEVELS,
+        base_layer: 0,
+        layers: vk::REMAINING_ARRAY_LAYERS,
+        usage: info.usage,
+    }
 }
 
 fn has(list: &[vk::ExtensionProperties], name: &CStr) -> bool {
@@ -623,15 +635,20 @@ impl Device {
                 .push_next(&mut dedicated);
             let memory = self.raw.allocate_memory(&alloc, None).unwrap();
             self.raw.bind_image_memory(image, memory, 0).unwrap();
-            self.register(image, memory, info)
+            self.register(image, memory, &whole(info))
         }
     }
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> u32 {
+        self.register(image, vk::DeviceMemory::null(), &whole(info))
+    }
+
+    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> u32 {
+        let image = self.res.textures.get(texture).image;
         self.register(image, vk::DeviceMemory::null(), info)
     }
 
-    fn register(&mut self, image: vk::Image, memory: vk::DeviceMemory, info: &TextureInfo) -> u32 {
+    fn register(&mut self, image: vk::Image, memory: vk::DeviceMemory, info: &ViewInfo) -> u32 {
         let view = match info.dimension {
             dimension::D1 => vk::ImageViewType::TYPE_1D,
             dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
@@ -651,10 +668,10 @@ impl Device {
                 } else {
                     aspect
                 },
-                base_mip_level: 0,
-                level_count: vk::REMAINING_MIP_LEVELS,
-                base_array_layer: 0,
-                layer_count: vk::REMAINING_ARRAY_LAYERS,
+                base_mip_level: info.base_mip,
+                level_count: info.mips,
+                base_array_layer: info.base_layer,
+                layer_count: info.layers,
             };
             let view_info = vk::ImageViewCreateInfo::default()
                 .image(image)

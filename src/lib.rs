@@ -25,6 +25,7 @@ mod surface_info;
 mod texture_info;
 mod vertex_attribute;
 mod vertex_buffer;
+mod view_info;
 #[cfg(feature = "vk")]
 pub mod vk;
 
@@ -49,6 +50,7 @@ pub use surface_info::SurfaceInfo;
 pub use texture_info::TextureInfo;
 pub use vertex_attribute::VertexAttribute;
 pub use vertex_buffer::VertexBuffer;
+pub use view_info::ViewInfo;
 #[cfg(feature = "vk")]
 pub use vk::Device;
 
