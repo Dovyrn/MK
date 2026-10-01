@@ -42,6 +42,8 @@ pub struct Device {
     queues: Vec<Queue>,
 }
 
+const FDS: &str = "VK_KHR_external_memory_fd is not enabled";
+
 fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
         (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
@@ -228,7 +230,16 @@ impl Device {
                 extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
                 extensions.push(maintenance5::NAME.as_ptr());
             }
-            if has(&available, conditional_rendering::NAME) {
+            let mut supported_conditional =
+                vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default();
+            let mut query =
+                vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_conditional);
+            instance.get_physical_device_features2(physical, &mut query);
+            let conditional = has(&available, conditional_rendering::NAME)
+                && supported_conditional.conditional_rendering != 0;
+            let mut conditions = vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default()
+                .conditional_rendering(true);
+            if conditional {
                 extensions.push(conditional_rendering::NAME.as_ptr());
             }
             if has(&available, external_memory_fd::NAME) {
@@ -364,6 +375,9 @@ impl Device {
             };
             if rated {
                 info = info.push_next(&mut rate);
+            }
+            if conditional {
+                info = info.push_next(&mut conditions);
             }
             if generated {
                 info = info.push_next(&mut maintenance);
@@ -767,19 +781,17 @@ impl Device {
     }
 
     pub fn create_shared_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.ext.fds.as_ref().ok_or(FDS)?;
         self.heap(size, memory, true, None)
     }
 
     pub fn import_heap(&mut self, fd: i32, size: u64, memory: u32) -> Result<u32, String> {
+        self.ext.fds.as_ref().ok_or(FDS)?;
         self.heap(size, memory, true, Some(fd))
     }
 
     pub fn export_heap(&self, heap: u32) -> Result<i32, String> {
-        let fds = self
-            .ext
-            .fds
-            .as_ref()
-            .ok_or("VK_KHR_external_memory_fd is not enabled")?;
+        let fds = self.ext.fds.as_ref().ok_or(FDS)?;
         let info = vk::MemoryGetFdInfoKHR::default()
             .memory(self.res.heaps.get(heap).memory)
             .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
@@ -1597,6 +1609,7 @@ impl Device {
                 vk::DynamicState::BLEND_CONSTANTS,
                 vk::DynamicState::DEPTH_BOUNDS,
                 vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE,
+                vk::DynamicState::LINE_WIDTH,
             ];
             if vertex.is_some() {
                 states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
@@ -1790,6 +1803,12 @@ impl Device {
                 own,
                 tile: vk::Extent3D::default(),
             });
+            let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
+            if bound && slot * 2 + 1 >= self.bindless.images {
+                let t = self.res.textures.remove(slot);
+                self.free_texture(&t);
+                return Err("the bindless heap has no texture slot left".into());
+            }
             if info.usage & usage::SAMPLED != 0 {
                 let image = vk::DescriptorImageInfo::default()
                     .image_view(view)
@@ -1891,6 +1910,11 @@ impl Device {
                 .map_err(|e| e.to_string())?
         };
         let slot = self.res.samplers.insert(sampler);
+        if slot >= self.bindless.samplers {
+            self.res.samplers.remove(slot);
+            unsafe { self.raw.destroy_sampler(sampler, None) };
+            return Err("the bindless heap has no sampler slot left".into());
+        }
         let image = vk::DescriptorImageInfo::default().sampler(sampler);
         self.bindless
             .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
