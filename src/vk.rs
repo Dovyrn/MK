@@ -1,9 +1,9 @@
 mod accel;
+mod bindless;
 mod buffer;
 mod device;
 mod extensions;
 mod frame;
-mod heap;
 mod queue;
 mod recorder;
 mod resources;

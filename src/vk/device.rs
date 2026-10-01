@@ -1,7 +1,7 @@
 use crate::vk::accel::Accel;
+use crate::vk::bindless::Bindless;
 use crate::vk::buffer::Buffer;
 use crate::vk::extensions::Extensions;
-use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::surface::Surface;
@@ -30,7 +30,7 @@ pub struct Device {
     ext: Extensions,
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
-    heap: Heap,
+    bindless: Bindless,
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
@@ -277,9 +277,9 @@ impl Device {
             let mut v12 = vk::PhysicalDeviceVulkan12Properties::default();
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut v12);
             instance.get_physical_device_properties2(physical, &mut properties);
-            let heap = Heap::new(&raw, &v12);
+            let bindless = Bindless::new(&raw, &v12);
             let ranges = [range];
-            let sets = [heap.layout];
+            let sets = [bindless.layout];
             let info = vk::PipelineLayoutCreateInfo::default()
                 .set_layouts(&sets)
                 .push_constant_ranges(&ranges);
@@ -301,7 +301,7 @@ impl Device {
                     surfaces,
                 },
                 owned: false,
-                heap,
+                bindless,
                 layout,
                 res: Resources::default(),
                 queues,
@@ -343,8 +343,8 @@ impl Device {
             mesh: self.ext.mesh.is_some(),
             push: limits.max_push_constants_size.min(256),
             queues: self.queues.len() as u32,
-            samplers: self.heap.samplers,
-            textures: self.heap.images / 2,
+            samplers: self.bindless.samplers,
+            textures: self.bindless.images / 2,
             tick: limits.timestamp_period,
             timestamps: self
                 .queues
@@ -913,7 +913,7 @@ impl Device {
                 let image = vk::DescriptorImageInfo::default()
                     .image_view(view)
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-                self.heap.write(
+                self.bindless.write(
                     &self.raw,
                     2,
                     slot * 2,
@@ -925,7 +925,7 @@ impl Device {
                 let image = vk::DescriptorImageInfo::default()
                     .image_view(view)
                     .image_layout(vk::ImageLayout::GENERAL);
-                self.heap.write(
+                self.bindless.write(
                     &self.raw,
                     2,
                     slot * 2 + 1,
@@ -995,7 +995,7 @@ impl Device {
         let sampler = unsafe { self.raw.create_sampler(&sampler_info, None).unwrap() };
         let slot = self.res.samplers.insert(sampler);
         let image = vk::DescriptorImageInfo::default().sampler(sampler);
-        self.heap
+        self.bindless
             .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
         slot
     }
@@ -1320,7 +1320,7 @@ impl Device {
             &self.raw,
             &self.ext,
             self.layout,
-            self.heap.set,
+            self.bindless.set,
             &self.res,
             commands,
             waits,
@@ -1391,7 +1391,7 @@ impl Drop for Device {
                 }
             }
             self.raw.destroy_pipeline_layout(self.layout, None);
-            self.heap.destroy(&self.raw);
+            self.bindless.destroy(&self.raw);
             if self.owned {
                 self.raw.destroy_device(None);
                 self.instance.destroy_instance(None);

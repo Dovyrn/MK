@@ -1,6 +1,6 @@
 use ash::vk;
 
-pub struct Heap {
+pub struct Bindless {
     pub layout: vk::DescriptorSetLayout,
     pub pool: vk::DescriptorPool,
     pub set: vk::DescriptorSet,
@@ -11,7 +11,7 @@ pub struct Heap {
 const SAMPLERS: u32 = 4096;
 const IMAGES: u32 = 1 << 17;
 
-impl Heap {
+impl Bindless {
     pub fn new(device: &ash::Device, limits: &vk::PhysicalDeviceVulkan12Properties) -> Self {
         let samplers = SAMPLERS.min(limits.max_descriptor_set_update_after_bind_samplers);
         let images = IMAGES
