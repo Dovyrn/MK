@@ -108,15 +108,15 @@ public class Commands {
         memPutInt(p + 12, dstAccess);
     }
 
-    public void textureBarrier(int texture, int srcStage, int srcAccess, int dstStage, int dstAccess, int old, int new, int baseMip, int mips, int baseLayer, int layers) {
+    public void textureBarrier(int texture, int srcStage, int srcAccess, int dstStage, int dstAccess, int before, int after, int baseMip, int mips, int baseLayer, int layers) {
         var p = head(14, 44);
         memPutInt(p, texture);
         memPutInt(p + 4, srcStage);
         memPutInt(p + 8, srcAccess);
         memPutInt(p + 12, dstStage);
         memPutInt(p + 16, dstAccess);
-        memPutInt(p + 20, old);
-        memPutInt(p + 24, new);
+        memPutInt(p + 20, before);
+        memPutInt(p + 24, after);
         memPutInt(p + 28, baseMip);
         memPutInt(p + 32, mips);
         memPutInt(p + 36, baseLayer);

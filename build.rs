@@ -63,7 +63,63 @@ fn pascal(name: &str) -> String {
         .collect()
 }
 
+const KEYWORDS: [&str; 51] = [
+    "abstract",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "instanceof",
+    "int",
+    "interface",
+    "long",
+    "native",
+    "new",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "try",
+    "void",
+    "volatile",
+    "while",
+    "var",
+];
+
 fn camel(name: &str) -> String {
     let p = pascal(name);
-    p[..1].to_lowercase() + &p[1..]
+    let c = p[..1].to_lowercase() + &p[1..];
+    assert!(!KEYWORDS.contains(&c.as_str()), "{c} is a Java keyword");
+    c
 }

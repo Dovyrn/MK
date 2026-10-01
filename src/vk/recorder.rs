@@ -273,8 +273,8 @@ impl Recorder<'_> {
                     src_access,
                     dst_stage,
                     dst_access,
-                    old,
-                    new,
+                    before,
+                    after,
                     base_mip,
                     mips,
                     base_layer,
@@ -286,8 +286,8 @@ impl Recorder<'_> {
                         .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
                         .dst_stage_mask(stages(dst_stage))
                         .dst_access_mask(vk::AccessFlags2::from_raw(dst_access as u64))
-                        .old_layout(layout(old))
-                        .new_layout(layout(new))
+                        .old_layout(layout(before))
+                        .new_layout(layout(after))
                         .image(t.image)
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: t.aspect,
