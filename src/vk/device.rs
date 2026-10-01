@@ -1206,6 +1206,48 @@ impl Device {
         }))
     }
 
+    pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
+        let ray = self
+            .ext
+            .ray
+            .as_ref()
+            .ok_or("VK_KHR_acceleration_structure is not enabled")?;
+        let source = self.res.accels.get(accel);
+        let kind = source.kind;
+        let flags = source.flags;
+        let buffer = self.allocate(
+            size,
+            memory::DEVICE,
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
+        let create = vk::AccelerationStructureCreateInfoKHR::default()
+            .buffer(buffer.raw)
+            .size(size)
+            .ty(kind);
+        let raw = unsafe {
+            ray.create_acceleration_structure(&create, None)
+                .map_err(|e| e.to_string())?
+        };
+        let address = unsafe {
+            ray.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR::default()
+                    .acceleration_structure(raw),
+            )
+        };
+        Ok(self.res.accels.insert(Accel {
+            raw,
+            buffer,
+            address,
+            kind,
+            flags,
+            geometry: Vec::new(),
+            ranges: Vec::new(),
+            build: 0,
+            update: 0,
+        }))
+    }
+
     pub fn destroy_accel(&mut self, accel: u32) {
         let a = self.res.accels.remove(accel);
         unsafe {
@@ -2155,6 +2197,10 @@ impl Device {
         } != 0;
         let (kind, flags) = match kind {
             query::TIMESTAMP => (vk::QueryType::TIMESTAMP, vk::QueryControlFlags::empty()),
+            query::COMPACTED => (
+                vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
+                vk::QueryControlFlags::empty(),
+            ),
             _ if precise => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
             _ => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::empty()),
         };

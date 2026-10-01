@@ -178,6 +178,7 @@ ALL = 15
 [query]
 TIMESTAMP = 0
 OCCLUSION = 1
+COMPACTED = 2
 
 [instance]
 NO_CULL = 1

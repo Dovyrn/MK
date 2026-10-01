@@ -832,6 +832,31 @@ impl Recorder<'_> {
                             }),
                     )
                 }
+                Command::WriteCompactedSize { accel, heap, index } => {
+                    let ray = self.ext.ray.as_ref().unwrap();
+                    ray.cmd_write_acceleration_structures_properties(
+                        b,
+                        &[self.res.accels.get(accel).raw],
+                        vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
+                        self.res.queries.get(heap).0,
+                        index,
+                    )
+                }
+                Command::CopyAccel { src, dst, compact } => {
+                    let info = vk::CopyAccelerationStructureInfoKHR::default()
+                        .src(self.res.accels.get(src).raw)
+                        .dst(self.res.accels.get(dst).raw)
+                        .mode(if compact != 0 {
+                            vk::CopyAccelerationStructureModeKHR::COMPACT
+                        } else {
+                            vk::CopyAccelerationStructureModeKHR::CLONE
+                        });
+                    self.ext
+                        .ray
+                        .as_ref()
+                        .unwrap()
+                        .cmd_copy_acceleration_structure(b, &info)
+                }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();

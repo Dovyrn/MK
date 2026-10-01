@@ -1268,6 +1268,23 @@ impl Device {
         }))
     }
 
+    pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
+        let raw = self
+            .raw
+            .newAccelerationStructureWithSize(size as usize)
+            .ok_or("acceleration structure")?;
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        let desc = self.res.accels.get(accel).desc.clone();
+        Ok(self.res.accels.insert(Accel {
+            raw,
+            desc,
+            build: 0,
+            update: 0,
+        }))
+    }
+
     pub fn destroy_accel(&mut self, accel: u32) {
         let a = self.res.accels.remove(accel);
         self.residency
@@ -1399,14 +1416,14 @@ impl Device {
                 self.residency
                     .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
                 self.dirty = true;
-                Query::Occlusion(buffer)
+                Query::Buffer(buffer)
             }
         };
         Ok(self.res.queries.insert(heap))
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        if let Query::Occlusion(buffer) = self.res.queries.remove(heap) {
+        if let Query::Buffer(buffer) = self.res.queries.remove(heap) {
             self.residency
                 .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
             self.dirty = true;

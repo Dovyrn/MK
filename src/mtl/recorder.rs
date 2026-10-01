@@ -654,7 +654,7 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::OcclusionHeap { heap } => {
-                if let Query::Occlusion(buffer) = self.res.queries.get(heap) {
+                if let Query::Buffer(buffer) = self.res.queries.get(heap) {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
@@ -716,7 +716,7 @@ impl<'a> Recorder<'a> {
                                 None,
                             )
                     },
-                    Query::Occlusion(src) => {
+                    Query::Buffer(src) => {
                         let encoder = self.buffer.computeCommandEncoder().unwrap();
                         self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                         unsafe {
@@ -835,6 +835,33 @@ impl<'a> Recorder<'a> {
             Command::RateMap { map } => self
                 .pass
                 .setRasterizationRateMap(Some(self.res.maps.get(map))),
+            Command::WriteCompactedSize { accel, heap, index } => {
+                let Query::Buffer(buffer) = self.res.queries.get(heap) else {
+                    panic!("write_compacted_size needs a compacted heap");
+                };
+                unsafe {
+                    self.compute()
+                        .writeCompactedAccelerationStructureSize_toBuffer(
+                            &self.res.accels.get(accel).raw,
+                            MTL4BufferRange {
+                                bufferAddress: buffer.gpuAddress() + index as u64 * 8,
+                                length: 8,
+                            },
+                        )
+                }
+            }
+            Command::CopyAccel { src, dst, compact } => {
+                let (s, d) = (&self.res.accels.get(src).raw, &self.res.accels.get(dst).raw);
+                unsafe {
+                    if compact != 0 {
+                        self.compute()
+                            .copyAndCompactAccelerationStructure_toAccelerationStructure(s, d)
+                    } else {
+                        self.compute()
+                            .copyAccelerationStructure_toAccelerationStructure(s, d)
+                    }
+                }
+            }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

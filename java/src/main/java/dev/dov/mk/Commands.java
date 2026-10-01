@@ -375,4 +375,18 @@ public class Commands {
         var p = head(49, 4);
         memPutInt(p, views);
     }
+
+    public void writeCompactedSize(int accel, int heap, int index) {
+        var p = head(60, 12);
+        memPutInt(p, accel);
+        memPutInt(p + 4, heap);
+        memPutInt(p + 8, index);
+    }
+
+    public void copyAccel(int src, int dst, int compact) {
+        var p = head(61, 12);
+        memPutInt(p, src);
+        memPutInt(p + 4, dst);
+        memPutInt(p + 8, compact);
+    }
 }

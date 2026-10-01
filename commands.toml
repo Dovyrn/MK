@@ -343,3 +343,11 @@ fields = [["width", "u32"], ["height", "u32"], ["primitive", "u32"], ["attachmen
 name = "rate_attachment"
 backend = "vk"
 fields = [["texture", "u32"], ["layout", "u32"], ["texel_width", "u32"], ["texel_height", "u32"]]
+
+[[command]]
+name = "write_compacted_size"
+fields = [["accel", "u32"], ["heap", "u32"], ["index", "u32"]]
+
+[[command]]
+name = "copy_accel"
+fields = [["src", "u32"], ["dst", "u32"], ["compact", "u32"]]
