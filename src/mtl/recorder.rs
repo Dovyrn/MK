@@ -4,6 +4,7 @@ use crate::mtl::queue::Queue;
 use crate::mtl::resources::Resources;
 use crate::mtl::upscaler::Upscaler;
 use crate::mtl::{Callback, Native};
+use crate::register;
 use crate::{Command, access, face, format, index, load, stage, store};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -597,19 +598,29 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
                 ..
+            } => {
+                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let index = (register::UNIFORM + slot) as usize;
+                unsafe { self.table.setAddress_atIndex(address, index) };
             }
-            | Command::BindStorage {
+            Command::BindStorage {
                 slot,
                 buffer,
                 offset,
                 ..
             } => {
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                unsafe { self.table.setAddress_atIndex(address, slot as usize) };
+                let index = (register::STORAGE + slot) as usize;
+                unsafe { self.table.setAddress_atIndex(address, index) };
             }
-            Command::BindTexture { slot, texture } | Command::BindImage { slot, texture } => {
+            Command::BindTexture { slot, texture } => {
                 let id = self.res.textures.get(texture).raw.gpuResourceID();
                 unsafe { self.table.setTexture_atIndex(id, slot as usize) };
+            }
+            Command::BindImage { slot, texture } => {
+                let id = self.res.textures.get(texture).raw.gpuResourceID();
+                let index = (register::IMAGE + slot) as usize;
+                unsafe { self.table.setTexture_atIndex(id, index) };
             }
             Command::BindSampler { slot, sampler } => {
                 let id = self.res.samplers.get(sampler).gpuResourceID();

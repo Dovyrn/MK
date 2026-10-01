@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Push {
     uint count;
     uint value;
@@ -5,7 +7,7 @@ struct Push {
 
 [[vk::push_constant]] ConstantBuffer<Push> push;
 
-RWStructuredBuffer<uint> data : register(u5);
+RWStructuredBuffer<uint> data : STORAGE(0);
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

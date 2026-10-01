@@ -141,7 +141,7 @@ fn main() {
     );
     c.begin_render(4, 4, 1);
     c.bind_render_pipeline(draw);
-    c.bind_uniform(1, upload, at, 16);
+    c.bind_uniform(0, upload, at, 16);
     c.bind_texture(0, source);
     c.bind_sampler(0, sampler);
     c.draw(3, 1, 0, 0);
@@ -215,9 +215,9 @@ fn main() {
         (stage::COMPUTE, access::SHADER_WRITE, layout::GENERAL),
     );
     c.bind_pipeline(fill);
-    c.bind_uniform(1, upload, at, 16);
-    c.bind_storage(5, data, 0, 64 * 4);
-    c.bind_image(13, image);
+    c.bind_uniform(0, upload, at, 16);
+    c.bind_storage(0, data, 0, 64 * 4);
+    c.bind_image(0, image);
     c.bind_texture(0, source);
     c.bind_sampler(0, sampler);
     c.push_constants(0, &64u32.to_le_bytes());

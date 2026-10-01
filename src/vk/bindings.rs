@@ -1,41 +1,33 @@
+use crate::register;
 use crate::slot;
 use ash::vk;
 
+const KINDS: [(vk::DescriptorType, u32); 5] = [
+    (vk::DescriptorType::UNIFORM_BUFFER, slot::UNIFORMS),
+    (vk::DescriptorType::STORAGE_BUFFER, slot::STORAGES),
+    (vk::DescriptorType::STORAGE_IMAGE, slot::IMAGES),
+    (vk::DescriptorType::SAMPLED_IMAGE, slot::TEXTURES),
+    (vk::DescriptorType::SAMPLER, slot::SAMPLERS),
+];
+
 pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
     match kind {
-        vk::DescriptorType::SAMPLED_IMAGE => slot::IMAGE + slot::IMAGES + slot,
-        vk::DescriptorType::SAMPLER => slot::IMAGE + slot::IMAGES + slot::TEXTURES + slot,
-        _ => slot,
+        vk::DescriptorType::UNIFORM_BUFFER => register::UNIFORM + slot,
+        vk::DescriptorType::STORAGE_BUFFER => register::STORAGE + slot,
+        vk::DescriptorType::STORAGE_IMAGE => register::IMAGE + slot,
+        vk::DescriptorType::SAMPLED_IMAGE => register::IMAGE + slot::IMAGES + slot,
+        _ => register::IMAGE + slot::IMAGES + slot::TEXTURES + slot,
     }
 }
 
 pub fn layout(device: &ash::Device, push: bool) -> Result<vk::DescriptorSetLayout, vk::Result> {
-    let ranges = [
-        (
-            vk::DescriptorType::UNIFORM_BUFFER,
-            slot::UNIFORM,
-            slot::UNIFORMS,
-        ),
-        (
-            vk::DescriptorType::STORAGE_BUFFER,
-            slot::STORAGE,
-            slot::STORAGES,
-        ),
-        (vk::DescriptorType::STORAGE_IMAGE, slot::IMAGE, slot::IMAGES),
-        (
-            vk::DescriptorType::SAMPLED_IMAGE,
-            slot::TEXTURE,
-            slot::TEXTURES,
-        ),
-        (vk::DescriptorType::SAMPLER, slot::SAMPLER, slot::SAMPLERS),
-    ];
     let mut list = Vec::new();
     if push {
-        for (kind, first, count) in ranges {
+        for (kind, count) in KINDS {
             for i in 0..count {
                 list.push(
                     vk::DescriptorSetLayoutBinding::default()
-                        .binding(binding(kind, first + i))
+                        .binding(binding(kind, i))
                         .descriptor_type(kind)
                         .descriptor_count(1)
                         .stage_flags(vk::ShaderStageFlags::ALL),

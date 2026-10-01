@@ -1,5 +1,5 @@
 use crate::gl::extra::Extra;
-use crate::slot;
+use crate::register;
 use glow::HasContext;
 
 pub struct Program {
@@ -81,12 +81,12 @@ impl Program {
                         let name = std::ffi::CString::new(words[1]).unwrap();
                         let i = find(raw.0.get(), STORAGE_BLOCK, name.as_ptr());
                         if i != INVALID {
-                            gl.shader_storage_block_binding(raw, i, number(2) - slot::STORAGE);
+                            gl.shader_storage_block_binding(raw, i, number(2) - register::STORAGE);
                         }
                     }
                     "image" => {
                         if let Some(l) = gl.get_uniform_location(raw, words[1]) {
-                            gl.uniform_1_i32(Some(&l), (number(2) - slot::IMAGE) as i32);
+                            gl.uniform_1_i32(Some(&l), (number(2) - register::IMAGE) as i32);
                         }
                     }
                     "texture" => {

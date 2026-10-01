@@ -1,0 +1,41 @@
+#define UNIFORM(n) MK_UNIFORM_##n
+#define MK_UNIFORM_0 register(b1)
+#define MK_UNIFORM_1 register(b2)
+#define MK_UNIFORM_2 register(b3)
+#define MK_UNIFORM_3 register(b4)
+
+#define STORAGE(n) MK_STORAGE_##n
+#define MK_STORAGE_0 register(u5)
+#define MK_STORAGE_1 register(u6)
+#define MK_STORAGE_2 register(u7)
+#define MK_STORAGE_3 register(u8)
+#define MK_STORAGE_4 register(u9)
+#define MK_STORAGE_5 register(u10)
+#define MK_STORAGE_6 register(u11)
+#define MK_STORAGE_7 register(u12)
+
+#define IMAGE(n) MK_IMAGE_##n
+#define MK_IMAGE_0 register(u13)
+#define MK_IMAGE_1 register(u14)
+#define MK_IMAGE_2 register(u15)
+#define MK_IMAGE_3 register(u16)
+
+#define TEXTURE(n) MK_TEXTURE_##n
+#define MK_TEXTURE_0 register(t0)
+#define MK_TEXTURE_1 register(t1)
+#define MK_TEXTURE_2 register(t2)
+#define MK_TEXTURE_3 register(t3)
+#define MK_TEXTURE_4 register(t4)
+#define MK_TEXTURE_5 register(t5)
+#define MK_TEXTURE_6 register(t6)
+#define MK_TEXTURE_7 register(t7)
+
+#define SAMPLER(n) MK_SAMPLER_##n
+#define MK_SAMPLER_0 register(s0)
+#define MK_SAMPLER_1 register(s1)
+#define MK_SAMPLER_2 register(s2)
+#define MK_SAMPLER_3 register(s3)
+#define MK_SAMPLER_4 register(s4)
+#define MK_SAMPLER_5 register(s5)
+#define MK_SAMPLER_6 register(s6)
+#define MK_SAMPLER_7 register(s7)

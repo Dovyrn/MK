@@ -2,12 +2,8 @@ use crate::slot;
 
 include!(concat!(env!("OUT_DIR"), "/command.rs"));
 
-fn check(open: &'static str, slot: u32, first: u32, count: u32) -> &'static str {
-    assert!(
-        (first..first + count).contains(&slot),
-        "slot {slot} is outside {first}..{}",
-        first + count
-    );
+fn check(open: &'static str, slot: u32, count: u32) -> &'static str {
+    assert!(slot < count, "slot {slot} is outside 0..{count}");
     open
 }
 
@@ -19,19 +15,19 @@ impl Command<'_> {
             Command::EndCompute => ("", "compute"),
             Command::EndRender => ("", "render"),
             Command::BindUniform { slot, .. } => {
-                return check(open, *slot, slot::UNIFORM, slot::UNIFORMS);
+                return check(open, *slot, slot::UNIFORMS);
             }
             Command::BindStorage { slot, .. } => {
-                return check(open, *slot, slot::STORAGE, slot::STORAGES);
+                return check(open, *slot, slot::STORAGES);
             }
             Command::BindImage { slot, .. } => {
-                return check(open, *slot, slot::IMAGE, slot::IMAGES);
+                return check(open, *slot, slot::IMAGES);
             }
             Command::BindTexture { slot, .. } => {
-                return check(open, *slot, slot::TEXTURE, slot::TEXTURES);
+                return check(open, *slot, slot::TEXTURES);
             }
             Command::BindSampler { slot, .. } => {
-                return check(open, *slot, slot::SAMPLER, slot::SAMPLERS);
+                return check(open, *slot, slot::SAMPLERS);
             }
             c => {
                 let scope = c.scope();

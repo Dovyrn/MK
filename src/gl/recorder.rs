@@ -3,6 +3,7 @@ use crate::gl::extra::Extra;
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::resources::Resources;
+use crate::register;
 use crate::{
     Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
 };
@@ -1098,7 +1099,7 @@ impl<'a> Recorder<'a> {
                     size,
                 } => gl.bind_buffer_range(
                     glow::UNIFORM_BUFFER,
-                    slot,
+                    register::UNIFORM + slot,
                     Some(res.buffers.get(buffer).raw),
                     offset as i32,
                     size as i32,
@@ -1114,7 +1115,7 @@ impl<'a> Recorder<'a> {
                     }
                     gl.bind_buffer_range(
                         glow::SHADER_STORAGE_BUFFER,
-                        slot - slot::STORAGE,
+                        slot,
                         Some(res.buffers.get(buffer).raw),
                         offset as i32,
                         size as i32,
@@ -1127,7 +1128,7 @@ impl<'a> Recorder<'a> {
                     let t = res.textures.get(texture);
                     let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
                     gl.bind_image_texture(
-                        slot - slot::IMAGE,
+                        slot,
                         t.raw,
                         0,
                         layered,

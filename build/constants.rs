@@ -28,3 +28,24 @@ pub fn java(table: &toml::Table) -> Vec<(String, String)> {
     }
     files
 }
+
+pub fn slang(table: &toml::Table) -> String {
+    let get = |group: &str, name: &str| table[group][name].as_integer().unwrap();
+    let mut s = String::new();
+    for (kind, letter, first, count) in [
+        ("UNIFORM", "b", "UNIFORM", "UNIFORMS"),
+        ("STORAGE", "u", "STORAGE", "STORAGES"),
+        ("IMAGE", "u", "IMAGE", "IMAGES"),
+        ("TEXTURE", "t", "TEXTURE", "TEXTURES"),
+        ("SAMPLER", "s", "SAMPLER", "SAMPLERS"),
+    ] {
+        writeln!(s, "#define {kind}(n) MK_{kind}_##n").unwrap();
+        for i in 0..get("slot", count) {
+            let at = get("register", first) + i;
+            writeln!(s, "#define MK_{kind}_{i} register({letter}{at})").unwrap();
+        }
+        s += "\n";
+    }
+    s.truncate(s.len() - 1);
+    s
+}

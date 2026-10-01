@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Push {
     uint count;
 };
@@ -8,11 +10,11 @@ struct Params {
     float4 tint;
 };
 
-ConstantBuffer<Params> params : register(b1);
-RWStructuredBuffer<uint> data : register(u5);
-RWTexture2D<float4> image : register(u13);
-Texture2D<float4> source : register(t0);
-SamplerState nearest : register(s0);
+ConstantBuffer<Params> params : UNIFORM(0);
+RWStructuredBuffer<uint> data : STORAGE(0);
+RWTexture2D<float4> image : IMAGE(0);
+Texture2D<float4> source : TEXTURE(0);
+SamplerState nearest : SAMPLER(0);
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

@@ -53,6 +53,7 @@ fn main() {
         .parse()
         .unwrap();
     fs::write(out.join("constants.rs"), constants::rust(&table)).unwrap();
+    save(Path::new("shaders/mk.slangh"), &constants::slang(&table));
     for (name, text) in constants::java(&table) {
         save(&dir.join(format!("{name}.java")), &text);
     }

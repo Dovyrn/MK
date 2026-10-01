@@ -27,7 +27,7 @@ public class Smoke {
         var c = new Commands();
         c.beginCompute();
         c.bindPipeline(pipeline);
-        c.bindStorage(Slot.STORAGE, buffer, 0, n * 4L);
+        c.bindStorage(0, buffer, 0, n * 4L);
         c.pushConstants(0, push);
         c.dispatch(n / 64, 1, 1);
         c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
