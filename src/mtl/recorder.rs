@@ -77,7 +77,8 @@ fn render_stage(bits: u32) -> MTLRenderStages {
         stage::TILE => MTLRenderStages::Tile,
         stage::TASK => MTLRenderStages::Object,
         stage::MESH => MTLRenderStages::Mesh,
-        _ => MTLRenderStages::Fragment,
+        stage::FRAGMENT => MTLRenderStages::Fragment,
+        s => panic!("timestamp stage {s} is not one render stage"),
     }
 }
 
@@ -117,7 +118,8 @@ fn load(l: u32) -> MTLLoadAction {
     match l {
         load::LOAD => MTLLoadAction::Load,
         load::CLEAR => MTLLoadAction::Clear,
-        _ => MTLLoadAction::DontCare,
+        load::DONT_CARE => MTLLoadAction::DontCare,
+        l => panic!("unknown load {l}"),
     }
 }
 
@@ -125,8 +127,9 @@ fn store(s: u32, resolve: bool) -> MTLStoreAction {
     match (s, resolve) {
         (store::STORE, false) => MTLStoreAction::Store,
         (store::STORE, true) => MTLStoreAction::StoreAndMultisampleResolve,
-        (_, true) => MTLStoreAction::MultisampleResolve,
-        _ => MTLStoreAction::DontCare,
+        (store::DONT_CARE, true) => MTLStoreAction::MultisampleResolve,
+        (store::DONT_CARE, false) => MTLStoreAction::DontCare,
+        (s, _) => panic!("unknown store {s}"),
     }
 }
 
@@ -166,11 +169,11 @@ impl<'a> Recorder<'a> {
     }
 
     fn compute(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
-        self.compute.as_deref().unwrap()
+        self.compute.as_deref().expect("checked by Command::enter")
     }
 
     fn render(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
-        self.render.as_deref().unwrap()
+        self.render.as_deref().expect("checked by Command::enter")
     }
 
     fn encoder(&self) -> Option<(&ProtocolObject<dyn MTL4CommandEncoder>, MTLStages)> {
@@ -194,32 +197,51 @@ impl<'a> Recorder<'a> {
             self.waiting = false;
         }
         let (after, before, options) = self.pending;
-        let before = before & mask;
-        if !after.is_empty() && !before.is_empty() {
-            encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(after, before, options);
+        let now = before & mask;
+        if !after.is_empty() && !now.is_empty() {
+            encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(after, now, options);
         }
-        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
+        let rest = MTLStages(before.0 & !mask.0);
+        self.pending = if rest.is_empty() {
+            (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None)
+        } else {
+            (after, rest, options)
+        };
     }
 
     fn barrier(&mut self, queue: bool, src: (u32, u32), dst: (u32, u32)) {
+        let (from, to) = (stages(src.0), stages(dst.0));
+        let options = visibility(src.1, dst.1);
         let Some((encoder, mask)) = self.encoder() else {
-            self.pending.0 |= stages(src.0);
-            self.pending.1 |= stages(dst.0);
-            self.pending.2 |= visibility(src.1, dst.1);
+            self.pending.0 |= from;
+            self.pending.1 |= to;
+            self.pending.2 |= options;
             return;
         };
-        let before = stages(dst.0) & mask;
-        let after = stages(src.0) & if queue { MTLStages::All } else { mask };
-        if after.is_empty() || before.is_empty() {
-            return;
-        }
-        let options = visibility(src.1, dst.1);
-        if queue {
-            encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(after, before, options);
+        let inside = from & mask;
+        let outside = if queue {
+            MTLStages::All
         } else {
+            MTLStages(from.0 & !mask.0)
+        };
+        let before = to & mask;
+        let later = MTLStages(to.0 & !mask.0);
+        if !before.is_empty() && !inside.is_empty() {
             encoder.barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
-                after, before, options,
+                inside, before, options,
             );
+        }
+        if !before.is_empty() && !outside.is_empty() {
+            encoder
+                .barrierAfterQueueStages_beforeStages_visibilityOptions(outside, before, options);
+        }
+        if !later.is_empty() && !inside.is_empty() {
+            encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(inside, later, options);
+        }
+        if !later.is_empty() && !outside.is_empty() {
+            self.pending.0 |= outside;
+            self.pending.1 |= later;
+            self.pending.2 |= options;
         }
     }
 
@@ -241,9 +263,13 @@ impl<'a> Recorder<'a> {
                 break;
             }
         }
+        let mut open = "";
         while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?)?;
+            let command = Command::read(&mut bytes)?;
+            open = command.enter(open);
+            self.step(command)?;
         }
+        assert!(open.is_empty(), "stream ends inside begin_{open}");
         Ok(())
     }
 
@@ -542,7 +568,8 @@ impl<'a> Recorder<'a> {
             Command::SetCull { cull } => self.render().setCullMode(MTLCullMode(cull as usize)),
             Command::SetFace { face: f } => self.render().setFrontFacingWinding(match f {
                 face::CCW => MTLWinding::CounterClockwise,
-                _ => MTLWinding::Clockwise,
+                face::CW => MTLWinding::Clockwise,
+                f => panic!("unknown face {f}"),
             }),
             Command::SetTopology { topology } => {
                 self.primitive = MTLPrimitiveType(topology as usize)
@@ -579,7 +606,8 @@ impl<'a> Recorder<'a> {
                 let b = self.res.buffers.get(buffer);
                 let (kind, size) = match kind {
                     index::U16 => (MTLIndexType::UInt16, 2),
-                    _ => (MTLIndexType::UInt32, 4),
+                    index::U32 => (MTLIndexType::UInt32, 4),
+                    k => panic!("unknown index {k}"),
                 };
                 self.index = (
                     b.gpuAddress() + offset,

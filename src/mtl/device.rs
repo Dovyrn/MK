@@ -47,12 +47,13 @@ use objc2_metal::{
     MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor, MTLLibrary,
     MTLMatrixLayout, MTLOrigin, MTLPrimitiveTopologyClass, MTLRasterizationRateLayerDescriptor,
     MTLRasterizationRateMap, MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
-    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
-    MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode,
-    MTLStencilDescriptor, MTLStencilOperation, MTLTexture, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
-    MTLVertexStepFunction, MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
+    MTLResidencySetDescriptor, MTLResource, MTLResourceID, MTLResourceOptions,
+    MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter,
+    MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize,
+    MTLSparseTextureMappingMode, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode,
+    MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
+    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction, MTLVisibleFunctionTable,
+    MTLVisibleFunctionTableDescriptor,
 };
 use objc2_metal_fx::{
     MTLFXSpatialScalerBase, MTLFXSpatialScalerDescriptor, MTLFXTemporalScalerBase,
@@ -63,7 +64,11 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ptr::NonNull;
 
 fn compare(c: u32) -> MTLCompareFunction {
-    MTLCompareFunction(c.saturating_sub(1) as usize)
+    match c {
+        crate::compare::NONE => MTLCompareFunction::Always,
+        crate::compare::NEVER..=crate::compare::ALWAYS => MTLCompareFunction(c as usize - 1),
+        c => panic!("unknown compare {c}"),
+    }
 }
 
 fn factor(f: u32) -> MTLBlendFactor {
@@ -172,7 +177,8 @@ fn size(s: [u32; 3]) -> MTLSize {
 fn fill(f: u32) -> MTLTriangleFillMode {
     match f {
         fill::LINE => MTLTriangleFillMode::Lines,
-        _ => MTLTriangleFillMode::Fill,
+        fill::FILL => MTLTriangleFillMode::Fill,
+        f => panic!("unknown fill {f}"),
     }
 }
 
@@ -737,7 +743,11 @@ impl Device {
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
-        self.res.buffers.get(buffer).contents().as_ptr().cast()
+        let b = self.res.buffers.get(buffer);
+        match b.storageMode() {
+            MTLStorageMode::Shared | MTLStorageMode::Managed => b.contents().as_ptr().cast(),
+            _ => std::ptr::null_mut(),
+        }
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
@@ -918,7 +928,8 @@ impl Device {
         desc.setInputPrimitiveTopology(match info.topology {
             topology::POINT => MTLPrimitiveTopologyClass::Point,
             topology::LINE | topology::LINE_STRIP => MTLPrimitiveTopologyClass::Line,
-            _ => MTLPrimitiveTopologyClass::Triangle,
+            topology::TRIANGLE | topology::TRIANGLE_STRIP => MTLPrimitiveTopologyClass::Triangle,
+            t => panic!("unknown topology {t}"),
         });
         desc.setAlphaToCoverageState(coverage(info.coverage));
         desc.setSupportIndirectCommandBuffers(if info.indirect {
@@ -1023,11 +1034,7 @@ impl Device {
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
         let desc = MTLDepthStencilDescriptor::new();
-        desc.setDepthCompareFunction(if info.compare == 0 {
-            MTLCompareFunction::Always
-        } else {
-            compare(info.compare)
-        });
+        desc.setDepthCompareFunction(compare(info.compare));
         desc.setDepthWriteEnabled(info.write);
         if info.stencil {
             desc.setFrontFaceStencil(Some(&stencil(&info.front)));
@@ -1098,7 +1105,8 @@ impl Device {
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
         let filter = |f| match f {
             filter::NEAREST => MTLSamplerMinMagFilter::Nearest,
-            _ => MTLSamplerMinMagFilter::Linear,
+            filter::LINEAR => MTLSamplerMinMagFilter::Linear,
+            f => panic!("unknown filter {f}"),
         };
         let address = |a| match a {
             address::REPEAT => MTLSamplerAddressMode::Repeat,
@@ -1113,7 +1121,8 @@ impl Device {
         desc.setMagFilter(filter(info.mag));
         desc.setMipFilter(match info.mip {
             filter::NEAREST => MTLSamplerMipFilter::Nearest,
-            _ => MTLSamplerMipFilter::Linear,
+            filter::LINEAR => MTLSamplerMipFilter::Linear,
+            f => panic!("unknown filter {f}"),
         });
         desc.setSAddressMode(address(info.u));
         desc.setTAddressMode(address(info.v));
@@ -1127,7 +1136,8 @@ impl Device {
         desc.setBorderColor(match info.border {
             border::OPAQUE_BLACK => MTLSamplerBorderColor::OpaqueBlack,
             border::OPAQUE_WHITE => MTLSamplerBorderColor::OpaqueWhite,
-            _ => MTLSamplerBorderColor::TransparentBlack,
+            border::TRANSPARENT_BLACK => MTLSamplerBorderColor::TransparentBlack,
+            b => panic!("unknown border {b}"),
         });
         desc.setSupportArgumentBuffers(true);
         let sampler = self
@@ -1291,7 +1301,8 @@ impl Device {
                         unsafe { g.setIndexBuffer(self.range(t.indices, t.index_offset, !0)) };
                         g.setIndexType(match t.index_kind {
                             index::U16 => MTLIndexType::UInt16,
-                            _ => MTLIndexType::UInt32,
+                            index::U32 => MTLIndexType::UInt32,
+                            k => panic!("unknown index {k}"),
                         });
                     }
                     g.setOpaque(t.opaque);

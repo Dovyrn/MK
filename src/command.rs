@@ -1,6 +1,26 @@
 include!(concat!(env!("OUT_DIR"), "/command.rs"));
 
 impl Command<'_> {
+    pub fn enter(&self, open: &'static str) -> &'static str {
+        let (begin, end) = match self {
+            Command::BeginCompute => ("compute", ""),
+            Command::BeginRender { .. } => ("render", ""),
+            Command::EndCompute => ("", "compute"),
+            Command::EndRender => ("", "render"),
+            c => {
+                let scope = c.scope();
+                assert!(scope.is_empty() || scope == open, "{c} needs begin_{scope}");
+                return open;
+            }
+        };
+        if begin.is_empty() {
+            assert!(open == end, "end_{end} without begin_{end}");
+        } else {
+            assert!(open.is_empty(), "begin_{begin} inside begin_{open}");
+        }
+        begin
+    }
+
     pub fn dump(mut bytes: &[u8]) -> String {
         let mut s = String::new();
         while !bytes.is_empty() {

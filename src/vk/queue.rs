@@ -72,6 +72,7 @@ impl Queue {
             natives,
             bound: (vk::Pipeline::null(), vk::Pipeline::null()),
             rate: None,
+            scope: "",
         }
         .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };

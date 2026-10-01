@@ -24,28 +24,31 @@ pub struct Recorder<'a> {
     pub natives: &'a [Callback],
     pub bound: (vk::Pipeline, vk::Pipeline),
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
+    pub scope: &'static str,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
     match l {
         load::LOAD => vk::AttachmentLoadOp::LOAD,
         load::CLEAR => vk::AttachmentLoadOp::CLEAR,
-        _ => vk::AttachmentLoadOp::DONT_CARE,
+        load::DONT_CARE => vk::AttachmentLoadOp::DONT_CARE,
+        l => panic!("unknown load {l}"),
     }
 }
 
 fn store(s: u32) -> vk::AttachmentStoreOp {
     match s {
         store::STORE => vk::AttachmentStoreOp::STORE,
-        _ => vk::AttachmentStoreOp::DONT_CARE,
+        store::DONT_CARE => vk::AttachmentStoreOp::DONT_CARE,
+        s => panic!("unknown store {s}"),
     }
 }
 
 fn compare_op(c: u32) -> vk::CompareOp {
-    if c == compare::NONE {
-        vk::CompareOp::ALWAYS
-    } else {
-        vk::CompareOp::from_raw(c as i32 - 1)
+    match c {
+        compare::NONE => vk::CompareOp::ALWAYS,
+        compare::NEVER..=compare::ALWAYS => vk::CompareOp::from_raw(c as i32 - 1),
+        c => panic!("unknown compare {c}"),
     }
 }
 
@@ -78,6 +81,8 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
             vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
         ),
     ];
+    let foreign = bits & (stage::TILE | stage::RESOURCE | stage::ML);
+    assert!(foreign == 0, "stage {foreign} has no Vulkan equivalent");
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
         if bits & bit != 0 {
@@ -181,7 +186,7 @@ impl Recorder<'_> {
         (t, region)
     }
 
-    pub fn run(&mut self, heap: vk::DescriptorSet, mut bytes: &[u8]) -> Result<(), &'static str> {
+    pub fn run(&mut self, heap: vk::DescriptorSet, bytes: &[u8]) -> Result<(), &'static str> {
         let mut points = vec![
             vk::PipelineBindPoint::COMPUTE,
             vk::PipelineBindPoint::GRAPHICS,
@@ -201,9 +206,24 @@ impl Recorder<'_> {
                 )
             };
         }
-        while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?)?;
+        let result = self.stream(bytes);
+        if self.scope == "render" {
+            unsafe { self.device.cmd_end_rendering(self.buffer) };
         }
+        result
+    }
+
+    fn stream(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+        while !bytes.is_empty() {
+            let command = Command::read(&mut bytes)?;
+            self.scope = command.enter(self.scope);
+            self.step(command)?;
+        }
+        assert!(
+            self.scope.is_empty(),
+            "stream ends inside begin_{}",
+            self.scope
+        );
         Ok(())
     }
 
@@ -539,7 +559,8 @@ impl Recorder<'_> {
                     b,
                     match f {
                         face::CCW => vk::FrontFace::COUNTER_CLOCKWISE,
-                        _ => vk::FrontFace::CLOCKWISE,
+                        face::CW => vk::FrontFace::CLOCKWISE,
+                        f => panic!("unknown face {f}"),
                     },
                 ),
                 Command::SetTopology { topology } => d.cmd_set_primitive_topology(
@@ -582,7 +603,8 @@ impl Recorder<'_> {
                     offset,
                     match kind {
                         index::U16 => vk::IndexType::UINT16,
-                        _ => vk::IndexType::UINT32,
+                        index::U32 => vk::IndexType::UINT32,
+                        k => panic!("unknown index {k}"),
                     },
                 ),
                 Command::Draw {

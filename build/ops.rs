@@ -9,6 +9,7 @@ pub struct Field {
 pub struct Op {
     name: String,
     backend: Option<String>,
+    scope: Option<String>,
     fields: Vec<Field>,
 }
 pub fn parse(text: &str) -> Vec<Op> {
@@ -37,6 +38,7 @@ pub fn parse(text: &str) -> Vec<Op> {
         ops.push(Op {
             name,
             backend: c.get("backend").map(|b| b.as_str().unwrap().to_string()),
+            scope: c.get("scope").map(|b| b.as_str().unwrap().to_string()),
             fields,
         });
     }
@@ -139,6 +141,19 @@ pub fn command(ops: &[Op]) -> String {
     }
     s += "            _ => return Err(NAMES.get(op).copied().unwrap_or(\"unknown\")),\n";
     s += "        })\n    }\n}\n\n";
+    s += "impl Command<'_> {\n    pub fn scope(&self) -> &'static str {\n        match self {\n";
+    for op in ops {
+        if let Some(scope) = &op.scope {
+            s += &gate(op).replace("    #", "            #");
+            writeln!(
+                s,
+                "            Self::{} {{ .. }} => {scope:?},",
+                pascal(&op.name)
+            )
+            .unwrap();
+        }
+    }
+    s += "            _ => \"\",\n        }\n    }\n}\n\n";
     s += "impl std::fmt::Display for Command<'_> {\n";
     s += "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n";
     s += "        match self {\n";

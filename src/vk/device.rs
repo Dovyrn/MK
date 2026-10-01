@@ -64,7 +64,10 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     let kind = match info.dimension {
         dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
         dimension::D3 => vk::ImageType::TYPE_3D,
-        _ => vk::ImageType::TYPE_2D,
+        dimension::D2 | dimension::D2_ARRAY | dimension::CUBE | dimension::CUBE_ARRAY => {
+            vk::ImageType::TYPE_2D
+        }
+        d => panic!("unknown dimension {d}"),
     };
     let mut flags = vk::ImageCreateFlags::empty();
     if matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY) {
@@ -1232,7 +1235,8 @@ impl Device {
                     triangles = triangles
                         .index_type(match t.index_kind {
                             index::U16 => vk::IndexType::UINT16,
-                            _ => vk::IndexType::UINT32,
+                            index::U32 => vk::IndexType::UINT32,
+                            k => panic!("unknown index {k}"),
                         })
                         .index_data(address(t.indices, t.index_offset));
                 }
@@ -1496,14 +1500,18 @@ impl Device {
                 match vertex.map(|v| v.topology) {
                     Some(topology::POINT) => vk::PrimitiveTopology::POINT_LIST,
                     Some(topology::LINE | topology::LINE_STRIP) => vk::PrimitiveTopology::LINE_LIST,
-                    _ => vk::PrimitiveTopology::TRIANGLE_LIST,
+                    None | Some(topology::TRIANGLE | topology::TRIANGLE_STRIP) => {
+                        vk::PrimitiveTopology::TRIANGLE_LIST
+                    }
+                    Some(t) => panic!("unknown topology {t}"),
                 },
             );
             let viewport = vk::PipelineViewportStateCreateInfo::default();
             let raster = vk::PipelineRasterizationStateCreateInfo::default()
                 .polygon_mode(match fill {
                     fill::LINE => vk::PolygonMode::LINE,
-                    _ => vk::PolygonMode::FILL,
+                    fill::FILL => vk::PolygonMode::FILL,
+                    f => panic!("unknown fill {f}"),
                 })
                 .depth_clamp_enable(clamp)
                 .line_width(1.0);
@@ -1792,7 +1800,8 @@ impl Device {
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
         let filter = |f| match f {
             filter::NEAREST => vk::Filter::NEAREST,
-            _ => vk::Filter::LINEAR,
+            filter::LINEAR => vk::Filter::LINEAR,
+            f => panic!("unknown filter {f}"),
         };
         let address = |a| match a {
             address::REPEAT => vk::SamplerAddressMode::REPEAT,
@@ -1807,7 +1816,8 @@ impl Device {
             .mag_filter(filter(info.mag))
             .mipmap_mode(match info.mip {
                 filter::NEAREST => vk::SamplerMipmapMode::NEAREST,
-                _ => vk::SamplerMipmapMode::LINEAR,
+                filter::LINEAR => vk::SamplerMipmapMode::LINEAR,
+                f => panic!("unknown filter {f}"),
             })
             .address_mode_u(address(info.u))
             .address_mode_v(address(info.v))
@@ -1823,7 +1833,8 @@ impl Device {
             .border_color(match info.border {
                 border::OPAQUE_BLACK => vk::BorderColor::FLOAT_OPAQUE_BLACK,
                 border::OPAQUE_WHITE => vk::BorderColor::FLOAT_OPAQUE_WHITE,
-                _ => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+                border::TRANSPARENT_BLACK => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+                b => panic!("unknown border {b}"),
             });
         let sampler = unsafe {
             self.raw
