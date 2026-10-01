@@ -1,0 +1,17 @@
+[package]
+name = "mk"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+vk = []
+mtl = []
+gl = []
+
+[dependencies]
+
+[build-dependencies]
+toml = "0.8"

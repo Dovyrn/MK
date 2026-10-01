@@ -1,0 +1,54 @@
+[[command]]
+name = "begin_compute"
+
+[[command]]
+name = "end_compute"
+
+[[command]]
+name = "bind_pipeline"
+fields = [["pipeline", "u32"]]
+
+[[command]]
+name = "push_constants"
+fields = [["offset", "u32"], ["data", "bytes"]]
+
+[[command]]
+name = "dispatch"
+fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
+
+[[command]]
+name = "dispatch_indirect"
+fields = [["buffer", "u32"], ["offset", "u64"]]
+
+[[command]]
+name = "copy_buffer"
+fields = [["src", "u32"], ["src_offset", "u64"], ["dst", "u32"], ["dst_offset", "u64"], ["size", "u64"]]
+
+[[command]]
+name = "fill_buffer"
+fields = [["buffer", "u32"], ["offset", "u64"], ["size", "u64"], ["value", "u8"]]
+
+[[command]]
+name = "barrier"
+fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
+
+[[command]]
+name = "begin_label"
+fields = [["text", "str"]]
+
+[[command]]
+name = "end_label"
+
+[[command]]
+name = "dispatch_threads"
+backend = "mtl"
+fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
+
+[[command]]
+name = "set_line_width"
+backend = "vk"
+fields = [["width", "f32"]]
+
+[[command]]
+name = "queue_barrier"
+fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
