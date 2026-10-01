@@ -13,8 +13,9 @@ use objc2_metal::{
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
     MTLDevice, MTLFence, MTLGPUFamily, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
-    MTLRenderStages, MTLResidencySet, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction,
-    MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
+    MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
+    MTLStoreAction, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
+    MTLVisibilityResultMode, MTLWinding,
 };
 use objc2_metal_fx::{
     MTL4FXSpatialScaler, MTL4FXTemporalScaler, MTLFXSpatialScalerBase, MTLFXTemporalScalerBase,
@@ -590,6 +591,29 @@ impl<'a> Recorder<'a> {
                 .setDepthBias_slopeScale_clamp(constant, slope, clamp),
             Command::SetBlendColor { r, g, b, a } => {
                 self.render().setBlendColorRed_green_blue_alpha(r, g, b, a)
+            }
+            Command::BindUniform {
+                slot,
+                buffer,
+                offset,
+                ..
+            }
+            | Command::BindStorage {
+                slot,
+                buffer,
+                offset,
+                ..
+            } => {
+                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                unsafe { self.table.setAddress_atIndex(address, slot as usize) };
+            }
+            Command::BindTexture { slot, texture } | Command::BindImage { slot, texture } => {
+                let id = self.res.textures.get(texture).raw.gpuResourceID();
+                unsafe { self.table.setTexture_atIndex(id, slot as usize) };
+            }
+            Command::BindSampler { slot, sampler } => {
+                let id = self.res.samplers.get(sampler).gpuResourceID();
+                unsafe { self.table.setSamplerState_atIndex(id, slot as usize) };
             }
             Command::BindVertexBuffer {
                 slot,

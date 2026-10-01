@@ -1,4 +1,15 @@
+use crate::slot;
+
 include!(concat!(env!("OUT_DIR"), "/command.rs"));
+
+fn check(open: &'static str, slot: u32, first: u32, count: u32) -> &'static str {
+    assert!(
+        (first..first + count).contains(&slot),
+        "slot {slot} is outside {first}..{}",
+        first + count
+    );
+    open
+}
 
 impl Command<'_> {
     pub fn enter(&self, open: &'static str) -> &'static str {
@@ -7,6 +18,21 @@ impl Command<'_> {
             Command::BeginRender { .. } => ("render", ""),
             Command::EndCompute => ("", "compute"),
             Command::EndRender => ("", "render"),
+            Command::BindUniform { slot, .. } => {
+                return check(open, *slot, slot::UNIFORM, slot::UNIFORMS);
+            }
+            Command::BindStorage { slot, .. } => {
+                return check(open, *slot, slot::STORAGE, slot::STORAGES);
+            }
+            Command::BindImage { slot, .. } => {
+                return check(open, *slot, slot::IMAGE, slot::IMAGES);
+            }
+            Command::BindTexture { slot, .. } => {
+                return check(open, *slot, slot::TEXTURE, slot::TEXTURES);
+            }
+            Command::BindSampler { slot, .. } => {
+                return check(open, *slot, slot::SAMPLER, slot::SAMPLERS);
+            }
             c => {
                 let scope = c.scope();
                 assert!(scope.is_empty() || scope == open, "{c} needs begin_{scope}");

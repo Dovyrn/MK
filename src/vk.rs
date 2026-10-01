@@ -1,4 +1,5 @@
 mod accel;
+mod bindings;
 mod bindless;
 mod buffer;
 mod device;

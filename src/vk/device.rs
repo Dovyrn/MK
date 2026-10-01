@@ -1,4 +1,5 @@
 use crate::vk::accel::Accel;
+use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
 use crate::vk::buffer::Buffer;
 use crate::vk::extensions::Extensions;
@@ -16,6 +17,7 @@ use crate::{
 };
 use ash::ext::debug_utils;
 use ash::ext::{conditional_rendering, external_memory_host, mesh_shader, mutable_descriptor_type};
+use ash::khr::push_descriptor;
 use ash::khr::{
     acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
     maintenance5, portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline,
@@ -37,6 +39,7 @@ pub struct Device {
     families: Vec<u32>,
     cache: vk::PipelineCache,
     bindless: Bindless,
+    slots: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
@@ -203,6 +206,9 @@ impl Device {
             }
             if has(&available, portability_subset::NAME) {
                 extensions.push(portability_subset::NAME.as_ptr());
+            }
+            if has(&available, push_descriptor::NAME) {
+                extensions.push(push_descriptor::NAME.as_ptr());
             }
             let mut supported_generated = ffi::Features {
                 s_type: ffi::FEATURES,
@@ -450,6 +456,9 @@ impl Device {
                     swapchain::Device::new(&instance, &raw),
                 )
             });
+            let name = c"vkCmdPushDescriptorSetKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let push = loaded.map(|_| push_descriptor::Device::new(&instance, &raw));
             let limits = instance.get_physical_device_properties(physical).limits;
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
@@ -457,9 +466,16 @@ impl Device {
             let mut v12 = vk::PhysicalDeviceVulkan12Properties::default();
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut v12);
             instance.get_physical_device_properties2(physical, &mut properties);
-            let bindless = Bindless::new(&raw, &v12).map_err(|e| e.to_string())?;
+            let slots = bindings::layout(&raw, push.is_some()).map_err(|e| e.to_string())?;
+            let bindless = match Bindless::new(&raw, &v12) {
+                Ok(b) => b,
+                Err(e) => {
+                    raw.destroy_descriptor_set_layout(slots, None);
+                    return Err(e.to_string());
+                }
+            };
             let ranges = [range];
-            let sets = [bindless.layout];
+            let sets = [slots, bindless.layout];
             let info = vk::PipelineLayoutCreateInfo::default()
                 .set_layouts(&sets)
                 .push_constant_ranges(&ranges);
@@ -467,6 +483,7 @@ impl Device {
                 Ok(l) => l,
                 Err(e) => {
                     bindless.destroy(&raw);
+                    raw.destroy_descriptor_set_layout(slots, None);
                     return Err(e.to_string());
                 }
             };
@@ -482,6 +499,7 @@ impl Device {
                 Err(e) => {
                     raw.destroy_pipeline_layout(layout, None);
                     bindless.destroy(&raw);
+                    raw.destroy_descriptor_set_layout(slots, None);
                     return Err(e);
                 }
             };
@@ -505,7 +523,9 @@ impl Device {
                     generated,
                     surfaces,
                     features: *features,
+                    push,
                 },
+                slots,
                 owned: false,
                 bindless,
                 layout,
@@ -664,6 +684,12 @@ impl Device {
             line_fill: features.fill_mode_non_solid != 0,
             multi_draw: features.multi_draw_indirect != 0,
             sparse_textures: sparse && features.sparse_residency_image2_d != 0,
+            slots: self.ext.push.is_some(),
+            storage: self.ext.push.is_some(),
+            persistent: true,
+            alignment: limits
+                .min_uniform_buffer_offset_alignment
+                .max(limits.min_storage_buffer_offset_alignment) as u32,
         }
     }
 
@@ -1508,6 +1534,8 @@ impl Device {
     pub fn map(&self, buffer: u32) -> *mut u8 {
         self.res.buffers.get(buffer).data
     }
+
+    pub fn unmap(&self, _buffer: u32) {}
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.buffers.get(buffer).address
@@ -2677,6 +2705,7 @@ impl Drop for Device {
             self.raw.destroy_pipeline_cache(self.cache, None);
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
+            self.raw.destroy_descriptor_set_layout(self.slots, None);
             if self.owned {
                 self.raw.destroy_device(None);
                 self.instance.destroy_instance(None);

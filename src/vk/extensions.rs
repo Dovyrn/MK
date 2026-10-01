@@ -1,5 +1,6 @@
 use crate::vk::generated::Generated;
 use ash::ext::{conditional_rendering, debug_utils, external_memory_host, mesh_shader};
+use ash::khr::push_descriptor;
 use ash::khr::{
     acceleration_structure, external_memory_fd, fragment_shading_rate, ray_tracing_pipeline,
     surface, swapchain,
@@ -18,4 +19,5 @@ pub struct Extensions {
     pub generated: Option<Generated>,
     pub surfaces: Option<(surface::Instance, swapchain::Device)>,
     pub features: vk::PhysicalDeviceFeatures,
+    pub push: Option<push_descriptor::Device>,
 }

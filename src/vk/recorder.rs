@@ -1,3 +1,4 @@
+use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
 use crate::vk::ffi;
 use crate::vk::resources::Resources;
@@ -107,7 +108,48 @@ fn layout(l: u32) -> vk::ImageLayout {
     }
 }
 
+fn slot_write(kind: vk::DescriptorType, slot: u32) -> vk::WriteDescriptorSet<'static> {
+    vk::WriteDescriptorSet::default()
+        .dst_binding(bindings::binding(kind, slot))
+        .descriptor_type(kind)
+}
+
 impl Recorder<'_> {
+    fn slot(&self, write: vk::WriteDescriptorSet) -> Result<(), &'static str> {
+        let push = self
+            .ext
+            .push
+            .as_ref()
+            .ok_or("VK_KHR_push_descriptor is not enabled")?;
+        let points: &[vk::PipelineBindPoint] = match self.scope {
+            "render" => &[vk::PipelineBindPoint::GRAPHICS],
+            "compute" => &[vk::PipelineBindPoint::COMPUTE],
+            _ => &[
+                vk::PipelineBindPoint::COMPUTE,
+                vk::PipelineBindPoint::GRAPHICS,
+            ],
+        };
+        for point in points {
+            unsafe { push.cmd_push_descriptor_set(self.buffer, *point, self.layout, 0, &[write]) };
+        }
+        Ok(())
+    }
+
+    fn buffer_slot(
+        &self,
+        kind: vk::DescriptorType,
+        slot: u32,
+        buffer: u32,
+        offset: u64,
+        size: u64,
+    ) -> Result<(), &'static str> {
+        let info = [vk::DescriptorBufferInfo::default()
+            .buffer(self.res.buffers.get(buffer).raw)
+            .offset(offset)
+            .range(size)];
+        self.slot(slot_write(kind, slot).buffer_info(&info))
+    }
+
     fn multi(&self, count: u32) -> Result<(), &'static str> {
         if count > 1 && self.ext.features.multi_draw_indirect == 0 {
             return Err("multi draw indirect is not supported");
@@ -207,7 +249,7 @@ impl Recorder<'_> {
                     self.buffer,
                     point,
                     self.layout,
-                    0,
+                    1,
                     &[heap],
                     &[],
                 )
@@ -589,6 +631,51 @@ impl Recorder<'_> {
                 }
                 Command::SetBlendColor { r, g, b: blue, a } => {
                     d.cmd_set_blend_constants(b, &[r, g, blue, a])
+                }
+                Command::BindUniform {
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                } => self.buffer_slot(
+                    vk::DescriptorType::UNIFORM_BUFFER,
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                )?,
+                Command::BindStorage {
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                } => self.buffer_slot(
+                    vk::DescriptorType::STORAGE_BUFFER,
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                )?,
+                Command::BindTexture { slot, texture } => {
+                    let info = [vk::DescriptorImageInfo::default()
+                        .image_view(self.res.textures.get(texture).view)
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+                    let kind = vk::DescriptorType::SAMPLED_IMAGE;
+                    self.slot(slot_write(kind, slot).image_info(&info))?
+                }
+                Command::BindImage { slot, texture } => {
+                    let info = [vk::DescriptorImageInfo::default()
+                        .image_view(self.res.textures.get(texture).view)
+                        .image_layout(vk::ImageLayout::GENERAL)];
+                    let kind = vk::DescriptorType::STORAGE_IMAGE;
+                    self.slot(slot_write(kind, slot).image_info(&info))?
+                }
+                Command::BindSampler { slot, sampler } => {
+                    let info =
+                        [vk::DescriptorImageInfo::default()
+                            .sampler(*self.res.samplers.get(sampler))];
+                    let kind = vk::DescriptorType::SAMPLER;
+                    self.slot(slot_write(kind, slot).image_info(&info))?
                 }
                 Command::BindVertexBuffer {
                     slot,

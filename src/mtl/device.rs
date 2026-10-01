@@ -385,6 +385,10 @@ impl Device {
             line_fill: true,
             multi_draw: true,
             sparse_textures: self.raw.supportsFamily(MTLGPUFamily::Apple6),
+            slots: true,
+            storage: true,
+            persistent: true,
+            alignment: 256,
         }
     }
 
@@ -766,6 +770,8 @@ impl Device {
             _ => std::ptr::null_mut(),
         }
     }
+
+    pub fn unmap(&self, _buffer: u32) {}
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.buffers.get(buffer).gpuAddress()

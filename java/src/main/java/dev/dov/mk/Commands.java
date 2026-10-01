@@ -261,22 +261,56 @@ public class Commands {
         memPutFloat(p + 12, a);
     }
 
+    public void bindUniform(int slot, int buffer, long offset, long size) {
+        var p = head(31, 24);
+        memPutInt(p, slot);
+        memPutInt(p + 4, buffer);
+        memPutLong(p + 8, offset);
+        memPutLong(p + 16, size);
+    }
+
+    public void bindStorage(int slot, int buffer, long offset, long size) {
+        var p = head(32, 24);
+        memPutInt(p, slot);
+        memPutInt(p + 4, buffer);
+        memPutLong(p + 8, offset);
+        memPutLong(p + 16, size);
+    }
+
+    public void bindTexture(int slot, int texture) {
+        var p = head(33, 8);
+        memPutInt(p, slot);
+        memPutInt(p + 4, texture);
+    }
+
+    public void bindImage(int slot, int texture) {
+        var p = head(34, 8);
+        memPutInt(p, slot);
+        memPutInt(p + 4, texture);
+    }
+
+    public void bindSampler(int slot, int sampler) {
+        var p = head(35, 8);
+        memPutInt(p, slot);
+        memPutInt(p + 4, sampler);
+    }
+
     public void bindVertexBuffer(int slot, int buffer, long offset) {
-        var p = head(31, 16);
+        var p = head(36, 16);
         memPutInt(p, slot);
         memPutInt(p + 4, buffer);
         memPutLong(p + 8, offset);
     }
 
     public void bindIndexBuffer(int buffer, long offset, int kind) {
-        var p = head(32, 16);
+        var p = head(37, 16);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, kind);
     }
 
     public void draw(int vertices, int instances, int firstVertex, int firstInstance) {
-        var p = head(33, 16);
+        var p = head(38, 16);
         memPutInt(p, vertices);
         memPutInt(p + 4, instances);
         memPutInt(p + 8, firstVertex);
@@ -284,7 +318,7 @@ public class Commands {
     }
 
     public void drawIndexed(int indices, int instances, int firstIndex, int baseVertex, int firstInstance) {
-        var p = head(34, 20);
+        var p = head(39, 20);
         memPutInt(p, indices);
         memPutInt(p + 4, instances);
         memPutInt(p + 8, firstIndex);
@@ -293,7 +327,7 @@ public class Commands {
     }
 
     public void drawIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(35, 20);
+        var p = head(40, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -301,7 +335,7 @@ public class Commands {
     }
 
     public void drawIndexedIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(36, 20);
+        var p = head(41, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -309,14 +343,14 @@ public class Commands {
     }
 
     public void drawMesh(int x, int y, int z) {
-        var p = head(37, 12);
+        var p = head(42, 12);
         memPutInt(p, x);
         memPutInt(p + 4, y);
         memPutInt(p + 8, z);
     }
 
     public void drawMeshIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(38, 20);
+        var p = head(43, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -324,38 +358,38 @@ public class Commands {
     }
 
     public void occlusionHeap(int heap) {
-        var p = head(39, 4);
+        var p = head(44, 4);
         memPutInt(p, heap);
     }
 
     public void resetQueries(int heap, int first, int count) {
-        var p = head(40, 12);
+        var p = head(45, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
     }
 
     public void writeTimestamp(int heap, int index, int stage) {
-        var p = head(41, 12);
+        var p = head(46, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
         memPutInt(p + 8, stage);
     }
 
     public void beginQuery(int heap, int index) {
-        var p = head(42, 8);
+        var p = head(47, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void endQuery(int heap, int index) {
-        var p = head(43, 8);
+        var p = head(48, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void resolveQueries(int heap, int first, int count, int buffer, long offset) {
-        var p = head(44, 24);
+        var p = head(49, 24);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
@@ -364,7 +398,7 @@ public class Commands {
     }
 
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
-        var p = head(45, 20);
+        var p = head(50, 20);
         memPutInt(p, accel);
         memPutInt(p + 4, scratch);
         memPutLong(p + 8, scratchOffset);
@@ -372,36 +406,36 @@ public class Commands {
     }
 
     public void multiview(int views) {
-        var p = head(49, 4);
+        var p = head(54, 4);
         memPutInt(p, views);
     }
 
     public void writeCompactedSize(int accel, int heap, int index) {
-        var p = head(60, 12);
+        var p = head(65, 12);
         memPutInt(p, accel);
         memPutInt(p + 4, heap);
         memPutInt(p + 8, index);
     }
 
     public void copyAccel(int src, int dst, int compact) {
-        var p = head(61, 12);
+        var p = head(66, 12);
         memPutInt(p, src);
         memPutInt(p + 4, dst);
         memPutInt(p + 8, compact);
     }
 
     public void setViewports(ByteBuffer data) {
-        var p = head(63, data.remaining());
+        var p = head(68, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
     }
 
     public void setScissors(ByteBuffer data) {
-        var p = head(64, data.remaining());
+        var p = head(69, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
     }
 
     public void setDepthBounds(float min, float max) {
-        var p = head(65, 8);
+        var p = head(70, 8);
         memPutFloat(p, min);
         memPutFloat(p + 4, max);
     }

@@ -201,6 +201,26 @@ scope = "render"
 fields = [["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"]]
 
 [[command]]
+name = "bind_uniform"
+fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"], ["size", "u64"]]
+
+[[command]]
+name = "bind_storage"
+fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"], ["size", "u64"]]
+
+[[command]]
+name = "bind_texture"
+fields = [["slot", "u32"], ["texture", "u32"]]
+
+[[command]]
+name = "bind_image"
+fields = [["slot", "u32"], ["texture", "u32"]]
+
+[[command]]
+name = "bind_sampler"
+fields = [["slot", "u32"], ["sampler", "u32"]]
+
+[[command]]
 name = "bind_vertex_buffer"
 fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"]]
 

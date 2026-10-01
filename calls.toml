@@ -28,6 +28,10 @@ params = [["buffer", "u32"]]
 result = "pointer"
 
 [[call]]
+name = "unmap"
+params = [["buffer", "u32"]]
+
+[[call]]
 name = "address"
 params = [["buffer", "u32"]]
 result = "u64"

@@ -37,9 +37,13 @@ public class Caps {
     public boolean lineFill = false;
     public boolean multiDraw = false;
     public boolean sparseTextures = false;
+    public boolean slots = false;
+    public boolean storage = false;
+    public boolean persistent = false;
+    public int alignment = 0;
 
     public int size() {
-        return 136;
+        return 152;
     }
 
     public long write(long p) {
@@ -110,6 +114,14 @@ public class Caps {
         memPutInt(p, multiDraw ? 1 : 0);
         p += 4;
         memPutInt(p, sparseTextures ? 1 : 0);
+        p += 4;
+        memPutInt(p, slots ? 1 : 0);
+        p += 4;
+        memPutInt(p, storage ? 1 : 0);
+        p += 4;
+        memPutInt(p, persistent ? 1 : 0);
+        p += 4;
+        memPutInt(p, alignment);
         p += 4;
         return p;
     }
@@ -183,6 +195,14 @@ public class Caps {
         r.multiDraw = memGetInt(p) != 0;
         p += 4;
         r.sparseTextures = memGetInt(p) != 0;
+        p += 4;
+        r.slots = memGetInt(p) != 0;
+        p += 4;
+        r.storage = memGetInt(p) != 0;
+        p += 4;
+        r.persistent = memGetInt(p) != 0;
+        p += 4;
+        r.alignment = memGetInt(p);
         p += 4;
         return r;
     }

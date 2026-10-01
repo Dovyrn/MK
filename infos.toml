@@ -216,6 +216,10 @@ fields = [
     ["line_fill", "bool", "false"],
     ["multi_draw", "bool", "false"],
     ["sparse_textures", "bool", "false"],
+    ["slots", "bool", "false"],
+    ["storage", "bool", "false"],
+    ["persistent", "bool", "false"],
+    ["alignment", "u32", "0"],
 ]
 
 [[info]]

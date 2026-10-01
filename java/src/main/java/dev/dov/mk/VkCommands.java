@@ -9,7 +9,7 @@ public class VkCommands extends Commands {
     }
 
     public void executeGenerated(int layout, int indirect, long offset, long size, int preprocess, long preprocessOffset, long preprocessSize, int sequences, int count, long countOffset, int draws) {
-        var p = head(54, 64);
+        var p = head(59, 64);
         memPutInt(p, layout);
         memPutInt(p + 4, indirect);
         memPutLong(p + 8, offset);
@@ -24,12 +24,12 @@ public class VkCommands extends Commands {
     }
 
     public void bindRayPipeline(int pipeline) {
-        var p = head(55, 4);
+        var p = head(60, 4);
         memPutInt(p, pipeline);
     }
 
     public void traceRays(int raygen, long raygenOffset, long raygenStride, long raygenSize, int miss, long missOffset, long missStride, long missSize, int hit, long hitOffset, long hitStride, long hitSize, int callable, long callableOffset, long callableStride, long callableSize, int width, int height, int depth) {
-        var p = head(56, 124);
+        var p = head(61, 124);
         memPutInt(p, raygen);
         memPutLong(p + 4, raygenOffset);
         memPutLong(p + 12, raygenStride);
@@ -52,7 +52,7 @@ public class VkCommands extends Commands {
     }
 
     public void setShadingRate(int width, int height, int primitive, int attachment) {
-        var p = head(58, 16);
+        var p = head(63, 16);
         memPutInt(p, width);
         memPutInt(p + 4, height);
         memPutInt(p + 8, primitive);
@@ -60,7 +60,7 @@ public class VkCommands extends Commands {
     }
 
     public void rateAttachment(int texture, int layout, int texelWidth, int texelHeight) {
-        var p = head(59, 16);
+        var p = head(64, 16);
         memPutInt(p, texture);
         memPutInt(p + 4, layout);
         memPutInt(p + 8, texelWidth);
@@ -68,13 +68,13 @@ public class VkCommands extends Commands {
     }
 
     public void beginConditional(int buffer, long offset, int inverted) {
-        var p = head(66, 16);
+        var p = head(71, 16);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, inverted);
     }
 
     public void endConditional() {
-        head(67, 0);
+        head(72, 0);
     }
 }

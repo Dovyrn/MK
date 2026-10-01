@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "libs/vk", "libs/mtl"]
+members = [".", "libs/vk", "libs/mtl", "tools/shade"]
 default-members = ["."]
 
 [features]
