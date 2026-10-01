@@ -2,6 +2,7 @@ use crate::slots::Slots;
 use crate::vk::buffer::Buffer;
 use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
+use crate::vk::texture::Texture;
 use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::VecDeque;
@@ -40,7 +41,9 @@ impl Queue {
         device: &ash::Device,
         debug: Option<&debug_utils::Device>,
         layout: vk::PipelineLayout,
+        heap: vk::DescriptorSet,
         buffers: &Slots<Buffer>,
+        textures: &Slots<Texture>,
         pipelines: &Slots<vk::Pipeline>,
         events: &Slots<vk::Semaphore>,
         commands: &[u8],
@@ -66,9 +69,10 @@ impl Queue {
             buffer: frame.buffer,
             layout,
             buffers,
+            textures,
             pipelines,
         }
-        .run(commands);
+        .run(heap, commands);
         unsafe { device.end_command_buffer(frame.buffer).unwrap() };
         if let Err(name) = result {
             frame.reset(device);

@@ -1,5 +1,7 @@
 #[path = "build/constants.rs"]
 mod constants;
+#[path = "build/formats.rs"]
+mod formats;
 #[path = "build/ops.rs"]
 mod ops;
 
@@ -44,6 +46,9 @@ fn main() {
     for (name, text) in constants::java(&table) {
         save(&dir.join(format!("{name}.java")), &text);
     }
+    let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
+    fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
+    save(&dir.join("Format.java"), &formats::java(&table));
 }
 
 fn save(path: &Path, text: &str) {

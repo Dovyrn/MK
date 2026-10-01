@@ -52,3 +52,57 @@ fields = [["width", "f32"]]
 [[command]]
 name = "queue_barrier"
 fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
+
+[[command]]
+name = "texture_barrier"
+fields = [
+    ["texture", "u32"],
+    ["src_stage", "u32"],
+    ["src_access", "u32"],
+    ["dst_stage", "u32"],
+    ["dst_access", "u32"],
+    ["old", "u32"],
+    ["new", "u32"],
+    ["base_mip", "u32"],
+    ["mips", "u32"],
+    ["base_layer", "u32"],
+    ["layers", "u32"],
+]
+
+[[command]]
+name = "copy_buffer_to_texture"
+fields = [
+    ["buffer", "u32"],
+    ["offset", "u64"],
+    ["row_length", "u32"],
+    ["row_count", "u32"],
+    ["texture", "u32"],
+    ["layout", "u32"],
+    ["mip", "u32"],
+    ["layer", "u32"],
+    ["x", "u32"],
+    ["y", "u32"],
+    ["z", "u32"],
+    ["width", "u32"],
+    ["height", "u32"],
+    ["depth", "u32"],
+]
+
+[[command]]
+name = "copy_texture_to_buffer"
+fields = [
+    ["texture", "u32"],
+    ["layout", "u32"],
+    ["mip", "u32"],
+    ["layer", "u32"],
+    ["x", "u32"],
+    ["y", "u32"],
+    ["z", "u32"],
+    ["width", "u32"],
+    ["height", "u32"],
+    ["depth", "u32"],
+    ["buffer", "u32"],
+    ["offset", "u64"],
+    ["row_length", "u32"],
+    ["row_count", "u32"],
+]

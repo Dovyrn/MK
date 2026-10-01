@@ -1,6 +1,7 @@
 use crate::mtl::frame::Frame;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::Recorder;
+use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -58,6 +59,7 @@ impl Queue {
         &mut self,
         device: &ProtocolObject<dyn MTLDevice>,
         buffers: &Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
+        textures: &Slots<Texture>,
         pipelines: &Slots<Pipeline>,
         events: &Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
         commands: &[u8],
@@ -80,6 +82,7 @@ impl Queue {
             table: &self.table,
             frame: &mut frame,
             buffers,
+            textures,
             pipelines,
             encoder: None,
             group: MTLSize {

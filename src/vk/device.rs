@@ -1,8 +1,11 @@
-use crate::memory;
 use crate::slots::Slots;
 use crate::vk::buffer::Buffer;
+use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
+use crate::vk::texture::{Texture, aspect};
+use crate::{SamplerInfo, TextureInfo, address, border, dimension, filter, format, memory, usage};
 use ash::ext::debug_utils;
+use ash::ext::mutable_descriptor_type;
 use ash::khr::{portability_enumeration, portability_subset};
 use ash::vk;
 use std::ffi::{CStr, CString};
@@ -16,8 +19,11 @@ pub struct Device {
     debug: Option<debug_utils::Device>,
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
+    heap: Heap,
     layout: vk::PipelineLayout,
     buffers: Slots<Buffer>,
+    textures: Slots<Texture>,
+    samplers: Slots<vk::Sampler>,
     pipelines: Slots<vk::Pipeline>,
     events: Slots<vk::Semaphore>,
     queues: Vec<Queue>,
@@ -98,13 +104,31 @@ impl Device {
             let available = instance
                 .enumerate_device_extension_properties(physical)
                 .map_err(|e| e.to_string())?;
-            let mut extensions = Vec::new();
+            let mut extensions = vec![mutable_descriptor_type::NAME.as_ptr()];
             if has(&available, portability_subset::NAME) {
                 extensions.push(portability_subset::NAME.as_ptr());
             }
+            let supported = instance.get_physical_device_features(physical);
+            let features = vk::PhysicalDeviceFeatures::default()
+                .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .shader_storage_image_read_without_format(
+                    supported.shader_storage_image_read_without_format != 0,
+                )
+                .shader_storage_image_write_without_format(
+                    supported.shader_storage_image_write_without_format != 0,
+                );
             let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
                 .buffer_device_address(true)
-                .timeline_semaphore(true);
+                .timeline_semaphore(true)
+                .descriptor_indexing(true)
+                .runtime_descriptor_array(true)
+                .descriptor_binding_partially_bound(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_storage_image_update_after_bind(true)
+                .shader_sampled_image_array_non_uniform_indexing(true)
+                .shader_storage_image_array_non_uniform_indexing(true);
+            let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
+                .mutable_descriptor_type(true);
             let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
                 .synchronization2(true)
                 .dynamic_rendering(true)
@@ -112,8 +136,10 @@ impl Device {
             let info = vk::DeviceCreateInfo::default()
                 .queue_create_infos(&infos)
                 .enabled_extension_names(&extensions)
+                .enabled_features(&features)
                 .push_next(&mut v12)
-                .push_next(&mut v13);
+                .push_next(&mut v13)
+                .push_next(&mut mutable);
             let device = instance
                 .create_device(physical, &info, None)
                 .map_err(|e| e.to_string())?;
@@ -138,8 +164,15 @@ impl Device {
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
                 .size(limits.max_push_constants_size.min(256));
+            let mut v12 = vk::PhysicalDeviceVulkan12Properties::default();
+            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut v12);
+            instance.get_physical_device_properties2(physical, &mut properties);
+            let heap = Heap::new(&raw, &v12);
             let ranges = [range];
-            let info = vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&ranges);
+            let sets = [heap.layout];
+            let info = vk::PipelineLayoutCreateInfo::default()
+                .set_layouts(&sets)
+                .push_constant_ranges(&ranges);
             let layout = raw.create_pipeline_layout(&info, None).unwrap();
             let queues = queues
                 .iter()
@@ -153,8 +186,11 @@ impl Device {
                 raw,
                 debug,
                 owned: false,
+                heap,
                 layout,
                 buffers: Slots::default(),
+                textures: Slots::default(),
+                samplers: Slots::default(),
                 pipelines: Slots::default(),
                 events: Slots::default(),
                 queues,
@@ -243,6 +279,185 @@ impl Device {
         self.buffers.get(buffer).address
     }
 
+    pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
+        let (kind, view) = match info.dimension {
+            dimension::D1 => (vk::ImageType::TYPE_1D, vk::ImageViewType::TYPE_1D),
+            dimension::D1_ARRAY => (vk::ImageType::TYPE_1D, vk::ImageViewType::TYPE_1D_ARRAY),
+            dimension::D2 => (vk::ImageType::TYPE_2D, vk::ImageViewType::TYPE_2D),
+            dimension::D2_ARRAY => (vk::ImageType::TYPE_2D, vk::ImageViewType::TYPE_2D_ARRAY),
+            dimension::D3 => (vk::ImageType::TYPE_3D, vk::ImageViewType::TYPE_3D),
+            dimension::CUBE => (vk::ImageType::TYPE_2D, vk::ImageViewType::CUBE),
+            dimension::CUBE_ARRAY => (vk::ImageType::TYPE_2D, vk::ImageViewType::CUBE_ARRAY),
+            d => panic!("unknown dimension {d}"),
+        };
+        let mut flags = vk::ImageCreateFlags::empty();
+        if matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY) {
+            flags |= vk::ImageCreateFlags::CUBE_COMPATIBLE;
+        }
+        if info.usage & usage::VIEW != 0 {
+            flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
+        }
+        let map = [
+            (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
+            (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
+            (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
+            (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
+            (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
+            (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
+        ];
+        let mut bits = vk::ImageUsageFlags::empty();
+        for (u, f) in map {
+            if info.usage & u != 0 {
+                bits |= f;
+            }
+        }
+        let native = format::vk(info.format);
+        let image_info = vk::ImageCreateInfo::default()
+            .flags(flags)
+            .image_type(kind)
+            .format(native)
+            .extent(vk::Extent3D {
+                width: info.width,
+                height: info.height,
+                depth: info.depth,
+            })
+            .mip_levels(info.mips)
+            .array_layers(info.layers)
+            .samples(vk::SampleCountFlags::from_raw(info.samples))
+            .usage(bits);
+        unsafe {
+            let image = self.raw.create_image(&image_info, None).unwrap();
+            let needs = self.raw.get_image_memory_requirements(image);
+            let index = self.memory_type(needs.memory_type_bits, memory::DEVICE);
+            let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
+            let alloc = vk::MemoryAllocateInfo::default()
+                .allocation_size(needs.size)
+                .memory_type_index(index)
+                .push_next(&mut dedicated);
+            let memory = self.raw.allocate_memory(&alloc, None).unwrap();
+            self.raw.bind_image_memory(image, memory, 0).unwrap();
+            let aspect = aspect(info.format);
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: if aspect.contains(vk::ImageAspectFlags::DEPTH) {
+                    vk::ImageAspectFlags::DEPTH
+                } else {
+                    aspect
+                },
+                base_mip_level: 0,
+                level_count: vk::REMAINING_MIP_LEVELS,
+                base_array_layer: 0,
+                layer_count: vk::REMAINING_ARRAY_LAYERS,
+            };
+            let view_info = vk::ImageViewCreateInfo::default()
+                .image(image)
+                .view_type(view)
+                .format(native)
+                .subresource_range(range);
+            let view = self.raw.create_image_view(&view_info, None).unwrap();
+            let slot = self.textures.insert(Texture {
+                image,
+                memory,
+                view,
+                aspect,
+            });
+            if info.usage & usage::SAMPLED != 0 {
+                let image = vk::DescriptorImageInfo::default()
+                    .image_view(view)
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+                self.heap.write(
+                    &self.raw,
+                    2,
+                    slot * 2,
+                    vk::DescriptorType::SAMPLED_IMAGE,
+                    image,
+                );
+            }
+            if info.usage & usage::STORAGE != 0 {
+                let image = vk::DescriptorImageInfo::default()
+                    .image_view(view)
+                    .image_layout(vk::ImageLayout::GENERAL);
+                self.heap.write(
+                    &self.raw,
+                    2,
+                    slot * 2 + 1,
+                    vk::DescriptorType::STORAGE_IMAGE,
+                    image,
+                );
+            }
+            slot
+        }
+    }
+
+    pub fn destroy_texture(&mut self, texture: u32) {
+        let texture = self.textures.remove(texture);
+        unsafe {
+            self.raw.destroy_image_view(texture.view, None);
+            self.raw.destroy_image(texture.image, None);
+            self.raw.free_memory(texture.memory, None);
+        }
+    }
+
+    pub fn texture_handle(&self, texture: u32) -> u64 {
+        texture as u64 * 2
+    }
+
+    pub fn image_handle(&self, texture: u32) -> u64 {
+        texture as u64 * 2 + 1
+    }
+
+    pub fn create_sampler(&mut self, info: &SamplerInfo) -> u32 {
+        let filter = |f| match f {
+            filter::NEAREST => vk::Filter::NEAREST,
+            _ => vk::Filter::LINEAR,
+        };
+        let address = |a| match a {
+            address::REPEAT => vk::SamplerAddressMode::REPEAT,
+            address::MIRROR => vk::SamplerAddressMode::MIRRORED_REPEAT,
+            address::CLAMP => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            address::BORDER => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+            address::MIRROR_CLAMP => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
+            a => panic!("unknown address {a}"),
+        };
+        let sampler_info = vk::SamplerCreateInfo::default()
+            .min_filter(filter(info.min))
+            .mag_filter(filter(info.mag))
+            .mipmap_mode(match info.mip {
+                filter::NEAREST => vk::SamplerMipmapMode::NEAREST,
+                _ => vk::SamplerMipmapMode::LINEAR,
+            })
+            .address_mode_u(address(info.u))
+            .address_mode_v(address(info.v))
+            .address_mode_w(address(info.w))
+            .anisotropy_enable(info.anisotropy > 1)
+            .max_anisotropy(info.anisotropy as f32)
+            .compare_enable(info.compare != 0)
+            .compare_op(vk::CompareOp::from_raw(
+                info.compare.saturating_sub(1) as i32
+            ))
+            .min_lod(info.min_lod)
+            .max_lod(info.max_lod)
+            .border_color(match info.border {
+                border::OPAQUE_BLACK => vk::BorderColor::FLOAT_OPAQUE_BLACK,
+                border::OPAQUE_WHITE => vk::BorderColor::FLOAT_OPAQUE_WHITE,
+                _ => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+            });
+        let sampler = unsafe { self.raw.create_sampler(&sampler_info, None).unwrap() };
+        let slot = self.samplers.insert(sampler);
+        let image = vk::DescriptorImageInfo::default().sampler(sampler);
+        self.heap
+            .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
+        slot
+    }
+
+    pub fn destroy_sampler(&mut self, sampler: u32) {
+        let sampler = self.samplers.remove(sampler);
+        unsafe { self.raw.destroy_sampler(sampler, None) };
+    }
+
+    pub fn sampler_handle(&self, sampler: u32) -> u64 {
+        sampler as u64
+    }
+
     pub fn create_pipeline(
         &mut self,
         code: &[u8],
@@ -315,7 +530,9 @@ impl Device {
             &self.raw,
             self.debug.as_ref(),
             self.layout,
+            self.heap.set,
             &self.buffers,
+            &self.textures,
             &self.pipelines,
             &self.events,
             commands,
@@ -338,6 +555,14 @@ impl Drop for Device {
                 self.raw.destroy_buffer(buffer.raw, None);
                 self.raw.free_memory(buffer.memory, None);
             }
+            for texture in self.textures.drain() {
+                self.raw.destroy_image_view(texture.view, None);
+                self.raw.destroy_image(texture.image, None);
+                self.raw.free_memory(texture.memory, None);
+            }
+            for sampler in self.samplers.drain() {
+                self.raw.destroy_sampler(sampler, None);
+            }
             for pipeline in self.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
@@ -345,6 +570,7 @@ impl Drop for Device {
                 self.raw.destroy_semaphore(event, None);
             }
             self.raw.destroy_pipeline_layout(self.layout, None);
+            self.heap.destroy(&self.raw);
             if self.owned {
                 self.raw.destroy_device(None);
                 self.instance.destroy_instance(None);

@@ -107,4 +107,55 @@ public class Commands {
         memPutInt(p + 8, dstStage);
         memPutInt(p + 12, dstAccess);
     }
+
+    public void textureBarrier(int texture, int srcStage, int srcAccess, int dstStage, int dstAccess, int old, int new, int baseMip, int mips, int baseLayer, int layers) {
+        var p = head(14, 44);
+        memPutInt(p, texture);
+        memPutInt(p + 4, srcStage);
+        memPutInt(p + 8, srcAccess);
+        memPutInt(p + 12, dstStage);
+        memPutInt(p + 16, dstAccess);
+        memPutInt(p + 20, old);
+        memPutInt(p + 24, new);
+        memPutInt(p + 28, baseMip);
+        memPutInt(p + 32, mips);
+        memPutInt(p + 36, baseLayer);
+        memPutInt(p + 40, layers);
+    }
+
+    public void copyBufferToTexture(int buffer, long offset, int rowLength, int rowCount, int texture, int layout, int mip, int layer, int x, int y, int z, int width, int height, int depth) {
+        var p = head(15, 60);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, rowLength);
+        memPutInt(p + 16, rowCount);
+        memPutInt(p + 20, texture);
+        memPutInt(p + 24, layout);
+        memPutInt(p + 28, mip);
+        memPutInt(p + 32, layer);
+        memPutInt(p + 36, x);
+        memPutInt(p + 40, y);
+        memPutInt(p + 44, z);
+        memPutInt(p + 48, width);
+        memPutInt(p + 52, height);
+        memPutInt(p + 56, depth);
+    }
+
+    public void copyTextureToBuffer(int texture, int layout, int mip, int layer, int x, int y, int z, int width, int height, int depth, int buffer, long offset, int rowLength, int rowCount) {
+        var p = head(16, 60);
+        memPutInt(p, texture);
+        memPutInt(p + 4, layout);
+        memPutInt(p + 8, mip);
+        memPutInt(p + 12, layer);
+        memPutInt(p + 16, x);
+        memPutInt(p + 20, y);
+        memPutInt(p + 24, z);
+        memPutInt(p + 28, width);
+        memPutInt(p + 32, height);
+        memPutInt(p + 36, depth);
+        memPutInt(p + 40, buffer);
+        memPutLong(p + 44, offset);
+        memPutInt(p + 52, rowLength);
+        memPutInt(p + 56, rowCount);
+    }
 }

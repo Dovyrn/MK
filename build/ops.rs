@@ -171,7 +171,7 @@ pub fn command(ops: &[Op]) -> String {
 }
 
 pub fn commands(ops: &[Op]) -> String {
-    let mut s = String::from("impl Commands {\n");
+    let mut s = String::from("#[allow(clippy::too_many_arguments)]\nimpl Commands {\n");
     for (i, op) in ops.iter().enumerate() {
         s += &gate(op);
         let params: Vec<_> = op

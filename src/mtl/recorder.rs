@@ -1,13 +1,14 @@
 use crate::mtl::frame::Frame;
 use crate::mtl::pipeline::Pipeline;
+use crate::mtl::texture::Texture;
 use crate::slots::Slots;
-use crate::{Command, access, stage};
+use crate::{Command, access, format, stage};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4ArgumentTable, MTL4CommandBuffer, MTL4CommandEncoder, MTL4ComputeCommandEncoder,
-    MTL4VisibilityOptions, MTLBuffer, MTLDevice, MTLResidencySet, MTLSize, MTLStages,
+    MTL4VisibilityOptions, MTLBuffer, MTLDevice, MTLOrigin, MTLResidencySet, MTLSize, MTLStages,
 };
 
 pub struct Recorder<'a> {
@@ -17,6 +18,7 @@ pub struct Recorder<'a> {
     pub table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     pub frame: &'a mut Frame,
     pub buffers: &'a Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
+    pub textures: &'a Slots<Texture>,
     pub pipelines: &'a Slots<Pipeline>,
     pub encoder: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub group: MTLSize,
@@ -47,6 +49,14 @@ fn visibility(src: u32, dst: u32) -> MTL4VisibilityOptions {
     }
 }
 
+fn origin(x: u32, y: u32, z: u32) -> MTLOrigin {
+    MTLOrigin {
+        x: x as usize,
+        y: y as usize,
+        z: z as usize,
+    }
+}
+
 fn size(x: u32, y: u32, z: u32) -> MTLSize {
     MTLSize {
         width: x as usize,
@@ -55,7 +65,28 @@ fn size(x: u32, y: u32, z: u32) -> MTLSize {
     }
 }
 
+fn pitch(format: u32, width: u32, length: u32, height: u32, count: u32) -> (usize, usize) {
+    let [bytes, w, h] = format::block(format);
+    let length = if length == 0 { width } else { length };
+    let count = if count == 0 { height } else { count };
+    let row = length.div_ceil(w) * bytes;
+    (row as usize, (count.div_ceil(h) * row) as usize)
+}
+
 impl Recorder<'_> {
+    fn barrier(&self, src_stage: u32, src_access: u32, dst_stage: u32, dst_access: u32) {
+        let src = stages(src_stage) & COMPUTE;
+        let dst = stages(dst_stage) & COMPUTE;
+        if !src.is_empty() && !dst.is_empty() {
+            self.encoder()
+                .barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
+                    src,
+                    dst,
+                    visibility(src_access, dst_access),
+                );
+        }
+    }
+
     fn encoder(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
         self.encoder.as_deref().unwrap()
     }
@@ -149,16 +180,78 @@ impl Recorder<'_> {
                 src_access,
                 dst_stage,
                 dst_access,
+            } => self.barrier(src_stage, src_access, dst_stage, dst_access),
+            Command::TextureBarrier {
+                src_stage,
+                src_access,
+                dst_stage,
+                dst_access,
+                ..
+            } => self.barrier(src_stage, src_access, dst_stage, dst_access),
+            Command::CopyBufferToTexture {
+                buffer,
+                offset,
+                row_length,
+                row_count,
+                texture,
+                mip,
+                layer,
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth,
+                ..
             } => {
-                let src = stages(src_stage) & COMPUTE;
-                let dst = stages(dst_stage) & COMPUTE;
-                if !src.is_empty() && !dst.is_empty() {
+                let t = self.textures.get(texture);
+                let (row, image) = pitch(t.format, width, row_length, height, row_count);
+                unsafe {
                     self.encoder()
-                        .barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
-                            src,
-                            dst,
-                            visibility(src_access, dst_access),
-                        );
+                        .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                            self.buffers.get(buffer),
+                            offset as usize,
+                            row,
+                            image,
+                            size(width, height, depth),
+                            &t.raw,
+                            layer as usize,
+                            mip as usize,
+                            origin(x, y, z),
+                        )
+                }
+            }
+            Command::CopyTextureToBuffer {
+                texture,
+                mip,
+                layer,
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth,
+                buffer,
+                offset,
+                row_length,
+                row_count,
+                ..
+            } => {
+                let t = self.textures.get(texture);
+                let (row, image) = pitch(t.format, width, row_length, height, row_count);
+                unsafe {
+                    self.encoder()
+                        .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(
+                            &t.raw,
+                            layer as usize,
+                            mip as usize,
+                            origin(x, y, z),
+                            size(width, height, depth),
+                            self.buffers.get(buffer),
+                            offset as usize,
+                            row,
+                            image,
+                        )
                 }
             }
             Command::QueueBarrier {
