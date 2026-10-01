@@ -7,6 +7,7 @@ pub struct Texture {
     pub view: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
     pub own: bool,
+    pub tile: vk::Extent3D,
 }
 
 pub fn aspect(f: u32) -> vk::ImageAspectFlags {

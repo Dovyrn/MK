@@ -9,8 +9,9 @@ use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
     AccelInfo, Caps, ColorTarget, Commands, DepthInfo, IndirectInfo, MeshInfo, RenderInfo,
-    SamplerInfo, StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel, address, blend, border,
-    dimension, fill, filter, format, index, mask, memory, query, topology, usage,
+    SamplerInfo, SparseRange, SparseRegion, StencilFace, SurfaceInfo, TextureInfo, ViewInfo, accel,
+    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
+    usage,
 };
 use dispatch2::DispatchData;
 use objc2::msg_send;
@@ -29,23 +30,26 @@ use objc2_metal::{
     MTL4PipelineDataSetSerializerConfiguration, MTL4PipelineDataSetSerializerDescriptor,
     MTL4PipelineDescriptor, MTL4PrimitiveAccelerationStructureDescriptor,
     MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
-    MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor, MTLAccelerationStructure,
-    MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
-    MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
-    MTLCompareFunction, MTLComputePipelineState, MTLCreateSystemDefaultDevice,
-    MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor,
-    MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
-    MTLIndirectCommandType, MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor,
-    MTLLibrary, MTLMatrixLayout, MTLPrimitiveTopologyClass, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
-    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
-    MTLSamplerState, MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
-    MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
-    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction, MTLVisibleFunctionTable,
-    MTLVisibleFunctionTableDescriptor,
+    MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor,
+    MTL4UpdateSparseBufferMappingOperation, MTL4UpdateSparseTextureMappingOperation,
+    MTLAccelerationStructure, MTLAccelerationStructureInstanceDescriptorType,
+    MTLAccelerationStructureUsage, MTLAllocation, MTLAttributeFormat, MTLBlendFactor,
+    MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction, MTLComputePipelineState,
+    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily,
+    MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer,
+    MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLIntersectionFunctionTable,
+    MTLIntersectionFunctionTableDescriptor, MTLLibrary, MTLMatrixLayout, MTLOrigin,
+    MTLPrimitiveTopologyClass, MTLRegion, MTLResidencySet, MTLResidencySetDescriptor,
+    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
+    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
+    MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode, MTLStencilDescriptor,
+    MTLStencilOperation, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
+    MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::ptr::NonNull;
 
 fn compare(c: u32) -> MTLCompareFunction {
     MTLCompareFunction(c.saturating_sub(1) as usize)
@@ -328,6 +332,7 @@ impl Device {
             handle_size: 0,
             handle_alignment: 0,
             table_alignment: 0,
+            sparse: self.raw.supportsFamily(MTLGPUFamily::Apple6),
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
@@ -353,11 +358,158 @@ impl Device {
         desc.setType(MTLHeapType::Placement);
         desc.setResourceOptions(options(memory));
         desc.setSize(size as usize);
+        desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
         let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*heap));
         self.dirty = true;
         Ok(self.res.heaps.insert((heap, memory)))
+    }
+
+    pub fn sparse_page(&self) -> u64 {
+        self.raw
+            .sparseTileSizeInBytesForSparsePageSize(MTLSparsePageSize::Size64) as u64
+    }
+
+    pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
+        let buffer = unsafe {
+            self.raw
+                .newBufferWithLength_options_placementSparsePageSize(
+                    size as usize,
+                    options(memory::DEVICE),
+                    MTLSparsePageSize::Size64,
+                )
+                .unwrap()
+        };
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
+        self.dirty = true;
+        self.res.buffers.insert(buffer)
+    }
+
+    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> u32 {
+        let desc = texture_desc(info);
+        desc.setPlacementSparsePageSize(MTLSparsePageSize::Size64);
+        let raw = self.raw.newTextureWithDescriptor(&desc).unwrap();
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+        self.dirty = true;
+        self.res.textures.insert(Texture {
+            raw,
+            format: info.format,
+        })
+    }
+
+    fn sparse(
+        &self,
+        queue: usize,
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+        f: impl FnOnce(&ProtocolObject<dyn MTL4CommandQueue>, Option<&ProtocolObject<dyn MTLHeap>>),
+        heap: u32,
+    ) {
+        let q = &self.queues[queue].raw;
+        for &(event, value) in waits {
+            q.waitForEvent_value(
+                ProtocolObject::from_ref(&**self.res.events.get(event)),
+                value,
+            );
+        }
+        let heap = (heap != !0).then(|| &*self.res.heaps.get(heap).0);
+        f(q, heap);
+        for &(event, value) in signals {
+            q.signalEvent_value(
+                ProtocolObject::from_ref(&**self.res.events.get(event)),
+                value,
+            );
+        }
+    }
+
+    pub fn map_sparse_buffer(
+        &mut self,
+        queue: usize,
+        buffer: u32,
+        heap: u32,
+        ranges: &[SparseRange],
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) {
+        let mode = if heap == !0 {
+            MTLSparseTextureMappingMode::Unmap
+        } else {
+            MTLSparseTextureMappingMode::Map
+        };
+        let mut ops: Vec<_> = ranges
+            .iter()
+            .map(|r| MTL4UpdateSparseBufferMappingOperation {
+                mode,
+                bufferRange: NSRange::new(r.page as usize, r.count as usize),
+                heapOffset: r.heap_page as usize,
+            })
+            .collect();
+        let raw = self.res.buffers.get(buffer);
+        self.sparse(
+            queue,
+            waits,
+            signals,
+            |q, h| unsafe {
+                q.updateBufferMappings_heap_operations_count(
+                    raw,
+                    h,
+                    NonNull::new(ops.as_mut_ptr()).unwrap(),
+                    ops.len(),
+                )
+            },
+            heap,
+        );
+    }
+
+    pub fn map_sparse_texture(
+        &mut self,
+        queue: usize,
+        texture: u32,
+        heap: u32,
+        regions: &[SparseRegion],
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) {
+        let mode = if heap == !0 {
+            MTLSparseTextureMappingMode::Unmap
+        } else {
+            MTLSparseTextureMappingMode::Map
+        };
+        let mut ops: Vec<_> = regions
+            .iter()
+            .map(|r| MTL4UpdateSparseTextureMappingOperation {
+                mode,
+                textureRegion: MTLRegion {
+                    origin: MTLOrigin {
+                        x: r.x as usize,
+                        y: r.y as usize,
+                        z: r.z as usize,
+                    },
+                    size: size([r.width, r.height, r.depth]),
+                },
+                textureLevel: r.mip as usize,
+                textureSlice: r.layer as usize,
+                heapOffset: r.heap_page as usize,
+            })
+            .collect();
+        let raw = &self.res.textures.get(texture).raw;
+        self.sparse(
+            queue,
+            waits,
+            signals,
+            |q, h| unsafe {
+                q.updateTextureMappings_heap_operations_count(
+                    raw,
+                    h,
+                    NonNull::new(ops.as_mut_ptr()).unwrap(),
+                    ops.len(),
+                )
+            },
+            heap,
+        );
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {

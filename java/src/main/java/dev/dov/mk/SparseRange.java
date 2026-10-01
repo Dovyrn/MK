@@ -1,0 +1,34 @@
+package dev.dov.mk;
+
+import static org.lwjgl.system.MemoryUtil.*;
+
+public class SparseRange {
+    public int page = 0;
+    public int count = 1;
+    public int heapPage = 0;
+
+    public int size() {
+        return 12;
+    }
+
+    public long write(long p) {
+        memPutInt(p, page);
+        p += 4;
+        memPutInt(p, count);
+        p += 4;
+        memPutInt(p, heapPage);
+        p += 4;
+        return p;
+    }
+
+    public static SparseRange read(long p) {
+        var r = new SparseRange();
+        r.page = memGetInt(p);
+        p += 4;
+        r.count = memGetInt(p);
+        p += 4;
+        r.heapPage = memGetInt(p);
+        p += 4;
+        return r;
+    }
+}

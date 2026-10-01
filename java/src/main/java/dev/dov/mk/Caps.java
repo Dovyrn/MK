@@ -16,12 +16,13 @@ public class Caps {
     public int handleSize = 0;
     public int handleAlignment = 0;
     public int tableAlignment = 0;
+    public boolean sparse = false;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 64;
+        return 68;
     }
 
     public long write(long p) {
@@ -50,6 +51,8 @@ public class Caps {
         memPutInt(p, handleAlignment);
         p += 4;
         memPutInt(p, tableAlignment);
+        p += 4;
+        memPutInt(p, sparse ? 1 : 0);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -87,6 +90,8 @@ public class Caps {
         r.handleAlignment = memGetInt(p);
         p += 4;
         r.tableAlignment = memGetInt(p);
+        p += 4;
+        r.sparse = memGetInt(p) != 0;
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

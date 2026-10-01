@@ -181,6 +181,7 @@ fields = [
     ["handle_size", "u32", "0"],
     ["handle_alignment", "u32", "0"],
     ["table_alignment", "u32", "0"],
+    ["sparse", "bool", "false"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],
@@ -227,4 +228,26 @@ fields = [
     ["intersection", "[str]", ""],
     ["callables", "[str]", ""],
     ["depth", "u32", "1"],
+]
+
+[[info]]
+name = "SparseRange"
+fields = [
+    ["page", "u32", "0"],
+    ["count", "u32", "1"],
+    ["heap_page", "u32", "0"],
+]
+
+[[info]]
+name = "SparseRegion"
+fields = [
+    ["mip", "u32", "0"],
+    ["layer", "u32", "0"],
+    ["x", "u32", "0"],
+    ["y", "u32", "0"],
+    ["z", "u32", "0"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+    ["heap_page", "u32", "0"],
 ]

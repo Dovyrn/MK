@@ -11,8 +11,8 @@ use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
     AccelInfo, Caps, ColorTarget, Commands, DepthInfo, LayoutInfo, MeshInfo, RayInfo, RenderInfo,
-    SamplerInfo, SurfaceInfo, TextureInfo, ViewInfo, address, border, dimension, fill, filter,
-    format, index, memory, query, token, topology, usage,
+    SamplerInfo, SparseRange, SparseRegion, SurfaceInfo, TextureInfo, ViewInfo, address, border,
+    dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
@@ -261,6 +261,9 @@ impl Device {
             let supported = instance.get_physical_device_features(physical);
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .sparse_binding(supported.sparse_binding != 0)
+                .sparse_residency_buffer(supported.sparse_residency_buffer != 0)
+                .sparse_residency_image2_d(supported.sparse_residency_image2_d != 0)
                 .shader_int64(supported.shader_int64 != 0)
                 .occlusion_query_precise(supported.occlusion_query_precise != 0)
                 .fill_mode_non_solid(supported.fill_mode_non_solid != 0)
@@ -482,6 +485,13 @@ impl Device {
             handle_size: rays.shader_group_handle_size,
             handle_alignment: rays.shader_group_handle_alignment,
             table_alignment: rays.shader_group_base_alignment,
+            sparse: features.sparse_binding != 0
+                && features.sparse_residency_buffer != 0
+                && self.queues.iter().all(|q| {
+                    families[q.family as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::SPARSE_BINDING)
+                }),
             instance: 64,
             views: unsafe {
                 let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
@@ -589,6 +599,174 @@ impl Device {
             };
             Ok(self.res.heaps.insert(Heap { memory, data }))
         }
+    }
+
+    pub fn sparse_page(&self) -> u64 {
+        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+        let info = self
+            .buffer_info(1, self.usage(), &mut wide)
+            .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
+        unsafe {
+            let probe = self.raw.create_buffer(&info, None).unwrap();
+            let alignment = self.raw.get_buffer_memory_requirements(probe).alignment;
+            self.raw.destroy_buffer(probe, None);
+            alignment
+        }
+    }
+
+    pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
+        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+        let info = self
+            .buffer_info(size, self.usage(), &mut wide)
+            .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
+        unsafe {
+            let raw = self.raw.create_buffer(&info, None).unwrap();
+            let address = self
+                .raw
+                .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
+            self.res.buffers.insert(Buffer {
+                raw,
+                memory: vk::DeviceMemory::null(),
+                address,
+                data: std::ptr::null_mut(),
+                own: true,
+            })
+        }
+    }
+
+    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> u32 {
+        let create = image_info(info);
+        let create = create.flags(
+            create.flags
+                | vk::ImageCreateFlags::SPARSE_BINDING
+                | vk::ImageCreateFlags::SPARSE_RESIDENCY,
+        );
+        let formats = unsafe {
+            self.instance
+                .get_physical_device_sparse_image_format_properties(
+                    self.physical,
+                    create.format,
+                    create.image_type,
+                    create.samples,
+                    create.usage,
+                    vk::ImageTiling::OPTIMAL,
+                )
+        };
+        let tile = formats
+            .first()
+            .map_or(vk::Extent3D::default(), |f| f.image_granularity);
+        let image = unsafe {
+            self.raw
+                .create_image(&self.share_image(create), None)
+                .unwrap()
+        };
+        let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info));
+        self.res.textures.get_mut(slot).tile = tile;
+        slot
+    }
+
+    fn bind_sparse(
+        &self,
+        queue: usize,
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+        buffers: &[vk::SparseBufferMemoryBindInfo],
+        images: &[vk::SparseImageMemoryBindInfo],
+    ) {
+        let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).0).collect();
+        let wait_values: Vec<_> = waits.iter().map(|w| w.1).collect();
+        let signal: Vec<_> = signals.iter().map(|s| self.res.events.get(s.0).0).collect();
+        let signal_values: Vec<_> = signals.iter().map(|s| s.1).collect();
+        let mut timeline = vk::TimelineSemaphoreSubmitInfo::default()
+            .wait_semaphore_values(&wait_values)
+            .signal_semaphore_values(&signal_values);
+        let info = vk::BindSparseInfo::default()
+            .wait_semaphores(&wait)
+            .buffer_binds(buffers)
+            .image_binds(images)
+            .signal_semaphores(&signal)
+            .push_next(&mut timeline);
+        unsafe {
+            self.raw
+                .queue_bind_sparse(self.queues[queue].raw, &[info], vk::Fence::null())
+                .unwrap()
+        };
+    }
+
+    pub fn map_sparse_buffer(
+        &mut self,
+        queue: usize,
+        buffer: u32,
+        heap: u32,
+        ranges: &[SparseRange],
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) {
+        let page = self.sparse_page();
+        let memory = if heap == !0 {
+            vk::DeviceMemory::null()
+        } else {
+            self.res.heaps.get(heap).memory
+        };
+        let binds: Vec<_> = ranges
+            .iter()
+            .map(|r| vk::SparseMemoryBind {
+                resource_offset: r.page as u64 * page,
+                size: r.count as u64 * page,
+                memory,
+                memory_offset: r.heap_page as u64 * page,
+                flags: vk::SparseMemoryBindFlags::empty(),
+            })
+            .collect();
+        let infos = [vk::SparseBufferMemoryBindInfo::default()
+            .buffer(self.res.buffers.get(buffer).raw)
+            .binds(&binds)];
+        self.bind_sparse(queue, waits, signals, &infos, &[]);
+    }
+
+    pub fn map_sparse_texture(
+        &mut self,
+        queue: usize,
+        texture: u32,
+        heap: u32,
+        regions: &[SparseRegion],
+        waits: &[(u32, u64)],
+        signals: &[(u32, u64)],
+    ) {
+        let page = self.sparse_page();
+        let memory = if heap == !0 {
+            vk::DeviceMemory::null()
+        } else {
+            self.res.heaps.get(heap).memory
+        };
+        let t = self.res.textures.get(texture);
+        let binds: Vec<_> = regions
+            .iter()
+            .map(|r| vk::SparseImageMemoryBind {
+                subresource: vk::ImageSubresource {
+                    aspect_mask: t.aspect,
+                    mip_level: r.mip,
+                    array_layer: r.layer,
+                },
+                offset: vk::Offset3D {
+                    x: (r.x * t.tile.width) as i32,
+                    y: (r.y * t.tile.height) as i32,
+                    z: (r.z * t.tile.depth) as i32,
+                },
+                extent: vk::Extent3D {
+                    width: r.width * t.tile.width,
+                    height: r.height * t.tile.height,
+                    depth: r.depth * t.tile.depth,
+                },
+                memory,
+                memory_offset: r.heap_page as u64 * page,
+                flags: vk::SparseMemoryBindFlags::empty(),
+            })
+            .collect();
+        let infos = [vk::SparseImageMemoryBindInfo::default()
+            .image(t.image)
+            .binds(&binds)];
+        self.bind_sparse(queue, waits, signals, &[], &infos);
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
@@ -1167,6 +1345,7 @@ impl Device {
                 view,
                 aspect,
                 own,
+                tile: vk::Extent3D::default(),
             });
             if info.usage & usage::SAMPLED != 0 {
                 let image = vk::DescriptorImageInfo::default()
@@ -1456,6 +1635,7 @@ impl Device {
                     view,
                     aspect: vk::ImageAspectFlags::COLOR,
                     own: false,
+                    tile: vk::Extent3D::default(),
                 }));
             }
             let binary = vk::SemaphoreCreateInfo::default();
