@@ -14,6 +14,7 @@ use crate::{
     usage,
 };
 use dispatch2::DispatchData;
+use objc2::AllocAnyThread;
 use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
@@ -39,7 +40,8 @@ use objc2_metal::{
     MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer,
     MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLIntersectionFunctionTable,
     MTLIntersectionFunctionTableDescriptor, MTLLibrary, MTLMatrixLayout, MTLOrigin,
-    MTLPrimitiveTopologyClass, MTLRegion, MTLResidencySet, MTLResidencySetDescriptor,
+    MTLPrimitiveTopologyClass, MTLRasterizationRateLayerDescriptor, MTLRasterizationRateMap,
+    MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet, MTLResidencySetDescriptor,
     MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
     MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
     MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode, MTLStencilDescriptor,
@@ -333,6 +335,7 @@ impl Device {
             handle_alignment: 0,
             table_alignment: 0,
             sparse: self.raw.supportsFamily(MTLGPUFamily::Apple6),
+            shading_rate: false,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
@@ -1251,6 +1254,45 @@ impl Device {
 
     pub fn indirect_handle(&self, indirect: u32) -> u64 {
         id(self.res.indirects.get(indirect).gpuResourceID())
+    }
+
+    pub fn create_rate_map(
+        &mut self,
+        width: u32,
+        height: u32,
+        horizontal: &[f32],
+        vertical: &[f32],
+    ) -> Result<u32, String> {
+        let mut h = horizontal.to_vec();
+        let mut v = vertical.to_vec();
+        let layer = unsafe {
+            MTLRasterizationRateLayerDescriptor::initWithSampleCount_horizontal_vertical(
+                MTLRasterizationRateLayerDescriptor::alloc(),
+                size([h.len() as u32, v.len() as u32, 0]),
+                NonNull::new(h.as_mut_ptr()).ok_or("empty horizontal rates")?,
+                NonNull::new(v.as_mut_ptr()).ok_or("empty vertical rates")?,
+            )
+        };
+        let desc = unsafe {
+            MTLRasterizationRateMapDescriptor::rasterizationRateMapDescriptorWithScreenSize_layer(
+                size([width, height, 0]),
+                &layer,
+            )
+        };
+        let map = self
+            .raw
+            .newRasterizationRateMapWithDescriptor(&desc)
+            .ok_or("rasterization rate map")?;
+        Ok(self.res.maps.insert(map))
+    }
+
+    pub fn rate_map_size(&self, map: u32) -> [u32; 2] {
+        let s = unsafe { self.res.maps.get(map).physicalSizeForLayer(0) };
+        [s.width as u32, s.height as u32]
+    }
+
+    pub fn destroy_rate_map(&mut self, map: u32) {
+        self.res.maps.remove(map);
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {

@@ -182,6 +182,7 @@ fields = [
     ["handle_alignment", "u32", "0"],
     ["table_alignment", "u32", "0"],
     ["sparse", "bool", "false"],
+    ["shading_rate", "bool", "false"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
     ["views", "u32", "0"],

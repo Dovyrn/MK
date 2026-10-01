@@ -17,12 +17,13 @@ public class Caps {
     public int handleAlignment = 0;
     public int tableAlignment = 0;
     public boolean sparse = false;
+    public boolean shadingRate = false;
     public int instance = 0;
     public boolean memoryless = false;
     public int views = 0;
 
     public int size() {
-        return 68;
+        return 72;
     }
 
     public long write(long p) {
@@ -53,6 +54,8 @@ public class Caps {
         memPutInt(p, tableAlignment);
         p += 4;
         memPutInt(p, sparse ? 1 : 0);
+        p += 4;
+        memPutInt(p, shadingRate ? 1 : 0);
         p += 4;
         memPutInt(p, instance);
         p += 4;
@@ -92,6 +95,8 @@ public class Caps {
         r.tableAlignment = memGetInt(p);
         p += 4;
         r.sparse = memGetInt(p) != 0;
+        p += 4;
+        r.shadingRate = memGetInt(p) != 0;
         p += 4;
         r.instance = memGetInt(p);
         p += 4;

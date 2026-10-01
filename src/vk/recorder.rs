@@ -21,6 +21,7 @@ pub struct Recorder<'a> {
     pub views: u32,
     pub natives: &'a [Callback],
     pub bound: (vk::Pipeline, vk::Pipeline),
+    pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -448,6 +449,10 @@ impl Recorder<'_> {
                             0
                         })
                         .color_attachments(&self.colors);
+                    let mut rate = self.rate.take();
+                    if let Some(rate) = &mut rate {
+                        info = info.push_next(rate);
+                    }
                     if let Some((depth, has)) = &self.depth {
                         info = info.depth_attachment(depth);
                         if *has {
@@ -476,6 +481,14 @@ impl Recorder<'_> {
                     d.cmd_set_blend_constants(b, &[0.0; 4]);
                     d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
                     self.depth_state(&DepthInfo::default());
+                    if let Some(rates) = &self.ext.rates {
+                        let size = vk::Extent2D {
+                            width: 1,
+                            height: 1,
+                        };
+                        let keep = [vk::FragmentShadingRateCombinerOpKHR::KEEP; 2];
+                        (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &keep);
+                    }
                 }
                 Command::EndRender => d.cmd_end_rendering(b),
                 Command::BindRenderPipeline { pipeline } => {
@@ -787,6 +800,36 @@ impl Recorder<'_> {
                         width,
                         height,
                         depth,
+                    )
+                }
+                Command::SetShadingRate {
+                    width,
+                    height,
+                    primitive,
+                    attachment,
+                } => {
+                    let size = vk::Extent2D { width, height };
+                    let ops = [
+                        vk::FragmentShadingRateCombinerOpKHR::from_raw(primitive as i32),
+                        vk::FragmentShadingRateCombinerOpKHR::from_raw(attachment as i32),
+                    ];
+                    let rates = self.ext.rates.as_ref().unwrap();
+                    (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &ops);
+                }
+                Command::RateAttachment {
+                    texture,
+                    layout: l,
+                    texel_width,
+                    texel_height,
+                } => {
+                    self.rate = Some(
+                        vk::RenderingFragmentShadingRateAttachmentInfoKHR::default()
+                            .image_view(self.res.textures.get(texture).view)
+                            .image_layout(layout(l))
+                            .shading_rate_attachment_texel_size(vk::Extent2D {
+                                width: texel_width,
+                                height: texel_height,
+                            }),
                     )
                 }
                 Command::BeginLabel { text } => {

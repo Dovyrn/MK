@@ -50,4 +50,20 @@ public class VkCommands extends Commands {
         memPutInt(p + 116, height);
         memPutInt(p + 120, depth);
     }
+
+    public void setShadingRate(int width, int height, int primitive, int attachment) {
+        var p = head(58, 16);
+        memPutInt(p, width);
+        memPutInt(p + 4, height);
+        memPutInt(p + 8, primitive);
+        memPutInt(p + 12, attachment);
+    }
+
+    public void rateAttachment(int texture, int layout, int texelWidth, int texelHeight) {
+        var p = head(59, 16);
+        memPutInt(p, texture);
+        memPutInt(p + 4, layout);
+        memPutInt(p + 8, texelWidth);
+        memPutInt(p + 12, texelHeight);
+    }
 }

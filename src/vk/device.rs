@@ -17,8 +17,9 @@ use crate::{
 use ash::ext::debug_utils;
 use ash::ext::{mesh_shader, mutable_descriptor_type};
 use ash::khr::{
-    acceleration_structure, deferred_host_operations, maintenance5, portability_enumeration,
-    portability_subset, ray_query, ray_tracing_pipeline, surface, swapchain,
+    acceleration_structure, deferred_host_operations, fragment_shading_rate, maintenance5,
+    portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline, surface,
+    swapchain,
 };
 use ash::vk;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -219,6 +220,22 @@ impl Device {
                 extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
                 extensions.push(maintenance5::NAME.as_ptr());
             }
+            let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
+            let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
+            instance.get_physical_device_features2(physical, &mut query);
+            let rated = has(&available, fragment_shading_rate::NAME)
+                && supported_rate.pipeline_fragment_shading_rate != 0;
+            let mut rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default()
+                .pipeline_fragment_shading_rate(true)
+                .primitive_fragment_shading_rate(
+                    supported_rate.primitive_fragment_shading_rate != 0,
+                )
+                .attachment_fragment_shading_rate(
+                    supported_rate.attachment_fragment_shading_rate != 0,
+                );
+            if rated {
+                extensions.push(fragment_shading_rate::NAME.as_ptr());
+            }
             let mut supported_mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
             let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_mesh);
             instance.get_physical_device_features2(physical, &mut query);
@@ -319,6 +336,9 @@ impl Device {
             } else {
                 info
             };
+            if rated {
+                info = info.push_next(&mut rate);
+            }
             if generated {
                 info = info.push_next(&mut maintenance);
                 enabled_generated.next = info.p_next as *mut _;
@@ -354,6 +374,9 @@ impl Device {
             let name = c"vkCreateRayTracingPipelinesKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let rays = loaded.map(|_| ray_tracing_pipeline::Device::new(&instance, &raw));
+            let name = c"vkCmdSetFragmentShadingRateKHR";
+            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
+            let rates = loaded.map(|_| fragment_shading_rate::Device::new(&instance, &raw));
             let name = c"vkCreateSwapchainKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let surfaces = loaded.map(|_| {
@@ -396,6 +419,7 @@ impl Device {
                     mesh,
                     ray,
                     rays,
+                    rates,
                     generated,
                     surfaces,
                 },
@@ -485,6 +509,7 @@ impl Device {
             handle_size: rays.shader_group_handle_size,
             handle_alignment: rays.shader_group_handle_alignment,
             table_alignment: rays.shader_group_base_alignment,
+            shading_rate: self.ext.rates.is_some(),
             sparse: features.sparse_binding != 0
                 && features.sparse_residency_buffer != 0
                 && self.queues.iter().all(|q| {
@@ -1208,6 +1233,9 @@ impl Device {
             ];
             if vertex.is_some() {
                 states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
+            }
+            if self.ext.rates.is_some() {
+                states.push(vk::DynamicState::FRAGMENT_SHADING_RATE_KHR);
             }
             let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
             let formats: Vec<_> = colors.iter().map(|c| format::vk(c.format)).collect();

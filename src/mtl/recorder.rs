@@ -832,6 +832,9 @@ impl<'a> Recorder<'a> {
                     NSRange::new(start as usize, count as usize),
                 )
             },
+            Command::RateMap { map } => self
+                .pass
+                .setRasterizationRateMap(Some(self.res.maps.get(map))),
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {

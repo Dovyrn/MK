@@ -328,3 +328,18 @@ fields = [
     ["height", "u32"],
     ["depth", "u32"],
 ]
+
+[[command]]
+name = "rate_map"
+backend = "mtl"
+fields = [["map", "u32"]]
+
+[[command]]
+name = "set_shading_rate"
+backend = "vk"
+fields = [["width", "u32"], ["height", "u32"], ["primitive", "u32"], ["attachment", "u32"]]
+
+[[command]]
+name = "rate_attachment"
+backend = "vk"
+fields = [["texture", "u32"], ["layout", "u32"], ["texel_width", "u32"], ["texel_height", "u32"]]

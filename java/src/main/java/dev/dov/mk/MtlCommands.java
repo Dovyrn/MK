@@ -51,4 +51,9 @@ public class MtlCommands extends Commands {
         memPutInt(p + 4, start);
         memPutInt(p + 8, count);
     }
+
+    public void rateMap(int map) {
+        var p = head(57, 4);
+        memPutInt(p, map);
+    }
 }
