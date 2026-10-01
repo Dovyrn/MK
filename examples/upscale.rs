@@ -35,20 +35,28 @@ fn main() {
         usage,
         ..Default::default()
     };
-    let color = device.create_texture(&texture(input, usage::SAMPLED | usage::COPY_DST));
-    let target = device.create_texture(&texture(
-        output,
-        usage::STORAGE | usage::COLOR | usage::COPY_SRC,
-    ));
+    let color = device
+        .create_texture(&texture(input, usage::SAMPLED | usage::COPY_DST))
+        .unwrap();
+    let target = device
+        .create_texture(&texture(
+            output,
+            usage::STORAGE | usage::COLOR | usage::COPY_SRC,
+        ))
+        .unwrap();
     let texels = (input * input) as usize;
-    let upload = device.create_buffer(texels as u64 * 8, memory::UPLOAD);
-    let back = device.create_buffer((output * output * 8) as u64, memory::READBACK);
+    let upload = device
+        .create_buffer(texels as u64 * 8, memory::UPLOAD)
+        .unwrap();
+    let back = device
+        .create_buffer((output * output * 8) as u64, memory::READBACK)
+        .unwrap();
     let pixel = [half(0.5), half(0.25), half(0.75), half(1.0)];
     unsafe {
         let data = std::slice::from_raw_parts_mut(device.map(upload).cast::<[u16; 4]>(), texels);
         data.fill(pixel);
     }
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.copy_buffer_to_texture(
@@ -114,20 +122,24 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let depth = device.create_texture(&TextureInfo {
-        format: format::D32_FLOAT,
-        width: input,
-        height: input,
-        usage: usage::SAMPLED | usage::DEPTH,
-        ..Default::default()
-    });
-    let motion = device.create_texture(&TextureInfo {
-        format: format::RG16_FLOAT,
-        width: input,
-        height: input,
-        usage: usage::SAMPLED | usage::COLOR,
-        ..Default::default()
-    });
+    let depth = device
+        .create_texture(&TextureInfo {
+            format: format::D32_FLOAT,
+            width: input,
+            height: input,
+            usage: usage::SAMPLED | usage::DEPTH,
+            ..Default::default()
+        })
+        .unwrap();
+    let motion = device
+        .create_texture(&TextureInfo {
+            format: format::RG16_FLOAT,
+            width: input,
+            height: input,
+            usage: usage::SAMPLED | usage::COLOR,
+            ..Default::default()
+        })
+        .unwrap();
     let mut c = Commands::default();
     c.depth_attachment(
         depth,

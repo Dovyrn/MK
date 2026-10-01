@@ -24,20 +24,32 @@ fn main() {
         usage,
         ..Default::default()
     };
-    let src = device.create_texture(&info(usage::SAMPLED | usage::COPY_DST));
-    let dst = device.create_texture(&info(usage::STORAGE | usage::COPY_SRC));
-    let upload = device.create_buffer(texels as u64 * 4, memory::UPLOAD);
-    let out = device.create_buffer(texels as u64 * 16, memory::READBACK);
-    let back = device.create_buffer(texels as u64 * 4, memory::READBACK);
-    let sampler = device.create_sampler(&SamplerInfo {
-        min: filter::NEAREST,
-        mag: filter::NEAREST,
-        mip: filter::NEAREST,
-        u: address::CLAMP,
-        v: address::CLAMP,
-        w: address::CLAMP,
-        ..Default::default()
-    });
+    let src = device
+        .create_texture(&info(usage::SAMPLED | usage::COPY_DST))
+        .unwrap();
+    let dst = device
+        .create_texture(&info(usage::STORAGE | usage::COPY_SRC))
+        .unwrap();
+    let upload = device
+        .create_buffer(texels as u64 * 4, memory::UPLOAD)
+        .unwrap();
+    let out = device
+        .create_buffer(texels as u64 * 16, memory::READBACK)
+        .unwrap();
+    let back = device
+        .create_buffer(texels as u64 * 4, memory::READBACK)
+        .unwrap();
+    let sampler = device
+        .create_sampler(&SamplerInfo {
+            min: filter::NEAREST,
+            mag: filter::NEAREST,
+            mip: filter::NEAREST,
+            u: address::CLAMP,
+            v: address::CLAMP,
+            w: address::CLAMP,
+            ..Default::default()
+        })
+        .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: CODE,
@@ -46,7 +58,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let pattern: Vec<[u8; 4]> = (0..texels as u32)
         .map(|i| {
             [

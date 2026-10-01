@@ -26,28 +26,36 @@ fn main() {
     };
     let (size, _) = device.texture_size(&color_info);
     let targets = device.create_heap(size, memory::DEVICE).unwrap();
-    let color = device.create_placed_texture(targets, 0, &color_info);
+    let color = device
+        .create_placed_texture(targets, 0, &color_info)
+        .unwrap();
     let (size, _) = device.buffer_size((n * n * 4) as u64, memory::READBACK);
     let readback = device.create_heap(size, memory::READBACK).unwrap();
-    let back = device.create_placed_buffer(readback, 0, (n * n * 4) as u64);
-    let depth = device.create_texture(&TextureInfo {
-        format: format::D32_FLOAT,
-        width: n,
-        height: n,
-        usage: usage::DEPTH,
-        memory: if caps.memoryless {
-            memory::TRANSIENT
-        } else {
-            memory::DEVICE
-        },
-        ..Default::default()
-    });
+    let back = device
+        .create_placed_buffer(readback, 0, (n * n * 4) as u64)
+        .unwrap();
+    let depth = device
+        .create_texture(&TextureInfo {
+            format: format::D32_FLOAT,
+            width: n,
+            height: n,
+            usage: usage::DEPTH,
+            memory: if caps.memoryless {
+                memory::TRANSIENT
+            } else {
+                memory::DEVICE
+            },
+            ..Default::default()
+        })
+        .unwrap();
     let vertices: [[f32; 5]; 3] = [
         [-0.5, -0.5, 1.0, 0.0, 0.0],
         [0.5, -0.5, 1.0, 0.0, 0.0],
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -87,12 +95,14 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let less = device.create_depth_state(&DepthInfo {
-        compare: compare::LESS,
-        write: true,
-        ..Default::default()
-    });
-    let event = device.create_event();
+    let less = device
+        .create_depth_state(&DepthInfo {
+            compare: compare::LESS,
+            write: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

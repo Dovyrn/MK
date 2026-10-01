@@ -8,4 +8,5 @@ public class Query {
     public final int OCCLUSION = 1;
     public final int COMPACTED = 2;
     public final int STATISTICS = 3;
+    public final int PRECISE = 4;
 }

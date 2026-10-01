@@ -7,7 +7,9 @@ fn main() {}
 #[cfg(not(feature = "gl"))]
 fn scene(device: &mut Device) -> (u32, u32, u32, u32, u32) {
     let boxes: [f32; 6] = [-0.5, -0.5, -0.1, 0.5, 0.5, 0.1];
-    let bbuf = device.create_buffer(size_of_val(&boxes) as u64, memory::UPLOAD);
+    let bbuf = device
+        .create_buffer(size_of_val(&boxes) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(boxes.as_ptr().cast(), device.map(bbuf), size_of_val(&boxes));
     }
@@ -22,7 +24,7 @@ fn scene(device: &mut Device) -> (u32, u32, u32, u32, u32) {
         })
         .unwrap();
     let size = device.caps().instance as usize;
-    let instances = device.create_buffer(size as u64, memory::UPLOAD);
+    let instances = device.create_buffer(size as u64, memory::UPLOAD).unwrap();
     let mut bytes = vec![0u8; size];
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     device.write_instance(&mut bytes, blas, &identity, 0, 0xff, 0);
@@ -36,8 +38,12 @@ fn scene(device: &mut Device) -> (u32, u32, u32, u32, u32) {
             ..Default::default()
         })
         .unwrap();
-    let bottom = device.create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE);
-    let top = device.create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE);
+    let bottom = device
+        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let top = device
+        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
+        .unwrap();
     (blas, tlas, bottom, top, instances)
 }
 
@@ -105,7 +111,7 @@ fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
     let align = |v: u64, a: u64| v.div_ceil(a) * a;
     let stride = align(h, caps.handle_alignment as u64);
     let region = align(stride, caps.table_alignment as u64);
-    let table = device.create_buffer(region * 3, memory::UPLOAD);
+    let table = device.create_buffer(region * 3, memory::UPLOAD).unwrap();
     unsafe {
         for g in 0..3usize {
             let src = &handles[g * h as usize..(g + 1) * h as usize];
@@ -154,8 +160,10 @@ fn main() {
         return;
     }
     let (blas, tlas, bottom, top, _) = scene(&mut device);
-    let out = device.create_buffer((n * n * 4) as u64, memory::READBACK);
-    let event = device.create_event();
+    let out = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     build(&mut c, blas, tlas, bottom, top);
     trace(&mut device, &mut c, tlas, out, n);

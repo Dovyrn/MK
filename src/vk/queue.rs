@@ -15,11 +15,11 @@ pub struct Queue {
     busy: VecDeque<(Frame, u64)>,
 }
 
-pub fn timeline(device: &ash::Device) -> vk::Semaphore {
+pub fn timeline(device: &ash::Device) -> Result<vk::Semaphore, vk::Result> {
     let mut kind =
         vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE);
     let info = vk::SemaphoreCreateInfo::default().push_next(&mut kind);
-    unsafe { device.create_semaphore(&info, None).unwrap() }
+    unsafe { device.create_semaphore(&info, None) }
 }
 
 impl Queue {
@@ -27,7 +27,7 @@ impl Queue {
         Self {
             raw: unsafe { device.get_device_queue(family, index) },
             family,
-            semaphore: timeline(device),
+            semaphore: timeline(device).unwrap(),
             count: 0,
             free: Vec::new(),
             busy: VecDeque::new(),

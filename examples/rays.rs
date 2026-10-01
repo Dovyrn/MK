@@ -16,7 +16,9 @@ fn main() {
         return;
     }
     let vertices: [[f32; 3]; 3] = [[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.0, 0.5, 0.0]];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -36,7 +38,7 @@ fn main() {
         })
         .unwrap();
     let size = caps.instance as usize;
-    let instances = device.create_buffer(size as u64, memory::UPLOAD);
+    let instances = device.create_buffer(size as u64, memory::UPLOAD).unwrap();
     let mut bytes = vec![0u8; size];
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     device.write_instance(&mut bytes, blas, &identity, 0, 0xff, 0);
@@ -50,9 +52,15 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let bottom = device.create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE);
-    let top = device.create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE);
-    let out = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let bottom = device
+        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let top = device
+        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let out = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let pipeline = device
         .create_ray_pipeline(&RayInfo {
             code: include_bytes!("../shaders/out/rays.spv"),
@@ -68,7 +76,7 @@ fn main() {
     let align = |v: u64, a: u64| v.div_ceil(a) * a;
     let stride = align(h, caps.handle_alignment as u64);
     let region = align(stride, caps.table_alignment as u64);
-    let table = device.create_buffer(region * 3, memory::UPLOAD);
+    let table = device.create_buffer(region * 3, memory::UPLOAD).unwrap();
     unsafe {
         for g in 0..3usize {
             let src = &handles[g * h as usize..(g + 1) * h as usize];
@@ -82,7 +90,7 @@ fn main() {
     let mut push = device.address(out).to_le_bytes().to_vec();
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.build_accel(blas, bottom, 0, 0);

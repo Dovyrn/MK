@@ -20,20 +20,24 @@ fn draw(
     statistics: Option<u32>,
 ) -> [u8; 4] {
     let n = 32u32;
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let depth = device.create_texture(&TextureInfo {
-        format: format::D32_FLOAT,
-        width: n,
-        height: n,
-        usage: usage::DEPTH,
-        ..Default::default()
-    });
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let depth = device
+        .create_texture(&TextureInfo {
+            format: format::D32_FLOAT,
+            width: n,
+            height: n,
+            usage: usage::DEPTH,
+            ..Default::default()
+        })
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -79,7 +83,9 @@ fn draw(
         [0.5, -0.5, 1.0, 0.0, 0.0],
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -87,8 +93,10 @@ fn draw(
             size_of_val(&vertices),
         );
     }
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
-    let event = device.create_event();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     if let Some(heap) = statistics {
@@ -232,7 +240,7 @@ fn main() {
     }
     #[cfg(feature = "vk")]
     if device.caps().conditional && device.caps().statistics {
-        let flag = device.create_buffer(4, memory::UPLOAD);
+        let flag = device.create_buffer(4, memory::UPLOAD).unwrap();
         unsafe { *device.map(flag).cast::<u32>() = 0 };
         assert_eq!(
             draw(&mut device, (0.0, 1.0), Some((flag, 0)), None),
@@ -245,13 +253,13 @@ fn main() {
             "inverted predicate 0"
         );
         let heap = device.create_query_heap(mk::query::STATISTICS, 1).unwrap();
-        let out = device.create_buffer(56, memory::READBACK);
+        let out = device.create_buffer(56, memory::READBACK).unwrap();
         assert_eq!(
             draw(&mut device, (0.0, 1.0), None, Some(heap)),
             red,
             "statistics draw"
         );
-        let event = device.create_event();
+        let event = device.create_event().unwrap();
         let mut c = Commands::default();
         c.resolve_queries(heap, 0, 1, out, 0);
         c.barrier(

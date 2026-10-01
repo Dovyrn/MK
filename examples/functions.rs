@@ -22,11 +22,13 @@ fn main() {
     let table = device
         .create_function_table(pipeline, &["add", "twice"], false)
         .unwrap();
-    let out = device.create_buffer(n as u64 * 4, memory::READBACK);
+    let out = device
+        .create_buffer(n as u64 * 4, memory::READBACK)
+        .unwrap();
     let mut push = device.address(out).to_le_bytes().to_vec();
     push.extend(device.function_table_handle(table).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.bind_pipeline(pipeline);

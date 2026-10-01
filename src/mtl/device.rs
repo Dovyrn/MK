@@ -369,15 +369,22 @@ impl Device {
         }
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
+    fn storage(&self, memory: u32) -> Result<MTLResourceOptions, String> {
+        if memory == memory::TRANSIENT && !self.caps().memoryless {
+            return Err("memoryless storage is not supported".into());
+        }
+        Ok(options(memory))
+    }
+
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         let buffer = self
             .raw
-            .newBufferWithLength_options(size as usize, options(memory))
-            .unwrap();
+            .newBufferWithLength_options(size as usize, self.storage(memory)?)
+            .ok_or("buffer allocation failed")?;
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
-        self.res.buffers.insert(buffer)
+        Ok(self.res.buffers.insert(buffer))
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
@@ -400,7 +407,7 @@ impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         let desc = MTLHeapDescriptor::new();
         desc.setType(MTLHeapType::Placement);
-        desc.setResourceOptions(options(memory));
+        desc.setResourceOptions(self.storage(memory)?);
         desc.setSize(size as usize);
         desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
         let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
@@ -410,12 +417,23 @@ impl Device {
         Ok(self.res.heaps.insert((heap, memory)))
     }
 
-    pub fn sparse_page(&self) -> u64 {
-        self.raw
-            .sparseTileSizeInBytesForSparsePageSize(MTLSparsePageSize::Size64) as u64
+    fn sparse_check(&self) -> Result<(), String> {
+        if self.caps().sparse {
+            Ok(())
+        } else {
+            Err("sparse residency is not supported".into())
+        }
     }
 
-    pub fn sparse_tile(&self, info: &TextureInfo) -> [u32; 3] {
+    pub fn sparse_page(&self) -> Result<u64, String> {
+        self.sparse_check()?;
+        Ok(self
+            .raw
+            .sparseTileSizeInBytesForSparsePageSize(MTLSparsePageSize::Size64) as u64)
+    }
+
+    pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
+        self.sparse_check()?;
         let s = unsafe {
             self.raw
                 .sparseTileSizeWithTextureType_pixelFormat_sampleCount_sparsePageSize(
@@ -425,7 +443,10 @@ impl Device {
                     MTLSparsePageSize::Size64,
                 )
         };
-        [s.width as u32, s.height as u32, s.depth as u32]
+        if s.width == 0 {
+            return Err(format!("format {} has no sparse layout", info.format));
+        }
+        Ok([s.width as u32, s.height as u32, s.depth as u32])
     }
 
     pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
@@ -468,7 +489,8 @@ impl Device {
         }))
     }
 
-    pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
+    pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
+        self.sparse_check()?;
         let buffer = unsafe {
             self.raw
                 .newBufferWithLength_options_placementSparsePageSize(
@@ -476,25 +498,29 @@ impl Device {
                     options(memory::DEVICE),
                     MTLSparsePageSize::Size64,
                 )
-                .unwrap()
+                .ok_or("sparse buffer allocation failed")?
         };
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
-        self.res.buffers.insert(buffer)
+        Ok(self.res.buffers.insert(buffer))
     }
 
-    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> u32 {
+    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.sparse_tile(info)?;
         let desc = texture_desc(info);
         desc.setPlacementSparsePageSize(MTLSparsePageSize::Size64);
-        let raw = self.raw.newTextureWithDescriptor(&desc).unwrap();
+        let raw = self
+            .raw
+            .newTextureWithDescriptor(&desc)
+            .ok_or("sparse texture allocation failed")?;
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
         self.dirty = true;
-        self.res.textures.insert(Texture {
+        Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        })
+        }))
     }
 
     fn sparse(
@@ -504,7 +530,8 @@ impl Device {
         signals: &[(u32, u64)],
         f: impl FnOnce(&ProtocolObject<dyn MTL4CommandQueue>, Option<&ProtocolObject<dyn MTLHeap>>),
         heap: u32,
-    ) {
+    ) -> Result<(), String> {
+        self.sparse_check()?;
         let q = &self.queues[queue].raw;
         for &(event, value) in waits {
             q.waitForEvent_value(
@@ -520,6 +547,7 @@ impl Device {
                 value,
             );
         }
+        Ok(())
     }
 
     pub fn map_sparse_buffer(
@@ -530,7 +558,7 @@ impl Device {
         ranges: &[SparseRange],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) {
+    ) -> Result<(), String> {
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap
         } else {
@@ -558,7 +586,7 @@ impl Device {
                 )
             },
             heap,
-        );
+        )
     }
 
     pub fn map_sparse_texture(
@@ -569,7 +597,7 @@ impl Device {
         regions: &[SparseRegion],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) {
+    ) -> Result<(), String> {
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap
         } else {
@@ -606,7 +634,7 @@ impl Device {
                 )
             },
             heap,
-        );
+        )
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
@@ -630,27 +658,37 @@ impl Device {
         (s.size as u64, s.align as u64)
     }
 
-    pub fn create_placed_buffer(&mut self, heap: u32, offset: u64, size: u64) -> u32 {
+    pub fn create_placed_buffer(
+        &mut self,
+        heap: u32,
+        offset: u64,
+        size: u64,
+    ) -> Result<u32, String> {
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
-                .unwrap()
+                .ok_or("placed buffer does not fit the heap")?
         };
-        self.res.buffers.insert(buffer)
+        Ok(self.res.buffers.insert(buffer))
     }
 
-    pub fn create_placed_texture(&mut self, heap: u32, offset: u64, info: &TextureInfo) -> u32 {
+    pub fn create_placed_texture(
+        &mut self,
+        heap: u32,
+        offset: u64,
+        info: &TextureInfo,
+    ) -> Result<u32, String> {
         let (h, memory) = self.res.heaps.get(heap);
         let desc = texture_desc(info);
         desc.setResourceOptions(options(*memory));
         let raw = unsafe {
             h.newTextureWithDescriptor_offset(&desc, offset as usize)
-                .unwrap()
+                .ok_or("placed texture does not fit the heap")?
         };
-        self.res.textures.insert(Texture {
+        Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        })
+        }))
     }
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
@@ -664,11 +702,11 @@ impl Device {
         &mut self,
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
         format: u32,
-    ) -> u32 {
+    ) -> Result<u32, String> {
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
         self.dirty = true;
-        self.res.textures.insert(Texture { raw, format })
+        Ok(self.res.textures.insert(Texture { raw, format }))
     }
 
     pub fn import_event(&mut self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> u32 {
@@ -983,7 +1021,7 @@ impl Device {
         self.res.renders.remove(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthInfo) -> u32 {
+    pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
         let desc = MTLDepthStencilDescriptor::new();
         desc.setDepthCompareFunction(if info.compare == 0 {
             MTLCompareFunction::Always
@@ -995,29 +1033,36 @@ impl Device {
             desc.setFrontFaceStencil(Some(&stencil(&info.front)));
             desc.setBackFaceStencil(Some(&stencil(&info.back)));
         }
-        let state = self.raw.newDepthStencilStateWithDescriptor(&desc).unwrap();
-        self.res.depths.insert(state)
+        let state = self
+            .raw
+            .newDepthStencilStateWithDescriptor(&desc)
+            .ok_or("depth state creation failed")?;
+        Ok(self.res.depths.insert(state))
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
         self.res.depths.remove(state);
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.storage(info.memory)?;
         let desc = texture_desc(info);
-        let raw = self.raw.newTextureWithDescriptor(&desc).unwrap();
+        let raw = self
+            .raw
+            .newTextureWithDescriptor(&desc)
+            .ok_or("texture allocation failed")?;
         if info.memory != memory::TRANSIENT {
             self.residency
                 .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
             self.dirty = true;
         }
-        self.res.textures.insert(Texture {
+        Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        })
+        }))
     }
 
-    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> u32 {
+    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
         let parent = &self.res.textures.get(texture).raw;
         let raw = unsafe {
             parent
@@ -1027,12 +1072,12 @@ impl Device {
                     NSRange::new(info.base_mip as usize, info.mips as usize),
                     NSRange::new(info.base_layer as usize, info.layers as usize),
                 )
-                .unwrap()
+                .ok_or("view creation failed")?
         };
-        self.res.textures.insert(Texture {
+        Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        })
+        }))
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
@@ -1050,7 +1095,7 @@ impl Device {
         self.texture_handle(texture)
     }
 
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> u32 {
+    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
         let filter = |f| match f {
             filter::NEAREST => MTLSamplerMinMagFilter::Nearest,
             _ => MTLSamplerMinMagFilter::Linear,
@@ -1085,8 +1130,11 @@ impl Device {
             _ => MTLSamplerBorderColor::TransparentBlack,
         });
         desc.setSupportArgumentBuffers(true);
-        let sampler = self.raw.newSamplerStateWithDescriptor(&desc).unwrap();
-        self.res.samplers.insert(sampler)
+        let sampler = self
+            .raw
+            .newSamplerStateWithDescriptor(&desc)
+            .ok_or("sampler creation failed")?;
+        Ok(self.res.samplers.insert(sampler))
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
@@ -1114,7 +1162,13 @@ impl Device {
         let layer = CAMetalLayer::new();
         layer.setDevice(Some(&self.raw));
         layer.setPixelFormat(format::mtl(info.format));
-        layer.setFramebufferOnly(false);
+        if !(2..=3).contains(&info.images) {
+            return Err(format!(
+                "{} images is outside the surface range 2..=3",
+                info.images
+            ));
+        }
+        layer.setFramebufferOnly(info.usage == usage::COLOR);
         layer.setDisplaySyncEnabled(info.vsync);
         layer.setMaximumDrawableCount(info.images as usize);
         layer.setDrawableSize(CGSize::new(info.width as f64, info.height as f64));
@@ -1159,7 +1213,12 @@ impl Device {
         Ok(texture)
     }
 
-    pub fn present(&mut self, queue: usize, surface: u32) -> Result<(), String> {
+    pub fn surface_size(&self, surface: u32) -> [u32; 2] {
+        let size = self.res.surfaces.get(surface).layer.drawableSize();
+        [size.width as u32, size.height as u32]
+    }
+
+    pub fn present(&mut self, queue: usize, surface: u32) -> Result<bool, String> {
         let (drawable, texture) = self
             .res
             .surfaces
@@ -1173,7 +1232,7 @@ impl Device {
             .signalDrawable(ProtocolObject::from_ref(drawable));
         ProtocolObject::<dyn MTLDrawable>::from_ref(drawable).present();
         self.res.textures.remove(texture);
-        Ok(())
+        Ok(false)
     }
 
     fn range(&self, buffer: u32, offset: u64, length: u64) -> MTL4BufferRange {
@@ -1254,6 +1313,7 @@ impl Device {
                 accel::FAST_TRACE,
                 MTLAccelerationStructureUsage::PreferFastIntersection,
             ),
+            (accel::SMALL, MTLAccelerationStructureUsage::MinimizeMemory),
         ] {
             if info.flags & bit != 0 {
                 usage |= flag;
@@ -1455,7 +1515,8 @@ impl Device {
                     .map_err(|e| e.localizedDescription().to_string())?;
                 Query::Timestamp(heap)
             }
-            _ => {
+            query::STATISTICS => return Err("pipeline statistics are not supported".into()),
+            query::OCCLUSION | query::PRECISE | query::COMPACTED => {
                 let options = MTLResourceOptions::StorageModePrivate
                     | MTLResourceOptions::HazardTrackingModeUntracked;
                 let buffer = self
@@ -1467,6 +1528,7 @@ impl Device {
                 self.dirty = true;
                 Query::Buffer(buffer)
             }
+            k => panic!("unknown query kind {k}"),
         };
         Ok(self.res.queries.insert(heap))
     }
@@ -1479,8 +1541,9 @@ impl Device {
         }
     }
 
-    pub fn create_event(&mut self) -> u32 {
-        self.res.events.insert(self.raw.newSharedEvent().unwrap())
+    pub fn create_event(&mut self) -> Result<u32, String> {
+        let event = self.raw.newSharedEvent().ok_or("event creation failed")?;
+        Ok(self.res.events.insert(event))
     }
 
     pub fn destroy_event(&mut self, event: u32) {

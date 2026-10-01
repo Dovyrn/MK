@@ -140,6 +140,7 @@ fields = [
     ["format", "u32", "format::BGRA8_UNORM"],
     ["vsync", "bool", "true"],
     ["images", "u32", "3"],
+    ["usage", "u32", "usage::COLOR"],
 ]
 
 [[info]]

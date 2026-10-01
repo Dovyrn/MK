@@ -19,7 +19,9 @@ fn main() {
         return;
     }
     let vertices: [[f32; 3]; 3] = [[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.0, 0.5, 0.0]];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -39,10 +41,12 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let scratch = device.create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE);
+    let scratch = device
+        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
+        .unwrap();
     let sizes = device.create_query_heap(query::COMPACTED, 1).unwrap();
-    let out = device.create_buffer(8, memory::READBACK);
-    let event = device.create_event();
+    let out = device.create_buffer(8, memory::READBACK).unwrap();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.reset_queries(sizes, 0, 1);
     c.begin_compute();
@@ -73,7 +77,7 @@ fn main() {
     let size = unsafe { *device.map(out).cast::<u64>() };
     let compacted = device.create_compacted(blas, size).unwrap();
     let bytes = caps.instance as usize;
-    let instances = device.create_buffer(bytes as u64, memory::UPLOAD);
+    let instances = device.create_buffer(bytes as u64, memory::UPLOAD).unwrap();
     let mut record = vec![0u8; bytes];
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     device.write_instance(&mut record, compacted, &identity, 0, 0xff, 0);
@@ -87,8 +91,12 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let top = device.create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE);
-    let hits = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let top = device
+        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let hits = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: CODE,

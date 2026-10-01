@@ -19,7 +19,9 @@ fn main() {
         return;
     }
     let vertices: [[f32; 3]; 3] = [[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.0, 0.5, 0.0]];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -39,7 +41,9 @@ fn main() {
         })
         .unwrap();
     let size = caps.instance as usize;
-    let instances = device.create_buffer((size * 2) as u64, memory::UPLOAD);
+    let instances = device
+        .create_buffer((size * 2) as u64, memory::UPLOAD)
+        .unwrap();
     let mut bytes = vec![0u8; size * 2];
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     let shifted = [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5];
@@ -55,9 +59,15 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let bottom = device.create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE);
-    let top = device.create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE);
-    let out = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let bottom = device
+        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let top = device
+        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
+        .unwrap();
+    let out = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: CODE,
@@ -69,7 +79,7 @@ fn main() {
     let mut push = device.address(out).to_le_bytes().to_vec();
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.build_accel(blas, bottom, 0, 0);

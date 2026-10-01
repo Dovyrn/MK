@@ -10,25 +10,29 @@ fn main() {}
 #[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = Device::new(1).unwrap();
-    let texture = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: 8,
-        height: 8,
-        mips: 2,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let mip = device.create_view(
-        texture,
-        &ViewInfo {
+    let texture = device
+        .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,
-            base_mip: 1,
-            usage: usage::COLOR,
+            width: 8,
+            height: 8,
+            mips: 2,
+            usage: usage::COLOR | usage::COPY_SRC,
             ..Default::default()
-        },
-    );
-    let back = device.create_buffer(16 * 4, memory::READBACK);
-    let event = device.create_event();
+        })
+        .unwrap();
+    let mip = device
+        .create_view(
+            texture,
+            &ViewInfo {
+                format: format::RGBA8_UNORM,
+                base_mip: 1,
+                usage: usage::COLOR,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let back = device.create_buffer(16 * 4, memory::READBACK).unwrap();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.texture_barrier(
         texture,

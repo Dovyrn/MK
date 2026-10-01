@@ -23,7 +23,7 @@ fn native(n: u32) -> (Device, u32, ()) {
     desc.setStorageMode(MTLStorageMode::Private);
     let texture = raw.newTextureWithDescriptor(&desc).unwrap();
     let mut device = Device::adopt(raw, 1).unwrap();
-    let slot = device.import_texture(texture, format::RGBA8_UNORM);
+    let slot = device.import_texture(texture, format::RGBA8_UNORM).unwrap();
     (device, slot, ())
 }
 
@@ -85,16 +85,18 @@ fn native(
         host.raw.clone(),
         &[(family, 0)],
     );
-    let slot = device.import_texture(
-        image,
-        &mk::TextureInfo {
-            format: format::RGBA8_UNORM,
-            width: n,
-            height: n,
-            usage: mk::usage::COLOR | mk::usage::COPY_SRC,
-            ..Default::default()
-        },
-    );
+    let slot = device
+        .import_texture(
+            image,
+            &mk::TextureInfo {
+                format: format::RGBA8_UNORM,
+                width: n,
+                height: n,
+                usage: mk::usage::COLOR | mk::usage::COPY_SRC,
+                ..Default::default()
+            },
+        )
+        .unwrap();
     (device, slot, (host, image, memory))
 }
 
@@ -102,8 +104,10 @@ fn native(
 fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
-    let event = device.create_event();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

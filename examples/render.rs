@@ -23,8 +23,12 @@ fn main() {
         usage,
         ..Default::default()
     };
-    let color = device.create_texture(&target(format::RGBA8_UNORM, usage::COLOR | usage::COPY_SRC));
-    let depth = device.create_texture(&target(format::D32_FLOAT, usage::DEPTH));
+    let color = device
+        .create_texture(&target(format::RGBA8_UNORM, usage::COLOR | usage::COPY_SRC))
+        .unwrap();
+    let depth = device
+        .create_texture(&target(format::D32_FLOAT, usage::DEPTH))
+        .unwrap();
     let vertices: [[f32; 5]; 6] = [
         [-0.5, -0.5, 1.0, 0.0, 0.0],
         [0.5, -0.5, 1.0, 0.0, 0.0],
@@ -34,9 +38,15 @@ fn main() {
         [0.0, 3.0, 0.0, 1.0, 0.0],
     ];
     let indices: [u16; 3] = [0, 1, 2];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
-    let ibuf = device.create_buffer(size_of_val(&indices) as u64, memory::UPLOAD);
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
+    let ibuf = device
+        .create_buffer(size_of_val(&indices) as u64, memory::UPLOAD)
+        .unwrap();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -81,12 +91,14 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let less = device.create_depth_state(&DepthInfo {
-        compare: compare::LESS,
-        write: true,
-        ..Default::default()
-    });
-    let event = device.create_event();
+    let less = device
+        .create_depth_state(&DepthInfo {
+            compare: compare::LESS,
+            write: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

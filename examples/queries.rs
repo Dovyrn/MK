@@ -21,10 +21,17 @@ fn main() {
     let n = 64u32;
     let mut device = Device::new(1).unwrap();
     let caps = device.caps();
-    let times = device.create_query_heap(query::TIMESTAMP, 2).unwrap();
-    let samples = device.create_query_heap(query::OCCLUSION, 1).unwrap();
-    let out = device.create_buffer(24, memory::READBACK);
-    let data = device.create_buffer(1 << 20, memory::DEVICE);
+    let times = caps
+        .timestamps
+        .then(|| device.create_query_heap(query::TIMESTAMP, 2).unwrap());
+    let kind = if caps.precise {
+        query::PRECISE
+    } else {
+        query::OCCLUSION
+    };
+    let samples = device.create_query_heap(kind, 1).unwrap();
+    let out = device.create_buffer(24, memory::READBACK).unwrap();
+    let data = device.create_buffer(1 << 20, memory::DEVICE).unwrap();
     let fill = device
         .create_pipeline(&mk::ComputeInfo {
             code: FILL,
@@ -33,13 +40,15 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        usage: usage::COLOR,
-        ..Default::default()
-    });
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            usage: usage::COLOR,
+            ..Default::default()
+        })
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -76,7 +85,9 @@ fn main() {
         [0.5, -0.5, 1.0, 0.0, 0.0],
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -88,21 +99,21 @@ fn main() {
     let mut push = device.address(data).to_le_bytes().to_vec();
     push.extend(count.to_le_bytes());
     push.extend(7u32.to_le_bytes());
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
-    if caps.timestamps {
+    if let Some(times) = times {
         c.reset_queries(times, 0, 2);
     }
     c.reset_queries(samples, 0, 1);
     c.begin_compute();
-    if caps.timestamps {
+    if let Some(times) = times {
         c.write_timestamp(times, 0, stage::COMPUTE);
     }
     c.bind_pipeline(fill);
     c.push_constants(0, &push);
     c.dispatch(count / 64, 1, 1);
-    if caps.timestamps {
+    if let Some(times) = times {
         c.write_timestamp(times, 1, stage::COMPUTE);
     }
     c.end_compute();
@@ -147,7 +158,7 @@ fn main() {
         stage::COPY,
         access::COPY_READ,
     );
-    if caps.timestamps {
+    if let Some(times) = times {
         c.resolve_queries(times, 0, 2, out, 0);
     }
     c.resolve_queries(samples, 0, 1, out, 16);

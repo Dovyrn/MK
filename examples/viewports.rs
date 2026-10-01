@@ -20,14 +20,18 @@ fn main() {
         println!("one viewport only");
         return;
     }
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: w,
-        height: h,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let back = device.create_buffer((w * h * 4) as u64, memory::READBACK);
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: w,
+            height: h,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let back = device
+        .create_buffer((w * h * 4) as u64, memory::READBACK)
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -56,7 +60,7 @@ fn main() {
         .flatten()
         .flat_map(|v| v.to_le_bytes())
         .collect();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

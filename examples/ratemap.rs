@@ -17,14 +17,18 @@ fn main() {
         .create_rate_map(screen, screen, &[0.5, 0.5], &[0.5, 0.5])
         .unwrap();
     let [w, h] = device.rate_map_size(map);
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: w,
-        height: h,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let back = device.create_buffer((w * h * 4) as u64, memory::READBACK);
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: w,
+            height: h,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let back = device
+        .create_buffer((w * h * 4) as u64, memory::READBACK)
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -38,7 +42,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

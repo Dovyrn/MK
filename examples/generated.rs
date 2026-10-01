@@ -17,14 +17,18 @@ fn main() {
         println!("no device generated commands");
         return;
     }
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -61,7 +65,9 @@ fn main() {
         [0.5, -0.5, 1.0, 0.0, 0.0],
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
-    let vbuf = device.create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD);
+    let vbuf = device
+        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .unwrap();
     let layout_info = LayoutInfo {
         stride: 20,
         compute: false,
@@ -85,7 +91,9 @@ fn main() {
         [0.5f32.to_bits(), 3, 1, 0, 0],
         [0.6f32.to_bits(), 3, 1, 0, 0],
     ];
-    let ibuf = device.create_buffer(size_of_val(&sequences) as u64, memory::UPLOAD);
+    let ibuf = device
+        .create_buffer(size_of_val(&sequences) as u64, memory::UPLOAD)
+        .unwrap();
     unsafe {
         std::ptr::copy_nonoverlapping(
             vertices.as_ptr().cast(),
@@ -99,8 +107,8 @@ fn main() {
         );
     }
     let size = device.generated_size(commands, pipeline, 2, 0).max(4);
-    let preprocess = device.create_buffer(size, memory::DEVICE);
-    let event = device.create_event();
+    let preprocess = device.create_buffer(size, memory::DEVICE).unwrap();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

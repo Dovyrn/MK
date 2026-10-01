@@ -16,14 +16,18 @@ fn main() {}
 fn main() {
     let n = 64u32;
     let mut device = Device::new(1).unwrap();
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -44,7 +48,7 @@ fn main() {
             return;
         }
     };
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

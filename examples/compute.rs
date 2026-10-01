@@ -14,7 +14,9 @@ fn main() {
     let mut device = Device::new(1).unwrap();
     println!("{:?}", device.caps());
     let n = 1024u32;
-    let buffer = device.create_buffer(n as u64 * 4, memory::READBACK);
+    let buffer = device
+        .create_buffer(n as u64 * 4, memory::READBACK)
+        .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: CODE,
@@ -23,7 +25,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut push = device.address(buffer).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(100u32.to_le_bytes());

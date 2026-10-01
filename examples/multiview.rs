@@ -20,17 +20,19 @@ fn main() {
         println!("no multiview");
         return;
     }
-    let color = device.create_texture(&TextureInfo {
-        dimension: dimension::D2_ARRAY,
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        layers: 2,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
+    let color = device
+        .create_texture(&TextureInfo {
+            dimension: dimension::D2_ARRAY,
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            layers: 2,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
     let layer = (n * n * 4) as u64;
-    let back = device.create_buffer(layer * 2, memory::READBACK);
+    let back = device.create_buffer(layer * 2, memory::READBACK).unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -45,7 +47,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

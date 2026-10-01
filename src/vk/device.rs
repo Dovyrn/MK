@@ -42,6 +42,24 @@ pub struct Device {
     queues: Vec<Queue>,
 }
 
+fn image_usage(usage: u32) -> vk::ImageUsageFlags {
+    let map = [
+        (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
+        (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
+        (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
+        (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
+        (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
+        (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
+    ];
+    let mut bits = vk::ImageUsageFlags::empty();
+    for (u, f) in map {
+        if usage & u != 0 {
+            bits |= f;
+        }
+    }
+    bits
+}
+
 fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     let kind = match info.dimension {
         dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
@@ -55,20 +73,7 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     if info.usage & usage::VIEW != 0 {
         flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
     }
-    let map = [
-        (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
-        (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
-        (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
-        (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
-        (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
-        (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
-    ];
-    let mut bits = vk::ImageUsageFlags::empty();
-    for (u, f) in map {
-        if info.usage & u != 0 {
-            bits |= f;
-        }
-    }
+    let mut bits = image_usage(info.usage);
     if info.memory == memory::TRANSIENT {
         bits |= vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
     }
@@ -462,27 +467,26 @@ impl Device {
         }
     }
 
-    fn memory_type(&self, bits: u32, memory: u32) -> u32 {
+    fn memory_type(&self, bits: u32, memory: u32) -> Result<u32, String> {
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-        let (want, prefer) = match memory {
-            memory::DEVICE => (
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                vk::MemoryPropertyFlags::empty(),
-            ),
-            memory::UPLOAD => (host, vk::MemoryPropertyFlags::empty()),
-            memory::READBACK => (host, vk::MemoryPropertyFlags::HOST_CACHED),
+        let (flags, name) = match memory {
+            memory::DEVICE => (vk::MemoryPropertyFlags::DEVICE_LOCAL, "device local"),
+            memory::UPLOAD => (host, "host coherent"),
+            memory::READBACK => (host | vk::MemoryPropertyFlags::HOST_CACHED, "host cached"),
             memory::TRANSIENT => (
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
+                vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
+                "lazily allocated",
             ),
             _ => panic!("unknown memory {memory}"),
         };
+        self.find_type(bits, flags)
+            .ok_or(format!("no {name} memory type fits this resource"))
+    }
+
+    fn find_type(&self, bits: u32, flags: vk::MemoryPropertyFlags) -> Option<u32> {
         let types = &self.memory.memory_types[..self.memory.memory_type_count as usize];
-        let find = |flags: vk::MemoryPropertyFlags| {
-            (0..types.len() as u32)
-                .find(|&i| bits & (1 << i) != 0 && types[i as usize].property_flags.contains(flags))
-        };
-        find(want | prefer).or_else(|| find(want)).unwrap()
+        (0..types.len() as u32)
+            .find(|&i| bits & (1 << i) != 0 && types[i as usize].property_flags.contains(flags))
     }
 
     pub fn adopt_raw(
@@ -584,9 +588,9 @@ impl Device {
         }
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
-        let buffer = self.allocate(size, memory, self.usage());
-        self.res.buffers.insert(buffer)
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        let buffer = self.allocate(size, memory, self.usage())?;
+        Ok(self.res.buffers.insert(buffer))
     }
 
     fn buffer_info<'a>(
@@ -680,10 +684,11 @@ impl Device {
                 .create_buffer(&info, None)
                 .map_err(|e| e.to_string())?;
             let needs = self.raw.get_buffer_memory_requirements(raw);
-            let index = self.memory_type(
-                needs.memory_type_bits & properties.memory_type_bits,
-                memory::READBACK,
-            );
+            let bits = needs.memory_type_bits & properties.memory_type_bits;
+            let Some(index) = self.find_type(bits, vk::MemoryPropertyFlags::HOST_VISIBLE) else {
+                self.raw.destroy_buffer(raw, None);
+                return Err("no host visible memory type fits this pointer".into());
+            };
             let mut import = vk::ImportMemoryHostPointerInfoEXT::default()
                 .handle_type(kind)
                 .host_pointer(pointer.cast());
@@ -745,7 +750,7 @@ impl Device {
         shared: bool,
         fd: Option<i32>,
     ) -> Result<u32, String> {
-        let index = self.memory_type(!0, memory);
+        let index = self.memory_type(!0, memory)?;
         let kind = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         let mut flags =
             vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
@@ -786,20 +791,26 @@ impl Device {
         }
     }
 
-    pub fn sparse_page(&self) -> u64 {
+    pub fn sparse_page(&self) -> Result<u64, String> {
+        if !self.caps().sparse {
+            return Err("sparse residency is not supported".into());
+        }
         let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
         let info = self
             .buffer_info(1, self.usage(), &mut wide)
             .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
         unsafe {
-            let probe = self.raw.create_buffer(&info, None).unwrap();
+            let probe = self
+                .raw
+                .create_buffer(&info, None)
+                .map_err(|e| e.to_string())?;
             let alignment = self.raw.get_buffer_memory_requirements(probe).alignment;
             self.raw.destroy_buffer(probe, None);
-            alignment
+            Ok(alignment)
         }
     }
 
-    pub fn sparse_tile(&self, info: &TextureInfo) -> [u32; 3] {
+    pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
         let create = image_info(info);
         let formats = unsafe {
             self.instance
@@ -812,33 +823,43 @@ impl Device {
                     vk::ImageTiling::OPTIMAL,
                 )
         };
-        formats.first().map_or([0; 3], |f| {
-            let g = f.image_granularity;
-            [g.width, g.height, g.depth]
-        })
+        let f = formats
+            .first()
+            .ok_or(format!("format {} has no sparse layout", info.format))?;
+        let g = f.image_granularity;
+        Ok([g.width, g.height, g.depth])
     }
 
-    pub fn create_sparse_buffer(&mut self, size: u64) -> u32 {
+    pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
+        if !self.caps().sparse {
+            return Err("sparse residency is not supported".into());
+        }
         let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
         let info = self
             .buffer_info(size, self.usage(), &mut wide)
             .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
         unsafe {
-            let raw = self.raw.create_buffer(&info, None).unwrap();
+            let raw = self
+                .raw
+                .create_buffer(&info, None)
+                .map_err(|e| e.to_string())?;
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            self.res.buffers.insert(Buffer {
+            Ok(self.res.buffers.insert(Buffer {
                 raw,
                 memory: vk::DeviceMemory::null(),
                 address,
                 data: std::ptr::null_mut(),
                 own: true,
-            })
+            }))
         }
     }
 
-    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> u32 {
+    pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        if !self.caps().sparse {
+            return Err("sparse residency is not supported".into());
+        }
         let create = image_info(info);
         let create = create.flags(
             create.flags
@@ -858,15 +879,16 @@ impl Device {
         };
         let tile = formats
             .first()
-            .map_or(vk::Extent3D::default(), |f| f.image_granularity);
+            .ok_or(format!("format {} has no sparse layout", info.format))?
+            .image_granularity;
         let image = unsafe {
             self.raw
                 .create_image(&self.share_image(create), None)
-                .unwrap()
+                .map_err(|e| e.to_string())?
         };
-        let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info));
+        let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
         self.res.textures.get_mut(slot).tile = tile;
-        slot
+        Ok(slot)
     }
 
     fn bind_sparse(
@@ -876,7 +898,7 @@ impl Device {
         signals: &[(u32, u64)],
         buffers: &[vk::SparseBufferMemoryBindInfo],
         images: &[vk::SparseImageMemoryBindInfo],
-    ) {
+    ) -> Result<(), String> {
         let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).0).collect();
         let wait_values: Vec<_> = waits.iter().map(|w| w.1).collect();
         let signal: Vec<_> = signals.iter().map(|s| self.res.events.get(s.0).0).collect();
@@ -893,8 +915,8 @@ impl Device {
         unsafe {
             self.raw
                 .queue_bind_sparse(self.queues[queue].raw, &[info], vk::Fence::null())
-                .unwrap()
-        };
+                .map_err(|e| e.to_string())
+        }
     }
 
     pub fn map_sparse_buffer(
@@ -905,8 +927,8 @@ impl Device {
         ranges: &[SparseRange],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) {
-        let page = self.sparse_page();
+    ) -> Result<(), String> {
+        let page = self.sparse_page()?;
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {
@@ -925,7 +947,7 @@ impl Device {
         let infos = [vk::SparseBufferMemoryBindInfo::default()
             .buffer(self.res.buffers.get(buffer).raw)
             .binds(&binds)];
-        self.bind_sparse(queue, waits, signals, &infos, &[]);
+        self.bind_sparse(queue, waits, signals, &infos, &[])
     }
 
     pub fn map_sparse_texture(
@@ -936,8 +958,8 @@ impl Device {
         regions: &[SparseRegion],
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
-    ) {
-        let page = self.sparse_page();
+    ) -> Result<(), String> {
+        let page = self.sparse_page()?;
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {
@@ -970,7 +992,7 @@ impl Device {
         let infos = [vk::SparseImageMemoryBindInfo::default()
             .image(t.image)
             .binds(&binds)];
-        self.bind_sparse(queue, waits, signals, &[], &infos);
+        self.bind_sparse(queue, waits, signals, &[], &infos)
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
@@ -1007,7 +1029,12 @@ impl Device {
         )
     }
 
-    pub fn create_placed_buffer(&mut self, heap: u32, offset: u64, size: u64) -> u32 {
+    pub fn create_placed_buffer(
+        &mut self,
+        heap: u32,
+        offset: u64,
+        size: u64,
+    ) -> Result<u32, String> {
         let h = self.res.heaps.get(heap);
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
@@ -1017,8 +1044,14 @@ impl Device {
             if h.shared {
                 info = info.push_next(&mut external);
             }
-            let raw = self.raw.create_buffer(&info, None).unwrap();
-            self.raw.bind_buffer_memory(raw, h.memory, offset).unwrap();
+            let raw = self
+                .raw
+                .create_buffer(&info, None)
+                .map_err(|e| e.to_string())?;
+            if let Err(e) = self.raw.bind_buffer_memory(raw, h.memory, offset) {
+                self.raw.destroy_buffer(raw, None);
+                return Err(e.to_string());
+            }
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
             let address = self.raw.get_buffer_device_address(&info);
             let data = if h.data.is_null() {
@@ -1026,17 +1059,22 @@ impl Device {
             } else {
                 h.data.add(offset as usize)
             };
-            self.res.buffers.insert(Buffer {
+            Ok(self.res.buffers.insert(Buffer {
                 raw,
                 memory: vk::DeviceMemory::null(),
                 address,
                 data,
                 own: true,
-            })
+            }))
         }
     }
 
-    pub fn create_placed_texture(&mut self, heap: u32, offset: u64, info: &TextureInfo) -> u32 {
+    pub fn create_placed_texture(
+        &mut self,
+        heap: u32,
+        offset: u64,
+        info: &TextureInfo,
+    ) -> Result<u32, String> {
         let h = self.res.heaps.get(heap);
         let memory = h.memory;
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
@@ -1046,19 +1084,39 @@ impl Device {
             create = create.push_next(&mut external);
         }
         unsafe {
-            let image = self.raw.create_image(&create, None).unwrap();
-            self.raw.bind_image_memory(image, memory, offset).unwrap();
+            let image = self
+                .raw
+                .create_image(&create, None)
+                .map_err(|e| e.to_string())?;
+            if let Err(e) = self.raw.bind_image_memory(image, memory, offset) {
+                self.raw.destroy_image(image, None);
+                return Err(e.to_string());
+            }
             self.register(image, vk::DeviceMemory::null(), true, &whole(info))
         }
     }
 
-    fn allocate(&self, size: u64, memory: u32, usage: vk::BufferUsageFlags) -> Buffer {
+    fn allocate(
+        &self,
+        size: u64,
+        memory: u32,
+        usage: vk::BufferUsageFlags,
+    ) -> Result<Buffer, String> {
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
             let info = self.buffer_info(size, usage, &mut wide);
-            let raw = self.raw.create_buffer(&info, None).unwrap();
+            let raw = self
+                .raw
+                .create_buffer(&info, None)
+                .map_err(|e| e.to_string())?;
             let needs = self.raw.get_buffer_memory_requirements(raw);
-            let index = self.memory_type(needs.memory_type_bits, memory);
+            let index = match self.memory_type(needs.memory_type_bits, memory) {
+                Ok(i) => i,
+                Err(e) => {
+                    self.raw.destroy_buffer(raw, None);
+                    return Err(e);
+                }
+            };
             let mut flags = vk::MemoryAllocateFlagsInfo::default()
                 .flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
             let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().buffer(raw);
@@ -1067,28 +1125,42 @@ impl Device {
                 .memory_type_index(index)
                 .push_next(&mut flags)
                 .push_next(&mut dedicated);
-            let memory = self.raw.allocate_memory(&info, None).unwrap();
-            self.raw.bind_buffer_memory(raw, memory, 0).unwrap();
+            let memory = match self.raw.allocate_memory(&info, None) {
+                Ok(m) => m,
+                Err(e) => {
+                    self.raw.destroy_buffer(raw, None);
+                    return Err(e.to_string());
+                }
+            };
+            let mut buffer = Buffer {
+                raw,
+                memory,
+                address: 0,
+                data: std::ptr::null_mut(),
+                own: true,
+            };
+            if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
+                self.free_buffer(&buffer);
+                return Err(e.to_string());
+            }
             let visible = self.memory.memory_types[index as usize]
                 .property_flags
                 .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-            let data = if visible {
-                self.raw
+            if visible {
+                match self
+                    .raw
                     .map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
-                    .unwrap()
-                    .cast()
-            } else {
-                std::ptr::null_mut()
-            };
-            let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
-            let address = self.raw.get_buffer_device_address(&info);
-            Buffer {
-                raw,
-                memory,
-                address,
-                data,
-                own: true,
+                {
+                    Ok(data) => buffer.data = data.cast(),
+                    Err(e) => {
+                        self.free_buffer(&buffer);
+                        return Err(e.to_string());
+                    }
+                }
             }
+            let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
+            buffer.address = self.raw.get_buffer_device_address(&info);
+            Ok(buffer)
         }
     }
 
@@ -1205,7 +1277,7 @@ impl Device {
             memory::DEVICE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        );
+        )?;
         let create = vk::AccelerationStructureCreateInfoKHR::default()
             .buffer(buffer.raw)
             .size(sizes.acceleration_structure_size)
@@ -1247,7 +1319,7 @@ impl Device {
             memory::DEVICE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        );
+        )?;
         let create = vk::AccelerationStructureCreateInfoKHR::default()
             .buffer(buffer.raw)
             .size(size)
@@ -1556,38 +1628,54 @@ impl Device {
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthInfo) -> u32 {
-        self.res.depths.insert(*info)
+    pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+        Ok(self.res.depths.insert(*info))
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
         self.res.depths.remove(state);
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         unsafe {
             let image = self
                 .raw
                 .create_image(&self.share_image(image_info(info)), None)
-                .unwrap();
+                .map_err(|e| e.to_string())?;
             let needs = self.raw.get_image_memory_requirements(image);
-            let index = self.memory_type(needs.memory_type_bits, info.memory);
+            let index = match self.memory_type(needs.memory_type_bits, info.memory) {
+                Ok(i) => i,
+                Err(e) => {
+                    self.raw.destroy_image(image, None);
+                    return Err(e);
+                }
+            };
             let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
             let alloc = vk::MemoryAllocateInfo::default()
                 .allocation_size(needs.size)
                 .memory_type_index(index)
                 .push_next(&mut dedicated);
-            let memory = self.raw.allocate_memory(&alloc, None).unwrap();
-            self.raw.bind_image_memory(image, memory, 0).unwrap();
+            let memory = match self.raw.allocate_memory(&alloc, None) {
+                Ok(m) => m,
+                Err(e) => {
+                    self.raw.destroy_image(image, None);
+                    return Err(e.to_string());
+                }
+            };
+            if let Err(e) = self.raw.bind_image_memory(image, memory, 0) {
+                self.raw.destroy_image(image, None);
+                self.raw.free_memory(memory, None);
+                return Err(e.to_string());
+            }
             self.register(image, memory, true, &whole(info))
         }
     }
 
-    pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> u32 {
+    pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
         self.register(image, vk::DeviceMemory::null(), false, &whole(info))
     }
 
-    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> u32 {
+    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
         let image = self.res.textures.get(texture).image;
         self.register(image, vk::DeviceMemory::null(), false, info)
     }
@@ -1598,7 +1686,7 @@ impl Device {
         memory: vk::DeviceMemory,
         own: bool,
         info: &ViewInfo,
-    ) -> u32 {
+    ) -> Result<u32, String> {
         let view = match info.dimension {
             dimension::D1 => vk::ImageViewType::TYPE_1D,
             dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
@@ -1628,7 +1716,18 @@ impl Device {
                 .view_type(view)
                 .format(native)
                 .subresource_range(range);
-            let view = self.raw.create_image_view(&view_info, None).unwrap();
+            let view = match self.raw.create_image_view(&view_info, None) {
+                Ok(v) => v,
+                Err(e) => {
+                    if own {
+                        self.raw.destroy_image(image, None);
+                    }
+                    if memory != vk::DeviceMemory::null() {
+                        self.raw.free_memory(memory, None);
+                    }
+                    return Err(e.to_string());
+                }
+            };
             let slot = self.res.textures.insert(Texture {
                 image,
                 memory,
@@ -1661,7 +1760,7 @@ impl Device {
                     image,
                 );
             }
-            slot
+            Ok(slot)
         }
     }
 
@@ -1690,7 +1789,7 @@ impl Device {
         texture as u64 * 2 + 1
     }
 
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> u32 {
+    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
         let filter = |f| match f {
             filter::NEAREST => vk::Filter::NEAREST,
             _ => vk::Filter::LINEAR,
@@ -1726,12 +1825,16 @@ impl Device {
                 border::OPAQUE_WHITE => vk::BorderColor::FLOAT_OPAQUE_WHITE,
                 _ => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
             });
-        let sampler = unsafe { self.raw.create_sampler(&sampler_info, None).unwrap() };
+        let sampler = unsafe {
+            self.raw
+                .create_sampler(&sampler_info, None)
+                .map_err(|e| e.to_string())?
+        };
         let slot = self.res.samplers.insert(sampler);
         let image = vk::DescriptorImageInfo::default().sampler(sampler);
         self.bindless
             .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
-        slot
+        Ok(slot)
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
@@ -1845,6 +1948,9 @@ impl Device {
             format: info.format,
             vsync: info.vsync,
             count: info.images,
+            usage: info.usage,
+            size: [0; 2],
+            suboptimal: false,
             images: Vec::new(),
             acquires: Vec::new(),
             presents: Vec::new(),
@@ -1874,27 +1980,34 @@ impl Device {
                 [vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
                     .into_iter()
                     .find(|m| modes.contains(m))
-                    .unwrap_or(vk::PresentModeKHR::FIFO)
+                    .ok_or("the surface has no present mode without vsync")?
             };
-            let mut count = s.count.max(caps.min_image_count);
-            if caps.max_image_count > 0 {
-                count = count.min(caps.max_image_count);
+            let max = if caps.max_image_count == 0 {
+                u32::MAX
+            } else {
+                caps.max_image_count
+            };
+            if s.count < caps.min_image_count || s.count > max {
+                return Err(format!(
+                    "{} images is outside the surface range {}..={max}",
+                    s.count, caps.min_image_count
+                ));
             }
             let extent = if caps.current_extent.width == u32::MAX {
                 vk::Extent2D { width, height }
             } else {
                 caps.current_extent
             };
-            let usage = caps.supported_usage_flags
-                & (vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSFER_SRC
-                    | vk::ImageUsageFlags::TRANSFER_DST
-                    | vk::ImageUsageFlags::STORAGE);
+            s.size = [extent.width, extent.height];
+            let usage = image_usage(s.usage);
+            if !caps.supported_usage_flags.contains(usage) {
+                return Err(format!("the surface does not support usage {}", s.usage));
+            }
             let native = format::vk(s.format);
             let old = s.swapchain;
             let info = vk::SwapchainCreateInfoKHR::default()
                 .surface(s.raw)
-                .min_image_count(count)
+                .min_image_count(s.count)
                 .image_format(native)
                 .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
                 .image_extent(extent)
@@ -1992,18 +2105,23 @@ impl Device {
         let q = &mut self.queues[queue];
         let (semaphore, used) = s.acquires[s.next];
         q.done(&self.raw, used);
-        let (index, _) = unsafe {
+        let (index, suboptimal) = unsafe {
             swapchains
                 .acquire_next_image(s.swapchain, u64::MAX, semaphore, vk::Fence::null())
                 .map_err(|e| e.to_string())?
         };
+        s.suboptimal = suboptimal;
         s.acquires[s.next].1 = q.sync(&self.raw, semaphore, vk::Semaphore::null());
         s.next = (s.next + 1) % s.acquires.len();
         s.index = index;
         Ok(s.images[index as usize])
     }
 
-    pub fn present(&mut self, queue: usize, surface: u32) -> Result<(), String> {
+    pub fn surface_size(&self, surface: u32) -> [u32; 2] {
+        self.res.surfaces.get(surface).size
+    }
+
+    pub fn present(&mut self, queue: usize, surface: u32) -> Result<bool, String> {
         let (_, swapchains) = self
             .ext
             .surfaces
@@ -2020,12 +2138,12 @@ impl Device {
             .wait_semaphores(&waits)
             .swapchains(&swapchain)
             .image_indices(&indices);
-        unsafe {
+        let suboptimal = unsafe {
             swapchains
                 .queue_present(q.raw, &info)
                 .map_err(|e| e.to_string())?
         };
-        Ok(())
+        Ok(suboptimal || s.suboptimal)
     }
 
     pub fn create_ray_pipeline(&mut self, info: &RayInfo) -> Result<u32, String> {
@@ -2236,23 +2354,30 @@ impl Device {
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
-        let precise = unsafe {
-            self.instance
-                .get_physical_device_features(self.physical)
-                .occlusion_query_precise
-        } != 0;
+        let caps = self.caps();
+        let none = vk::QueryControlFlags::empty();
         let (kind, flags) = match kind {
-            query::TIMESTAMP => (vk::QueryType::TIMESTAMP, vk::QueryControlFlags::empty()),
-            query::STATISTICS => (
-                vk::QueryType::PIPELINE_STATISTICS,
-                vk::QueryControlFlags::empty(),
-            ),
+            query::TIMESTAMP if !caps.timestamps => {
+                return Err("timestamps are not supported".into());
+            }
+            query::TIMESTAMP => (vk::QueryType::TIMESTAMP, none),
+            query::STATISTICS if !caps.statistics => {
+                return Err("pipeline statistics are not supported".into());
+            }
+            query::STATISTICS => (vk::QueryType::PIPELINE_STATISTICS, none),
+            query::COMPACTED if !caps.ray => {
+                return Err("VK_KHR_acceleration_structure is not enabled".into());
+            }
             query::COMPACTED => (
                 vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                vk::QueryControlFlags::empty(),
+                none,
             ),
-            _ if precise => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
-            _ => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::empty()),
+            query::OCCLUSION => (vk::QueryType::OCCLUSION, none),
+            query::PRECISE if !caps.precise => {
+                return Err("precise occlusion queries are not supported".into());
+            }
+            query::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
+            k => panic!("unknown query kind {k}"),
         };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
@@ -2286,8 +2411,9 @@ impl Device {
         unsafe { self.raw.destroy_query_pool(pool, None) };
     }
 
-    pub fn create_event(&mut self) -> u32 {
-        self.res.events.insert((timeline(&self.raw), true))
+    pub fn create_event(&mut self) -> Result<u32, String> {
+        let event = timeline(&self.raw).map_err(|e| e.to_string())?;
+        Ok(self.res.events.insert((event, true)))
     }
 
     pub fn import_event(&mut self, raw: vk::Semaphore) -> u32 {

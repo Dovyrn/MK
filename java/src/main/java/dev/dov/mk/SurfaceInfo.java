@@ -8,9 +8,10 @@ public class SurfaceInfo {
     public int format = Format.BGRA8_UNORM;
     public boolean vsync = true;
     public int images = 3;
+    public int usage = Usage.COLOR;
 
     public int size() {
-        return 20;
+        return 24;
     }
 
     public long write(long p) {
@@ -23,6 +24,8 @@ public class SurfaceInfo {
         memPutInt(p, vsync ? 1 : 0);
         p += 4;
         memPutInt(p, images);
+        p += 4;
+        memPutInt(p, usage);
         p += 4;
         return p;
     }
@@ -38,6 +41,8 @@ public class SurfaceInfo {
         r.vsync = memGetInt(p) != 0;
         p += 4;
         r.images = memGetInt(p);
+        p += 4;
+        r.usage = memGetInt(p);
         p += 4;
         return r;
     }

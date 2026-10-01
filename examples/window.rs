@@ -92,7 +92,9 @@ impl ApplicationHandler for App {
             [0.5, -0.5, 0.0, 1.0, 0.0],
             [0.0, 0.5, 0.0, 0.0, 1.0],
         ];
-        let vertices = device.create_buffer(size_of_val(&data) as u64, memory::UPLOAD);
+        let vertices = device
+            .create_buffer(size_of_val(&data) as u64, memory::UPLOAD)
+            .unwrap();
         unsafe {
             std::ptr::copy_nonoverlapping(
                 data.as_ptr().cast(),
@@ -100,7 +102,7 @@ impl ApplicationHandler for App {
                 size_of_val(&data),
             );
         }
-        let event = device.create_event();
+        let event = device.create_event().unwrap();
         window.request_redraw();
         self.state = Some(State {
             window,

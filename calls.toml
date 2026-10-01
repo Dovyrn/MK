@@ -12,6 +12,7 @@ result = "Caps"
 name = "create_buffer"
 params = [["size", "u64"], ["memory", "u32"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "destroy_buffer"
@@ -51,11 +52,13 @@ result = "pair"
 name = "create_placed_buffer"
 params = [["heap", "u32"], ["offset", "u64"], ["size", "u64"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "create_placed_texture"
 params = [["heap", "u32"], ["offset", "u64"], ["info", "TextureInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "create_pipeline"
@@ -87,6 +90,7 @@ params = [["pipeline", "u32"]]
 name = "create_depth_state"
 params = [["info", "DepthInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "destroy_depth_state"
@@ -96,11 +100,13 @@ params = [["state", "u32"]]
 name = "create_texture"
 params = [["info", "TextureInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "create_view"
 params = [["texture", "u32"], ["info", "ViewInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "destroy_texture"
@@ -120,6 +126,7 @@ result = "u64"
 name = "create_sampler"
 params = [["info", "SamplerInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "destroy_sampler"
@@ -181,6 +188,7 @@ fails = true
 [[call]]
 name = "create_event"
 result = "u32"
+fails = true
 
 [[call]]
 name = "destroy_event"
@@ -211,7 +219,13 @@ fails = true
 [[call]]
 name = "present"
 params = [["queue", "usize"], ["surface", "u32"]]
+result = "bool"
 fails = true
+
+[[call]]
+name = "surface_size"
+params = [["surface", "u32"]]
+result = "u32x2"
 
 [[call]]
 name = "resize_surface"
@@ -239,6 +253,7 @@ name = "import_texture"
 backend = "vk"
 params = [["image", "handle"], ["info", "TextureInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "import_event"
@@ -288,6 +303,7 @@ name = "import_texture"
 backend = "mtl"
 params = [["raw", "object"], ["format", "u32"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "import_event"
@@ -341,29 +357,35 @@ fails = true
 [[call]]
 name = "sparse_page"
 result = "u64"
+fails = true
 
 [[call]]
 name = "sparse_tile"
 params = [["info", "TextureInfo"]]
 result = "u32x3"
+fails = true
 
 [[call]]
 name = "create_sparse_buffer"
 params = [["size", "u64"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "create_sparse_texture"
 params = [["info", "TextureInfo"]]
 result = "u32"
+fails = true
 
 [[call]]
 name = "map_sparse_buffer"
 params = [["queue", "usize"], ["buffer", "u32"], ["heap", "u32"], ["ranges", "[SparseRange]"], ["waits", "waits"], ["signals", "waits"]]
+fails = true
 
 [[call]]
 name = "map_sparse_texture"
 params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
+fails = true
 
 [[call]]
 name = "create_surface_raw"

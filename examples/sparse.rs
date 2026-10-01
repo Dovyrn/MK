@@ -14,11 +14,11 @@ fn main() {
         println!("no sparse resources");
         return;
     }
-    let page = device.sparse_page();
-    let sparse = device.create_sparse_buffer(page * 4);
+    let page = device.sparse_page().unwrap();
+    let sparse = device.create_sparse_buffer(page * 4).unwrap();
     let heap = device.create_heap(page * 2, memory::DEVICE).unwrap();
-    let back = device.create_buffer(page * 4, memory::READBACK);
-    let event = device.create_event();
+    let back = device.create_buffer(page * 4, memory::READBACK).unwrap();
+    let event = device.create_event().unwrap();
     let ranges = [
         SparseRange {
             page: 0,
@@ -31,7 +31,9 @@ fn main() {
             heap_page: 1,
         },
     ];
-    device.map_sparse_buffer(0, sparse, heap, &ranges, &[], &[(event, 1)]);
+    device
+        .map_sparse_buffer(0, sparse, heap, &ranges, &[], &[(event, 1)])
+        .unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.fill_buffer(back, 0, page * 4, 0);
@@ -65,18 +67,24 @@ fn main() {
         usage: usage::COPY_DST | usage::COPY_SRC,
         ..Default::default()
     };
-    let [w, h, _] = device.sparse_tile(&info);
-    let texture = device.create_sparse_texture(&info);
+    let [w, h, _] = device.sparse_tile(&info).unwrap();
+    let texture = device.create_sparse_texture(&info).unwrap();
     let tiles = device.create_heap(page, memory::DEVICE).unwrap();
     let region = SparseRegion {
         width: 1,
         height: 1,
         ..Default::default()
     };
-    device.map_sparse_texture(0, texture, tiles, &[region], &[(event, 2)], &[(event, 3)]);
+    device
+        .map_sparse_texture(0, texture, tiles, &[region], &[(event, 2)], &[(event, 3)])
+        .unwrap();
     let texels = (w * h) as usize;
-    let upload = device.create_buffer(texels as u64 * 4, memory::UPLOAD);
-    let readback = device.create_buffer(texels as u64 * 4, memory::READBACK);
+    let upload = device
+        .create_buffer(texels as u64 * 4, memory::UPLOAD)
+        .unwrap();
+    let readback = device
+        .create_buffer(texels as u64 * 4, memory::READBACK)
+        .unwrap();
     unsafe {
         let data = std::slice::from_raw_parts_mut(device.map(upload).cast::<u32>(), texels);
         for (i, v) in data.iter_mut().enumerate() {

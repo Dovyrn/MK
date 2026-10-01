@@ -13,14 +13,18 @@ fn main() {
 fn main() {
     let n = 32u32;
     let mut device = Device::new(1).unwrap();
-    let color = device.create_texture(&TextureInfo {
-        format: format::RGBA8_UNORM,
-        width: n,
-        height: n,
-        usage: usage::COLOR | usage::COPY_SRC,
-        ..Default::default()
-    });
-    let back = device.create_buffer((n * n * 4) as u64, memory::READBACK);
+    let color = device
+        .create_texture(&TextureInfo {
+            format: format::RGBA8_UNORM,
+            width: n,
+            height: n,
+            usage: usage::COLOR | usage::COPY_SRC,
+            ..Default::default()
+        })
+        .unwrap();
+    let back = device
+        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
@@ -52,7 +56,7 @@ fn main() {
         .unwrap();
     let mut push = device.indirect_handle(icb).to_le_bytes().to_vec();
     push.extend(1u32.to_le_bytes());
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.begin_compute();
@@ -171,7 +175,9 @@ fn main() {
         })
         .unwrap();
     let count = 4096u32;
-    let data = device.create_buffer(count as u64 * 4, memory::READBACK);
+    let data = device
+        .create_buffer(count as u64 * 4, memory::READBACK)
+        .unwrap();
     let mut push = device.indirect_handle(dispatches).to_le_bytes().to_vec();
     push.extend((count / 64).to_le_bytes());
     let mut values = device.address(data).to_le_bytes().to_vec();

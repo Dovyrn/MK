@@ -20,15 +20,19 @@ fn main() {
     let (source, id) = device.create_shared_texture(&info).unwrap();
     let alias = device.import_shared_texture(id, &info).unwrap();
     let texels = (n * n) as usize;
-    let upload = device.create_buffer(texels as u64 * 4, memory::UPLOAD);
-    let back = device.create_buffer(texels as u64 * 4, memory::READBACK);
+    let upload = device
+        .create_buffer(texels as u64 * 4, memory::UPLOAD)
+        .unwrap();
+    let back = device
+        .create_buffer(texels as u64 * 4, memory::READBACK)
+        .unwrap();
     unsafe {
         let data = std::slice::from_raw_parts_mut(device.map(upload).cast::<u32>(), texels);
         for (i, v) in data.iter_mut().enumerate() {
             *v = 0xff00_0000 | i as u32;
         }
     }
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let all = !0;
     let mut c = Commands::default();
     c.texture_barrier(

@@ -403,13 +403,23 @@ public class Device {
 
     private static native int nAcquire(long device, int queue, int surface);
 
-    public void present(int queue, int surface) {
+    public boolean present(int queue, int surface) {
         try (var stack = MemoryStack.stackPush()) {
-            nPresent(handle, queue, surface);
+            return nPresent(handle, queue, surface);
         }
     }
 
-    private static native void nPresent(long device, int queue, int surface);
+    private static native boolean nPresent(long device, int queue, int surface);
+
+    public int[] surfaceSize(int surface) {
+        try (var stack = MemoryStack.stackPush()) {
+            var out = stack.nmalloc(8, 256);
+            nSurfaceSize(handle, surface, out);
+            return new int[] {memGetInt(out), memGetInt(out + 4)};
+        }
+    }
+
+    private static native void nSurfaceSize(long device, int surface, long out);
 
     public void resizeSurface(int surface, int width, int height) {
         try (var stack = MemoryStack.stackPush()) {

@@ -18,16 +18,16 @@ fn main() {
     let source = device.create_shared_heap(size, memory::UPLOAD).unwrap();
     let fd = device.export_heap(source).unwrap();
     let alias = device.import_heap(fd, size, memory::UPLOAD).unwrap();
-    let written = device.create_placed_buffer(source, 0, n);
-    let read = device.create_placed_buffer(alias, 0, n);
-    let back = device.create_buffer(n, memory::READBACK);
+    let written = device.create_placed_buffer(source, 0, n).unwrap();
+    let read = device.create_placed_buffer(alias, 0, n).unwrap();
+    let back = device.create_buffer(n, memory::READBACK).unwrap();
     unsafe {
         let data = std::slice::from_raw_parts_mut(device.map(written), n as usize);
         for (i, b) in data.iter_mut().enumerate() {
             *b = i as u8;
         }
     }
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     c.copy_buffer(read, 0, back, 0, n);

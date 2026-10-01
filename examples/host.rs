@@ -32,7 +32,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event();
+    let event = device.create_event().unwrap();
     let mut push = device.address(buffer).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(9u32.to_le_bytes());

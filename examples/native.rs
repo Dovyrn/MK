@@ -27,9 +27,9 @@ fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
 fn main() {
     let n = 4096u64;
     let mut device = Device::new(1).unwrap();
-    let data = device.create_buffer(n, memory::DEVICE);
-    let back = device.create_buffer(n, memory::READBACK);
-    let event = device.create_event();
+    let data = device.create_buffer(n, memory::DEVICE).unwrap();
+    let back = device.create_buffer(n, memory::READBACK).unwrap();
+    let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     fill(&device, &mut c, data, n);
