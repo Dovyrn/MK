@@ -29,13 +29,13 @@ use objc2_metal::{
     MTLAccelerationStructureInstanceDescriptorType, MTLAccelerationStructureUsage, MTLAllocation,
     MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLColorWriteMask,
     MTLCompareFunction, MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice,
-    MTLDrawable, MTLGPUFamily, MTLHazardTrackingMode, MTLIndexType, MTLLibrary, MTLMatrixLayout,
-    MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor, MTLResourceID,
-    MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor,
-    MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize,
-    MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor,
-    MTLTextureType, MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
-    MTLVertexStepFunction,
+    MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLLibrary,
+    MTLMatrixLayout, MTLPrimitiveTopologyClass, MTLResidencySet, MTLResidencySetDescriptor,
+    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
+    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
+    MTLSharedEvent, MTLSize, MTLStencilDescriptor, MTLStencilOperation, MTLTexture,
+    MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
+    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -192,6 +192,51 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
     }
 }
 
+fn options(memory: u32) -> MTLResourceOptions {
+    MTLResourceOptions::HazardTrackingModeUntracked
+        | match memory {
+            memory::DEVICE => MTLResourceOptions::StorageModePrivate,
+            memory::UPLOAD => {
+                MTLResourceOptions::StorageModeShared
+                    | MTLResourceOptions::CPUCacheModeWriteCombined
+            }
+            memory::READBACK => MTLResourceOptions::StorageModeShared,
+            memory::TRANSIENT => MTLResourceOptions::StorageModeMemoryless,
+            _ => panic!("unknown memory {memory}"),
+        }
+}
+
+fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
+    let cube = matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
+    let mut flags = MTLTextureUsage::Unknown;
+    if info.usage & usage::SAMPLED != 0 {
+        flags |= MTLTextureUsage::ShaderRead;
+    }
+    if info.usage & usage::STORAGE != 0 {
+        flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
+    }
+    if info.usage & (usage::COLOR | usage::DEPTH) != 0 {
+        flags |= MTLTextureUsage::RenderTarget;
+    }
+    if info.usage & usage::VIEW != 0 {
+        flags |= MTLTextureUsage::PixelFormatView;
+    }
+    let desc = MTLTextureDescriptor::new();
+    desc.setTextureType(kind(info.dimension, info.samples));
+    desc.setPixelFormat(format::mtl(info.format));
+    desc.setUsage(flags);
+    desc.setResourceOptions(options(info.memory));
+    unsafe {
+        desc.setWidth(info.width as usize);
+        desc.setHeight(info.height as usize);
+        desc.setDepth(info.depth as usize);
+        desc.setArrayLength(if cube { info.layers / 6 } else { info.layers } as usize);
+        desc.setMipmapLevelCount(info.mips as usize);
+        desc.setSampleCount(info.samples as usize);
+    }
+    desc
+}
+
 fn kind(dimension: u32, samples: u32) -> MTLTextureType {
     match (dimension, samples > 1) {
         (dimension::D1, _) => MTLTextureType::Type1D,
@@ -264,28 +309,75 @@ impl Device {
             precise: true,
             ray: self.raw.supportsRaytracing(),
             instance: 72,
+            transient: self.raw.supportsFamily(MTLGPUFamily::Apple2),
         }
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> u32 {
-        let options = MTLResourceOptions::HazardTrackingModeUntracked
-            | match memory {
-                memory::DEVICE => MTLResourceOptions::StorageModePrivate,
-                memory::UPLOAD => {
-                    MTLResourceOptions::StorageModeShared
-                        | MTLResourceOptions::CPUCacheModeWriteCombined
-                }
-                memory::READBACK => MTLResourceOptions::StorageModeShared,
-                _ => panic!("unknown memory {memory}"),
-            };
         let buffer = self
             .raw
-            .newBufferWithLength_options(size as usize, options)
+            .newBufferWithLength_options(size as usize, options(memory))
             .unwrap();
         self.residency
             .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
         self.dirty = true;
         self.res.buffers.insert(buffer)
+    }
+
+    pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        let desc = MTLHeapDescriptor::new();
+        desc.setType(MTLHeapType::Placement);
+        desc.setResourceOptions(options(memory));
+        desc.setSize(size as usize);
+        let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
+        self.residency
+            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*heap));
+        self.dirty = true;
+        Ok(self.res.heaps.insert((heap, memory)))
+    }
+
+    pub fn destroy_heap(&mut self, heap: u32) {
+        let (heap, _) = self.res.heaps.remove(heap);
+        self.residency
+            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*heap));
+        self.dirty = true;
+    }
+
+    pub fn buffer_size(&self, size: u64, memory: u32) -> (u64, u64) {
+        let s = self
+            .raw
+            .heapBufferSizeAndAlignWithLength_options(size as usize, options(memory));
+        (s.size as u64, s.align as u64)
+    }
+
+    pub fn texture_size(&self, info: &TextureInfo) -> (u64, u64) {
+        let s = self
+            .raw
+            .heapTextureSizeAndAlignWithDescriptor(&texture_desc(info));
+        (s.size as u64, s.align as u64)
+    }
+
+    pub fn create_placed_buffer(&mut self, heap: u32, offset: u64, size: u64) -> u32 {
+        let (h, memory) = self.res.heaps.get(heap);
+        let buffer = unsafe {
+            h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
+                .unwrap()
+        };
+        self.res.buffers.insert(buffer)
+    }
+
+    pub fn create_placed_texture(&mut self, heap: u32, offset: u64, info: &TextureInfo) -> u32 {
+        let (h, memory) = self.res.heaps.get(heap);
+        let desc = texture_desc(info);
+        desc.setResourceOptions(options(*memory));
+        let raw = unsafe {
+            h.newTextureWithDescriptor_offset(&desc, offset as usize)
+                .unwrap()
+        };
+        self.res.textures.insert(Texture {
+            raw,
+            format: info.format,
+        })
     }
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
@@ -472,39 +564,13 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
-        let kind = kind(info.dimension, info.samples);
-        let cube = matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
-        let mut flags = MTLTextureUsage::Unknown;
-        if info.usage & usage::SAMPLED != 0 {
-            flags |= MTLTextureUsage::ShaderRead;
-        }
-        if info.usage & usage::STORAGE != 0 {
-            flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
-        }
-        if info.usage & (usage::COLOR | usage::DEPTH) != 0 {
-            flags |= MTLTextureUsage::RenderTarget;
-        }
-        if info.usage & usage::VIEW != 0 {
-            flags |= MTLTextureUsage::PixelFormatView;
-        }
-        let desc = MTLTextureDescriptor::new();
-        desc.setTextureType(kind);
-        desc.setPixelFormat(format::mtl(info.format));
-        desc.setUsage(flags);
-        desc.setStorageMode(MTLStorageMode::Private);
-        desc.setHazardTrackingMode(MTLHazardTrackingMode::Untracked);
-        unsafe {
-            desc.setWidth(info.width as usize);
-            desc.setHeight(info.height as usize);
-            desc.setDepth(info.depth as usize);
-            desc.setArrayLength(if cube { info.layers / 6 } else { info.layers } as usize);
-            desc.setMipmapLevelCount(info.mips as usize);
-            desc.setSampleCount(info.samples as usize);
-        }
+        let desc = texture_desc(info);
         let raw = self.raw.newTextureWithDescriptor(&desc).unwrap();
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        if info.memory != memory::TRANSIENT {
+            self.residency
+                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
+            self.dirty = true;
+        }
         self.res.textures.insert(Texture {
             raw,
             format: info.format,

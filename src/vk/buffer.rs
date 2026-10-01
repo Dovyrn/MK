@@ -5,4 +5,5 @@ pub struct Buffer {
     pub memory: vk::DeviceMemory,
     pub address: u64,
     pub data: *mut u8,
+    pub own: bool,
 }

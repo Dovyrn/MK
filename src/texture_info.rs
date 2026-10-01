@@ -1,4 +1,4 @@
-use crate::{dimension, format};
+use crate::{dimension, format, memory};
 
 pub struct TextureInfo {
     pub dimension: u32,
@@ -10,6 +10,7 @@ pub struct TextureInfo {
     pub mips: u32,
     pub samples: u32,
     pub usage: u32,
+    pub memory: u32,
 }
 
 impl Default for TextureInfo {
@@ -24,6 +25,7 @@ impl Default for TextureInfo {
             mips: 1,
             samples: 1,
             usage: 0,
+            memory: memory::DEVICE,
         }
     }
 }

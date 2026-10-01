@@ -10,4 +10,5 @@ pub struct Caps {
     pub precise: bool,
     pub ray: bool,
     pub instance: u32,
+    pub transient: bool,
 }

@@ -59,6 +59,7 @@ VIEW = 64
 DEVICE = 0
 UPLOAD = 1
 READBACK = 2
+TRANSIENT = 3
 
 [dimension]
 D1 = 0

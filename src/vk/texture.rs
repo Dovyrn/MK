@@ -6,6 +6,7 @@ pub struct Texture {
     pub memory: vk::DeviceMemory,
     pub view: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
+    pub own: bool,
 }
 
 pub fn aspect(f: u32) -> vk::ImageAspectFlags {
