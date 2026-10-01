@@ -41,18 +41,18 @@ use objc2_metal::{
     MTLAccelerationStructure, MTLAccelerationStructureInstanceDescriptorType,
     MTLAccelerationStructureUsage, MTLAllocation, MTLAttributeFormat, MTLBlendFactor,
     MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction, MTLComputePipelineState,
-    MTLCreateSystemDefaultDevice, MTLDepthStencilDescriptor, MTLDevice, MTLDrawable, MTLGPUFamily,
-    MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer,
-    MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLIntersectionFunctionTable,
-    MTLIntersectionFunctionTableDescriptor, MTLLibrary, MTLMatrixLayout, MTLOrigin,
-    MTLPrimitiveTopologyClass, MTLRasterizationRateLayerDescriptor, MTLRasterizationRateMap,
-    MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
-    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
-    MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode, MTLStencilDescriptor,
-    MTLStencilOperation, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction,
-    MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
+    MTLCreateSystemDefaultDevice, MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice,
+    MTLDrawable, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLIndexType,
+    MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType,
+    MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor, MTLLibrary,
+    MTLMatrixLayout, MTLOrigin, MTLPrimitiveTopologyClass, MTLRasterizationRateLayerDescriptor,
+    MTLRasterizationRateMap, MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet,
+    MTLResidencySetDescriptor, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode,
+    MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter,
+    MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode,
+    MTLStencilDescriptor, MTLStencilOperation, MTLTexture, MTLTextureDescriptor, MTLTextureType,
+    MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
+    MTLVertexStepFunction, MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
 };
 use objc2_metal_fx::{
     MTLFXSpatialScalerBase, MTLFXSpatialScalerDescriptor, MTLFXTemporalScalerBase,
@@ -173,6 +173,14 @@ fn fill(f: u32) -> MTLTriangleFillMode {
     match f {
         fill::LINE => MTLTriangleFillMode::Lines,
         _ => MTLTriangleFillMode::Fill,
+    }
+}
+
+fn clip(clamp: bool) -> MTLDepthClipMode {
+    if clamp {
+        MTLDepthClipMode::Clamp
+    } else {
+        MTLDepthClipMode::Clip
     }
 }
 
@@ -348,6 +356,7 @@ impl Device {
             host_memory: true,
             host_alignment: 16384,
             shared_memory: false,
+            viewports: 16,
             instance: 72,
             memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
@@ -890,6 +899,7 @@ impl Device {
         Ok(self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
+            clip: clip(info.clamp),
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))
@@ -927,6 +937,7 @@ impl Device {
         Ok(self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
+            clip: clip(info.clamp),
             task: size(info.task_group),
             mesh: size(info.mesh_group),
         }))
@@ -959,6 +970,7 @@ impl Device {
         Ok(self.res.renders.insert(Render {
             state,
             fill: MTLTriangleFillMode::Fill,
+            clip: MTLDepthClipMode::Clip,
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))

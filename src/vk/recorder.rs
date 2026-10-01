@@ -471,8 +471,8 @@ impl Recorder<'_> {
                         min_depth: 0.0,
                         max_depth: 1.0,
                     };
-                    d.cmd_set_viewport(b, 0, &[viewport]);
-                    d.cmd_set_scissor(b, 0, &[area]);
+                    d.cmd_set_viewport_with_count(b, &[viewport]);
+                    d.cmd_set_scissor_with_count(b, &[area]);
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
                     d.cmd_set_front_face(b, vk::FrontFace::COUNTER_CLOCKWISE);
                     d.cmd_set_primitive_topology(b, vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -502,9 +502,8 @@ impl Recorder<'_> {
                     height,
                     near,
                     far,
-                } => d.cmd_set_viewport(
+                } => d.cmd_set_viewport_with_count(
                     b,
-                    0,
                     &[vk::Viewport {
                         x,
                         y,
@@ -519,9 +518,8 @@ impl Recorder<'_> {
                     y,
                     width,
                     height,
-                } => d.cmd_set_scissor(
+                } => d.cmd_set_scissor_with_count(
                     b,
-                    0,
                     &[vk::Rect2D {
                         offset: vk::Offset2D {
                             x: x as i32,
@@ -856,6 +854,46 @@ impl Recorder<'_> {
                         .as_ref()
                         .unwrap()
                         .cmd_copy_acceleration_structure(b, &info)
+                }
+                Command::SetViewports { data } => {
+                    let viewports: Vec<_> = data
+                        .chunks(24)
+                        .map(|c| {
+                            let f = |i: usize| {
+                                f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
+                            };
+                            vk::Viewport {
+                                x: f(0),
+                                y: f(1),
+                                width: f(2),
+                                height: f(3),
+                                min_depth: f(4),
+                                max_depth: f(5),
+                            }
+                        })
+                        .collect();
+                    d.cmd_set_viewport_with_count(b, &viewports)
+                }
+                Command::SetScissors { data } => {
+                    let rects: Vec<_> = data
+                        .chunks(16)
+                        .map(|c| {
+                            let u = |i: usize| {
+                                u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
+                            };
+                            vk::Rect2D {
+                                offset: vk::Offset2D {
+                                    x: u(0) as i32,
+                                    y: u(1) as i32,
+                                },
+                                extent: vk::Extent2D {
+                                    width: u(2),
+                                    height: u(3),
+                                },
+                            }
+                        })
+                        .collect();
+                    d.cmd_set_scissor_with_count(b, &rects)
                 }
                 Command::BeginLabel { text } => {
                     if let Some(debug) = &self.ext.debug {

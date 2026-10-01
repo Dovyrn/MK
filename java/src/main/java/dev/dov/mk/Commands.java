@@ -389,4 +389,14 @@ public class Commands {
         memPutInt(p + 4, dst);
         memPutInt(p + 8, compact);
     }
+
+    public void setViewports(ByteBuffer data) {
+        var p = head(63, data.remaining());
+        memCopy(memAddress(data), p, data.remaining());
+    }
+
+    public void setScissors(ByteBuffer data) {
+        var p = head(64, data.remaining());
+        memCopy(memAddress(data), p, data.remaining());
+    }
 }

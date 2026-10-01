@@ -365,3 +365,11 @@ fields = [
     ["jitter_y", "f32"],
     ["reset", "u32"],
 ]
+
+[[command]]
+name = "set_viewports"
+fields = [["data", "bytes"]]
+
+[[command]]
+name = "set_scissors"
+fields = [["data", "bytes"]]

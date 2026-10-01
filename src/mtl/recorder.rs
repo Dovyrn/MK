@@ -19,6 +19,7 @@ use objc2_metal::{
 use objc2_metal_fx::{
     MTL4FXSpatialScaler, MTL4FXTemporalScaler, MTLFXSpatialScalerBase, MTLFXTemporalScalerBase,
 };
+use std::ptr::NonNull;
 
 pub struct Recorder<'a> {
     device: &'a ProtocolObject<dyn MTLDevice>,
@@ -505,6 +506,7 @@ impl<'a> Recorder<'a> {
                 let p = self.res.renders.get(pipeline);
                 self.render().setRenderPipelineState(&p.state);
                 self.render().setTriangleFillMode(p.fill);
+                self.render().setDepthClipMode(p.clip);
                 self.task = p.task;
                 self.mesh = p.mesh;
             }
@@ -928,6 +930,52 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 self.waiting = true;
+            }
+            Command::SetViewports { data } => {
+                let mut viewports: Vec<MTLViewport> = data
+                    .chunks(24)
+                    .map(|c| {
+                        let f = |i: usize| {
+                            f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as f64
+                        };
+                        MTLViewport {
+                            originX: f(0),
+                            originY: f(1),
+                            width: f(2),
+                            height: f(3),
+                            znear: f(4),
+                            zfar: f(5),
+                        }
+                    })
+                    .collect();
+                unsafe {
+                    self.render().setViewports_count(
+                        NonNull::new(viewports.as_mut_ptr()).unwrap(),
+                        viewports.len(),
+                    )
+                }
+            }
+            Command::SetScissors { data } => {
+                let mut rects: Vec<MTLScissorRect> = data
+                    .chunks(16)
+                    .map(|c| {
+                        let u = |i: usize| {
+                            u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as usize
+                        };
+                        MTLScissorRect {
+                            x: u(0),
+                            y: u(1),
+                            width: u(2),
+                            height: u(3),
+                        }
+                    })
+                    .collect();
+                unsafe {
+                    self.render().setScissorRects_count(
+                        NonNull::new(rects.as_mut_ptr()).unwrap(),
+                        rects.len(),
+                    )
+                }
             }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);

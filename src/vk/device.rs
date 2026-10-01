@@ -284,6 +284,8 @@ impl Device {
             let supported = instance.get_physical_device_features(physical);
             let features = vk::PhysicalDeviceFeatures::default()
                 .sampler_anisotropy(supported.sampler_anisotropy != 0)
+                .multi_viewport(supported.multi_viewport != 0)
+                .depth_clamp(supported.depth_clamp != 0)
                 .sparse_binding(supported.sparse_binding != 0)
                 .sparse_residency_buffer(supported.sparse_residency_buffer != 0)
                 .sparse_residency_image2_d(supported.sparse_residency_image2_d != 0)
@@ -303,6 +305,9 @@ impl Device {
             let mut v11 = vk::PhysicalDeviceVulkan11Features::default()
                 .multiview(true)
                 .shader_draw_parameters(true);
+            let mut supported_v12 = vk::PhysicalDeviceVulkan12Features::default();
+            let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_v12);
+            instance.get_physical_device_features2(physical, &mut query);
             let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
                 .buffer_device_address(true)
                 .timeline_semaphore(true)
@@ -312,7 +317,9 @@ impl Device {
                 .descriptor_binding_sampled_image_update_after_bind(true)
                 .descriptor_binding_storage_image_update_after_bind(true)
                 .shader_sampled_image_array_non_uniform_indexing(true)
-                .shader_storage_image_array_non_uniform_indexing(true);
+                .shader_storage_image_array_non_uniform_indexing(true)
+                .shader_output_viewport_index(supported_v12.shader_output_viewport_index != 0)
+                .shader_output_layer(supported_v12.shader_output_layer != 0);
             let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
                 .mutable_descriptor_type(true);
             let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
@@ -534,6 +541,11 @@ impl Device {
             shading_rate: self.ext.rates.is_some(),
             host_memory: self.ext.host.is_some(),
             shared_memory: self.ext.fds.is_some(),
+            viewports: if features.multi_viewport != 0 {
+                limits.max_viewports
+            } else {
+                1
+            },
             host_alignment: host.min_imported_host_pointer_alignment as u32,
             sparse: features.sparse_binding != 0
                 && features.sparse_residency_buffer != 0
@@ -1342,6 +1354,7 @@ impl Device {
         fill: u32,
         coverage: bool,
         views: u32,
+        clamp: bool,
     ) -> Result<u32, String> {
         unsafe {
             let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
@@ -1399,14 +1412,13 @@ impl Device {
                     _ => vk::PrimitiveTopology::TRIANGLE_LIST,
                 },
             );
-            let viewport = vk::PipelineViewportStateCreateInfo::default()
-                .viewport_count(1)
-                .scissor_count(1);
+            let viewport = vk::PipelineViewportStateCreateInfo::default();
             let raster = vk::PipelineRasterizationStateCreateInfo::default()
                 .polygon_mode(match fill {
                     fill::LINE => vk::PolygonMode::LINE,
                     _ => vk::PolygonMode::FILL,
                 })
+                .depth_clamp_enable(clamp)
                 .line_width(1.0);
             let multisample = vk::PipelineMultisampleStateCreateInfo::default()
                 .rasterization_samples(vk::SampleCountFlags::from_raw(samples))
@@ -1427,8 +1439,8 @@ impl Device {
                 .collect();
             let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
             let mut states = vec![
-                vk::DynamicState::VIEWPORT,
-                vk::DynamicState::SCISSOR,
+                vk::DynamicState::VIEWPORT_WITH_COUNT,
+                vk::DynamicState::SCISSOR_WITH_COUNT,
                 vk::DynamicState::CULL_MODE,
                 vk::DynamicState::FRONT_FACE,
                 vk::DynamicState::DEPTH_TEST_ENABLE,
@@ -1495,6 +1507,7 @@ impl Device {
             info.fill,
             info.coverage,
             info.views,
+            info.clamp,
         )
     }
 
@@ -1517,6 +1530,7 @@ impl Device {
             info.fill,
             info.coverage,
             info.views,
+            info.clamp,
         )
     }
 

@@ -18,6 +18,7 @@ public class MeshInfo {
     public boolean coverage = false;
     public int views = 0;
     public boolean indirect = false;
+    public boolean clamp = false;
     public int[] taskGroup = new int[] {1, 1, 1};
     public int[] meshGroup = new int[] {1, 1, 1};
 
@@ -26,7 +27,7 @@ public class MeshInfo {
         for (var x : colors) {
             colorsSize += x.size();
         }
-        return 84 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
     }
 
     public long write(long p) {
@@ -63,6 +64,8 @@ public class MeshInfo {
         memPutInt(p, views);
         p += 4;
         memPutInt(p, indirect ? 1 : 0);
+        p += 4;
+        memPutInt(p, clamp ? 1 : 0);
         p += 4;
         for (var x : taskGroup) {
             memPutInt(p, x);

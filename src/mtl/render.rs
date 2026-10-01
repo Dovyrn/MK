@@ -1,10 +1,11 @@
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{MTLRenderPipelineState, MTLSize, MTLTriangleFillMode};
+use objc2_metal::{MTLDepthClipMode, MTLRenderPipelineState, MTLSize, MTLTriangleFillMode};
 
 pub struct Render {
     pub state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     pub fill: MTLTriangleFillMode,
+    pub clip: MTLDepthClipMode,
     pub task: MTLSize,
     pub mesh: MTLSize,
 }
