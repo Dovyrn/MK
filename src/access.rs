@@ -1,0 +1,17 @@
+pub const INDIRECT_READ: u32 = 1 << 0;
+pub const INDEX_READ: u32 = 1 << 1;
+pub const VERTEX_READ: u32 = 1 << 2;
+pub const UNIFORM_READ: u32 = 1 << 3;
+pub const INPUT_READ: u32 = 1 << 4;
+pub const SHADER_READ: u32 = 1 << 5;
+pub const SHADER_WRITE: u32 = 1 << 6;
+pub const COLOR_READ: u32 = 1 << 7;
+pub const COLOR_WRITE: u32 = 1 << 8;
+pub const DEPTH_READ: u32 = 1 << 9;
+pub const DEPTH_WRITE: u32 = 1 << 10;
+pub const COPY_READ: u32 = 1 << 11;
+pub const COPY_WRITE: u32 = 1 << 12;
+pub const HOST_READ: u32 = 1 << 13;
+pub const HOST_WRITE: u32 = 1 << 14;
+pub const MEMORY_READ: u32 = 1 << 15;
+pub const MEMORY_WRITE: u32 = 1 << 16;
