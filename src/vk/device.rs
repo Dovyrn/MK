@@ -31,6 +31,7 @@ pub struct Device {
     ext: Extensions,
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
+    families: Vec<u32>,
     bindless: Bindless,
     layout: vk::PipelineLayout,
     res: Resources,
@@ -330,12 +331,16 @@ impl Device {
                 .set_layouts(&sets)
                 .push_constant_ranges(&ranges);
             let layout = raw.create_pipeline_layout(&info, None).unwrap();
+            let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
+            families.sort();
+            families.dedup();
             let queues = queues
                 .iter()
                 .map(|&(f, i)| Queue::new(&raw, f, i))
                 .collect();
             Self {
                 memory: instance.get_physical_device_memory_properties(physical),
+                families,
                 entry,
                 instance,
                 physical,
@@ -417,6 +422,24 @@ impl Device {
         self.res.buffers.insert(buffer)
     }
 
+    fn share_buffer<'a>(&'a self, info: vk::BufferCreateInfo<'a>) -> vk::BufferCreateInfo<'a> {
+        if self.families.len() > 1 {
+            info.sharing_mode(vk::SharingMode::CONCURRENT)
+                .queue_family_indices(&self.families)
+        } else {
+            info
+        }
+    }
+
+    fn share_image<'a>(&'a self, info: vk::ImageCreateInfo<'a>) -> vk::ImageCreateInfo<'a> {
+        if self.families.len() > 1 {
+            info.sharing_mode(vk::SharingMode::CONCURRENT)
+                .queue_family_indices(&self.families)
+        } else {
+            info
+        }
+    }
+
     fn usage(&self) -> vk::BufferUsageFlags {
         let mut usage = vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST
@@ -477,9 +500,11 @@ impl Device {
     }
 
     pub fn buffer_size(&self, size: u64, _memory: u32) -> (u64, u64) {
-        let info = vk::BufferCreateInfo::default()
-            .size(size)
-            .usage(self.usage());
+        let info = self.share_buffer(
+            vk::BufferCreateInfo::default()
+                .size(size)
+                .usage(self.usage()),
+        );
         let query = vk::DeviceBufferMemoryRequirements::default().create_info(&info);
         let mut needs = vk::MemoryRequirements2::default();
         unsafe {
@@ -493,7 +518,7 @@ impl Device {
     }
 
     pub fn texture_size(&self, info: &TextureInfo) -> (u64, u64) {
-        let image = image_info(info);
+        let image = self.share_image(image_info(info));
         let query = vk::DeviceImageMemoryRequirements::default().create_info(&image);
         let mut needs = vk::MemoryRequirements2::default();
         unsafe {
@@ -509,9 +534,11 @@ impl Device {
     pub fn create_placed_buffer(&mut self, heap: u32, offset: u64, size: u64) -> u32 {
         let h = self.res.heaps.get(heap);
         unsafe {
-            let info = vk::BufferCreateInfo::default()
-                .size(size)
-                .usage(self.usage());
+            let info = self.share_buffer(
+                vk::BufferCreateInfo::default()
+                    .size(size)
+                    .usage(self.usage()),
+            );
             let raw = self.raw.create_buffer(&info, None).unwrap();
             self.raw.bind_buffer_memory(raw, h.memory, offset).unwrap();
             let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
@@ -534,7 +561,10 @@ impl Device {
     pub fn create_placed_texture(&mut self, heap: u32, offset: u64, info: &TextureInfo) -> u32 {
         let memory = self.res.heaps.get(heap).memory;
         unsafe {
-            let image = self.raw.create_image(&image_info(info), None).unwrap();
+            let image = self
+                .raw
+                .create_image(&self.share_image(image_info(info)), None)
+                .unwrap();
             self.raw.bind_image_memory(image, memory, offset).unwrap();
             self.register(image, vk::DeviceMemory::null(), true, &whole(info))
         }
@@ -542,7 +572,7 @@ impl Device {
 
     fn allocate(&self, size: u64, memory: u32, usage: vk::BufferUsageFlags) -> Buffer {
         unsafe {
-            let info = vk::BufferCreateInfo::default().size(size).usage(usage);
+            let info = self.share_buffer(vk::BufferCreateInfo::default().size(size).usage(usage));
             let raw = self.raw.create_buffer(&info, None).unwrap();
             let needs = self.raw.get_buffer_memory_requirements(raw);
             let index = self.memory_type(needs.memory_type_bits, memory);
@@ -974,7 +1004,10 @@ impl Device {
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> u32 {
         unsafe {
-            let image = self.raw.create_image(&image_info(info), None).unwrap();
+            let image = self
+                .raw
+                .create_image(&self.share_image(image_info(info)), None)
+                .unwrap();
             let needs = self.raw.get_image_memory_requirements(image);
             let index = self.memory_type(needs.memory_type_bits, info.memory);
             let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
