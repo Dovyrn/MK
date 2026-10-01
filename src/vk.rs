@@ -1,5 +1,6 @@
 mod buffer;
 mod device;
+mod extensions;
 mod frame;
 mod heap;
 mod queue;

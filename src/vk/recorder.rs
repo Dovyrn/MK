@@ -1,7 +1,7 @@
+use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
 use crate::{Command, DepthInfo, compare, face, index, layout, load, stage, store};
-use ash::ext::{debug_utils, mesh_shader};
 use ash::vk;
 use std::ffi::CString;
 
@@ -9,8 +9,7 @@ const NONE: u32 = !0;
 
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
-    pub debug: Option<&'a debug_utils::Device>,
-    pub mesh: Option<&'a mesh_shader::Device>,
+    pub ext: &'a Extensions,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
     pub res: &'a Resources,
@@ -598,19 +597,29 @@ impl Recorder<'_> {
                     count,
                     stride,
                 ),
-                Command::DrawMesh { x, y, z } => self.mesh.unwrap().cmd_draw_mesh_tasks(b, x, y, z),
+                Command::DrawMesh { x, y, z } => self
+                    .ext
+                    .mesh
+                    .as_ref()
+                    .unwrap()
+                    .cmd_draw_mesh_tasks(b, x, y, z),
                 Command::DrawMeshIndirect {
                     buffer,
                     offset,
                     count,
                     stride,
-                } => self.mesh.unwrap().cmd_draw_mesh_tasks_indirect(
-                    b,
-                    self.res.buffers.get(buffer).raw,
-                    offset,
-                    count,
-                    stride,
-                ),
+                } => self
+                    .ext
+                    .mesh
+                    .as_ref()
+                    .unwrap()
+                    .cmd_draw_mesh_tasks_indirect(
+                        b,
+                        self.res.buffers.get(buffer).raw,
+                        offset,
+                        count,
+                        stride,
+                    ),
                 Command::OcclusionHeap { .. } => {}
                 Command::ResetQueries { heap, first, count } => {
                     d.cmd_reset_query_pool(b, self.res.queries.get(heap).0, first, count)
@@ -642,14 +651,14 @@ impl Recorder<'_> {
                     vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                 ),
                 Command::BeginLabel { text } => {
-                    if let Some(debug) = self.debug {
+                    if let Some(debug) = &self.ext.debug {
                         let name = CString::new(text).unwrap();
                         let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
                         debug.cmd_begin_debug_utils_label(b, &label);
                     }
                 }
                 Command::EndLabel => {
-                    if let Some(debug) = self.debug {
+                    if let Some(debug) = &self.ext.debug {
                         debug.cmd_end_debug_utils_label(b);
                     }
                 }

@@ -1,4 +1,5 @@
 use crate::vk::buffer::Buffer;
+use crate::vk::extensions::Extensions;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
@@ -21,9 +22,7 @@ pub struct Device {
     pub instance: ash::Instance,
     pub physical: vk::PhysicalDevice,
     pub raw: ash::Device,
-    debug: Option<debug_utils::Device>,
-    mesh: Option<mesh_shader::Device>,
-    surfaces: Option<(surface::Instance, swapchain::Device)>,
+    ext: Extensions,
     owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
     heap: Heap,
@@ -247,9 +246,11 @@ impl Device {
                 instance,
                 physical,
                 raw,
-                debug,
-                mesh,
-                surfaces,
+                ext: Extensions {
+                    debug,
+                    mesh,
+                    surfaces,
+                },
                 owned: false,
                 heap,
                 layout,
@@ -290,7 +291,7 @@ impl Device {
             )
         };
         Caps {
-            mesh: self.mesh.is_some(),
+            mesh: self.ext.mesh.is_some(),
             push: limits.max_push_constants_size.min(256),
             queues: self.queues.len() as u32,
             samplers: self.heap.samplers,
@@ -562,7 +563,7 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
-        if self.mesh.is_none() {
+        if self.ext.mesh.is_none() {
             return Err("VK_EXT_mesh_shader is not enabled".into());
         }
         self.graphics(
@@ -867,6 +868,7 @@ impl Device {
 
     fn swapchain(&mut self, s: &mut Surface, width: u32, height: u32) -> Result<(), String> {
         let (surfaces, swapchains) = self
+            .ext
             .surfaces
             .as_ref()
             .ok_or("VK_KHR_swapchain is not enabled")?;
@@ -970,7 +972,7 @@ impl Device {
 
     pub fn destroy_surface(&mut self, surface: u32) {
         let s = self.res.surfaces.remove(surface);
-        let (surfaces, swapchains) = self.surfaces.as_ref().unwrap();
+        let (surfaces, swapchains) = self.ext.surfaces.as_ref().unwrap();
         unsafe {
             for slot in s.images {
                 let t = self.res.textures.remove(slot);
@@ -989,6 +991,7 @@ impl Device {
 
     pub fn acquire(&mut self, queue: usize, surface: u32) -> Result<u32, String> {
         let (_, swapchains) = self
+            .ext
             .surfaces
             .as_ref()
             .ok_or("VK_KHR_swapchain is not enabled")?;
@@ -1009,6 +1012,7 @@ impl Device {
 
     pub fn present(&mut self, queue: usize, surface: u32) -> Result<(), String> {
         let (_, swapchains) = self
+            .ext
             .surfaces
             .as_ref()
             .ok_or("VK_KHR_swapchain is not enabled")?;
@@ -1103,8 +1107,7 @@ impl Device {
     ) -> Result<(), &'static str> {
         self.queues[queue].submit(
             &self.raw,
-            self.debug.as_ref(),
-            self.mesh.as_ref(),
+            &self.ext,
             self.layout,
             self.heap.set,
             &self.res,
@@ -1139,7 +1142,7 @@ impl Drop for Device {
             }
             let surfaces: Vec<_> = self.res.surfaces.drain().collect();
             for s in surfaces {
-                let (surfaces, swapchains) = self.surfaces.as_ref().unwrap();
+                let (surfaces, swapchains) = self.ext.surfaces.as_ref().unwrap();
                 for (semaphore, _) in s.acquires {
                     self.raw.destroy_semaphore(semaphore, None);
                 }
