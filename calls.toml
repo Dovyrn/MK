@@ -39,37 +39,44 @@ params = [["buffer", "u32"]]
 
 [[call]]
 name = "address"
+backend = "vk mtl"
 params = [["buffer", "u32"]]
 result = "u64"
 
 [[call]]
 name = "create_heap"
+backend = "vk mtl"
 params = [["size", "u64"], ["memory", "u32"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "destroy_heap"
+backend = "vk mtl"
 params = [["heap", "u32"]]
 
 [[call]]
 name = "buffer_size"
+backend = "vk mtl"
 params = [["size", "u64"], ["memory", "u32"]]
 result = "pair"
 
 [[call]]
 name = "texture_size"
+backend = "vk mtl"
 params = [["info", "TextureInfo"]]
 result = "pair"
 
 [[call]]
 name = "create_placed_buffer"
+backend = "vk mtl"
 params = [["heap", "u32"], ["offset", "u64"], ["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "create_placed_texture"
+backend = "vk mtl"
 params = [["heap", "u32"], ["offset", "u64"], ["info", "TextureInfo"]]
 result = "u32"
 fails = true
@@ -128,11 +135,13 @@ params = [["texture", "u32"]]
 
 [[call]]
 name = "texture_handle"
+backend = "vk mtl"
 params = [["texture", "u32"]]
 result = "u64"
 
 [[call]]
 name = "image_handle"
+backend = "vk mtl"
 params = [["texture", "u32"]]
 result = "u64"
 
@@ -148,31 +157,37 @@ params = [["sampler", "u32"]]
 
 [[call]]
 name = "sampler_handle"
+backend = "vk mtl"
 params = [["sampler", "u32"]]
 result = "u64"
 
 [[call]]
 name = "create_accel"
+backend = "vk mtl"
 params = [["info", "AccelInfo"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "destroy_accel"
+backend = "vk mtl"
 params = [["accel", "u32"]]
 
 [[call]]
 name = "accel_scratch"
+backend = "vk mtl"
 params = [["accel", "u32"]]
 result = "pair"
 
 [[call]]
 name = "accel_handle"
+backend = "vk mtl"
 params = [["accel", "u32"]]
 result = "u64"
 
 [[call]]
 name = "write_instance"
+backend = "vk mtl"
 params = [["out", "mutbytes"], ["accel", "u32"], ["transform", "f32x12"], ["id", "u32"], ["mask", "u32"], ["flags", "u32"]]
 
 [[call]]
@@ -361,46 +376,54 @@ fails = true
 
 [[call]]
 name = "create_compacted"
+backend = "vk mtl"
 params = [["accel", "u32"], ["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "create_host_buffer"
+backend = "vk mtl"
 params = [["pointer", "pointer"], ["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "sparse_page"
+backend = "vk mtl"
 result = "u64"
 fails = true
 
 [[call]]
 name = "sparse_tile"
+backend = "vk mtl"
 params = [["info", "TextureInfo"]]
 result = "u32x3"
 fails = true
 
 [[call]]
 name = "create_sparse_buffer"
+backend = "vk mtl"
 params = [["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "create_sparse_texture"
+backend = "vk mtl"
 params = [["info", "TextureInfo"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "map_sparse_buffer"
+backend = "vk mtl"
 params = [["queue", "usize"], ["buffer", "u32"], ["heap", "u32"], ["ranges", "[SparseRange]"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
 
 [[call]]
 name = "map_sparse_texture"
+backend = "vk mtl"
 params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
 
@@ -547,3 +570,35 @@ fails = true
 name = "destroy_upscaler"
 backend = "mtl"
 params = [["upscaler", "u32"]]
+
+[[call]]
+name = "adopt_raw"
+backend = "gl"
+params = [["proc", "u64"]]
+result = "device"
+fails = true
+
+[[call]]
+name = "import_buffer"
+backend = "gl"
+params = [["raw", "u32"], ["size", "u64"]]
+result = "u32"
+
+[[call]]
+name = "import_texture"
+backend = "gl"
+params = [["raw", "u32"], ["info", "TextureInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "raw_buffer"
+backend = "gl"
+params = [["buffer", "u32"]]
+result = "u32"
+
+[[call]]
+name = "raw_texture"
+backend = "gl"
+params = [["texture", "u32"]]
+result = "u32"

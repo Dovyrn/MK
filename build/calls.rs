@@ -1,4 +1,4 @@
-use crate::{camel, pascal};
+use crate::{camel, cfg, pascal, single};
 use std::fmt::Write;
 
 pub struct Param {
@@ -56,9 +56,10 @@ pub fn parse(text: &str) -> Vec<Call> {
 }
 
 fn class(call: &Call) -> &str {
-    match call.backend.as_deref() {
+    match single(call.backend.as_deref()) {
         Some("vk") => "VkDevice",
         Some("mtl") => "MtlDevice",
+        Some("gl") => "GlDevice",
         _ => "Device",
     }
 }
@@ -179,8 +180,8 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             format!(" -> {ret}")
         };
         s += "\n";
-        if let Some(b) = &call.backend {
-            writeln!(s, "#[cfg(feature = \"{b}\")]").unwrap();
+        if let Some(c) = cfg(call.backend.as_deref()) {
+            writeln!(s, "#[cfg({c})]").unwrap();
         }
         writeln!(
             s,
@@ -265,6 +266,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     let name = match backend {
         Some("vk") => "VkDevice",
         Some("mtl") => "MtlDevice",
+        Some("gl") => "GlDevice",
         _ => "Device",
     };
     let mut s =
@@ -278,7 +280,10 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         s += "import lombok.experimental.UtilityClass;\n\n";
         writeln!(s, "@UtilityClass\npublic class {name} {{").unwrap();
     }
-    for call in calls.iter().filter(|c| c.backend.as_deref() == backend) {
+    for call in calls
+        .iter()
+        .filter(|c| single(c.backend.as_deref()) == backend)
+    {
         let mut params = Vec::new();
         if !statics(call) && backend.is_some() {
             params.push("Device device".to_string());

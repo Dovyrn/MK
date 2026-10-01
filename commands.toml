@@ -286,6 +286,7 @@ fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"], ["buffer", "u32"]
 
 [[command]]
 name = "build_accel"
+backend = "vk mtl"
 scope = "compute"
 fields = [["accel", "u32"], ["scratch", "u32"], ["scratch_offset", "u64"], ["update", "u32"]]
 
@@ -308,6 +309,7 @@ fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
 
 [[command]]
 name = "multiview"
+backend = "vk mtl"
 fields = [["views", "u32"]]
 
 [[command]]
@@ -396,11 +398,13 @@ fields = [["texture", "u32"], ["layout", "u32"], ["texel_width", "u32"], ["texel
 
 [[command]]
 name = "write_compacted_size"
+backend = "vk mtl"
 scope = "compute"
 fields = [["accel", "u32"], ["heap", "u32"], ["index", "u32"]]
 
 [[command]]
 name = "copy_accel"
+backend = "vk mtl"
 scope = "compute"
 fields = [["src", "u32"], ["dst", "u32"], ["compact", "u32"]]
 

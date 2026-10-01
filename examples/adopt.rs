@@ -1,8 +1,36 @@
-#[cfg(not(feature = "gl"))]
 use mk::{Commands, Device, access, format, layout, load, memory, stage, store};
 
 #[cfg(feature = "gl")]
-fn main() {}
+#[path = "support/host.rs"]
+mod host;
+
+#[cfg(feature = "gl")]
+fn native(n: u32) -> (Device, u32, ()) {
+    use mk::glow::HasContext;
+    let proc = host::proc().unwrap_or_else(|| Box::new(host::apple()));
+    let gl = unsafe { mk::glow::Context::from_loader_function(|name| proc(name)) };
+    let texture = unsafe {
+        let t = gl.create_texture().unwrap();
+        gl.bind_texture(mk::glow::TEXTURE_2D, Some(t));
+        gl.tex_storage_2d(mk::glow::TEXTURE_2D, 1, mk::glow::RGBA8, n as i32, n as i32);
+        gl.bind_texture(mk::glow::TEXTURE_2D, None);
+        t.0.get()
+    };
+    let mut device = Device::adopt(proc).unwrap();
+    println!("{}", device.name());
+    let slot = device
+        .import_texture(
+            texture,
+            &mk::TextureInfo {
+                format: format::RGBA8_UNORM,
+                width: n,
+                height: n,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    (device, slot, ())
+}
 
 #[cfg(feature = "mtl")]
 fn native(n: u32) -> (Device, u32, ()) {
@@ -102,7 +130,6 @@ fn native(
     (device, slot, (host, image, memory))
 }
 
-#[cfg(not(feature = "gl"))]
 fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
@@ -186,6 +213,7 @@ fn main() {
         "{:?}",
         pixels[0]
     );
+    device.unmap(back);
     drop(device);
     #[cfg(feature = "vk")]
     unsafe {
@@ -193,7 +221,7 @@ fn main() {
         host.raw.destroy_image(image, None);
         host.raw.free_memory(memory, None);
     }
-    #[cfg(feature = "mtl")]
+    #[cfg(not(feature = "vk"))]
     let () = host;
     println!("cleared a native texture through an adopted device");
 }

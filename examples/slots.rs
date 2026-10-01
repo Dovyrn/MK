@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorTarget, Command, Commands, ComputeInfo, Device, RenderInfo, SamplerInfo, TextureInfo,
     access, address, filter, format, layout, load, memory, stage, store, usage,
@@ -8,11 +7,9 @@ use mk::{
 const CODE: &[u8] = include_bytes!("../shaders/out/slots.metallib");
 #[cfg(feature = "vk")]
 const CODE: &[u8] = include_bytes!("../shaders/out/slots.spv");
-
 #[cfg(feature = "gl")]
-fn main() {}
+const CODE: &[u8] = include_bytes!("../shaders/out/slots.gl");
 
-#[cfg(not(feature = "gl"))]
 fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32, u32)) {
     let all = !0;
     c.texture_barrier(
@@ -20,8 +17,16 @@ fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32,
     );
 }
 
-#[cfg(not(feature = "gl"))]
+#[cfg(feature = "gl")]
+#[path = "support/host.rs"]
+mod host;
+
 fn main() {
+    #[cfg(feature = "gl")]
+    let mut device = host::proc()
+        .map_or_else(|| Device::new(1), Device::adopt)
+        .unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let caps = device.caps();
     if !caps.slots {

@@ -42,9 +42,10 @@ public class Caps {
     public boolean persistent = false;
     public int alignment = 0;
     public int buffers = 0;
+    public boolean compute = false;
 
     public int size() {
-        return 156;
+        return 160;
     }
 
     public long write(long p) {
@@ -125,6 +126,8 @@ public class Caps {
         memPutInt(p, alignment);
         p += 4;
         memPutInt(p, buffers);
+        p += 4;
+        memPutInt(p, compute ? 1 : 0);
         p += 4;
         return p;
     }
@@ -208,6 +211,8 @@ public class Caps {
         r.alignment = memGetInt(p);
         p += 4;
         r.buffers = memGetInt(p);
+        p += 4;
+        r.compute = memGetInt(p) != 0;
         p += 4;
         return r;
     }

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "libs/vk", "libs/mtl", "tools/shade"]
+members = [".", "libs/vk", "libs/mtl", "libs/gl", "tools/shade"]
 default-members = ["."]
 
 [features]
@@ -20,7 +20,7 @@ mtl = [
     "dep:objc2-metal-fx",
     "dep:dispatch2",
 ]
-gl = []
+gl = ["dep:glow", "dep:khronos-egl"]
 jni = ["dep:jni"]
 
 [dependencies]
@@ -36,10 +36,13 @@ objc2-io-surface = { version = "0.3", optional = true }
 objc2-quartz-core = { version = "0.3", optional = true, features = ["objc2-metal"] }
 dispatch2 = { version = "0.3", optional = true }
 raw-window-handle = "0.6"
+glow = { version = "0.17", optional = true }
+khronos-egl = { version = "6", optional = true, features = ["dynamic"] }
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
 winit = "0.30"
+khronos-egl = { version = "6", features = ["dynamic"] }
 
 [build-dependencies]
 toml = { version = "0.8", features = ["preserve_order"] }

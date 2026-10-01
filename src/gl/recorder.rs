@@ -1,0 +1,1149 @@
+use crate::gl::device::compare;
+use crate::gl::extra::Extra;
+use crate::gl::pipeline::Pipeline;
+use crate::gl::program::Program;
+use crate::gl::resources::Resources;
+use crate::{
+    Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
+};
+use glow::{HasContext, PixelPackData, PixelUnpackData};
+
+const QUERY_BUFFER: u32 = 0x9192;
+
+struct Color {
+    index: u32,
+    texture: u32,
+    load: u32,
+    store: u32,
+    clear: [f32; 4],
+    resolve: u32,
+}
+
+struct Depth {
+    texture: u32,
+    load: u32,
+    store: u32,
+    depth: f32,
+    stencil_load: u32,
+    stencil: u32,
+}
+
+pub struct Recorder<'a> {
+    gl: &'a glow::Context,
+    extra: &'a Extra,
+    res: &'a Resources,
+    caps: &'a Caps,
+    push: glow::Buffer,
+    fbo: glow::Framebuffer,
+    read: glow::Framebuffer,
+    program: Option<&'a Program>,
+    render: Option<&'a Pipeline>,
+    colors: Vec<Color>,
+    depth: Option<Depth>,
+    data: [u8; 256],
+    size: usize,
+    dirty: bool,
+    textures: [Option<u32>; slot::TEXTURES as usize],
+    samplers: [Option<u32>; slot::SAMPLERS as usize],
+    vertices: [Option<(u32, u64)>; 16],
+    index: Option<(u32, u64, u32)>,
+    mode: u32,
+    stencil: Option<DepthInfo>,
+    references: (u32, u32),
+    extent: (i32, i32),
+}
+
+fn mode(t: u32) -> u32 {
+    match t {
+        topology::POINT => glow::POINTS,
+        topology::LINE => glow::LINES,
+        topology::LINE_STRIP => glow::LINE_STRIP,
+        topology::TRIANGLE => glow::TRIANGLES,
+        topology::TRIANGLE_STRIP => glow::TRIANGLE_STRIP,
+        t => panic!("unknown topology {t}"),
+    }
+}
+
+fn stencil_op(op: u32) -> u32 {
+    [
+        glow::KEEP,
+        glow::ZERO,
+        glow::REPLACE,
+        glow::INCR,
+        glow::DECR,
+        glow::INVERT,
+        glow::INCR_WRAP,
+        glow::DECR_WRAP,
+    ][op as usize]
+}
+
+fn factor(f: u32) -> u32 {
+    [
+        glow::ZERO,
+        glow::ONE,
+        glow::SRC_COLOR,
+        glow::ONE_MINUS_SRC_COLOR,
+        glow::DST_COLOR,
+        glow::ONE_MINUS_DST_COLOR,
+        glow::SRC_ALPHA,
+        glow::ONE_MINUS_SRC_ALPHA,
+        glow::DST_ALPHA,
+        glow::ONE_MINUS_DST_ALPHA,
+        glow::CONSTANT_COLOR,
+        glow::ONE_MINUS_CONSTANT_COLOR,
+        glow::CONSTANT_ALPHA,
+        glow::ONE_MINUS_CONSTANT_ALPHA,
+        glow::SRC_ALPHA_SATURATE,
+        glow::SRC1_COLOR,
+        glow::ONE_MINUS_SRC1_COLOR,
+        glow::SRC1_ALPHA,
+        glow::ONE_MINUS_SRC1_ALPHA,
+    ][f as usize]
+}
+
+fn equation(op: u32) -> u32 {
+    [
+        glow::FUNC_ADD,
+        glow::FUNC_SUBTRACT,
+        glow::FUNC_REVERSE_SUBTRACT,
+        glow::MIN,
+        glow::MAX,
+    ][op as usize]
+}
+
+fn integer(f: u32) -> bool {
+    matches!(
+        format::gl(f)[1],
+        glow::RED_INTEGER | glow::RG_INTEGER | glow::RGB_INTEGER | glow::RGBA_INTEGER
+    )
+}
+
+fn barriers(a: u32) -> u32 {
+    let map = [
+        (access::INDIRECT_READ, glow::COMMAND_BARRIER_BIT),
+        (access::INDEX_READ, glow::ELEMENT_ARRAY_BARRIER_BIT),
+        (access::VERTEX_READ, glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT),
+        (access::UNIFORM_READ, glow::UNIFORM_BARRIER_BIT),
+        (
+            access::SHADER_READ | access::SHADER_WRITE,
+            glow::SHADER_STORAGE_BARRIER_BIT
+                | glow::SHADER_IMAGE_ACCESS_BARRIER_BIT
+                | glow::TEXTURE_FETCH_BARRIER_BIT,
+        ),
+        (
+            access::COLOR_READ | access::COLOR_WRITE | access::DEPTH_READ | access::DEPTH_WRITE,
+            glow::FRAMEBUFFER_BARRIER_BIT,
+        ),
+        (
+            access::COPY_READ | access::COPY_WRITE,
+            glow::BUFFER_UPDATE_BARRIER_BIT
+                | glow::TEXTURE_UPDATE_BARRIER_BIT
+                | glow::PIXEL_BUFFER_BARRIER_BIT,
+        ),
+        (
+            access::HOST_READ | access::HOST_WRITE,
+            glow::BUFFER_UPDATE_BARRIER_BIT
+                | glow::PIXEL_BUFFER_BARRIER_BIT
+                | glow::CLIENT_MAPPED_BUFFER_BARRIER_BIT,
+        ),
+        (
+            access::MEMORY_READ | access::MEMORY_WRITE,
+            glow::ALL_BARRIER_BITS,
+        ),
+    ];
+    map.iter()
+        .filter(|(b, _)| a & b != 0)
+        .fold(0, |m, (_, g)| m | g)
+}
+
+impl<'a> Recorder<'a> {
+    pub fn new(
+        gl: &'a glow::Context,
+        extra: &'a Extra,
+        res: &'a Resources,
+        caps: &'a Caps,
+        push: glow::Buffer,
+        (fbo, read): (glow::Framebuffer, glow::Framebuffer),
+    ) -> Self {
+        Self {
+            gl,
+            extra,
+            res,
+            caps,
+            push,
+            fbo,
+            read,
+            program: None,
+            render: None,
+            colors: Vec::new(),
+            depth: None,
+            data: [0; 256],
+            size: 0,
+            dirty: false,
+            textures: [None; slot::TEXTURES as usize],
+            samplers: [None; slot::SAMPLERS as usize],
+            vertices: [None; 16],
+            index: None,
+            mode: glow::TRIANGLES,
+            stencil: None,
+            references: (0, 0),
+            extent: (0, 0),
+        }
+    }
+
+    pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), String> {
+        unsafe {
+            self.gl
+                .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
+        };
+        let mut open = "";
+        while !bytes.is_empty() {
+            let command = Command::read(&mut bytes)?;
+            open = command.enter(open);
+            self.step(command)?;
+        }
+        assert!(open.is_empty(), "stream ends inside begin_{open}");
+        Ok(())
+    }
+
+    pub fn finish(&self) {
+        let gl = self.gl;
+        unsafe {
+            gl.use_program(None);
+            gl.bind_vertex_array(None);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        }
+    }
+
+    fn prepare(&mut self) {
+        let gl = self.gl;
+        unsafe {
+            if self.dirty {
+                gl.bind_buffer(glow::UNIFORM_BUFFER, Some(self.push));
+                gl.buffer_sub_data_u8_slice(glow::UNIFORM_BUFFER, 0, &self.data[..self.size]);
+                gl.bind_buffer(glow::UNIFORM_BUFFER, None);
+                self.dirty = false;
+            }
+            if let Some(p) = self.program {
+                for (unit, &(t, s)) in p.pairs.iter().enumerate() {
+                    let texture = self.res.textures.get(
+                        self.textures[t as usize]
+                            .unwrap_or_else(|| panic!("texture slot {t} is empty")),
+                    );
+                    gl.active_texture(glow::TEXTURE0 + unit as u32);
+                    gl.bind_texture(texture.target, texture.raw);
+                    let sampler = self.samplers[s as usize]
+                        .unwrap_or_else(|| panic!("sampler slot {s} is empty"));
+                    gl.bind_sampler(unit as u32, Some(*self.res.samplers.get(sampler)));
+                }
+            }
+            let Some(p) = self.render else {
+                return;
+            };
+            for a in &p.attributes {
+                let (buffer, offset) = self.vertices[a.buffer as usize]
+                    .unwrap_or_else(|| panic!("vertex buffer {} is empty", a.buffer));
+                gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.res.buffers.get(buffer).raw));
+                let layout = p.buffers[a.buffer as usize];
+                let [_, f, ty] = format::gl(a.format);
+                let size = match f {
+                    glow::RED | glow::RED_INTEGER => 1,
+                    glow::RG | glow::RG_INTEGER => 2,
+                    glow::RGB | glow::RGB_INTEGER => 3,
+                    glow::BGRA => glow::BGRA as i32,
+                    _ => 4,
+                };
+                let at = (offset + a.offset as u64) as i32;
+                let stride = layout.stride as i32;
+                if integer(a.format) {
+                    gl.vertex_attrib_pointer_i32(a.location, size, ty, stride, at);
+                } else {
+                    let normalized = ty != glow::FLOAT && ty != glow::HALF_FLOAT;
+                    gl.vertex_attrib_pointer_f32(a.location, size, ty, normalized, stride, at);
+                }
+                gl.enable_vertex_attrib_array(a.location);
+                gl.vertex_attrib_divisor(a.location, layout.instance as u32);
+            }
+            if let Some((buffer, _, _)) = self.index {
+                gl.bind_buffer(
+                    glow::ELEMENT_ARRAY_BUFFER,
+                    Some(self.res.buffers.get(buffer).raw),
+                );
+            }
+        }
+    }
+
+    fn attach(&self, target: u32, point: u32, texture: u32, layers: u32) {
+        let t = self.res.textures.get(texture);
+        unsafe {
+            if layers > 1 {
+                self.gl.framebuffer_texture(target, point, t.raw, 0);
+            } else {
+                self.gl
+                    .framebuffer_texture_2d(target, point, t.target, t.raw, 0);
+            }
+        }
+    }
+
+    fn defaults(&mut self, width: u32, height: u32) {
+        let gl = self.gl;
+        unsafe {
+            gl.viewport(0, 0, width as i32, height as i32);
+            gl.depth_range(0.0, 1.0);
+            gl.disable(glow::SCISSOR_TEST);
+            gl.disable(glow::CULL_FACE);
+            gl.front_face(glow::CCW);
+            gl.disable(glow::POLYGON_OFFSET_FILL);
+            gl.blend_color(0.0, 0.0, 0.0, 0.0);
+            gl.disable(glow::DEPTH_TEST);
+            gl.depth_mask(false);
+            gl.disable(glow::STENCIL_TEST);
+        }
+        self.mode = glow::TRIANGLES;
+        self.stencil = None;
+        self.references = (0, 0);
+    }
+
+    fn stencil(&self) {
+        let Some(d) = self.stencil else {
+            return;
+        };
+        let gl = self.gl;
+        unsafe {
+            for (side, f, reference) in [
+                (glow::FRONT, d.front, self.references.0),
+                (glow::BACK, d.back, self.references.1),
+            ] {
+                gl.stencil_op_separate(
+                    side,
+                    stencil_op(f.fail),
+                    stencil_op(f.depth_fail),
+                    stencil_op(f.pass),
+                );
+                gl.stencil_func_separate(side, compare(f.compare), reference as i32, f.read);
+                gl.stencil_mask_separate(side, f.write);
+            }
+        }
+    }
+
+    fn step(&mut self, command: Command) -> Result<(), String> {
+        let gl = self.gl;
+        let res = self.res;
+        unsafe {
+            match command {
+                Command::BeginCompute | Command::EndCompute => {}
+                Command::BindPipeline { pipeline } => {
+                    let p = res.pipelines.get(pipeline);
+                    gl.use_program(Some(p.raw));
+                    self.program = Some(p);
+                    self.render = None;
+                }
+                Command::PushConstants { offset, data } => {
+                    let at = offset as usize;
+                    self.data[at..at + data.len()].copy_from_slice(data);
+                    self.size = self.size.max(at + data.len());
+                    self.dirty = true;
+                }
+                Command::Dispatch { x, y, z } => {
+                    self.prepare();
+                    gl.dispatch_compute(x, y, z);
+                }
+                Command::DispatchIndirect { buffer, offset } => {
+                    self.prepare();
+                    gl.bind_buffer(
+                        glow::DISPATCH_INDIRECT_BUFFER,
+                        Some(res.buffers.get(buffer).raw),
+                    );
+                    gl.dispatch_compute_indirect(offset as i32);
+                }
+                Command::CopyBuffer {
+                    src,
+                    src_offset,
+                    dst,
+                    dst_offset,
+                    size,
+                } => {
+                    gl.bind_buffer(glow::COPY_READ_BUFFER, Some(res.buffers.get(src).raw));
+                    gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(res.buffers.get(dst).raw));
+                    gl.copy_buffer_sub_data(
+                        glow::COPY_READ_BUFFER,
+                        glow::COPY_WRITE_BUFFER,
+                        src_offset as i32,
+                        dst_offset as i32,
+                        size as i32,
+                    );
+                }
+                Command::FillBuffer {
+                    buffer,
+                    offset,
+                    size,
+                    value,
+                } => {
+                    let clear = self.extra.clear.ok_or("fill_buffer needs GL 4.3")?;
+                    gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(res.buffers.get(buffer).raw));
+                    clear(
+                        glow::COPY_WRITE_BUFFER,
+                        glow::R8UI,
+                        offset as isize,
+                        size as isize,
+                        glow::RED_INTEGER,
+                        glow::UNSIGNED_BYTE,
+                        (&raw const value).cast(),
+                    );
+                }
+                Command::Barrier {
+                    src_access,
+                    dst_access,
+                    ..
+                }
+                | Command::QueueBarrier {
+                    src_access,
+                    dst_access,
+                    ..
+                }
+                | Command::TextureBarrier {
+                    src_access,
+                    dst_access,
+                    ..
+                } => {
+                    if src_access & (access::SHADER_WRITE | access::MEMORY_WRITE) != 0
+                        && self.caps.storage
+                    {
+                        gl.memory_barrier(barriers(dst_access));
+                    }
+                }
+                Command::BeginLabel { text } => {
+                    if !self.caps.labels {
+                        return Err("debug labels need GL 4.3".into());
+                    }
+                    gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
+                }
+                Command::EndLabel => {
+                    if !self.caps.labels {
+                        return Err("debug labels need GL 4.3".into());
+                    }
+                    gl.pop_debug_group();
+                }
+                Command::CopyBufferToTexture {
+                    buffer,
+                    offset,
+                    row_length,
+                    row_count,
+                    texture,
+                    mip,
+                    layer,
+                    x,
+                    y,
+                    z,
+                    width,
+                    height,
+                    depth,
+                    ..
+                } => {
+                    let t = res.textures.get(texture);
+                    let [_, f, ty] = format::gl(t.format);
+                    gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(res.buffers.get(buffer).raw));
+                    gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                    gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
+                    gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, row_count as i32);
+                    gl.bind_texture(t.target, t.raw);
+                    let data = PixelUnpackData::BufferOffset(offset as u32);
+                    let (w, h, d) = (width as i32, height as i32, depth as i32);
+                    match t.target {
+                        glow::TEXTURE_2D => gl.tex_sub_image_2d(
+                            t.target, mip as i32, x as i32, y as i32, w, h, f, ty, data,
+                        ),
+                        glow::TEXTURE_1D_ARRAY => gl.tex_sub_image_2d(
+                            t.target,
+                            mip as i32,
+                            x as i32,
+                            layer as i32,
+                            w,
+                            1,
+                            f,
+                            ty,
+                            data,
+                        ),
+                        glow::TEXTURE_CUBE_MAP => gl.tex_sub_image_2d(
+                            glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+                            mip as i32,
+                            x as i32,
+                            y as i32,
+                            w,
+                            h,
+                            f,
+                            ty,
+                            data,
+                        ),
+                        glow::TEXTURE_3D => gl.tex_sub_image_3d(
+                            t.target, mip as i32, x as i32, y as i32, z as i32, w, h, d, f, ty,
+                            data,
+                        ),
+                        _ => gl.tex_sub_image_3d(
+                            t.target,
+                            mip as i32,
+                            x as i32,
+                            y as i32,
+                            layer as i32,
+                            w,
+                            h,
+                            1,
+                            f,
+                            ty,
+                            data,
+                        ),
+                    }
+                    gl.bind_texture(t.target, None);
+                    gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+                    gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, 0);
+                    gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
+                }
+                Command::CopyTextureToBuffer {
+                    texture,
+                    mip,
+                    layer,
+                    x,
+                    y,
+                    width,
+                    height,
+                    buffer,
+                    offset,
+                    row_length,
+                    ..
+                } => {
+                    let t = res.textures.get(texture);
+                    let [_, f, ty] = format::gl(t.format);
+                    gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.read));
+                    let point = match f {
+                        glow::DEPTH_COMPONENT => glow::DEPTH_ATTACHMENT,
+                        glow::DEPTH_STENCIL => glow::DEPTH_STENCIL_ATTACHMENT,
+                        glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,
+                        _ => glow::COLOR_ATTACHMENT0,
+                    };
+                    match t.target {
+                        glow::TEXTURE_2D | glow::TEXTURE_2D_MULTISAMPLE => gl
+                            .framebuffer_texture_2d(
+                                glow::READ_FRAMEBUFFER,
+                                point,
+                                t.target,
+                                t.raw,
+                                mip as i32,
+                            ),
+                        glow::TEXTURE_CUBE_MAP => gl.framebuffer_texture_2d(
+                            glow::READ_FRAMEBUFFER,
+                            point,
+                            glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+                            t.raw,
+                            mip as i32,
+                        ),
+                        _ => gl.framebuffer_texture_layer(
+                            glow::READ_FRAMEBUFFER,
+                            point,
+                            t.raw,
+                            mip as i32,
+                            layer as i32,
+                        ),
+                    }
+                    if point == glow::COLOR_ATTACHMENT0 {
+                        gl.read_buffer(glow::COLOR_ATTACHMENT0);
+                    }
+                    gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(res.buffers.get(buffer).raw));
+                    gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+                    gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
+                    gl.read_pixels(
+                        x as i32,
+                        y as i32,
+                        width as i32,
+                        height as i32,
+                        f,
+                        ty,
+                        PixelPackData::BufferOffset(offset as u32),
+                    );
+                    gl.pixel_store_i32(glow::PACK_ROW_LENGTH, 0);
+                    gl.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
+                    gl.framebuffer_texture_2d(
+                        glow::READ_FRAMEBUFFER,
+                        point,
+                        glow::TEXTURE_2D,
+                        None,
+                        0,
+                    );
+                    gl.bind_framebuffer(glow::READ_FRAMEBUFFER, None);
+                }
+                Command::ColorAttachment {
+                    index,
+                    texture,
+                    load,
+                    store,
+                    r,
+                    g,
+                    b,
+                    a,
+                    resolve,
+                    ..
+                } => {
+                    self.colors.retain(|c| c.index != index);
+                    self.colors.push(Color {
+                        index,
+                        texture,
+                        load,
+                        store,
+                        clear: [r, g, b, a],
+                        resolve,
+                    });
+                }
+                Command::DepthAttachment {
+                    texture,
+                    load,
+                    store,
+                    depth,
+                    stencil_load,
+                    stencil,
+                    ..
+                } => {
+                    self.depth = Some(Depth {
+                        texture,
+                        load,
+                        store,
+                        depth,
+                        stencil_load,
+                        stencil,
+                    });
+                }
+                Command::BeginRender {
+                    width,
+                    height,
+                    layers,
+                } => {
+                    let default = self
+                        .colors
+                        .iter()
+                        .any(|c| res.textures.get(c.texture).raw.is_none());
+                    let target = glow::DRAW_FRAMEBUFFER;
+                    if default {
+                        gl.bind_framebuffer(target, None);
+                    } else {
+                        gl.bind_framebuffer(target, Some(self.fbo));
+                        for i in 0..8 {
+                            gl.framebuffer_texture_2d(
+                                target,
+                                glow::COLOR_ATTACHMENT0 + i,
+                                glow::TEXTURE_2D,
+                                None,
+                                0,
+                            );
+                        }
+                        gl.framebuffer_texture_2d(
+                            target,
+                            glow::DEPTH_STENCIL_ATTACHMENT,
+                            glow::TEXTURE_2D,
+                            None,
+                            0,
+                        );
+                        let mut draws = Vec::new();
+                        for c in &self.colors {
+                            self.attach(
+                                target,
+                                glow::COLOR_ATTACHMENT0 + c.index,
+                                c.texture,
+                                layers,
+                            );
+                            draws.resize(draws.len().max(c.index as usize + 1), glow::NONE);
+                            draws[c.index as usize] = glow::COLOR_ATTACHMENT0 + c.index;
+                        }
+                        gl.draw_buffers(&draws);
+                        if let Some(d) = &self.depth {
+                            let point = match format::gl(res.textures.get(d.texture).format)[1] {
+                                glow::DEPTH_STENCIL => glow::DEPTH_STENCIL_ATTACHMENT,
+                                glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,
+                                _ => glow::DEPTH_ATTACHMENT,
+                            };
+                            self.attach(target, point, d.texture, layers);
+                        }
+                        if gl.check_framebuffer_status(target) != glow::FRAMEBUFFER_COMPLETE {
+                            return Err("render targets form an incomplete framebuffer".into());
+                        }
+                    }
+                    gl.color_mask(true, true, true, true);
+                    gl.depth_mask(true);
+                    gl.stencil_mask(0xff);
+                    gl.disable(glow::SCISSOR_TEST);
+                    for c in &self.colors {
+                        if c.load != load::CLEAR {
+                            continue;
+                        }
+                        let slot = if default { 0 } else { c.index };
+                        if integer(res.textures.get(c.texture).format) {
+                            let values = c.clear.map(|v| v as u32);
+                            gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
+                        } else {
+                            gl.clear_buffer_f32_slice(glow::COLOR, slot, &c.clear);
+                        }
+                    }
+                    if let Some(d) = &self.depth {
+                        if d.load == load::CLEAR {
+                            gl.clear_buffer_f32_slice(glow::DEPTH, 0, &[d.depth]);
+                        }
+                        if d.stencil_load == load::CLEAR {
+                            gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.stencil as i32]);
+                        }
+                    }
+                    self.defaults(width, height);
+                    self.extent = (width as i32, height as i32);
+                }
+                Command::EndRender => {
+                    let target = glow::DRAW_FRAMEBUFFER;
+                    let mut discard: Vec<u32> = self
+                        .colors
+                        .iter()
+                        .filter(|c| c.store == store::DONT_CARE)
+                        .map(|c| glow::COLOR_ATTACHMENT0 + c.index)
+                        .collect();
+                    if self
+                        .depth
+                        .as_ref()
+                        .is_some_and(|d| d.store == store::DONT_CARE)
+                    {
+                        discard.push(glow::DEPTH_ATTACHMENT);
+                    }
+                    let (w, h) = self.extent;
+                    for c in &self.colors {
+                        if c.resolve == !0 {
+                            continue;
+                        }
+                        gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.fbo));
+                        gl.read_buffer(glow::COLOR_ATTACHMENT0 + c.index);
+                        gl.bind_framebuffer(target, Some(self.read));
+                        self.attach(target, glow::COLOR_ATTACHMENT0, c.resolve, 1);
+                        gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
+                        gl.blit_framebuffer(
+                            0,
+                            0,
+                            w,
+                            h,
+                            0,
+                            0,
+                            w,
+                            h,
+                            glow::COLOR_BUFFER_BIT,
+                            glow::NEAREST,
+                        );
+                        gl.framebuffer_texture_2d(
+                            target,
+                            glow::COLOR_ATTACHMENT0,
+                            glow::TEXTURE_2D,
+                            None,
+                            0,
+                        );
+                        gl.bind_framebuffer(glow::READ_FRAMEBUFFER, None);
+                        gl.bind_framebuffer(target, Some(self.fbo));
+                    }
+                    if !discard.is_empty() && self.caps.storage {
+                        gl.invalidate_framebuffer(target, &discard);
+                    }
+                    gl.bind_framebuffer(target, None);
+                    self.colors.clear();
+                    self.depth = None;
+                    self.render = None;
+                }
+                Command::BindRenderPipeline { pipeline } => {
+                    let p = res.renders.get(pipeline);
+                    gl.use_program(Some(p.program.raw));
+                    gl.bind_vertex_array(Some(p.vao));
+                    self.program = Some(&p.program);
+                    self.render = Some(p);
+                    self.mode = mode(p.topology);
+                    let fill = if p.fill == crate::fill::LINE {
+                        glow::LINE
+                    } else {
+                        glow::FILL
+                    };
+                    gl.polygon_mode(glow::FRONT_AND_BACK, fill);
+                    if p.clamp {
+                        gl.enable(glow::DEPTH_CLAMP);
+                    } else {
+                        gl.disable(glow::DEPTH_CLAMP);
+                    }
+                    if p.coverage {
+                        gl.enable(glow::SAMPLE_ALPHA_TO_COVERAGE);
+                    } else {
+                        gl.disable(glow::SAMPLE_ALPHA_TO_COVERAGE);
+                    }
+                    for (i, c) in p.colors.iter().enumerate() {
+                        let i = i as u32;
+                        let m = c.mask;
+                        gl.color_mask_draw_buffer(
+                            i,
+                            m & 1 != 0,
+                            m & 2 != 0,
+                            m & 4 != 0,
+                            m & 8 != 0,
+                        );
+                        if c.blend {
+                            gl.enable_draw_buffer(glow::BLEND, i);
+                            gl.blend_func_separate_draw_buffer(
+                                i,
+                                factor(c.src),
+                                factor(c.dst),
+                                factor(c.src_alpha),
+                                factor(c.dst_alpha),
+                            );
+                            gl.blend_equation_separate_draw_buffer(
+                                i,
+                                equation(c.op),
+                                equation(c.op_alpha),
+                            );
+                        } else {
+                            gl.disable_draw_buffer(glow::BLEND, i);
+                        }
+                    }
+                }
+                Command::SetViewport {
+                    x,
+                    y,
+                    width,
+                    height,
+                    near,
+                    far,
+                } => {
+                    gl.viewport(x as i32, y as i32, width as i32, height as i32);
+                    gl.depth_range(near as f64, far as f64);
+                }
+                Command::SetScissor {
+                    x,
+                    y,
+                    width,
+                    height,
+                } => {
+                    gl.enable(glow::SCISSOR_TEST);
+                    gl.scissor(x as i32, y as i32, width as i32, height as i32);
+                }
+                Command::SetCull { cull: c } => match c {
+                    cull::NONE => gl.disable(glow::CULL_FACE),
+                    cull::FRONT | cull::BACK => {
+                        gl.enable(glow::CULL_FACE);
+                        gl.cull_face(if c == cull::FRONT {
+                            glow::FRONT
+                        } else {
+                            glow::BACK
+                        });
+                    }
+                    c => panic!("unknown cull {c}"),
+                },
+                Command::SetFace { face: f } => gl.front_face(match f {
+                    face::CCW => glow::CCW,
+                    face::CW => glow::CW,
+                    f => panic!("unknown face {f}"),
+                }),
+                Command::SetTopology { topology } => self.mode = mode(topology),
+                Command::SetDepthState { state } => {
+                    let d = *res.depths.get(state);
+                    if d.compare != crate::compare::NONE || d.write {
+                        gl.enable(glow::DEPTH_TEST);
+                    } else {
+                        gl.disable(glow::DEPTH_TEST);
+                    }
+                    gl.depth_func(compare(d.compare));
+                    gl.depth_mask(d.write);
+                    if d.stencil {
+                        gl.enable(glow::STENCIL_TEST);
+                        self.stencil = Some(d);
+                        self.stencil();
+                    } else {
+                        gl.disable(glow::STENCIL_TEST);
+                        self.stencil = None;
+                    }
+                }
+                Command::SetStencilReference { front, back } => {
+                    self.references = (front, back);
+                    self.stencil();
+                }
+                Command::SetDepthBias {
+                    constant,
+                    slope,
+                    clamp,
+                } => {
+                    if clamp != 0.0 {
+                        return Err("depth bias clamp is not supported on GL".into());
+                    }
+                    if constant != 0.0 || slope != 0.0 {
+                        gl.enable(glow::POLYGON_OFFSET_FILL);
+                    } else {
+                        gl.disable(glow::POLYGON_OFFSET_FILL);
+                    }
+                    gl.polygon_offset(slope, constant);
+                }
+                Command::SetBlendColor { r, g, b, a } => gl.blend_color(r, g, b, a),
+                Command::BindVertexBuffer {
+                    slot,
+                    buffer,
+                    offset,
+                } => self.vertices[slot as usize] = Some((buffer, offset)),
+                Command::BindIndexBuffer {
+                    buffer,
+                    offset,
+                    kind,
+                } => {
+                    let kind = match kind {
+                        index::U16 => glow::UNSIGNED_SHORT,
+                        index::U32 => glow::UNSIGNED_INT,
+                        k => panic!("unknown index {k}"),
+                    };
+                    self.index = Some((buffer, offset, kind));
+                }
+                Command::Draw {
+                    vertices,
+                    instances,
+                    first_vertex,
+                    first_instance,
+                } => {
+                    self.prepare();
+                    if first_instance == 0 {
+                        gl.draw_arrays_instanced(
+                            self.mode,
+                            first_vertex as i32,
+                            vertices as i32,
+                            instances as i32,
+                        );
+                    } else if self.caps.storage {
+                        gl.draw_arrays_instanced_base_instance(
+                            self.mode,
+                            first_vertex as i32,
+                            vertices as i32,
+                            instances as i32,
+                            first_instance,
+                        );
+                    } else {
+                        return Err("first_instance needs GL 4.2".into());
+                    }
+                }
+                Command::DrawIndexed {
+                    indices,
+                    instances,
+                    first_index,
+                    base_vertex,
+                    first_instance,
+                } => {
+                    self.prepare();
+                    let (_, offset, kind) =
+                        self.index.expect("draw_indexed without an index buffer");
+                    let size = if kind == glow::UNSIGNED_SHORT { 2 } else { 4 };
+                    let at = (offset + first_index as u64 * size) as i32;
+                    if first_instance == 0 {
+                        gl.draw_elements_instanced_base_vertex(
+                            self.mode,
+                            indices as i32,
+                            kind,
+                            at,
+                            instances as i32,
+                            base_vertex,
+                        );
+                    } else if self.caps.storage {
+                        gl.draw_elements_instanced_base_vertex_base_instance(
+                            self.mode,
+                            indices as i32,
+                            kind,
+                            at,
+                            instances as i32,
+                            base_vertex,
+                            first_instance,
+                        );
+                    } else {
+                        return Err("first_instance needs GL 4.2".into());
+                    }
+                }
+                Command::DrawIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => {
+                    self.prepare();
+                    gl.bind_buffer(
+                        glow::DRAW_INDIRECT_BUFFER,
+                        Some(res.buffers.get(buffer).raw),
+                    );
+                    if count == 1 {
+                        gl.draw_arrays_indirect_offset(self.mode, offset as i32);
+                    } else {
+                        let multi = self
+                            .extra
+                            .multi
+                            .ok_or("multi draw indirect is not supported")?;
+                        multi(
+                            self.mode,
+                            offset as usize as *const _,
+                            count as i32,
+                            stride as i32,
+                        );
+                    }
+                }
+                Command::DrawIndexedIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => {
+                    self.prepare();
+                    let (_, _, kind) = self
+                        .index
+                        .expect("draw_indexed_indirect without an index buffer");
+                    gl.bind_buffer(
+                        glow::DRAW_INDIRECT_BUFFER,
+                        Some(res.buffers.get(buffer).raw),
+                    );
+                    if count == 1 {
+                        gl.draw_elements_indirect_offset(self.mode, kind, offset as i32);
+                    } else {
+                        let multi = self
+                            .extra
+                            .multi_indexed
+                            .ok_or("multi draw indirect is not supported")?;
+                        multi(
+                            self.mode,
+                            kind,
+                            offset as usize as *const _,
+                            count as i32,
+                            stride as i32,
+                        );
+                    }
+                }
+                Command::DrawMesh { .. } | Command::DrawMeshIndirect { .. } => {
+                    return Err("mesh shaders are not supported on GL".into());
+                }
+                Command::OcclusionHeap { .. } | Command::ResetQueries { .. } => {}
+                Command::WriteTimestamp { heap, index, .. } => {
+                    gl.query_counter(res.queries.get(heap).ids[index as usize], glow::TIMESTAMP);
+                }
+                Command::BeginQuery { heap, index } => {
+                    let q = res.queries.get(heap);
+                    let target = if q.kind == query::PRECISE {
+                        glow::SAMPLES_PASSED
+                    } else {
+                        glow::ANY_SAMPLES_PASSED
+                    };
+                    gl.begin_query(target, q.ids[index as usize]);
+                }
+                Command::EndQuery { heap, .. } => {
+                    let target = if res.queries.get(heap).kind == query::PRECISE {
+                        glow::SAMPLES_PASSED
+                    } else {
+                        glow::ANY_SAMPLES_PASSED
+                    };
+                    gl.end_query(target);
+                }
+                Command::ResolveQueries {
+                    heap,
+                    first,
+                    count,
+                    buffer,
+                    offset,
+                } => {
+                    let results = self.extra.results.ok_or("query results need GL 4.4")?;
+                    let q = res.queries.get(heap);
+                    let raw = res.buffers.get(buffer).raw;
+                    gl.bind_buffer(QUERY_BUFFER, Some(raw));
+                    for i in 0..count {
+                        let id = q.ids[(first + i) as usize];
+                        results(
+                            id.0.get(),
+                            raw.0.get(),
+                            glow::QUERY_RESULT,
+                            (offset + i as u64 * 8) as isize,
+                        );
+                    }
+                    gl.bind_buffer(QUERY_BUFFER, None);
+                }
+                Command::SetViewports { data } => {
+                    let views: Vec<[f32; 6]> = data
+                        .chunks(24)
+                        .map(|c| {
+                            std::array::from_fn(|i| {
+                                f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
+                            })
+                        })
+                        .collect();
+                    if views.len() as u32 > self.caps.viewports {
+                        return Err("multiple viewports need GL 4.1".into());
+                    }
+                    let rects: Vec<[f32; 4]> =
+                        views.iter().map(|v| [v[0], v[1], v[2], v[3]]).collect();
+                    let ranges: Vec<[f64; 2]> =
+                        views.iter().map(|v| [v[4] as f64, v[5] as f64]).collect();
+                    gl.viewport_f32_slice(0, rects.len() as i32, &rects);
+                    gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
+                }
+                Command::SetScissors { data } => {
+                    let rects: Vec<[i32; 4]> = data
+                        .chunks(16)
+                        .map(|c| {
+                            std::array::from_fn(|i| {
+                                u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as i32
+                            })
+                        })
+                        .collect();
+                    if rects.len() as u32 > self.caps.viewports {
+                        return Err("multiple scissors need GL 4.1".into());
+                    }
+                    gl.enable(glow::SCISSOR_TEST);
+                    gl.scissor_slice(0, rects.len() as i32, &rects);
+                }
+                Command::SetDepthBounds { .. } => {
+                    return Err("depth bounds are not supported on GL".into());
+                }
+                Command::BindUniform {
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                } => gl.bind_buffer_range(
+                    glow::UNIFORM_BUFFER,
+                    slot,
+                    Some(res.buffers.get(buffer).raw),
+                    offset as i32,
+                    size as i32,
+                ),
+                Command::BindStorage {
+                    slot,
+                    buffer,
+                    offset,
+                    size,
+                } => {
+                    if !self.caps.storage {
+                        return Err("storage slots need GL 4.3".into());
+                    }
+                    gl.bind_buffer_range(
+                        glow::SHADER_STORAGE_BUFFER,
+                        slot - slot::STORAGE,
+                        Some(res.buffers.get(buffer).raw),
+                        offset as i32,
+                        size as i32,
+                    );
+                }
+                Command::BindImage { slot, texture } => {
+                    if !self.caps.storage {
+                        return Err("image slots need GL 4.3".into());
+                    }
+                    let t = res.textures.get(texture);
+                    let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
+                    gl.bind_image_texture(
+                        slot - slot::IMAGE,
+                        t.raw,
+                        0,
+                        layered,
+                        0,
+                        glow::READ_WRITE,
+                        format::gl(t.format)[0],
+                    );
+                }
+                Command::BindTexture { slot, texture } => {
+                    self.textures[slot as usize] = Some(texture)
+                }
+                Command::BindSampler { slot, sampler } => {
+                    self.samplers[slot as usize] = Some(sampler)
+                }
+            }
+        }
+        Ok(())
+    }
+}

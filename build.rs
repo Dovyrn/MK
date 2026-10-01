@@ -44,6 +44,10 @@ fn main() {
         &dir.join("MtlCommands.java"),
         &ops::java(&list, Some("mtl"), "MtlCommands"),
     );
+    save(
+        &dir.join("GlCommands.java"),
+        &ops::java(&list, Some("gl"), "GlCommands"),
+    );
     let table = fs::read_to_string("constants.toml")
         .unwrap()
         .parse()
@@ -73,6 +77,7 @@ fn main() {
         &dir.join("MtlDevice.java"),
         &calls::java(&list, Some("mtl")),
     );
+    save(&dir.join("GlDevice.java"), &calls::java(&list, Some("gl")));
 }
 
 static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
@@ -88,6 +93,23 @@ fn save(path: &Path, text: &str) {
     if fs::read_to_string(path).ok().as_deref() != Some(text) {
         fs::write(path, text).unwrap();
     }
+}
+
+fn cfg(backend: Option<&str>) -> Option<String> {
+    let list: Vec<&str> = match backend? {
+        "rust" => vec!["vk", "mtl"],
+        b => b.split_whitespace().collect(),
+    };
+    let features: Vec<String> = list.iter().map(|b| format!("feature = \"{b}\"")).collect();
+    Some(if features.len() == 1 {
+        features[0].clone()
+    } else {
+        format!("any({})", features.join(", "))
+    })
+}
+
+fn single(backend: Option<&str>) -> Option<&str> {
+    backend.filter(|b| !b.contains(' '))
 }
 
 fn pascal(name: &str) -> String {

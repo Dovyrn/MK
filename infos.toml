@@ -221,6 +221,7 @@ fields = [
     ["persistent", "bool", "false"],
     ["alignment", "u32", "0"],
     ["buffers", "u32", "0"],
+    ["compute", "bool", "false"],
 ]
 
 [[info]]

@@ -714,6 +714,7 @@ impl Device {
             multi_draw: features.multi_draw_indirect != 0,
             sparse_textures: sparse && features.sparse_residency_image2_d != 0,
             buffers: self.bindless.buffers,
+            compute: true,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,

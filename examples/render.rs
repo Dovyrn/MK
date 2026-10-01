@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorTarget, Commands, DepthInfo, Device, RenderInfo, TextureInfo, VertexAttribute,
     VertexBuffer, access, compare, format, index, layout, load, memory, stage, store, usage,
@@ -10,11 +9,19 @@ const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+const CODE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
 
-#[cfg(not(feature = "gl"))]
+#[cfg(feature = "gl")]
+#[path = "support/host.rs"]
+mod host;
+
 fn main() {
     let n = 64u32;
+    #[cfg(feature = "gl")]
+    let mut device = host::proc()
+        .map_or_else(|| Device::new(1), Device::adopt)
+        .unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let target = |format, usage| TextureInfo {
         format,
@@ -59,6 +66,8 @@ fn main() {
             size_of_val(&indices),
         );
     }
+    device.unmap(vbuf);
+    device.unmap(ibuf);
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()

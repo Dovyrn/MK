@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorTarget, Commands, Device, RenderInfo, TextureInfo, access, format, layout, load, memory,
     stage, store, usage,
@@ -10,11 +9,19 @@ const CODE: &[u8] = include_bytes!("../shaders/out/viewports.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/viewports.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+const CODE: &[u8] = include_bytes!("../shaders/out/viewports.gl");
 
-#[cfg(not(feature = "gl"))]
+#[cfg(feature = "gl")]
+#[path = "support/host.rs"]
+mod host;
+
 fn main() {
     let (w, h) = (64u32, 32u32);
+    #[cfg(feature = "gl")]
+    let mut device = host::proc()
+        .map_or_else(|| Device::new(1), Device::adopt)
+        .unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     if device.caps().viewports < 2 {
         println!("one viewport only");

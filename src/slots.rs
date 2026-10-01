@@ -40,7 +40,7 @@ impl<T> Slots<T> {
         self.items[i as usize].as_mut().unwrap()
     }
 
-    #[cfg(feature = "vk")]
+    #[cfg(any(feature = "vk", feature = "gl"))]
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.free.clear();
         self.items.drain(..).flatten()

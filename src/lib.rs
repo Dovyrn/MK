@@ -10,11 +10,12 @@ compile_error!("enable exactly one backend feature");
 
 mod command;
 mod commands;
-#[cfg(all(feature = "jni", any(feature = "mtl", feature = "vk")))]
+#[cfg(feature = "gl")]
+pub mod gl;
+#[cfg(feature = "jni")]
 mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
-#[cfg(any(feature = "mtl", feature = "vk"))]
 mod slots;
 #[cfg(feature = "vk")]
 pub mod vk;
@@ -25,6 +26,10 @@ mod wire;
 pub use ash;
 pub use command::Command;
 pub use commands::Commands;
+#[cfg(feature = "gl")]
+pub use gl::Device;
+#[cfg(feature = "gl")]
+pub use glow;
 #[cfg(feature = "mtl")]
 pub use mtl::Device;
 #[cfg(feature = "mtl")]

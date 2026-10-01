@@ -4,6 +4,7 @@ struct Row<'a> {
     name: &'a str,
     vk: &'a str,
     mtl: &'a str,
+    gl: &'a str,
     block: [i64; 3],
 }
 
@@ -18,6 +19,7 @@ fn rows(table: &toml::Table) -> Vec<Row<'_>> {
                 name: r[0].as_str().unwrap(),
                 vk: r[1].as_str().unwrap(),
                 mtl: r[2].as_str().unwrap(),
+                gl: r[6].as_str().unwrap(),
                 block: [
                     r[3].as_integer().unwrap(),
                     r[4].as_integer().unwrap(),
@@ -61,7 +63,21 @@ pub fn rust(table: &toml::Table) -> String {
             .unwrap();
         }
     }
-    s += "            _ => objc2_metal::MTLPixelFormat::Invalid,\n        }\n    }\n}\n";
+    s += "            _ => objc2_metal::MTLPixelFormat::Invalid,\n        }\n    }\n";
+    s += "\n    #[cfg(feature = \"gl\")]\n";
+    s += "    pub(crate) fn gl(format: u32) -> [u32; 3] {\n        match format {\n";
+    for (i, r) in rows.iter().enumerate() {
+        if r.gl == "-" {
+            continue;
+        }
+        let parts: Vec<String> = r.gl.split(' ').map(|p| format!("glow::{p}")).collect();
+        let parts = match parts.len() {
+            1 => format!("{}, 0, 0", parts[0]),
+            _ => parts.join(", "),
+        };
+        writeln!(s, "            {} => [{parts}],", i + 1).unwrap();
+    }
+    s += "            _ => [0, 0, 0],\n        }\n    }\n}\n";
     s
 }
 

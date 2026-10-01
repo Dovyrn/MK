@@ -21,13 +21,13 @@ public class Smoke {
         info.group = new int[] {64, 1, 1};
         var pipeline = device.createPipeline(info);
         var event = device.createEvent();
-        var push = memAlloc(16);
-        push.putLong(0, device.address(buffer));
-        push.putInt(8, n);
-        push.putInt(12, 100);
+        var push = memAlloc(8);
+        push.putInt(0, n);
+        push.putInt(4, 100);
         var c = new Commands();
         c.beginCompute();
         c.bindPipeline(pipeline);
+        c.bindStorage(Slot.STORAGE, buffer, 0, n * 4L);
         c.pushConstants(0, push);
         c.dispatch(n / 64, 1, 1);
         c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
@@ -42,6 +42,7 @@ public class Smoke {
                 throw new IllegalStateException("value " + i + " is " + data.get(i));
             }
         }
+        device.unmap(buffer);
         try {
             info.code = push;
             device.createPipeline(info);

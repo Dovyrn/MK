@@ -1,4 +1,4 @@
-use crate::{camel, pascal};
+use crate::{camel, cfg, pascal, single};
 use std::fmt::Write;
 
 pub struct Field {
@@ -72,9 +72,8 @@ fn rust_type(kind: &str) -> &str {
 }
 
 fn gate(op: &Op) -> String {
-    match op.backend.as_deref() {
-        Some("rust") => "    #[cfg(any(feature = \"vk\", feature = \"mtl\"))]\n".into(),
-        Some(b) => format!("    #[cfg(feature = \"{b}\")]\n"),
+    match cfg(op.backend.as_deref()) {
+        Some(c) => format!("    #[cfg({c})]\n"),
         None => String::new(),
     }
 }
@@ -256,7 +255,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
     }
     let kinds: Vec<_> = ops
         .iter()
-        .filter(|o| o.backend.as_deref() == backend)
+        .filter(|o| single(o.backend.as_deref()) == backend)
         .flat_map(|o| &o.fields)
         .map(|f| f.kind.as_str())
         .collect();
@@ -291,7 +290,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
         write!(s, "public class {class} extends Commands {{").unwrap();
     }
     for (i, op) in ops.iter().enumerate() {
-        if op.backend.as_deref() != backend {
+        if single(op.backend.as_deref()) != backend {
             continue;
         }
         let params: Vec<_> = op

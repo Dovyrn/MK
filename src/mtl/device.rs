@@ -390,6 +390,7 @@ impl Device {
             persistent: true,
             alignment: 256,
             buffers: 500_000,
+            compute: true,
         }
     }
 

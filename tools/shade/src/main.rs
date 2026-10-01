@@ -263,6 +263,17 @@ fn glsl(out: &Path, name: &str) {
         let Some((plain, packed, vulkan)) = source else {
             return;
         };
+        let routed = plain.contains("gl_ViewportIndex") || plain.contains("gl_Layer");
+        let plain = if stage == "vert" && routed {
+            let line = plain.find('\n').unwrap() + 1;
+            format!(
+                "{}#extension GL_ARB_shader_viewport_layer_array : enable\n{}",
+                &plain[..line],
+                &plain[line..]
+            )
+        } else {
+            plain
+        };
         container += &format!("//@ entry {entry}\n{plain}");
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         for line in packed.lines() {
