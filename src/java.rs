@@ -1,0 +1,92 @@
+use crate::Device;
+use jni::JNIEnv;
+use jni::objects::JClass;
+use jni::sys::{jboolean, jint, jlong};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+pub fn call<T: Default>(env: &mut JNIEnv, f: impl FnOnce() -> Result<T, String>) -> T {
+    let message = match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(Ok(v)) => return v,
+        Ok(Err(e)) => e,
+        Err(p) => p
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_else(|| "panic".into()),
+    };
+    let _ = env.throw_new("java/lang/RuntimeException", message);
+    T::default()
+}
+
+pub fn device<'a>(handle: jlong) -> &'a mut Device {
+    unsafe { &mut *(handle as *mut Device) }
+}
+
+pub fn bytes<'a>(address: jlong, length: i64) -> &'a [u8] {
+    if address == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) }
+    }
+}
+
+pub fn bytes_mut<'a>(address: jlong, length: i64) -> &'a mut [u8] {
+    unsafe { std::slice::from_raw_parts_mut(address as *mut u8, length as usize) }
+}
+
+pub fn str<'a>(address: jlong, length: i64) -> &'a str {
+    std::str::from_utf8(bytes(address, length)).unwrap()
+}
+
+pub fn u32s<'a>(address: jlong, count: i64) -> &'a [u32] {
+    unsafe { std::slice::from_raw_parts(address as *const u32, count as usize) }
+}
+
+pub fn u32x3(address: jlong) -> [u32; 3] {
+    unsafe { *(address as *const [u32; 3]) }
+}
+
+pub fn f32x12<'a>(address: jlong) -> &'a [f32; 12] {
+    unsafe { &*(address as *const [f32; 12]) }
+}
+
+pub fn waits(address: jlong, count: i64) -> Vec<(u32, u64)> {
+    let mut b = bytes(address, count * 16);
+    (0..count)
+        .map(|_| {
+            let event = crate::wire::u32(&mut b);
+            crate::wire::u32(&mut b);
+            (event, crate::wire::u64(&mut b))
+        })
+        .collect()
+}
+
+#[cfg(feature = "vk")]
+pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
+    u32s(address, count * 2)
+        .chunks(2)
+        .map(|p| (p[0], p[1]))
+        .collect()
+}
+
+pub fn pair(out: jlong, v: (u64, u64)) {
+    unsafe { *(out as *mut [u64; 2]) = [v.0, v.1] };
+}
+
+pub fn write(out: jlong, f: impl FnOnce(&mut Vec<u8>)) {
+    let mut v = Vec::new();
+    f(&mut v);
+    unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u8, v.len()) };
+}
+
+#[cfg(feature = "mtl")]
+pub fn object<T: objc2::Message>(address: jlong) -> objc2::rc::Retained<T> {
+    unsafe { objc2::rc::Retained::retain(address as *mut T).unwrap() }
+}
+
+#[cfg(feature = "mtl")]
+pub fn pointer<T: ?Sized>(r: &T) -> jlong {
+    std::ptr::from_ref(r).cast::<u8>() as jlong
+}
+
+include!(concat!(env!("OUT_DIR"), "/java.rs"));

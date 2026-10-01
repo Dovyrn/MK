@@ -3,8 +3,9 @@ name = "mk"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-crate-type = ["rlib", "cdylib"]
+[workspace]
+members = [".", "libs/vk", "libs/mtl"]
+default-members = ["."]
 
 [features]
 vk = ["dep:ash", "dep:ash-window"]
@@ -17,7 +18,7 @@ mtl = [
     "dep:dispatch2",
 ]
 gl = []
-jni = []
+jni = ["dep:jni"]
 
 [dependencies]
 ash = { version = "0.38", optional = true }
@@ -29,6 +30,7 @@ objc2-metal = { version = "0.3", optional = true }
 objc2-quartz-core = { version = "0.3", optional = true, features = ["objc2-metal"] }
 dispatch2 = { version = "0.3", optional = true }
 raw-window-handle = "0.6"
+jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
 winit = "0.30"

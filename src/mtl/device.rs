@@ -302,6 +302,11 @@ impl Device {
         })
     }
 
+    pub fn adopt_raw(device: u64, queues: usize) -> Result<Self, String> {
+        let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
+        Self::adopt(raw.ok_or("null Metal device")?, queues)
+    }
+
     pub fn caps(&self) -> Caps {
         Caps {
             mesh: self.raw.supportsFamily(MTLGPUFamily::Apple7)

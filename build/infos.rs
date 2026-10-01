@@ -98,7 +98,7 @@ pub fn rust(infos: &[Info]) -> String {
             writeln!(s, "            {}: {},", f.name, rust_value(f)).unwrap();
         }
         s += "        }\n    }\n}\n\n";
-        s += "#[cfg(feature = \"jni\")]\n";
+        s += "#[cfg(feature = \"jni\")]\n#[allow(dead_code)]\n";
         if borrows(info) {
             writeln!(s, "impl {}<'_> {{", info.name).unwrap();
             writeln!(

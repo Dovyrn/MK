@@ -10,6 +10,8 @@ compile_error!("enable exactly one backend feature");
 
 mod command;
 mod commands;
+#[cfg(all(feature = "jni", any(feature = "mtl", feature = "vk")))]
+mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 #[cfg(any(feature = "mtl", feature = "vk"))]

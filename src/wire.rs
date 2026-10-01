@@ -54,9 +54,3 @@ pub fn put_f32(out: &mut Vec<u8>, v: f32) {
 pub fn put_bool(out: &mut Vec<u8>, v: bool) {
     put_u32(out, v as u32);
 }
-
-pub fn put_u32x3(out: &mut Vec<u8>, v: [u32; 3]) {
-    for x in v {
-        put_u32(out, x);
-    }
-}

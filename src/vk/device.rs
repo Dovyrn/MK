@@ -389,6 +389,24 @@ impl Device {
         find(want | prefer).or_else(|| find(want)).unwrap()
     }
 
+    pub fn adopt_raw(
+        proc: u64,
+        instance: u64,
+        physical: u64,
+        device: u64,
+        queues: &[(u32, u32)],
+    ) -> Self {
+        unsafe {
+            let get = std::mem::transmute::<usize, vk::PFN_vkGetInstanceProcAddr>(proc as usize);
+            let entry = ash::Entry::from_static_fn(ash::StaticFn {
+                get_instance_proc_addr: get,
+            });
+            let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
+            let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
+            Self::adopt(entry, instance, vk::Handle::from_raw(physical), raw, queues)
+        }
+    }
+
     pub fn caps(&self) -> Caps {
         let (limits, families, features) = unsafe {
             (

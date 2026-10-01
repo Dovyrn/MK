@@ -1,0 +1,326 @@
+[[call]]
+name = "new"
+params = [["queues", "usize"]]
+result = "device"
+fails = true
+
+[[call]]
+name = "caps"
+result = "Caps"
+
+[[call]]
+name = "create_buffer"
+params = [["size", "u64"], ["memory", "u32"]]
+result = "u32"
+
+[[call]]
+name = "destroy_buffer"
+params = [["buffer", "u32"]]
+
+[[call]]
+name = "map"
+params = [["buffer", "u32"]]
+result = "pointer"
+
+[[call]]
+name = "address"
+params = [["buffer", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_heap"
+params = [["size", "u64"], ["memory", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_heap"
+params = [["heap", "u32"]]
+
+[[call]]
+name = "buffer_size"
+params = [["size", "u64"], ["memory", "u32"]]
+result = "pair"
+
+[[call]]
+name = "texture_size"
+params = [["info", "TextureInfo"]]
+result = "pair"
+
+[[call]]
+name = "create_placed_buffer"
+params = [["heap", "u32"], ["offset", "u64"], ["size", "u64"]]
+result = "u32"
+
+[[call]]
+name = "create_placed_texture"
+params = [["heap", "u32"], ["offset", "u64"], ["info", "TextureInfo"]]
+result = "u32"
+
+[[call]]
+name = "create_pipeline"
+params = [["code", "bytes"], ["entry", "str"], ["group", "u32x3"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_pipeline"
+params = [["pipeline", "u32"]]
+
+[[call]]
+name = "create_render_pipeline"
+params = [["info", "RenderInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "create_mesh_pipeline"
+params = [["info", "MeshInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_render_pipeline"
+params = [["pipeline", "u32"]]
+
+[[call]]
+name = "create_depth_state"
+params = [["info", "DepthInfo"]]
+result = "u32"
+
+[[call]]
+name = "destroy_depth_state"
+params = [["state", "u32"]]
+
+[[call]]
+name = "create_texture"
+params = [["info", "TextureInfo"]]
+result = "u32"
+
+[[call]]
+name = "create_view"
+params = [["texture", "u32"], ["info", "ViewInfo"]]
+result = "u32"
+
+[[call]]
+name = "destroy_texture"
+params = [["texture", "u32"]]
+
+[[call]]
+name = "texture_handle"
+params = [["texture", "u32"]]
+result = "u64"
+
+[[call]]
+name = "image_handle"
+params = [["texture", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_sampler"
+params = [["info", "SamplerInfo"]]
+result = "u32"
+
+[[call]]
+name = "destroy_sampler"
+params = [["sampler", "u32"]]
+
+[[call]]
+name = "sampler_handle"
+params = [["sampler", "u32"]]
+result = "u64"
+
+[[call]]
+name = "create_accel"
+params = [["info", "AccelInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_accel"
+params = [["accel", "u32"]]
+
+[[call]]
+name = "accel_scratch"
+params = [["accel", "u32"]]
+result = "pair"
+
+[[call]]
+name = "accel_handle"
+params = [["accel", "u32"]]
+result = "u64"
+
+[[call]]
+name = "write_instance"
+params = [["out", "mutbytes"], ["accel", "u32"], ["transform", "f32x12"], ["id", "u32"], ["mask", "u32"], ["flags", "u32"]]
+
+[[call]]
+name = "create_query_heap"
+params = [["kind", "u32"], ["count", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_query_heap"
+params = [["heap", "u32"]]
+
+[[call]]
+name = "record_cache"
+fails = true
+
+[[call]]
+name = "save_cache"
+params = [["path", "str"]]
+fails = true
+
+[[call]]
+name = "load_cache"
+params = [["path", "str"]]
+fails = true
+
+[[call]]
+name = "create_event"
+result = "u32"
+
+[[call]]
+name = "destroy_event"
+params = [["event", "u32"]]
+
+[[call]]
+name = "event_value"
+params = [["event", "u32"]]
+result = "u64"
+
+[[call]]
+name = "wait"
+params = [["event", "u32"], ["value", "u64"], ["timeout", "u64"]]
+result = "bool"
+
+[[call]]
+name = "submit"
+params = [["queue", "usize"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+fails = true
+
+[[call]]
+name = "acquire"
+params = [["queue", "usize"], ["surface", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "present"
+params = [["queue", "usize"], ["surface", "u32"]]
+fails = true
+
+[[call]]
+name = "resize_surface"
+params = [["surface", "u32"], ["width", "u32"], ["height", "u32"]]
+fails = true
+
+[[call]]
+name = "destroy_surface"
+params = [["surface", "u32"]]
+
+[[call]]
+name = "adopt_raw"
+backend = "vk"
+params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"]]
+result = "device"
+
+[[call]]
+name = "import_buffer"
+backend = "vk"
+params = [["raw", "handle"]]
+result = "u32"
+
+[[call]]
+name = "import_texture"
+backend = "vk"
+params = [["image", "handle"], ["info", "TextureInfo"]]
+result = "u32"
+
+[[call]]
+name = "import_event"
+backend = "vk"
+params = [["raw", "handle"]]
+result = "u32"
+
+[[call]]
+name = "raw_buffer"
+backend = "vk"
+params = [["buffer", "u32"]]
+result = "handle"
+
+[[call]]
+name = "raw_texture"
+backend = "vk"
+params = [["texture", "u32"]]
+result = "handles"
+
+[[call]]
+name = "raw_event"
+backend = "vk"
+params = [["event", "u32"]]
+result = "handle"
+
+[[call]]
+name = "raw_queue"
+backend = "vk"
+params = [["queue", "usize"]]
+result = "handle"
+
+[[call]]
+name = "adopt_raw"
+backend = "mtl"
+params = [["device", "u64"], ["queues", "usize"]]
+result = "device"
+fails = true
+
+[[call]]
+name = "import_buffer"
+backend = "mtl"
+params = [["raw", "object"]]
+result = "u32"
+
+[[call]]
+name = "import_texture"
+backend = "mtl"
+params = [["raw", "object"], ["format", "u32"]]
+result = "u32"
+
+[[call]]
+name = "import_event"
+backend = "mtl"
+params = [["raw", "object"]]
+result = "u32"
+
+[[call]]
+name = "raw_buffer"
+backend = "mtl"
+params = [["buffer", "u32"]]
+result = "object"
+
+[[call]]
+name = "raw_texture"
+backend = "mtl"
+params = [["texture", "u32"]]
+result = "object"
+
+[[call]]
+name = "raw_event"
+backend = "mtl"
+params = [["event", "u32"]]
+result = "object"
+
+[[call]]
+name = "raw_queue"
+backend = "mtl"
+params = [["queue", "usize"]]
+result = "object"
+
+[[call]]
+name = "create_tile_pipeline"
+backend = "mtl"
+params = [["code", "bytes"], ["entry", "str"], ["colors", "u32s"], ["samples", "u32"]]
+result = "u32"
+fails = true
