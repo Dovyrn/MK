@@ -411,17 +411,14 @@ impl Device {
         self.raw.name().to_string()
     }
 
-    fn storage(&self, memory: u32) -> Result<MTLResourceOptions, String> {
-        if memory == memory::TRANSIENT && !self.caps().memoryless {
-            return Err("memoryless storage is not supported".into());
-        }
-        Ok(options(memory))
-    }
-
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        assert!(
+            memory != memory::TRANSIENT,
+            "transient memory is for textures"
+        );
         let buffer = self
             .raw
-            .newBufferWithLength_options(size as usize, self.storage(memory)?)
+            .newBufferWithLength_options(size as usize, options(memory))
             .ok_or("buffer allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*buffer));
         Ok(self.res.buffers.insert(buffer))
@@ -443,9 +440,13 @@ impl Device {
     }
 
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        assert!(
+            memory != memory::TRANSIENT,
+            "transient memory is for textures"
+        );
         let desc = MTLHeapDescriptor::new();
         desc.setType(MTLHeapType::Placement);
-        desc.setResourceOptions(self.storage(memory)?);
+        desc.setResourceOptions(options(memory));
         desc.setSize(size as usize);
         desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
         let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
@@ -1080,7 +1081,9 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        self.storage(info.memory)?;
+        if info.memory == memory::TRANSIENT && !self.caps().memoryless {
+            return Err("memoryless storage is not supported".into());
+        }
         self.supports(info)?;
         let desc = texture_desc(info);
         let raw = self
