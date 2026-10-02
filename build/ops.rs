@@ -274,8 +274,12 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
         s += "    private int capacity = 4096;\n";
         s += "    private int size;\n\n";
         s += "    public void reset() {\n        size = 0;\n    }\n\n";
-        s += "    public void free() {\n        nmemFree(address);\n    }\n\n";
+        s +=
+            "    public void free() {\n        nmemFree(address);\n        address = 0;\n    }\n\n";
         s += "    protected long head(int op, int length) {\n";
+        s += "        if (address == 0) {\n";
+        s += "            throw new IllegalStateException(\"commands used after free\");\n";
+        s += "        }\n";
         s += "        if (length > 0xffff) {\n";
         s += "            throw new IllegalArgumentException(\"payload of \" + length + \" bytes is over 65535\");\n";
         s += "        }\n";

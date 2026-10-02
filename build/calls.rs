@@ -273,9 +273,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
     if backend.is_none() {
-        s += "public class Device {\n    public final long handle;\n\n";
+        s += "public class Device {\n    public long handle;\n\n";
         s += "    public Device(long handle) {\n        this.handle = handle;\n    }\n\n";
-        s += "    public void free() {\n        nFree(handle);\n    }\n\n    private static native void nFree(long device);\n";
+        s += "    public void free() {\n        if (handle == 0) {\n            throw new IllegalStateException(\"device freed twice\");\n        }\n        nFree(handle);\n        handle = 0;\n    }\n\n    private static native void nFree(long device);\n";
     } else {
         s += "import lombok.experimental.UtilityClass;\n\n";
         writeln!(s, "@UtilityClass\npublic class {name} {{").unwrap();

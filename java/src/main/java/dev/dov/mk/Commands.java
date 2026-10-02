@@ -19,9 +19,13 @@ public class Commands {
 
     public void free() {
         nmemFree(address);
+        address = 0;
     }
 
     protected long head(int op, int length) {
+        if (address == 0) {
+            throw new IllegalStateException("commands used after free");
+        }
         if (length > 0xffff) {
             throw new IllegalArgumentException("payload of " + length + " bytes is over 65535");
         }
