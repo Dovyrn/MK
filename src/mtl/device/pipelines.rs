@@ -18,9 +18,9 @@ use objc2_metal::{
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
     MTL4RenderPipelineDescriptor, MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor,
     MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState,
-    MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLLibrary, MTLPrimitiveTopologyClass,
-    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary,
+    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor,
+    MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 
 fn factor(f: u32) -> MTLBlendFactor {
@@ -189,6 +189,15 @@ impl Device {
         let library = self.library(info.code)?;
         let desc = MTL4RenderPipelineDescriptor::new();
         desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
+        let inputs = library
+            .newFunctionWithName(&NSString::from_str(info.vertex))
+            .and_then(|f| f.vertexAttributes());
+        for input in inputs.iter().flat_map(|a| a.iter()) {
+            let location = input.attributeIndex() as u32;
+            if input.isActive() && !info.attributes.iter().any(|a| a.location == location) {
+                return Err(format!("vertex input {location} has no attribute"));
+            }
+        }
         if !info.fragment.is_empty() {
             desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
         }
