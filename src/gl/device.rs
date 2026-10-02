@@ -59,6 +59,13 @@ pub fn target(dimension: u32, samples: u32) -> u32 {
     }
 }
 
+fn at(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bool {
+    version >= minimum
+        || extensions
+            .binary_search_by(|e| e.as_str().cmp(extension))
+            .is_ok()
+}
+
 impl Device {
     pub fn adopt(proc: impl Fn(&str) -> *const c_void) -> Result<Self, String> {
         Self::load(&proc)
@@ -79,7 +86,6 @@ impl Device {
     fn load(proc: &dyn Fn(&str) -> *const c_void) -> Result<Self, String> {
         unsafe {
             let gl = glow::Context::from_loader_function(|name| proc(name));
-            let extra = Extra::load(proc);
             let major = gl.get_parameter_i32(glow::MAJOR_VERSION) as u32;
             let minor = gl.get_parameter_i32(glow::MINOR_VERSION) as u32;
             let version = major * 10 + minor;
@@ -91,6 +97,7 @@ impl Device {
                 .map(|i| gl.get_parameter_indexed_string(glow::EXTENSIONS, i))
                 .collect();
             extensions.sort();
+            let extra = Extra::load(proc, &|v, e| at(version, &extensions, v, e));
             let push = gl.create_buffer()?;
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
             gl.buffer_data_size(glow::UNIFORM_BUFFER, 256, glow::DYNAMIC_DRAW);
@@ -113,18 +120,14 @@ impl Device {
     }
 
     fn at(&self, version: u32, extension: &str) -> bool {
-        self.version >= version
-            || self
-                .extensions
-                .binary_search_by(|e| e.as_str().cmp(extension))
-                .is_ok()
+        at(self.version, &self.extensions, version, extension)
     }
 
     pub fn caps(&self) -> Caps {
         let gl = &self.gl;
         let alignment = |p| unsafe { gl.get_parameter_i32(p) as u32 };
         let storage = self.at(43, "GL_ARB_shader_storage_buffer_object");
-        let results = self.extra.results.is_some();
+        let results = self.at(44, "GL_ARB_query_buffer_object");
         Caps {
             push: 256,
             queues: 1,
@@ -142,7 +145,7 @@ impl Device {
                 || self.at(99, "GL_EXT_texture_filter_anisotropic"),
             depth_clamp: true,
             line_fill: true,
-            multi_draw: self.extra.multi.is_some(),
+            multi_draw: self.at(43, "GL_ARB_multi_draw_indirect"),
             slots: true,
             storage,
             persistent: self.at(44, "GL_ARB_buffer_storage"),
@@ -153,7 +156,7 @@ impl Device {
                 alignment(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
             },
             compute: self.at(43, "GL_ARB_compute_shader"),
-            texture_views: self.extra.view.is_some(),
+            texture_views: self.at(43, "GL_ARB_texture_view"),
             occlusion: results,
             cache: self.binaries(),
             bias_clamp: self.at(46, "GL_ARB_polygon_offset_clamp"),

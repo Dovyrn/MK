@@ -25,27 +25,48 @@ pub struct Extra {
 }
 
 impl Extra {
-    pub fn load(proc: &dyn Fn(&str) -> *const c_void) -> Self {
-        let get = |name| {
+    pub fn load(proc: &dyn Fn(&str) -> *const c_void, at: &dyn Fn(u32, &str) -> bool) -> Self {
+        let get = |name, version, extension| {
             let p = proc(name);
-            (!p.is_null()).then_some(p)
+            (at(version, extension) && !p.is_null()).then_some(p)
         };
+        let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         unsafe {
             Self {
-                view: get("glTextureView").map(|p| std::mem::transmute::<_, View>(p)),
-                multi: get("glMultiDrawArraysIndirect").map(|p| std::mem::transmute::<_, Multi>(p)),
-                multi_indexed: get("glMultiDrawElementsIndirect")
-                    .map(|p| std::mem::transmute::<_, MultiIndexed>(p)),
-                resource: get("glGetProgramResourceIndex")
-                    .map(|p| std::mem::transmute::<_, Resource>(p)),
-                reset: get("glGetGraphicsResetStatus").map(|p| std::mem::transmute::<_, Reset>(p)),
-                results: get("glGetQueryBufferObjectui64v")
-                    .map(|p| std::mem::transmute::<_, Results>(p)),
-                clear: get("glClearBufferSubData").map(|p| std::mem::transmute::<_, Clear>(p)),
-                mesh: get("glDrawMeshTasksEXT").map(|p| std::mem::transmute::<_, Mesh>(p)),
-                mesh_indirect: get("glDrawMeshTasksIndirectEXT")
+                view: get("glTextureView", 43, "GL_ARB_texture_view")
+                    .map(|p| std::mem::transmute::<_, View>(p)),
+                multi: get(
+                    "glMultiDrawArraysIndirect",
+                    43,
+                    "GL_ARB_multi_draw_indirect",
+                )
+                .map(|p| std::mem::transmute::<_, Multi>(p)),
+                multi_indexed: get(
+                    "glMultiDrawElementsIndirect",
+                    43,
+                    "GL_ARB_multi_draw_indirect",
+                )
+                .map(|p| std::mem::transmute::<_, MultiIndexed>(p)),
+                resource: get(
+                    "glGetProgramResourceIndex",
+                    43,
+                    "GL_ARB_program_interface_query",
+                )
+                .map(|p| std::mem::transmute::<_, Resource>(p)),
+                reset: get("glGetGraphicsResetStatus", 45, "GL_KHR_robustness")
+                    .map(|p| std::mem::transmute::<_, Reset>(p)),
+                results: get(
+                    "glGetQueryBufferObjectui64v",
+                    44,
+                    "GL_ARB_query_buffer_object",
+                )
+                .map(|p| std::mem::transmute::<_, Results>(p)),
+                clear: get("glClearBufferSubData", 43, "GL_ARB_clear_buffer_object")
+                    .map(|p| std::mem::transmute::<_, Clear>(p)),
+                mesh: mesh("glDrawMeshTasksEXT").map(|p| std::mem::transmute::<_, Mesh>(p)),
+                mesh_indirect: mesh("glDrawMeshTasksIndirectEXT")
                     .map(|p| std::mem::transmute::<_, MeshIndirect>(p)),
-                mesh_multi: get("glMultiDrawMeshTasksIndirectEXT")
+                mesh_multi: mesh("glMultiDrawMeshTasksIndirectEXT")
                     .map(|p| std::mem::transmute::<_, MeshMulti>(p)),
             }
         }
