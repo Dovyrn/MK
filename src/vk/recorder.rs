@@ -1139,7 +1139,8 @@ impl Recorder<'_> {
                 }
                 Command::BeginLabel { text } => {
                     let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
-                    let name = CString::new(text).expect("label contains a nul byte");
+                    let text = text.split('\0').next().unwrap_or_default();
+                    let name = CString::new(text).unwrap();
                     let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
                     debug.cmd_begin_debug_utils_label(b, &label);
                 }
