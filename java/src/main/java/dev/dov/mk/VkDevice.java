@@ -13,25 +13,19 @@ public class VkDevice extends Device {
     }
 
     public long address(int buffer) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nAddress(handle, buffer);
-        }
+        return nAddress(handle, buffer);
     }
 
     private static native long nAddress(long device, int buffer);
 
     public int createHeap(long size, int memory) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateHeap(handle, size, memory);
-        }
+        return nCreateHeap(handle, size, memory);
     }
 
     private static native int nCreateHeap(long device, long size, int memory);
 
     public void destroyHeap(int heap) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyHeap(handle, heap);
-        }
+        nDestroyHeap(handle, heap);
     }
 
     private static native void nDestroyHeap(long device, int heap);
@@ -61,9 +55,7 @@ public class VkDevice extends Device {
     private static native void nTextureSize(long device, long info, int infoLength, long out);
 
     public int createPlacedBuffer(int heap, long offset, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreatePlacedBuffer(handle, heap, offset, size);
-        }
+        return nCreatePlacedBuffer(handle, heap, offset, size);
     }
 
     private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
@@ -81,25 +73,19 @@ public class VkDevice extends Device {
     private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
     public long textureHandle(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nTextureHandle(handle, texture);
-        }
+        return nTextureHandle(handle, texture);
     }
 
     private static native long nTextureHandle(long device, int texture);
 
     public long imageHandle(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImageHandle(handle, texture);
-        }
+        return nImageHandle(handle, texture);
     }
 
     private static native long nImageHandle(long device, int texture);
 
     public long samplerHandle(int sampler) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nSamplerHandle(handle, sampler);
-        }
+        return nSamplerHandle(handle, sampler);
     }
 
     private static native long nSamplerHandle(long device, int sampler);
@@ -117,9 +103,7 @@ public class VkDevice extends Device {
     private static native int nCreateAccel(long device, long info, int infoLength);
 
     public void destroyAccel(int accel) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyAccel(handle, accel);
-        }
+        nDestroyAccel(handle, accel);
     }
 
     private static native void nDestroyAccel(long device, int accel);
@@ -135,9 +119,7 @@ public class VkDevice extends Device {
     private static native void nAccelScratch(long device, int accel, long out);
 
     public long accelHandle(int accel) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nAccelHandle(handle, accel);
-        }
+        return nAccelHandle(handle, accel);
     }
 
     private static native long nAccelHandle(long device, int accel);
@@ -164,9 +146,7 @@ public class VkDevice extends Device {
     private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
     public int importBuffer(long raw) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportBuffer(handle, raw);
-        }
+        return nImportBuffer(handle, raw);
     }
 
     private static native int nImportBuffer(long device, long raw);
@@ -184,17 +164,13 @@ public class VkDevice extends Device {
     private static native int nImportTexture(long device, long image, long info, int infoLength);
 
     public int importEvent(long raw) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportEvent(handle, raw);
-        }
+        return nImportEvent(handle, raw);
     }
 
     private static native int nImportEvent(long device, long raw);
 
     public long rawBuffer(int buffer) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawBuffer(handle, buffer);
-        }
+        return nRawBuffer(handle, buffer);
     }
 
     private static native long nRawBuffer(long device, int buffer);
@@ -210,41 +186,31 @@ public class VkDevice extends Device {
     private static native void nRawTexture(long device, int texture, long out);
 
     public long rawEvent(int event) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawEvent(handle, event);
-        }
+        return nRawEvent(handle, event);
     }
 
     private static native long nRawEvent(long device, int event);
 
     public long rawQueue(int queue) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawQueue(handle, queue);
-        }
+        return nRawQueue(handle, queue);
     }
 
     private static native long nRawQueue(long device, int queue);
 
     public int createCompacted(int accel, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateCompacted(handle, accel, size);
-        }
+        return nCreateCompacted(handle, accel, size);
     }
 
     private static native int nCreateCompacted(long device, int accel, long size);
 
     public int createHostBuffer(long pointer, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateHostBuffer(handle, pointer, size);
-        }
+        return nCreateHostBuffer(handle, pointer, size);
     }
 
     private static native int nCreateHostBuffer(long device, long pointer, long size);
 
     public long sparsePage() {
-        try (var stack = MemoryStack.stackPush()) {
-            return nSparsePage(handle);
-        }
+        return nSparsePage(handle);
     }
 
     private static native long nSparsePage(long device);
@@ -264,9 +230,7 @@ public class VkDevice extends Device {
     private static native void nSparseTile(long device, long info, int infoLength, long out);
 
     public int createSparseBuffer(long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateSparseBuffer(handle, size);
-        }
+        return nCreateSparseBuffer(handle, size);
     }
 
     private static native int nCreateSparseBuffer(long device, long size);
@@ -352,17 +316,13 @@ public class VkDevice extends Device {
     private static native int nCreateCommandsLayout(long device, long info, int infoLength);
 
     public void destroyCommandsLayout(int layout) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyCommandsLayout(handle, layout);
-        }
+        nDestroyCommandsLayout(handle, layout);
     }
 
     private static native void nDestroyCommandsLayout(long device, int layout);
 
     public long generatedSize(int layout, int pipeline, int sequences, int draws) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nGeneratedSize(handle, layout, pipeline, sequences, draws);
-        }
+        return nGeneratedSize(handle, layout, pipeline, sequences, draws);
     }
 
     private static native long nGeneratedSize(long device, int layout, int pipeline, int sequences, int draws);
@@ -380,41 +340,31 @@ public class VkDevice extends Device {
     private static native int nCreateRayPipeline(long device, long info, int infoLength);
 
     public void destroyRayPipeline(int pipeline) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyRayPipeline(handle, pipeline);
-        }
+        nDestroyRayPipeline(handle, pipeline);
     }
 
     private static native void nDestroyRayPipeline(long device, int pipeline);
 
     public byte[] rayHandles(int pipeline) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRayHandles(handle, pipeline);
-        }
+        return nRayHandles(handle, pipeline);
     }
 
     private static native byte[] nRayHandles(long device, int pipeline);
 
     public int createSharedHeap(long size, int memory) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateSharedHeap(handle, size, memory);
-        }
+        return nCreateSharedHeap(handle, size, memory);
     }
 
     private static native int nCreateSharedHeap(long device, long size, int memory);
 
     public int exportHeap(int heap) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nExportHeap(handle, heap);
-        }
+        return nExportHeap(handle, heap);
     }
 
     private static native int nExportHeap(long device, int heap);
 
     public int importHeap(int fd, long size, int memory) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportHeap(handle, fd, size, memory);
-        }
+        return nImportHeap(handle, fd, size, memory);
     }
 
     private static native int nImportHeap(long device, int fd, long size, int memory);

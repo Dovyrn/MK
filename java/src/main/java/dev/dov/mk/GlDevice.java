@@ -13,17 +13,13 @@ public class GlDevice extends Device {
     }
 
     public static GlDevice adoptRaw(long proc) {
-        try (var stack = MemoryStack.stackPush()) {
-            return new GlDevice(nAdoptRaw(proc));
-        }
+        return new GlDevice(nAdoptRaw(proc));
     }
 
     private static native long nAdoptRaw(long proc);
 
     public int importBuffer(int raw, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportBuffer(handle, raw, size);
-        }
+        return nImportBuffer(handle, raw, size);
     }
 
     private static native int nImportBuffer(long device, int raw, long size);
@@ -41,17 +37,13 @@ public class GlDevice extends Device {
     private static native int nImportTexture(long device, int raw, long info, int infoLength);
 
     public int rawBuffer(int buffer) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawBuffer(handle, buffer);
-        }
+        return nRawBuffer(handle, buffer);
     }
 
     private static native int nRawBuffer(long device, int buffer);
 
     public int rawTexture(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawTexture(handle, texture);
-        }
+        return nRawTexture(handle, texture);
     }
 
     private static native int nRawTexture(long device, int texture);

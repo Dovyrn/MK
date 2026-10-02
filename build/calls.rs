@@ -268,6 +268,21 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     s
 }
 
+fn plain(body: &str, fenced: bool) -> String {
+    if fenced {
+        return body.replacen("try (var stack = MemoryStack.stackPush()) {", "try {", 1);
+    }
+    let lines: Vec<&str> = body.lines().collect();
+    let inner = &lines[1..lines.len() - 2];
+    let mut s: String = inner
+        .iter()
+        .map(|l| format!("{}\n", l.strip_prefix("    ").unwrap_or(l)))
+        .collect();
+    s += lines[lines.len() - 1];
+    s += "\n";
+    s
+}
+
 pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     let name = class(backend);
     let mut s =
@@ -329,6 +344,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
+        let start = s.len();
         s += "        try (var stack = MemoryStack.stackPush()) {\n";
         let mut args = Vec::new();
         if !statics(call) {
@@ -450,6 +466,10 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 fenced.join("\n")
             )
             .unwrap();
+        }
+        if !s[start..].contains("stack.") {
+            let body = s.split_off(start);
+            s += &plain(&body, !fenced.is_empty());
         }
         let mut natives_params = Vec::new();
         if !statics(call) {

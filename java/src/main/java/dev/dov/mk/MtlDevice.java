@@ -13,25 +13,19 @@ public class MtlDevice extends Device {
     }
 
     public long address(int buffer) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nAddress(handle, buffer);
-        }
+        return nAddress(handle, buffer);
     }
 
     private static native long nAddress(long device, int buffer);
 
     public int createHeap(long size, int memory) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateHeap(handle, size, memory);
-        }
+        return nCreateHeap(handle, size, memory);
     }
 
     private static native int nCreateHeap(long device, long size, int memory);
 
     public void destroyHeap(int heap) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyHeap(handle, heap);
-        }
+        nDestroyHeap(handle, heap);
     }
 
     private static native void nDestroyHeap(long device, int heap);
@@ -61,9 +55,7 @@ public class MtlDevice extends Device {
     private static native void nTextureSize(long device, long info, int infoLength, long out);
 
     public int createPlacedBuffer(int heap, long offset, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreatePlacedBuffer(handle, heap, offset, size);
-        }
+        return nCreatePlacedBuffer(handle, heap, offset, size);
     }
 
     private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
@@ -81,25 +73,19 @@ public class MtlDevice extends Device {
     private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
     public long textureHandle(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nTextureHandle(handle, texture);
-        }
+        return nTextureHandle(handle, texture);
     }
 
     private static native long nTextureHandle(long device, int texture);
 
     public long imageHandle(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImageHandle(handle, texture);
-        }
+        return nImageHandle(handle, texture);
     }
 
     private static native long nImageHandle(long device, int texture);
 
     public long samplerHandle(int sampler) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nSamplerHandle(handle, sampler);
-        }
+        return nSamplerHandle(handle, sampler);
     }
 
     private static native long nSamplerHandle(long device, int sampler);
@@ -117,9 +103,7 @@ public class MtlDevice extends Device {
     private static native int nCreateAccel(long device, long info, int infoLength);
 
     public void destroyAccel(int accel) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyAccel(handle, accel);
-        }
+        nDestroyAccel(handle, accel);
     }
 
     private static native void nDestroyAccel(long device, int accel);
@@ -135,9 +119,7 @@ public class MtlDevice extends Device {
     private static native void nAccelScratch(long device, int accel, long out);
 
     public long accelHandle(int accel) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nAccelHandle(handle, accel);
-        }
+        return nAccelHandle(handle, accel);
     }
 
     private static native long nAccelHandle(long device, int accel);
@@ -156,65 +138,49 @@ public class MtlDevice extends Device {
     private static native void nWriteInstance(long device, long out, long outLength, int accel, long transform, int id, int mask, int flags);
 
     public static MtlDevice adoptRaw(long device, int queues) {
-        try (var stack = MemoryStack.stackPush()) {
-            return new MtlDevice(nAdoptRaw(device, queues));
-        }
+        return new MtlDevice(nAdoptRaw(device, queues));
     }
 
     private static native long nAdoptRaw(long device, int queues);
 
     public int importBuffer(long raw) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportBuffer(handle, raw);
-        }
+        return nImportBuffer(handle, raw);
     }
 
     private static native int nImportBuffer(long device, long raw);
 
     public int importTexture(long raw, int format) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportTexture(handle, raw, format);
-        }
+        return nImportTexture(handle, raw, format);
     }
 
     private static native int nImportTexture(long device, long raw, int format);
 
     public int importEvent(long raw) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nImportEvent(handle, raw);
-        }
+        return nImportEvent(handle, raw);
     }
 
     private static native int nImportEvent(long device, long raw);
 
     public long rawBuffer(int buffer) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawBuffer(handle, buffer);
-        }
+        return nRawBuffer(handle, buffer);
     }
 
     private static native long nRawBuffer(long device, int buffer);
 
     public long rawTexture(int texture) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawTexture(handle, texture);
-        }
+        return nRawTexture(handle, texture);
     }
 
     private static native long nRawTexture(long device, int texture);
 
     public long rawEvent(int event) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawEvent(handle, event);
-        }
+        return nRawEvent(handle, event);
     }
 
     private static native long nRawEvent(long device, int event);
 
     public long rawQueue(int queue) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nRawQueue(handle, queue);
-        }
+        return nRawQueue(handle, queue);
     }
 
     private static native long nRawQueue(long device, int queue);
@@ -234,25 +200,19 @@ public class MtlDevice extends Device {
     private static native int nCreateTilePipeline(long device, long code, long codeLength, long entry, int entryLength, long colors, int colorsLength, int samples);
 
     public int createCompacted(int accel, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateCompacted(handle, accel, size);
-        }
+        return nCreateCompacted(handle, accel, size);
     }
 
     private static native int nCreateCompacted(long device, int accel, long size);
 
     public int createHostBuffer(long pointer, long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateHostBuffer(handle, pointer, size);
-        }
+        return nCreateHostBuffer(handle, pointer, size);
     }
 
     private static native int nCreateHostBuffer(long device, long pointer, long size);
 
     public long sparsePage() {
-        try (var stack = MemoryStack.stackPush()) {
-            return nSparsePage(handle);
-        }
+        return nSparsePage(handle);
     }
 
     private static native long nSparsePage(long device);
@@ -272,9 +232,7 @@ public class MtlDevice extends Device {
     private static native void nSparseTile(long device, long info, int infoLength, long out);
 
     public int createSparseBuffer(long size) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nCreateSparseBuffer(handle, size);
-        }
+        return nCreateSparseBuffer(handle, size);
     }
 
     private static native int nCreateSparseBuffer(long device, long size);
@@ -369,17 +327,13 @@ public class MtlDevice extends Device {
     private static native int nCreateFunctionTable(long device, int pipeline, long functions, int functionsLength, boolean intersection);
 
     public void destroyFunctionTable(int table) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyFunctionTable(handle, table);
-        }
+        nDestroyFunctionTable(handle, table);
     }
 
     private static native void nDestroyFunctionTable(long device, int table);
 
     public long functionTableHandle(int table) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nFunctionTableHandle(handle, table);
-        }
+        return nFunctionTableHandle(handle, table);
     }
 
     private static native long nFunctionTableHandle(long device, int table);
@@ -397,17 +351,13 @@ public class MtlDevice extends Device {
     private static native int nCreateIndirect(long device, long info, int infoLength);
 
     public void destroyIndirect(int indirect) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyIndirect(handle, indirect);
-        }
+        nDestroyIndirect(handle, indirect);
     }
 
     private static native void nDestroyIndirect(long device, int indirect);
 
     public long indirectHandle(int indirect) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nIndirectHandle(handle, indirect);
-        }
+        return nIndirectHandle(handle, indirect);
     }
 
     private static native long nIndirectHandle(long device, int indirect);
@@ -431,9 +381,7 @@ public class MtlDevice extends Device {
     private static native void nRateMapSize(long device, int map, long out);
 
     public void destroyRateMap(int map) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyRateMap(handle, map);
-        }
+        nDestroyRateMap(handle, map);
     }
 
     private static native void nDestroyRateMap(long device, int map);
