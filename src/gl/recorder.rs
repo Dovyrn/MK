@@ -1,5 +1,5 @@
 use crate::command;
-use crate::gl::device::compare;
+use crate::gl::device::{PUSH, compare};
 use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
@@ -73,12 +73,12 @@ pub struct Recorder<'a> {
     render: Option<&'a Pipeline>,
     colors: Vec<Color>,
     depth: Option<Depth>,
-    data: [u8; 256],
+    data: [u8; PUSH],
     size: usize,
     dirty: bool,
     textures: [Option<u32>; slot::TEXTURES as usize],
     samplers: [Option<u32>; slot::SAMPLERS as usize],
-    vertices: [Option<(u32, u64)>; 16],
+    vertices: [Option<(u32, u64)>; slot::VERTICES as usize],
     index: Option<(u32, u64, u32)>,
     mode: u32,
     state: Option<DepthInfo>,
@@ -229,12 +229,12 @@ impl<'a> Recorder<'a> {
             render: None,
             colors: Vec::new(),
             depth: None,
-            data: [0; 256],
+            data: [0; PUSH],
             size: 0,
             dirty: false,
             textures: [None; slot::TEXTURES as usize],
             samplers: [None; slot::SAMPLERS as usize],
-            vertices: [None; 16],
+            vertices: [None; slot::VERTICES as usize],
             index: None,
             mode: glow::TRIANGLES,
             state: None,
@@ -899,7 +899,7 @@ impl<'a> Recorder<'a> {
                     } else {
                         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo));
                         gl.read_buffer(glow::NONE);
-                        for i in 0..8 {
+                        for i in 0..slot::COLORS {
                             gl.framebuffer_texture_2d(
                                 target,
                                 glow::COLOR_ATTACHMENT0 + i,

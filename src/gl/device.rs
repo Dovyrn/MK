@@ -39,6 +39,8 @@ pub struct Device {
     samples: [i32; 4],
 }
 
+pub const PUSH: usize = 256;
+
 const TASK_SHADER: u32 = 0x955A;
 
 const MESH_SHADER: u32 = 0x9559;
@@ -117,7 +119,7 @@ impl Device {
             let storage = has(43, "GL_ARB_shader_storage_buffer_object");
             let results = has(44, "GL_ARB_query_buffer_object");
             let caps = Caps {
-                push: 256,
+                push: PUSH as u32,
                 queues: 1,
                 tick: 1.0,
                 timestamps: results,
@@ -180,7 +182,7 @@ impl Device {
             let push = gl.create_buffer()?;
             let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
-            gl.buffer_data_size(glow::UNIFORM_BUFFER, 256, glow::DYNAMIC_DRAW);
+            gl.buffer_data_size(glow::UNIFORM_BUFFER, PUSH as i32, glow::DYNAMIC_DRAW);
             gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;

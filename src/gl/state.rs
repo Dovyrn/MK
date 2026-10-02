@@ -3,8 +3,6 @@ use crate::{Caps, register, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
 
-const DRAWS: u32 = 8;
-
 const TARGETS: [u32; 9] = [
     glow::TEXTURE_1D,
     glow::TEXTURE_2D,
@@ -268,10 +266,10 @@ impl State {
             }
             let pixels = pixels.into_iter().map(|p| (p, int(p))).collect();
             let enables = ENABLES.iter().map(|&e| (e, gl.is_enabled(e))).collect();
-            let blends = (0..DRAWS)
+            let blends = (0..slot::COLORS)
                 .map(|i| (extra.enabled)(glow::BLEND, i) != 0)
                 .collect();
-            let masks = (0..DRAWS)
+            let masks = (0..slot::COLORS)
                 .map(|i| {
                     let mut m = [0u8; 4];
                     (extra.booleans)(glow::COLOR_WRITEMASK, i, m.as_mut_ptr());
@@ -279,7 +277,7 @@ impl State {
                 })
                 .collect();
             let funcs = if caps.blends {
-                (0..DRAWS)
+                (0..slot::COLORS)
                     .map(|i| BLEND.map(|p| indexed(p, i)[0]))
                     .collect()
             } else {
