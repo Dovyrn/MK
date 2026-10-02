@@ -163,7 +163,9 @@ pub fn command(ops: &[Op]) -> String {
         for f in &op.fields {
             let value = match f.kind.as_str() {
                 "u8" => format!("p[{at}]"),
-                "str" => format!("str::from_utf8(&p[{at}..]).map_err(|_| NAMES[{i}])?"),
+                "str" => format!(
+                    "str::from_utf8(&p[{at}..])\n                    .map_err(|_| NAMES[{i}])?\n                    .split('\\0')\n                    .next()\n                    .unwrap()"
+                ),
                 k if tailing(k) => format!("&p[{at}..]"),
                 k => format!(
                     "{k}::from_le_bytes(p[{at}..{}].try_into().unwrap())",

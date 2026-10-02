@@ -1126,7 +1126,7 @@ impl<'a> Recorder<'a> {
                 self.render().setDepthTestMinBound_maxBound(min, max)
             }
             Command::BeginLabel { text } => {
-                let text = NSString::from_str(text.split('\0').next().unwrap_or_default());
+                let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {
                     (Some(e), _) => e.pushDebugGroup(&text),
                     (_, Some(e)) => e.pushDebugGroup(&text),
