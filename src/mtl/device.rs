@@ -1,3 +1,4 @@
+use crate::caps;
 use crate::check::Check;
 use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
@@ -443,11 +444,7 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        assert!(
-            memory != memory::TRANSIENT,
-            "transient memory is for textures"
-        );
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory)?;
         let buffer = self
             .raw
             .newBufferWithLength_options(size as usize, options(memory))
@@ -459,7 +456,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::UPLOAD)?;
         let buffer = unsafe {
             self.raw
                 .newBufferWithBytesNoCopy_length_options_deallocator(
@@ -525,7 +522,6 @@ impl Device {
     }
 
     pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
-        self.caps().texture(info)?;
         let [bytes, _, _] = format::block(info.format);
         let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
         let values = [
@@ -592,7 +588,7 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::DEVICE)?;
         self.sparse_check()?;
         let buffer = unsafe {
             self.raw
@@ -769,7 +765,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::DEVICE)?;
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
@@ -1192,13 +1188,6 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        assert!(
-            info.memory != memory::TRANSIENT || info.usage & !(usage::COLOR | usage::DEPTH) == 0,
-            "transient textures are attachments only"
-        );
-        if info.memory == memory::TRANSIENT && !self.caps().memoryless {
-            return Err("memoryless storage is not supported".into());
-        }
         self.supports(info)?;
         let desc = texture_desc(info);
         let raw = self
@@ -1256,35 +1245,15 @@ impl Device {
     }
 
     fn supports(&self, info: &TextureInfo) -> Result<(), String> {
-        self.caps().texture(info)?;
-        let usage = self.format_usage(info.format);
-        if usage == 0 {
-            return Err(format!("format {} is not supported", info.format));
-        }
-        if info.usage & !usage != 0 {
-            return Err(format!(
-                "format {} does not support usage {:#x}",
-                info.format,
-                info.usage & !usage
-            ));
-        }
-        if self.format_samples(info.format, info.usage) & info.samples == 0 {
-            return Err(format!(
-                "format {} does not support {} samples",
-                info.format, info.samples
-            ));
-        }
-        Ok(())
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        self.caps().texture(info, usable, counts)
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
-        let usage = self.format_usage(info.format);
-        if usage == 0 || info.usage & !usage != 0 {
-            return Err(format!(
-                "format {} does not support usage {:#x}",
-                info.format, info.usage
-            ));
-        }
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        caps::supports(info.format, info.usage, 1, usable, counts)?;
         let parent = self.res.textures.get(texture);
         if format::block(parent.format) != format::block(info.format)
             || parent.format != info.format

@@ -1,3 +1,4 @@
+use crate::caps;
 use crate::check::Check;
 use crate::gl::buffer::Buffer;
 use crate::gl::cache::Cache;
@@ -197,14 +198,13 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory)?;
         let persistent = self.extra.storage.is_some();
         let gl = &self.gl;
         let (flags, usage) = match memory {
             memory::DEVICE => (0, glow::STATIC_DRAW),
             memory::UPLOAD => (glow::MAP_WRITE_BIT, glow::STREAM_DRAW),
             memory::READBACK => (glow::MAP_READ_BIT, glow::STREAM_READ),
-            memory::TRANSIENT => panic!("transient memory is for textures"),
             m => panic!("unknown memory {m}"),
         };
         let length =
@@ -445,31 +445,9 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        self.caps().texture(info)?;
-        if info.memory == memory::TRANSIENT {
-            assert!(
-                info.usage & !(usage::COLOR | usage::DEPTH) == 0,
-                "transient textures are attachments only"
-            );
-            return Err("memoryless storage is not supported".into());
-        }
-        let supported = self.format_usage(info.format);
-        if supported == 0 {
-            return Err(format!("format {} is not supported on GL", info.format));
-        }
-        if info.usage & !supported != 0 {
-            return Err(format!(
-                "usage {:#x} is not supported for format {}",
-                info.usage & !supported,
-                info.format
-            ));
-        }
-        if self.format_samples(info.format, info.usage) & info.samples == 0 {
-            return Err(format!(
-                "format {} does not support {} samples",
-                info.format, info.samples
-            ));
-        }
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        self.caps().texture(info, usable, counts)?;
         let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
         let gl = &self.gl;
@@ -700,13 +678,9 @@ impl Device {
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
         let view = self.extra.view.ok_or("texture views need GL 4.3")?;
         let parent = self.res.textures.get(texture);
-        let supported = self.format_usage(info.format);
-        if supported & usage::VIEW == 0 || info.usage & !supported != 0 {
-            return Err(format!(
-                "usage {:#x} is not supported for a view of format {}",
-                info.usage, info.format
-            ));
-        }
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        caps::supports(info.format, info.usage | usage::VIEW, 1, usable, counts)?;
         let [internal, _, _] = format::gl(info.format);
         let multisample = matches!(
             parent.target,

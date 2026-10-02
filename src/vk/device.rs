@@ -1,3 +1,4 @@
+use crate::caps;
 use crate::check::Check;
 use crate::vk::accel::Accel;
 use crate::vk::bindings;
@@ -77,10 +78,6 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
 }
 
 fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
-    assert!(
-        info.memory != memory::TRANSIENT || info.usage & !(usage::COLOR | usage::DEPTH) == 0,
-        "transient textures are attachments only"
-    );
     let kind = match info.dimension {
         dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
         dimension::D3 => vk::ImageType::TYPE_3D,
@@ -477,11 +474,7 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        assert!(
-            memory != memory::TRANSIENT,
-            "transient memory is for textures"
-        );
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory)?;
         let buffer = self.allocate(size, memory, self.usage())?;
         Ok(self.insert_buffer(buffer, size))
     }
@@ -548,7 +541,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::UPLOAD)?;
         let host = self
             .ext
             .host
@@ -727,7 +720,7 @@ impl Device {
     }
 
     pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
-        self.caps().texture(info)?;
+        self.texture(info)?;
         if !self.caps().sparse_textures {
             return Err("sparse textures are not supported".into());
         }
@@ -747,7 +740,6 @@ impl Device {
                 "sparse residency is not supported for this dimension and sample count".into(),
             );
         }
-        self.supports(info.format, info.usage, info.samples)?;
         let create = image_info(info);
         let formats = unsafe {
             self.instance
@@ -768,7 +760,7 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::DEVICE)?;
         if !self.caps().sparse {
             return Err("sparse residency is not supported".into());
         }
@@ -997,7 +989,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
-        self.caps().buffer(size)?;
+        self.caps().buffer(size, memory::DEVICE)?;
         let h = self.res.heaps.get(heap);
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
@@ -1050,8 +1042,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
-        self.caps().texture(info)?;
-        self.supports(info.format, info.usage, info.samples)?;
+        self.texture(info)?;
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory, h.index);
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
@@ -1689,8 +1680,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        self.caps().texture(info)?;
-        self.supports(info.format, info.usage, info.samples)?;
+        self.texture(info)?;
         unsafe {
             let image = self
                 .raw
@@ -1783,27 +1773,16 @@ impl Device {
         .map_or(0, |p| p.sample_counts.as_raw())
     }
 
-    fn supports(&self, format: u32, usage: u32, samples: u32) -> Result<(), String> {
-        let supported = self.format_usage(format);
-        if supported == 0 {
-            return Err(format!("format {format} is not supported"));
-        }
-        let missing = usage & !supported;
-        if missing != 0 {
-            return Err(format!(
-                "format {format} does not support usage {missing:#x}"
-            ));
-        }
-        if self.format_samples(format, usage) & samples == 0 {
-            return Err(format!(
-                "format {format} does not support {samples} samples with usage {usage:#x}"
-            ));
-        }
-        Ok(())
+    fn texture(&self, info: &TextureInfo) -> Result<(), String> {
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        self.caps().texture(info, usable, counts)
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
-        self.supports(info.format, info.usage, 1)?;
+        let usable = self.format_usage(info.format);
+        let counts = self.format_samples(info.format, info.usage);
+        caps::supports(info.format, info.usage, 1, usable, counts)?;
         let t = self.res.textures.get(texture);
         let view = ViewInfo {
             base_mip: t.base_mip + info.base_mip,
