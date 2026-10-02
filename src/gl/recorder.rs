@@ -1144,9 +1144,15 @@ impl<'a> Recorder<'a> {
                         multi(offset as isize, count as i32, stride as i32);
                     }
                 }
-                Command::OcclusionHeap { .. } | Command::ResetQueries { .. } => {}
+                Command::OcclusionHeap { .. } => {}
+                Command::ResetQueries { heap, first, count } => {
+                    let q = res.queries.get(heap);
+                    for i in first..first + count {
+                        q.id(i);
+                    }
+                }
                 Command::WriteTimestamp { heap, index, .. } => {
-                    gl.query_counter(res.queries.get(heap).ids[index as usize], glow::TIMESTAMP);
+                    gl.query_counter(res.queries.get(heap).id(index), glow::TIMESTAMP);
                 }
                 Command::BeginQuery { heap, index } => {
                     let q = res.queries.get(heap);
@@ -1155,10 +1161,12 @@ impl<'a> Recorder<'a> {
                     } else {
                         glow::ANY_SAMPLES_PASSED
                     };
-                    gl.begin_query(target, q.ids[index as usize]);
+                    gl.begin_query(target, q.id(index));
                 }
-                Command::EndQuery { heap, .. } => {
-                    let target = if res.queries.get(heap).kind == query::PRECISE {
+                Command::EndQuery { heap, index } => {
+                    let q = res.queries.get(heap);
+                    q.id(index);
+                    let target = if q.kind == query::PRECISE {
                         glow::SAMPLES_PASSED
                     } else {
                         glow::ANY_SAMPLES_PASSED
@@ -1177,7 +1185,7 @@ impl<'a> Recorder<'a> {
                     let raw = res.buffers.get(buffer).raw;
                     gl.bind_buffer(QUERY_BUFFER, Some(raw));
                     for i in 0..count {
-                        let id = q.ids[(first + i) as usize];
+                        let id = q.id(first + i);
                         results(
                             id.0.get(),
                             raw.0.get(),
