@@ -1295,12 +1295,10 @@ impl Device {
     }
 
     pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
-        let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
-        let address = unsafe { self.raw.get_buffer_device_address(&info) };
-        self.insert_buffer(Buffer {
+        self.res.buffers.insert(Buffer {
             raw,
             memory: vk::DeviceMemory::null(),
-            address,
+            address: 0,
             data: std::ptr::null_mut(),
             own: false,
             device: false,
@@ -1351,7 +1349,7 @@ impl Device {
     }
 
     pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
-        if buffer >= self.bindless.buffers {
+        if buffer >= self.bindless.buffers || !self.res.buffers.get(buffer).own {
             return Err("the bindless heap has no slot for this buffer".into());
         }
         Ok((self.bindless.images + buffer) as u64)
