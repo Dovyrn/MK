@@ -32,7 +32,7 @@ pub struct Recorder<'a> {
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
-    pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
+    pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     views: u32,
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
@@ -64,10 +64,27 @@ fn stages(bits: u32) -> MTLStages {
     if bits & stage::INDIRECT != 0 {
         s |= stage::VERTEX | stage::TASK | stage::MESH | stage::COMPUTE;
     }
+    if bits & stage::RAY != 0 {
+        s |= stage::COMPUTE;
+    }
     if bits & (stage::DEPTH | stage::COLOR) != 0 {
         s |= stage::FRAGMENT;
     }
     MTLStages(s as usize)
+}
+
+fn order(
+    encoder: &ProtocolObject<dyn MTL4CommandEncoder>,
+    mask: MTLStages,
+    (from, to, options): (MTLStages, MTLStages, MTL4VisibilityOptions),
+) {
+    if from.is_empty() || to.is_empty() {
+        return;
+    }
+    if !(to & mask).is_empty() {
+        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(from, to & mask, options);
+    }
+    encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from, to, options);
 }
 
 fn render_stage(bits: u32) -> MTLRenderStages {
@@ -151,7 +168,7 @@ impl<'a> Recorder<'a> {
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
-            pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
+            pending: queue.pending,
             views: 0,
             compute_pipeline: None,
             render_pipeline: None,
@@ -174,62 +191,28 @@ impl<'a> Recorder<'a> {
         self.render.as_deref().expect("checked by Command::enter")
     }
 
-    fn encoder(&self) -> Option<(&ProtocolObject<dyn MTL4CommandEncoder>, MTLStages)> {
-        match (&self.compute, &self.render) {
-            (Some(c), _) => Some((ProtocolObject::from_ref(&**c), COMPUTE)),
-            (_, Some(r)) => Some((ProtocolObject::from_ref(&**r), RENDER)),
-            _ => None,
-        }
-    }
-
     fn opened(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
-        let (after, before, options) = self.pending;
-        let now = before & mask;
-        if !after.is_empty() && !now.is_empty() {
-            encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(after, now, options);
-        }
-        let rest = MTLStages(before.0 & !mask.0);
-        self.pending = if rest.is_empty() {
-            (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None)
-        } else {
-            (after, rest, options)
-        };
+        order(encoder, mask, self.pending);
+        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
     }
 
-    fn barrier(&mut self, queue: bool, src: (u32, u32), dst: (u32, u32)) {
-        let (from, to) = (stages(src.0), stages(dst.0));
-        let options = visibility(src.1, dst.1);
-        let Some((encoder, mask)) = self.encoder() else {
-            self.pending.0 |= from;
-            self.pending.1 |= to;
-            self.pending.2 |= options;
+    fn barrier(&mut self, src: (u32, u32), dst: (u32, u32)) {
+        let barrier = (stages(src.0), stages(dst.0), visibility(src.1, dst.1));
+        let Some(encoder) = &self.compute else {
+            self.pending.0 |= barrier.0;
+            self.pending.1 |= barrier.1;
+            self.pending.2 |= barrier.2;
             return;
         };
-        let inside = from & mask;
-        let outside = if queue {
-            MTLStages::All
-        } else {
-            MTLStages(from.0 & !mask.0)
-        };
-        let before = to & mask;
-        let later = MTLStages(to.0 & !mask.0);
-        if !before.is_empty() && !inside.is_empty() {
+        let (from, to, options) = barrier;
+        if !(from & COMPUTE).is_empty() && !(to & COMPUTE).is_empty() {
             encoder.barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
-                inside, before, options,
+                from & COMPUTE,
+                to & COMPUTE,
+                options,
             );
         }
-        if !before.is_empty() && !outside.is_empty() {
-            encoder
-                .barrierAfterQueueStages_beforeStages_visibilityOptions(outside, before, options);
-        }
-        if !later.is_empty() && !inside.is_empty() {
-            encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(inside, later, options);
-        }
-        if !later.is_empty() && !outside.is_empty() {
-            self.pending.0 |= outside;
-            self.pending.1 |= later;
-            self.pending.2 |= options;
-        }
+        order(ProtocolObject::from_ref(&**encoder), COMPUTE, barrier);
     }
 
     fn flush(&mut self) -> Result<(), &'static str> {
@@ -381,13 +364,13 @@ impl<'a> Recorder<'a> {
                 dst_stage,
                 dst_access,
                 ..
-            } => self.barrier(false, (src_stage, src_access), (dst_stage, dst_access)),
-            Command::QueueBarrier {
+            }
+            | Command::QueueBarrier {
                 src_stage,
                 src_access,
                 dst_stage,
                 dst_access,
-            } => self.barrier(true, (src_stage, src_access), (dst_stage, dst_access)),
+            } => self.barrier((src_stage, src_access), (dst_stage, dst_access)),
             Command::CopyBufferToTexture {
                 buffer,
                 offset,

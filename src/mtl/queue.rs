@@ -9,8 +9,8 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLSharedEvent,
+    MTL4CommandQueue, MTL4VisibilityOptions, MTLDevice, MTLEvent, MTLResidencySet,
+    MTLResidencySetDescriptor, MTLSharedEvent, MTLStages,
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
@@ -22,6 +22,7 @@ pub struct Queue {
     pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
+    pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     count: u64,
     free: Vec<Frame>,
@@ -55,6 +56,7 @@ impl Queue {
             buffer: device.newCommandBuffer().ok_or("no MTL4 command buffer")?,
             table,
             residency,
+            pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             event: device.newSharedEvent().ok_or("no shared event")?,
             count: 0,
             free: Vec::new(),
@@ -93,12 +95,14 @@ impl Queue {
         if let Some(e) = recorder.render.take() {
             e.endEncoding();
         }
+        let pending = recorder.pending;
         self.buffer.endCommandBuffer();
         if let Err(name) = result {
             frame.reset();
             self.free.push(frame);
             return Err(name.into());
         }
+        self.pending = pending;
         for &(event, value) in waits {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.waitForEvent_value(event, value);
