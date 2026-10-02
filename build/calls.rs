@@ -22,10 +22,10 @@ fn info(kind: &str) -> bool {
 }
 
 fn method(call: &Call) -> String {
-    if call.name == "new" {
-        "create".into()
-    } else {
-        camel(&call.name)
+    match call.name.as_str() {
+        "new" => "create".into(),
+        "wait" => "await".into(),
+        name => camel(name),
     }
 }
 

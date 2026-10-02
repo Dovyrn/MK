@@ -40,7 +40,7 @@ public class Smoke {
                 c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
                 c.endCompute();
                 device.submit(0, c, new long[0], new long[] {event, 1});
-                if (!device.wait(event, 1, 1000)) {
+                if (!device.await(event, 1, 1000)) {
                     throw new IllegalStateException("timeout");
                 }
             }

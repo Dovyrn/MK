@@ -234,7 +234,7 @@ public class Device implements AutoCloseable {
 
     private static native long nEventValue(long device, int event);
 
-    public boolean wait(int event, long value, long ms) {
+    public boolean await(int event, long value, long ms) {
         return nWait(handle, event, value, ms);
     }
 
