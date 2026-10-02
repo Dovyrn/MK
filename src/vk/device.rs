@@ -44,13 +44,12 @@ type Free = Box<dyn FnOnce(&mut Device)>;
 
 const FDS: &str = "VK_KHR_external_memory_fd is not enabled";
 
-unsafe fn chained<'a, T>(
+unsafe fn chained<'a, T: vk::TaggedStructure>(
     features: &'a vk::PhysicalDeviceFeatures2,
-    kind: vk::StructureType,
 ) -> Option<&'a T> {
     let mut next = features.p_next as *const vk::BaseInStructure;
     while let Some(s) = unsafe { next.as_ref() } {
-        if s.s_type == kind {
+        if s.s_type == T::STRUCTURE_TYPE {
             return Some(unsafe { &*(next as *const T) });
         }
         next = s.p_next;
@@ -132,34 +131,47 @@ impl Device {
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
         unsafe {
-            let name = c"vkCmdBeginDebugUtilsLabelEXT";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let debug = loaded.map(|_| debug_utils::Device::new(&instance, &raw));
-            let name = c"vkCmdDrawMeshTasksEXT";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let mesh = loaded.map(|_| mesh_shader::Device::new(&instance, &raw));
-            let name = c"vkCmdBuildAccelerationStructuresKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let ray = loaded.map(|_| acceleration_structure::Device::new(&instance, &raw));
-            let generated = Generated::load(&instance, &raw);
-            let name = c"vkCreateRayTracingPipelinesKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let rays = loaded.map(|_| ray_tracing_pipeline::Device::new(&instance, &raw));
-            let name = c"vkGetMemoryHostPointerPropertiesEXT";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let host = loaded.map(|_| external_memory_host::Device::new(&instance, &raw));
-            let name = c"vkCmdBeginConditionalRenderingEXT";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let conditional = loaded.map(|_| conditional_rendering::Device::new(&instance, &raw));
-            let name = c"vkGetMemoryFdKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let fds = loaded.map(|_| external_memory_fd::Device::new(&instance, &raw));
-            let name = c"vkCmdSetFragmentShadingRateKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let rates = loaded.map(|_| fragment_shading_rate::Device::new(&instance, &raw));
-            let name = c"vkCmdPushDescriptorSetKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let push = loaded.map(|_| push_descriptor::Device::new(&instance, &raw));
+            let has = |name: &std::ffi::CStr| {
+                (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr()).is_some()
+            };
+            let debug = has(c"vkCmdBeginDebugUtilsLabelEXT")
+                .then(|| debug_utils::Device::new(&instance, &raw));
+            let mesh = chained::<vk::PhysicalDeviceMeshShaderFeaturesEXT>(features)
+                .is_some_and(|f| f.mesh_shader != 0)
+                && has(c"vkCmdDrawMeshTasksEXT");
+            let mesh = mesh.then(|| mesh_shader::Device::new(&instance, &raw));
+            let ray = chained::<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>(features)
+                .is_some_and(|f| f.acceleration_structure != 0)
+                && has(c"vkCmdBuildAccelerationStructuresKHR");
+            let ray = ray.then(|| acceleration_structure::Device::new(&instance, &raw));
+            let generated = chained::<ffi::Features>(features).is_some_and(|f| f.generated != 0);
+            let generated = generated
+                .then(|| Generated::load(&instance, &raw))
+                .flatten();
+            let rays = chained::<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>(features)
+                .is_some_and(|f| f.ray_tracing_pipeline != 0)
+                && has(c"vkCreateRayTracingPipelinesKHR");
+            let rays = rays.then(|| ray_tracing_pipeline::Device::new(&instance, &raw));
+            let host = has(c"vkGetMemoryHostPointerPropertiesEXT")
+                .then(|| external_memory_host::Device::new(&instance, &raw));
+            let conditional =
+                chained::<vk::PhysicalDeviceConditionalRenderingFeaturesEXT>(features)
+                    .is_some_and(|f| f.conditional_rendering != 0)
+                    && has(c"vkCmdBeginConditionalRenderingEXT");
+            let conditional =
+                conditional.then(|| conditional_rendering::Device::new(&instance, &raw));
+            let fds =
+                has(c"vkGetMemoryFdKHR").then(|| external_memory_fd::Device::new(&instance, &raw));
+            let rates = chained::<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>(features)
+                .is_some_and(|f| f.pipeline_fragment_shading_rate != 0)
+                && has(c"vkCmdSetFragmentShadingRateKHR");
+            let rates = rates.then(|| fragment_shading_rate::Device::new(&instance, &raw));
+            let push = has(c"vkCmdPushDescriptorSetKHR")
+                .then(|| push_descriptor::Device::new(&instance, &raw));
+            let multiview = chained::<vk::PhysicalDeviceVulkan11Features>(features)
+                .is_some_and(|f| f.multiview != 0)
+                || chained::<vk::PhysicalDeviceMultiviewFeatures>(features)
+                    .is_some_and(|f| f.multiview != 0);
             let limits = instance.get_physical_device_properties(physical).limits;
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
@@ -169,10 +181,7 @@ impl Device {
                 vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
             instance.get_physical_device_properties2(physical, &mut properties);
             let slots = bindings::layout(&raw, push.is_some()).map_err(|e| e.to_string())?;
-            let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(
-                features,
-                vk::StructureType::PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-            );
+            let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
             let buffers =
                 v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
             let bindless = match Bindless::new(&raw, &properties12, buffers) {
@@ -229,6 +238,7 @@ impl Device {
                     conditional,
                     generated,
                     features: features.features,
+                    multiview,
                     push,
                 },
                 slots,
@@ -380,13 +390,17 @@ impl Device {
             host_alignment: host.min_imported_host_pointer_alignment as u32,
             sparse,
             instance: 64,
-            views: unsafe {
+            views: if self.ext.multiview {
                 let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
                 let mut properties =
                     vk::PhysicalDeviceProperties2::default().push_next(&mut multiview);
-                self.instance
-                    .get_physical_device_properties2(self.physical, &mut properties);
+                unsafe {
+                    self.instance
+                        .get_physical_device_properties2(self.physical, &mut properties)
+                };
                 multiview.max_multiview_view_count
+            } else {
+                1
             },
             memoryless: self.memory.memory_types[..self.memory.memory_type_count as usize]
                 .iter()
@@ -703,6 +717,22 @@ impl Device {
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         if !self.caps().sparse_textures {
             return Err("sparse textures are not supported".into());
+        }
+        let f = &self.ext.features;
+        let sparse = match (info.dimension, info.samples) {
+            (dimension::D1 | dimension::D1_ARRAY, _) => 0,
+            (dimension::D3, _) => f.sparse_residency_image3_d,
+            (_, 1) => f.sparse_residency_image2_d,
+            (_, 2) => f.sparse_residency2_samples,
+            (_, 4) => f.sparse_residency4_samples,
+            (_, 8) => f.sparse_residency8_samples,
+            (_, 16) => f.sparse_residency16_samples,
+            _ => 0,
+        };
+        if sparse == 0 {
+            return Err(
+                "sparse residency is not supported for this dimension and sample count".into(),
+            );
         }
         self.supports(info.format, info.usage)?;
         let create = image_info(info);

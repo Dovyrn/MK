@@ -17,5 +17,6 @@ pub struct Extensions {
     pub conditional: Option<conditional_rendering::Device>,
     pub generated: Option<Generated>,
     pub features: vk::PhysicalDeviceFeatures,
+    pub multiview: bool,
     pub push: Option<push_descriptor::Device>,
 }

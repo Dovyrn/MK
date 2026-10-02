@@ -1,12 +1,25 @@
 use ash::vk;
 use std::ffi::c_void;
 
+pub const FEATURES: vk::StructureType = vk::StructureType::from_raw(1000572000);
 pub const REQUIREMENTS: vk::StructureType = vk::StructureType::from_raw(1000572002);
 pub const GENERATED: vk::StructureType = vk::StructureType::from_raw(1000572004);
 pub const LAYOUT: vk::StructureType = vk::StructureType::from_raw(1000572006);
 pub const TOKEN: vk::StructureType = vk::StructureType::from_raw(1000572007);
 pub const PIPELINE: vk::StructureType = vk::StructureType::from_raw(1000572013);
 pub const PREPROCESS: u64 = 1 << 31;
+
+#[repr(C)]
+pub struct Features {
+    pub s_type: vk::StructureType,
+    pub next: *mut c_void,
+    pub generated: vk::Bool32,
+    pub dynamic: vk::Bool32,
+}
+
+unsafe impl vk::TaggedStructure for Features {
+    const STRUCTURE_TYPE: vk::StructureType = FEATURES;
+}
 
 #[repr(C)]
 pub struct Token {
