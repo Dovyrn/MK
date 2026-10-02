@@ -65,28 +65,7 @@ const RENDER: MTLStages = MTLStages(
 const NONE: u32 = !0;
 
 pub fn integer(f: u32) -> Option<bool> {
-    match f {
-        format::R8_UINT
-        | format::RG8_UINT
-        | format::RGBA8_UINT
-        | format::RGB10A2_UINT
-        | format::R16_UINT
-        | format::RG16_UINT
-        | format::RGBA16_UINT
-        | format::R32_UINT
-        | format::RG32_UINT
-        | format::RGBA32_UINT => Some(false),
-        format::R8_SINT
-        | format::RG8_SINT
-        | format::RGBA8_SINT
-        | format::R16_SINT
-        | format::RG16_SINT
-        | format::RGBA16_SINT
-        | format::R32_SINT
-        | format::RG32_SINT
-        | format::RGBA32_SINT => Some(true),
-        _ => None,
-    }
+    (format::uint(f) || format::sint(f)).then(|| format::sint(f))
 }
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;

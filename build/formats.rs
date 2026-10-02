@@ -51,7 +51,7 @@ pub fn rust(table: &toml::Table) -> String {
             .collect();
         writeln!(
             s,
-            "\n    #[cfg(any(feature = \"vk\", feature = \"gl\"))]\n    pub(crate) fn {kind}(format: u32) -> bool {{\n        matches!(format, {})\n    }}",
+            "\n    pub(crate) fn {kind}(format: u32) -> bool {{\n        matches!(format, {})\n    }}",
             ids.join(" | ")
         )
         .unwrap();
