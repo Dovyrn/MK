@@ -208,24 +208,24 @@ impl Device {
             families.sort();
             families.dedup();
             let flags = instance.get_physical_device_queue_family_properties(physical);
-            let queues = match queues
-                .iter()
-                .map(|&(f, i)| {
-                    let graphics = flags[f as usize]
-                        .queue_flags
-                        .contains(vk::QueueFlags::GRAPHICS);
-                    Queue::new(&raw, f, i, graphics)
-                })
-                .collect::<Result<Vec<_>, _>>()
-            {
-                Ok(q) => q,
-                Err(e) => {
-                    raw.destroy_pipeline_layout(layout, None);
-                    bindless.destroy(&raw);
-                    raw.destroy_descriptor_set_layout(slots, None);
-                    return Err(e);
+            let mut list = Vec::new();
+            for &(f, i) in queues {
+                let graphics = flags[f as usize]
+                    .queue_flags
+                    .contains(vk::QueueFlags::GRAPHICS);
+                match Queue::new(&raw, f, i, graphics) {
+                    Ok(q) => list.push(q),
+                    Err(e) => {
+                        for mut q in list {
+                            q.destroy(&raw);
+                        }
+                        raw.destroy_pipeline_layout(layout, None);
+                        bindless.destroy(&raw);
+                        raw.destroy_descriptor_set_layout(slots, None);
+                        return Err(e);
+                    }
                 }
-            };
+            }
             Ok(Self {
                 memory: instance.get_physical_device_memory_properties(physical),
                 families,
@@ -251,7 +251,7 @@ impl Device {
                 bindless,
                 layout,
                 res: Resources::default(),
-                queues,
+                queues: list,
                 garbage: Vec::new(),
             })
         }
@@ -569,13 +569,18 @@ impl Device {
                 .memory_type_index(index)
                 .push_next(&mut import)
                 .push_next(&mut flags);
-            let memory = self
-                .raw
-                .allocate_memory(&alloc, None)
-                .map_err(|e| e.to_string())?;
-            self.raw
-                .bind_buffer_memory(raw, memory, 0)
-                .map_err(|e| e.to_string())?;
+            let memory = match self.raw.allocate_memory(&alloc, None) {
+                Ok(m) => m,
+                Err(e) => {
+                    self.raw.destroy_buffer(raw, None);
+                    return Err(e.to_string());
+                }
+            };
+            if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
+                self.raw.destroy_buffer(raw, None);
+                self.raw.free_memory(memory, None);
+                return Err(e.to_string());
+            }
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
@@ -653,10 +658,16 @@ impl Device {
                 .property_flags
                 .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
             let data = if visible {
-                self.raw
+                match self
+                    .raw
                     .map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
-                    .map_err(|e| e.to_string())?
-                    .cast()
+                {
+                    Ok(p) => p.cast(),
+                    Err(e) => {
+                        self.raw.free_memory(memory, None);
+                        return Err(e.to_string());
+                    }
+                }
             } else {
                 std::ptr::null_mut()
             };
@@ -1214,9 +1225,12 @@ impl Device {
             .buffer(buffer.raw)
             .size(sizes.acceleration_structure_size)
             .ty(kind);
-        let raw = unsafe {
-            ray.create_acceleration_structure(&create, None)
-                .map_err(|e| e.to_string())?
+        let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
+            Ok(r) => r,
+            Err(e) => {
+                self.free_buffer(&buffer);
+                return Err(e.to_string());
+            }
         };
         let address = unsafe {
             ray.get_acceleration_structure_device_address(
@@ -1256,9 +1270,12 @@ impl Device {
             .buffer(buffer.raw)
             .size(size)
             .ty(kind);
-        let raw = unsafe {
-            ray.create_acceleration_structure(&create, None)
-                .map_err(|e| e.to_string())?
+        let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
+            Ok(r) => r,
+            Err(e) => {
+                self.free_buffer(&buffer);
+                return Err(e.to_string());
+            }
         };
         let address = unsafe {
             ray.get_acceleration_structure_device_address(
