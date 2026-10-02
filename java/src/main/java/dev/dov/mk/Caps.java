@@ -47,9 +47,12 @@ public class Caps {
     public boolean cache = false;
     public boolean biasClamp = false;
     public boolean blends = false;
+    public boolean indirect = false;
+    public boolean indirectIds = false;
+    public boolean indirectOffset = false;
 
     public int size() {
-        return 176;
+        return 188;
     }
 
     public long write(long p) {
@@ -140,6 +143,12 @@ public class Caps {
         memPutInt(p, biasClamp ? 1 : 0);
         p += 4;
         memPutInt(p, blends ? 1 : 0);
+        p += 4;
+        memPutInt(p, indirect ? 1 : 0);
+        p += 4;
+        memPutInt(p, indirectIds ? 1 : 0);
+        p += 4;
+        memPutInt(p, indirectOffset ? 1 : 0);
         p += 4;
         return p;
     }
@@ -233,6 +242,12 @@ public class Caps {
         r.biasClamp = memGetInt(p) != 0;
         p += 4;
         r.blends = memGetInt(p) != 0;
+        p += 4;
+        r.indirect = memGetInt(p) != 0;
+        p += 4;
+        r.indirectIds = memGetInt(p) != 0;
+        p += 4;
+        r.indirectOffset = memGetInt(p) != 0;
         p += 4;
         return r;
     }

@@ -215,6 +215,9 @@ fields = [
     ["cache", "bool", "false"],
     ["bias_clamp", "bool", "false"],
     ["blends", "bool", "false"],
+    ["indirect", "bool", "false"],
+    ["indirect_ids", "bool", "false"],
+    ["indirect_offset", "bool", "false"],
 ]
 
 [[info]]

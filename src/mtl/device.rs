@@ -425,6 +425,9 @@ impl Device {
             cache: true,
             bias_clamp: true,
             blends: true,
+            indirect: true,
+            indirect_ids: true,
+            indirect_offset: true,
         }
     }
 

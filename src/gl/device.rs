@@ -175,6 +175,9 @@ impl Device {
             cache: self.binaries(),
             bias_clamp: self.at(46, "GL_ARB_polygon_offset_clamp"),
             blends: self.at(40, "GL_ARB_draw_buffers_blend"),
+            indirect: self.at(42, "GL_ARB_draw_indirect") && self.at(42, "GL_ARB_base_instance"),
+            indirect_ids: false,
+            indirect_offset: false,
             mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }

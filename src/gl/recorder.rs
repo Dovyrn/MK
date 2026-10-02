@@ -399,57 +399,63 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn indirect(&self, indexed: bool, buffer: u32, offset: u64, count: u32, stride: u32) {
+    fn indirect(
+        &self,
+        indexed: bool,
+        buffer: u32,
+        offset: u64,
+        count: u32,
+        stride: u32,
+    ) -> Result<(), String> {
         let gl = self.gl;
         let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
-            return;
+            return Ok(());
         };
+        let draw = self
+            .extra
+            .indirect
+            .filter(|_| self.extra.elements_base.is_some())
+            .ok_or("indirect draws need GL 4.2 or GL_ARB_draw_indirect and GL_ARB_base_instance")?;
+        if p.program.base.is_some() {
+            return Err(
+                "indirect draws of a shader that reads SV_VertexID are not supported on GL".into(),
+            );
+        }
+        if indexed && self.index.is_some_and(|(_, offset, _)| offset != 0) {
+            return Err(
+                "indexed indirect draws need the index buffer bound at offset 0 on GL".into(),
+            );
+        }
         let size = if indexed { 20 } else { 16 };
         let stride = if stride == 0 { size } else { stride as u64 };
-        let shifted = indexed && self.index.is_some_and(|(_, offset, _)| offset != 0);
-        let emulate = self.extra.indirect.is_none() || p.program.base.is_some() || shifted;
-        let target = if emulate {
-            glow::COPY_READ_BUFFER
-        } else {
-            glow::DRAW_INDIRECT_BUFFER
-        };
+        let kind = self.index.map_or(0, |(_, _, k)| k);
+        let (n, step) = (count as i32, stride as i32);
         unsafe {
-            gl.bind_buffer(target, Some(self.res.buffers.get(buffer).raw));
+            gl.bind_buffer(
+                glow::DRAW_INDIRECT_BUFFER,
+                Some(self.res.buffers.get(buffer).raw),
+            );
             let pointer = offset as usize as *const std::ffi::c_void;
-            let kind = self.index.map_or(0, |(_, _, k)| k);
-            let (n, step) = (count as i32, stride as i32);
-            let single = emulate || count == 1;
             match (indexed, self.extra.multi_indexed, self.extra.multi) {
-                (true, Some(multi), _) if !single => {
-                    return multi(self.mode, kind, pointer, n, step);
+                (true, Some(multi), _) if count > 1 => {
+                    multi(self.mode, kind, pointer, n, step);
+                    return Ok(());
                 }
-                (false, _, Some(multi)) if !single => {
-                    return multi(self.mode, pointer, n, step);
+                (false, _, Some(multi)) if count > 1 => {
+                    multi(self.mode, pointer, n, step);
+                    return Ok(());
                 }
                 _ => {}
             }
             for i in 0..count as u64 {
-                let at = offset + i * stride;
-                if !emulate {
-                    let pointer = at as usize as *const std::ffi::c_void;
-                    match (indexed, self.extra.indirect, self.extra.indexed_indirect) {
-                        (true, _, Some(draw)) => {
-                            draw(self.mode, self.index.map_or(0, |(_, _, k)| k), pointer)
-                        }
-                        (false, Some(draw), _) => draw(self.mode, pointer),
-                        _ => {}
-                    }
-                    continue;
-                }
-                let mut args = [0u32; 5];
-                (self.extra.get)(target, at as isize, size as isize, args.as_mut_ptr().cast());
-                if indexed {
-                    self.direct(true, args[0], args[1], args[2], args[3] as i32, args[4]);
-                } else {
-                    self.direct(false, args[0], args[1], args[2], 0, args[3]);
+                let pointer = (offset + i * stride) as usize as *const std::ffi::c_void;
+                match (indexed, self.extra.indexed_indirect) {
+                    (true, Some(indexed)) => indexed(self.mode, kind, pointer),
+                    _ => draw(self.mode, pointer),
                 }
             }
         }
+        Ok(())
     }
 
     fn range(&self, target: u32, index: u32, buffer: u32, offset: u64, size: u64) {
@@ -1206,7 +1212,7 @@ impl<'a> Recorder<'a> {
                     stride,
                 } => {
                     if self.prepare(true) {
-                        self.indirect(false, buffer, offset, count, stride);
+                        self.indirect(false, buffer, offset, count, stride)?;
                     }
                 }
                 Command::DrawIndexedIndirect {
@@ -1216,7 +1222,7 @@ impl<'a> Recorder<'a> {
                     stride,
                 } => {
                     if self.prepare(true) {
-                        self.indirect(true, buffer, offset, count, stride);
+                        self.indirect(true, buffer, offset, count, stride)?;
                     }
                 }
                 Command::DrawMesh { x, y, z } => {
