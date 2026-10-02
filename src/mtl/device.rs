@@ -18,6 +18,7 @@ use crate::mtl::Callback;
 use crate::mtl::queue::Queue;
 use crate::mtl::recorder::integer;
 use crate::mtl::residency::Residency;
+use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
 use crate::{Caps, TextureInfo, dimension, format, memory, usage};
 use objc2::rc::Retained;
@@ -193,6 +194,7 @@ pub struct Device {
     lost: Arc<Mutex<Option<String>>>,
     garbage: Vec<(Vec<u64>, Free)>,
     caps: Caps,
+    resolve: Resolve,
 }
 
 impl Drop for Device {
@@ -217,6 +219,7 @@ impl Device {
             .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
             .collect::<Result<Vec<_>, _>>()?;
         let caps = Self::detect(&raw, queues.len());
+        let resolve = Resolve::new(&raw)?;
         Ok(Self {
             raw,
             compiler,
@@ -228,6 +231,7 @@ impl Device {
             lost,
             garbage: Vec::new(),
             caps,
+            resolve,
         })
     }
 
@@ -277,6 +281,13 @@ impl Device {
     ) -> Result<(), String> {
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         self.collect();
-        self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)
+        self.queues[queue].submit(
+            &self.raw,
+            &self.res,
+            &self.resolve,
+            (commands, natives),
+            waits,
+            signals,
+        )
     }
 }

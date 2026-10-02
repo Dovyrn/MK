@@ -4,6 +4,7 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
+use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
 use crate::mtl::texture::Texture;
 use crate::mtl::{Callback, Native};
@@ -12,7 +13,6 @@ use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
-use objc2_metal::MTLComputePipelineState;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
@@ -29,8 +29,7 @@ pub struct Recorder<'a> {
     residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
-    kernels: &'a [Retained<ProtocolObject<dyn MTLComputePipelineState>>; 2],
-    scratch: &'a ProtocolObject<dyn MTL4ArgumentTable>,
+    resolve: &'a Resolve,
     resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
     res: &'a Resources,
@@ -174,6 +173,7 @@ impl<'a> Recorder<'a> {
     pub fn new(
         device: &'a ProtocolObject<dyn MTLDevice>,
         queue: &'a Queue,
+        resolve: &'a Resolve,
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
@@ -183,8 +183,7 @@ impl<'a> Recorder<'a> {
             residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
-            kernels: &queue.kernels,
-            scratch: &queue.scratch,
+            resolve,
             resolves: Vec::new(),
             frame,
             res,
@@ -248,28 +247,8 @@ impl<'a> Recorder<'a> {
             .computeCommandEncoder()
             .ok_or("compute encoder creation failed")?;
         self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
-        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(
-            MTLStages::Fragment,
-            MTLStages::Dispatch,
-            MTL4VisibilityOptions::None,
-        );
-        encoder.setArgumentTable(Some(self.scratch));
-        for (src, dst, signed) in std::mem::take(&mut self.resolves) {
-            unsafe {
-                self.scratch.setTexture_atIndex(src.raw.gpuResourceID(), 0);
-                self.scratch.setTexture_atIndex(dst.raw.gpuResourceID(), 1);
-            }
-            encoder.setComputePipelineState(&self.kernels[signed as usize]);
-            encoder.dispatchThreads_threadsPerThreadgroup(
-                size(dst.raw.width() as u32, dst.raw.height() as u32, 1),
-                size(8, 8, 1),
-            );
-        }
-        encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(
-            MTLStages::Dispatch,
-            MTLStages::All,
-            MTL4VisibilityOptions::None,
-        );
+        self.resolve
+            .encode(&encoder, std::mem::take(&mut self.resolves));
         encoder.endEncoding();
         Ok(())
     }

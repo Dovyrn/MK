@@ -8,6 +8,7 @@ mod queue;
 mod recorder;
 mod render;
 mod residency;
+mod resolve;
 mod resources;
 mod texture;
 
