@@ -219,6 +219,11 @@ fields = [
     ["indirect_ids", "bool", "false"],
     ["indirect_offset", "bool", "false"],
     ["wide_lines", "bool", "false"],
+    ["max_buffer", "u64", "0"],
+    ["max_texture", "u32", "0"],
+    ["max_cube", "u32", "0"],
+    ["max_volume", "u32", "0"],
+    ["max_layers", "u32", "0"],
 ]
 
 [[info]]

@@ -183,6 +183,11 @@ impl Device {
             indirect_ids: false,
             indirect_offset: false,
             wide_lines: false,
+            max_buffer: isize::MAX as u64,
+            max_texture: alignment(glow::MAX_TEXTURE_SIZE),
+            max_cube: alignment(glow::MAX_CUBE_MAP_TEXTURE_SIZE),
+            max_volume: alignment(glow::MAX_3D_TEXTURE_SIZE),
+            max_layers: alignment(glow::MAX_ARRAY_TEXTURE_LAYERS),
             mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }
@@ -193,6 +198,7 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         let persistent = self.extra.storage.is_some();
         let gl = &self.gl;
         let (flags, usage) = match memory {
@@ -431,6 +437,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.caps().texture(info)?;
         if info.memory == memory::TRANSIENT {
             assert!(
                 info.usage & !(usage::COLOR | usage::DEPTH) == 0,

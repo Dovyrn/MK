@@ -8,6 +8,7 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 ))]
 compile_error!("enable exactly one backend feature");
 
+mod caps;
 mod command;
 mod commands;
 #[cfg(feature = "gl")]

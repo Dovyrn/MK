@@ -352,6 +352,12 @@ impl Device {
                     .get_physical_device_properties2(self.physical, &mut properties)
             };
         }
+        let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
+        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut buffer);
+        unsafe {
+            self.instance
+                .get_physical_device_properties2(self.physical, &mut properties)
+        };
         let features = &self.ext.features;
         let (limits, families) = unsafe {
             (
@@ -446,6 +452,13 @@ impl Device {
             indirect_ids: true,
             indirect_offset: true,
             wide_lines: features.wide_lines != 0,
+            max_buffer: buffer.max_buffer_size,
+            max_texture: limits
+                .max_image_dimension1_d
+                .min(limits.max_image_dimension2_d),
+            max_cube: limits.max_image_dimension_cube,
+            max_volume: limits.max_image_dimension3_d,
+            max_layers: limits.max_image_array_layers,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,
@@ -467,6 +480,7 @@ impl Device {
             memory != memory::TRANSIENT,
             "transient memory is for textures"
         );
+        self.caps().buffer(size)?;
         let buffer = self.allocate(size, memory, self.usage())?;
         Ok(self.insert_buffer(buffer, size))
     }
@@ -533,6 +547,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         let host = self
             .ext
             .host
@@ -711,6 +726,7 @@ impl Device {
     }
 
     pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
+        self.caps().texture(info)?;
         if !self.caps().sparse_textures {
             return Err("sparse textures are not supported".into());
         }
@@ -751,6 +767,7 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         if !self.caps().sparse {
             return Err("sparse residency is not supported".into());
         }
@@ -978,6 +995,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         let h = self.res.heaps.get(heap);
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
@@ -1030,6 +1048,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.caps().texture(info)?;
         self.supports(info.format, info.usage, info.samples)?;
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory, h.index);
@@ -1656,6 +1675,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.caps().texture(info)?;
         self.supports(info.format, info.usage, info.samples)?;
         unsafe {
             let image = self

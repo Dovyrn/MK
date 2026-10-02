@@ -429,6 +429,11 @@ impl Device {
             indirect_ids: true,
             indirect_offset: true,
             wide_lines: false,
+            max_buffer: self.raw.maxBufferLength() as u64,
+            max_texture: 16384,
+            max_cube: 16384,
+            max_volume: 2048,
+            max_layers: 2048,
         }
     }
 
@@ -441,6 +446,7 @@ impl Device {
             memory != memory::TRANSIENT,
             "transient memory is for textures"
         );
+        self.caps().buffer(size)?;
         let buffer = self
             .raw
             .newBufferWithLength_options(size as usize, options(memory))
@@ -450,6 +456,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         let buffer = unsafe {
             self.raw
                 .newBufferWithBytesNoCopy_length_options_deallocator(
@@ -513,6 +520,7 @@ impl Device {
     }
 
     pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
+        self.caps().texture(info)?;
         let [bytes, _, _] = format::block(info.format);
         let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
         let values = [
@@ -577,6 +585,7 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         self.sparse_check()?;
         let buffer = unsafe {
             self.raw
@@ -749,6 +758,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
+        self.caps().buffer(size)?;
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
@@ -1199,6 +1209,7 @@ impl Device {
     }
 
     fn supports(&self, info: &TextureInfo) -> Result<(), String> {
+        self.caps().texture(info)?;
         let usage = self.format_usage(info.format);
         if usage == 0 {
             return Err(format!("format {} is not supported", info.format));

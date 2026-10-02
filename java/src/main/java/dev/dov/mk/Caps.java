@@ -51,9 +51,14 @@ public class Caps {
     public boolean indirectIds = false;
     public boolean indirectOffset = false;
     public boolean wideLines = false;
+    public long maxBuffer = 0;
+    public int maxTexture = 0;
+    public int maxCube = 0;
+    public int maxVolume = 0;
+    public int maxLayers = 0;
 
     public int size() {
-        return 192;
+        return 216;
     }
 
     public long write(long p) {
@@ -152,6 +157,16 @@ public class Caps {
         memPutInt(p, indirectOffset ? 1 : 0);
         p += 4;
         memPutInt(p, wideLines ? 1 : 0);
+        p += 4;
+        memPutLong(p, maxBuffer);
+        p += 8;
+        memPutInt(p, maxTexture);
+        p += 4;
+        memPutInt(p, maxCube);
+        p += 4;
+        memPutInt(p, maxVolume);
+        p += 4;
+        memPutInt(p, maxLayers);
         p += 4;
         return p;
     }
@@ -253,6 +268,16 @@ public class Caps {
         r.indirectOffset = memGetInt(p) != 0;
         p += 4;
         r.wideLines = memGetInt(p) != 0;
+        p += 4;
+        r.maxBuffer = memGetLong(p);
+        p += 8;
+        r.maxTexture = memGetInt(p);
+        p += 4;
+        r.maxCube = memGetInt(p);
+        p += 4;
+        r.maxVolume = memGetInt(p);
+        p += 4;
+        r.maxLayers = memGetInt(p);
         p += 4;
         return r;
     }
