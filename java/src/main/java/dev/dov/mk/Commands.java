@@ -4,6 +4,7 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import lombok.Getter;
 
+import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
@@ -57,6 +58,7 @@ public class Commands {
         var p = head(3, 4 + data.remaining());
         memPutInt(p, offset);
         memCopy(memAddress(data), p + 4, data.remaining());
+        Reference.reachabilityFence(data);
     }
 
     public void dispatch(int x, int y, int z) {
@@ -407,11 +409,13 @@ public class Commands {
     public void setViewports(ByteBuffer data) {
         var p = head(67, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
+        Reference.reachabilityFence(data);
     }
 
     public void setScissors(ByteBuffer data) {
         var p = head(68, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
+        Reference.reachabilityFence(data);
     }
 
     public void setDepthBounds(float min, float max) {

@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
@@ -86,6 +87,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreatePipeline(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -104,6 +107,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateRenderPipeline(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -114,6 +119,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateMeshPipeline(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -132,6 +139,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateDepthState(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -150,6 +159,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateTexture(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -168,6 +179,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateView(handle, texture, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -186,6 +199,8 @@ public class Device {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateSampler(handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 

@@ -260,7 +260,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
         .map(|f| f.kind.as_str())
         .collect();
     if kinds.contains(&"bytes") {
-        s += "import java.nio.ByteBuffer;\n";
+        s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\n";
     }
     if kinds.contains(&"str") {
         s += "import java.nio.charset.StandardCharsets;\n";
@@ -340,7 +340,10 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
                 "u32" | "i32" => writeln!(s, "        memPutInt({p}, {n});"),
                 "u64" => writeln!(s, "        memPutLong({p}, {n});"),
                 "f32" => writeln!(s, "        memPutFloat({p}, {n});"),
-                "bytes" => writeln!(s, "        memCopy(memAddress({n}), {p}, {n}.remaining());"),
+                "bytes" => writeln!(
+                    s,
+                    "        memCopy(memAddress({n}), {p}, {n}.remaining());\n        Reference.reachabilityFence({n});"
+                ),
                 _ => writeln!(s, "        memByteBuffer({p}, b.length).put(b);"),
             }
             .unwrap();

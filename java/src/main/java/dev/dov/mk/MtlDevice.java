@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
@@ -52,6 +53,8 @@ public class MtlDevice {
             var out = stack.nmalloc(8, 256);
             nTextureSize(device.handle, infoAddress, info.size(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -70,6 +73,8 @@ public class MtlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreatePlacedTexture(device.handle, heap, offset, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -104,6 +109,8 @@ public class MtlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateAccel(device.handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -138,6 +145,8 @@ public class MtlDevice {
     public static void writeInstance(Device device, ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
             nWriteInstance(device.handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
+        } finally {
+            Reference.reachabilityFence(out);
         }
     }
 
@@ -211,6 +220,8 @@ public class MtlDevice {
         try (var stack = MemoryStack.stackPush()) {
             var entryBytes = stack.UTF8(entry, false);
             return nCreateTilePipeline(device.handle, memAddress(code), code.remaining(), memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(colors)), colors.length, samples);
+        } finally {
+            Reference.reachabilityFence(code);
         }
     }
 
@@ -247,6 +258,8 @@ public class MtlDevice {
             var out = stack.nmalloc(8, 256);
             nSparseTile(device.handle, infoAddress, info.size(), out);
             return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -265,6 +278,8 @@ public class MtlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateSparseTexture(device.handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -368,6 +383,8 @@ public class MtlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nCreateIndirect(device.handle, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -422,6 +439,8 @@ public class MtlDevice {
             var out = stack.nmalloc(8, 256);
             nCreateSharedTexture(device.handle, infoAddress, info.size(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 
@@ -432,6 +451,8 @@ public class MtlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nImportSharedTexture(device.handle, id, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 

@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
@@ -32,6 +33,8 @@ public class GlDevice {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             return nImportTexture(device.handle, raw, infoAddress, info.size());
+        } finally {
+            Reference.reachabilityFence(info);
         }
     }
 

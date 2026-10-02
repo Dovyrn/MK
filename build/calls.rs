@@ -272,7 +272,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     let name = class(backend);
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
-    s += "import java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
+    s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
     if backend.is_none() {
         s += "public class Device {\n    public long handle;\n\n";
         s += "    public Device(long handle) {\n        this.handle = handle;\n    }\n\n";
@@ -430,7 +430,27 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             r if info(r) => format!("{invoke};\n            return {r}.read(out);"),
             _ => format!("return {invoke};"),
         };
-        writeln!(s, "            {line}\n        }}\n    }}").unwrap();
+        let fenced: Vec<_> = call
+            .params
+            .iter()
+            .filter(|p| matches!(p.kind.as_str(), "bytes" | "mutbytes") || info(&p.kind))
+            .map(|p| {
+                format!(
+                    "            Reference.reachabilityFence({});",
+                    camel(&p.name)
+                )
+            })
+            .collect();
+        if fenced.is_empty() {
+            writeln!(s, "            {line}\n        }}\n    }}").unwrap();
+        } else {
+            writeln!(
+                s,
+                "            {line}\n        }} finally {{\n{}\n        }}\n    }}",
+                fenced.join("\n")
+            )
+            .unwrap();
+        }
         let mut natives_params = Vec::new();
         if !statics(call) {
             natives_params.push("long device".to_string());
