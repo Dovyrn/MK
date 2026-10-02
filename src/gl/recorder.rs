@@ -412,17 +412,26 @@ impl<'a> Recorder<'a> {
                     size,
                     value,
                 } => {
-                    let clear = self.extra.clear.ok_or("fill_buffer needs GL 4.3")?;
-                    gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(res.buffers.get(buffer).raw));
-                    clear(
-                        glow::COPY_WRITE_BUFFER,
-                        glow::R8UI,
-                        offset as isize,
-                        size as isize,
-                        glow::RED_INTEGER,
-                        glow::UNSIGNED_BYTE,
-                        (&raw const value).cast(),
-                    );
+                    let b = res.buffers.get(buffer);
+                    let size = if size == !0 { b.size - offset } else { size };
+                    let target = glow::COPY_WRITE_BUFFER;
+                    gl.bind_buffer(target, Some(b.raw));
+                    match self.extra.clear {
+                        Some(clear) => clear(
+                            target,
+                            glow::R8UI,
+                            offset as isize,
+                            size as isize,
+                            glow::RED_INTEGER,
+                            glow::UNSIGNED_BYTE,
+                            (&raw const value).cast(),
+                        ),
+                        None => {
+                            let data = vec![value; size as usize];
+                            let (at, size) = (offset as isize, size as isize);
+                            (self.extra.sub)(target, at, size, data.as_ptr().cast());
+                        }
+                    }
                 }
                 Command::Barrier {
                     src_access,
