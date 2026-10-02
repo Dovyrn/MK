@@ -312,8 +312,6 @@ impl<'a> Recorder<'a> {
             if matches!(
                 command,
                 Command::BindRenderPipeline { .. }
-                    | Command::SetViewport { .. }
-                    | Command::SetScissor { .. }
                     | Command::SetCull { .. }
                     | Command::SetFace { .. }
                     | Command::SetTopology { .. }
@@ -321,8 +319,6 @@ impl<'a> Recorder<'a> {
                     | Command::SetStencilReference { .. }
                     | Command::SetDepthBias { .. }
                     | Command::SetBlendColor { .. }
-                    | Command::SetViewports { .. }
-                    | Command::SetScissors { .. }
                     | Command::SetDepthBounds { .. }
             ) {
                 let kept = &at[..at.len() - bytes.len()];
