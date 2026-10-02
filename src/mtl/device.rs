@@ -470,6 +470,7 @@ impl Device {
 
     pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
         self.sparse_check()?;
+        self.supports(info)?;
         let s = unsafe {
             self.raw
                 .sparseTileSizeWithTextureType_pixelFormat_sampleCount_sparsePageSize(
@@ -510,6 +511,7 @@ impl Device {
         surface: &IOSurfaceRef,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.supports(info)?;
         let desc = texture_desc(info);
         desc.setResourceOptions(options(memory::READBACK));
         let raw = self
@@ -710,6 +712,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.supports(info)?;
         let (h, memory) = self.res.heaps.get(heap);
         let desc = texture_desc(info);
         desc.setResourceOptions(options(*memory));
@@ -1078,6 +1081,7 @@ impl Device {
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         self.storage(info.memory)?;
+        self.supports(info)?;
         let desc = texture_desc(info);
         let raw = self
             .raw
@@ -1093,11 +1097,77 @@ impl Device {
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
-        todo!("format_usage {format}")
+        let usage = match format {
+            format::B5G6R5_UNORM
+            | format::A1BGR5_UNORM
+            | format::ABGR4_UNORM
+            | format::BGR5A1_UNORM => usage::SAMPLED | usage::COLOR,
+            format::A8_UNORM..=format::RGBA32_FLOAT => {
+                usage::SAMPLED | usage::STORAGE | usage::COLOR
+            }
+            format::D24_UNORM_S8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => 0,
+            format::D16_UNORM..=format::S8_UINT => usage::SAMPLED | usage::DEPTH,
+            format::BC1_UNORM..=format::BC7_SRGB if !self.raw.supportsBCTextureCompression() => 0,
+            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => usage::SAMPLED,
+            _ => 0,
+        };
+        if usage == 0 {
+            return 0;
+        }
+        usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW
+    }
+
+    fn supports(&self, info: &TextureInfo) -> Result<(), String> {
+        let usage = self.format_usage(info.format);
+        if usage == 0 {
+            return Err(format!("format {} is not supported", info.format));
+        }
+        if info.usage & !usage != 0 {
+            return Err(format!(
+                "format {} does not support usage {:#x}",
+                info.format,
+                info.usage & !usage
+            ));
+        }
+        let msaa = match info.format {
+            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
+            format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
+                self.raw.supports32BitMSAA()
+            }
+            _ => true,
+        };
+        if info.samples > 1 && !(msaa && self.raw.supportsTextureSampleCount(info.samples as usize))
+        {
+            return Err(format!(
+                "format {} does not support {} samples",
+                info.format, info.samples
+            ));
+        }
+        Ok(())
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
-        let parent = &self.res.textures.get(texture).raw;
+        let usage = self.format_usage(info.format);
+        if usage == 0 || info.usage & !usage != 0 {
+            return Err(format!(
+                "format {} does not support usage {:#x}",
+                info.format, info.usage
+            ));
+        }
+        let parent = self.res.textures.get(texture);
+        if format::block(parent.format) != format::block(info.format)
+            || parent.format != info.format
+                && !parent
+                    .raw
+                    .usage()
+                    .contains(MTLTextureUsage::PixelFormatView)
+        {
+            return Err(format!(
+                "format {} cannot view a texture of format {}",
+                info.format, parent.format
+            ));
+        }
+        let parent = &parent.raw;
         let raw = unsafe {
             parent
                 .newTextureViewWithPixelFormat_textureType_levels_slices(
