@@ -346,13 +346,21 @@ impl<'a> Recorder<'a> {
                 offset,
                 size,
                 value,
-            } => unsafe {
-                self.compute().fillBuffer_range_value(
-                    self.res.buffers.get(buffer),
-                    NSRange::new(offset as usize, size as usize),
-                    value,
-                )
-            },
+            } => {
+                let b = self.res.buffers.get(buffer);
+                let size = if size == !0 {
+                    b.length() - offset as usize
+                } else {
+                    size as usize
+                };
+                unsafe {
+                    self.compute().fillBuffer_range_value(
+                        b,
+                        NSRange::new(offset as usize, size),
+                        value,
+                    )
+                }
+            }
             Command::Barrier {
                 src_stage,
                 src_access,
