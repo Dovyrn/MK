@@ -15,7 +15,7 @@ fn main() {
     let mut device = host::device(1);
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: include_bytes!("../shaders/out/functions.metallib"),
+            code: host::code!("functions"),
             entry: "call",
             group: [64, 1, 1],
             functions: &["add", "twice"],

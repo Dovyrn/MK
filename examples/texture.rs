@@ -7,11 +7,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/blit.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/blit.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("needs the bindless heap, which GL lacks");
@@ -57,7 +52,7 @@ fn main() {
         .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: CODE,
+            code: host::code!("blit"),
             entry: "blit",
             group: [8, 8, 1],
             ..Default::default()

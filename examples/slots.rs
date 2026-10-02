@@ -7,12 +7,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/slots.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/slots.spv");
-#[cfg(feature = "gl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/slots.gl");
+const CODE: &[u8] = host::code!("slots");
 
 fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32, u32)) {
     c.texture_barrier(&TextureBarrier {

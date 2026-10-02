@@ -4,11 +4,6 @@ use mk::{AccelInfo, Commands, Triangles, accel, access, memory, query, stage};
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/trace.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/trace.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("ray tracing is Vulkan and Metal only");
@@ -102,7 +97,7 @@ fn main() {
         .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: CODE,
+            code: host::code!("trace"),
             entry: "trace",
             group: [8, 8, 1],
             ..Default::default()

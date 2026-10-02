@@ -4,11 +4,6 @@ use mk::{Commands, access, memory, stage};
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/fill.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("GL has one queue");
@@ -27,7 +22,7 @@ fn main() {
         .unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: CODE,
+            code: host::code!("fill"),
             entry: "fill",
             group: [64, 1, 1],
             ..Default::default()

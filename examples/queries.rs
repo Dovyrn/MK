@@ -6,19 +6,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const FILL: &[u8] = include_bytes!("../shaders/out/count.metallib");
-#[cfg(feature = "vk")]
-const FILL: &[u8] = include_bytes!("../shaders/out/count.spv");
-#[cfg(feature = "gl")]
-const FILL: &[u8] = include_bytes!("../shaders/out/count.gl");
-#[cfg(feature = "mtl")]
-const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
-#[cfg(feature = "vk")]
-const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
-#[cfg(feature = "gl")]
-const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
-
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
@@ -40,7 +27,7 @@ fn main() {
     let data = device.create_buffer(1 << 20, memory::DEVICE).unwrap();
     let fill = device
         .create_pipeline(&mk::ComputeInfo {
-            code: FILL,
+            code: host::code!("count"),
             entry: "fill",
             group: [64, 1, 1],
             ..Default::default()
@@ -61,7 +48,7 @@ fn main() {
     }];
     let triangle = device
         .create_render_pipeline(&RenderInfo {
-            code: TRIANGLE,
+            code: host::code!("triangle"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,

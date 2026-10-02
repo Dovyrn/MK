@@ -4,11 +4,6 @@ use mk::{Commands, ComputeInfo, access, memory, stage};
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/handles.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/handles.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("GL has no bindless heap");
@@ -28,7 +23,7 @@ fn main() {
         .unwrap();
     let fill = device
         .create_pipeline(&ComputeInfo {
-            code: CODE,
+            code: host::code!("handles"),
             entry: "fill",
             group: [64, 1, 1],
             ..Default::default()

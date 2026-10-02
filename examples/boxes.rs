@@ -74,7 +74,7 @@ fn build(c: &mut Commands, blas: u32, tlas: u32, bottom: u32, top: u32) {
 fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: include_bytes!("../shaders/out/boxes.metallib"),
+            code: host::code!("boxes"),
             entry: "trace",
             group: [8, 8, 1],
             functions: &["box"],
@@ -100,7 +100,7 @@ fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
     let caps = device.caps();
     let pipeline = device
         .create_ray_pipeline(&mk::RayInfo {
-            code: include_bytes!("../shaders/out/boxes.spv"),
+            code: host::code!("boxes"),
             raygen: "raygen",
             misses: &["miss"],
             closest: &["hit"],

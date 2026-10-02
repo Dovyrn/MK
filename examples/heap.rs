@@ -8,11 +8,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("memory heaps are Vulkan and Metal only");
@@ -75,7 +70,7 @@ fn main() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderInfo {
-            code: CODE,
+            code: host::code!("triangle"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,

@@ -7,11 +7,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/multiview.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("multiview is Vulkan and Metal only");
@@ -44,7 +39,7 @@ fn main() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderInfo {
-            code: CODE,
+            code: host::code!("multiview"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,

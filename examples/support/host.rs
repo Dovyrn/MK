@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code, unused_imports, unused_macros)]
 
 #[cfg(feature = "gl")]
 #[path = "gl.rs"]
@@ -11,3 +11,32 @@ mod native;
 mod native;
 
 pub use native::*;
+
+macro_rules! code {
+    ($name:literal) => {{
+        #[cfg(feature = "mtl")]
+        let code = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/shaders/out/",
+            $name,
+            ".metallib"
+        ));
+        #[cfg(feature = "vk")]
+        let code = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/shaders/out/",
+            $name,
+            ".spv"
+        ));
+        #[cfg(feature = "gl")]
+        let code = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/shaders/out/",
+            $name,
+            ".gl"
+        ));
+        code
+    }};
+}
+
+pub(crate) use code;

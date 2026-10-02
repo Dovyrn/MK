@@ -34,7 +34,7 @@ fn main() {
     }];
     let draw = device
         .create_render_pipeline(&RenderInfo {
-            code: include_bytes!("../shaders/out/multiview.metallib"),
+            code: host::code!("multiview"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
@@ -44,7 +44,7 @@ fn main() {
         .unwrap();
     let encode = device
         .create_pipeline(&mk::ComputeInfo {
-            code: include_bytes!("../shaders/out/encode.metallib"),
+            code: host::code!("encode"),
             entry: "encode",
             group: [64, 1, 1],
             ..Default::default()
@@ -130,7 +130,7 @@ fn main() {
     assert_eq!(pixels[0], [0, 0, 255, 255], "corner");
     let fill = device
         .create_pipeline(&mk::ComputeInfo {
-            code: include_bytes!("../shaders/out/fill.metallib"),
+            code: host::code!("fill"),
             entry: "fill",
             group: [64, 1, 1],
             indirect: true,
@@ -139,7 +139,7 @@ fn main() {
         .unwrap();
     let encode = device
         .create_pipeline(&mk::ComputeInfo {
-            code: include_bytes!("../shaders/out/encode.metallib"),
+            code: host::code!("encode"),
             entry: "encode_dispatch",
             group: [64, 1, 1],
             ..Default::default()

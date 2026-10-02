@@ -7,14 +7,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
-
-#[cfg(feature = "gl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
-
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
@@ -69,7 +61,7 @@ fn main() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderInfo {
-            code: CODE,
+            code: host::code!("triangle"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,

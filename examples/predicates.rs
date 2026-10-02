@@ -8,9 +8,9 @@ use mk::{
 mod host;
 
 #[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
+const CODE: &[u8] = host::code!("multiview");
 #[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
+const CODE: &[u8] = host::code!("triangle");
 
 #[cfg(feature = "gl")]
 fn main() {

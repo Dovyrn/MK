@@ -64,7 +64,7 @@ fn main() {
         .unwrap();
     let pipeline = device
         .create_ray_pipeline(&RayInfo {
-            code: include_bytes!("../shaders/out/rays.spv"),
+            code: host::code!("rays"),
             raygen: "raygen",
             misses: &["miss"],
             closest: &["hit"],

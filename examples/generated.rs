@@ -39,7 +39,7 @@ fn main() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderInfo {
-            code: include_bytes!("../shaders/out/triangle.spv"),
+            code: host::code!("triangle"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,

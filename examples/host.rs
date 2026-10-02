@@ -4,11 +4,6 @@ use mk::{Commands, access, stage};
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/fill.spv");
-
 #[cfg(feature = "gl")]
 fn main() {
     println!("host memory import is Vulkan and Metal only");
@@ -31,7 +26,7 @@ fn main() {
     let buffer = device.create_host_buffer(memory, size as u64).unwrap();
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: CODE,
+            code: host::code!("fill"),
             entry: "fill",
             group: [64, 1, 1],
             ..Default::default()

@@ -49,7 +49,7 @@ fn main() {
     }];
     let triangle = device
         .create_render_pipeline(&RenderInfo {
-            code: include_bytes!("../shaders/out/triangle.metallib"),
+            code: host::code!("triangle"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
@@ -75,12 +75,7 @@ fn main() {
         })
         .unwrap();
     let invert = device
-        .create_tile_pipeline(
-            include_bytes!("../shaders/out/tile.metallib"),
-            "invert",
-            &[format::RGBA8_UNORM],
-            1,
-        )
+        .create_tile_pipeline(host::code!("tile"), "invert", &[format::RGBA8_UNORM], 1)
         .unwrap();
     let event = device.create_event().unwrap();
     let mut c = Commands::default();

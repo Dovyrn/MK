@@ -6,14 +6,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/mesh.metallib");
-#[cfg(feature = "vk")]
-const CODE: &[u8] = include_bytes!("../shaders/out/mesh.spv");
-
-#[cfg(feature = "gl")]
-const CODE: &[u8] = include_bytes!("../shaders/out/mesh.gl");
-
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
@@ -34,7 +26,7 @@ fn main() {
         ..Default::default()
     }];
     let pipeline = match device.create_mesh_pipeline(&MeshInfo {
-        code: CODE,
+        code: host::code!("mesh"),
         task: "task",
         mesh: "mesh",
         fragment: "frag",

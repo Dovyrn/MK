@@ -38,7 +38,7 @@ fn main() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderInfo {
-            code: include_bytes!("../shaders/out/multiview.metallib"),
+            code: host::code!("multiview"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
