@@ -38,7 +38,7 @@ public class VkDevice {
 
     public static long[] bufferSize(Device device, long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, 16);
             nBufferSize(device.handle, size, memory, out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
@@ -50,7 +50,7 @@ public class VkDevice {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, 16);
             nTextureSize(device.handle, infoAddress, info.size(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         } finally {
@@ -126,7 +126,7 @@ public class VkDevice {
 
     public static long[] accelScratch(Device device, int accel) {
         try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, 16);
             nAccelScratch(device.handle, accel, out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
@@ -198,7 +198,7 @@ public class VkDevice {
 
     public static long[] rawTexture(Device device, int texture) {
         try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, 16);
             nRawTexture(device.handle, texture, out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
@@ -250,7 +250,7 @@ public class VkDevice {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, 12);
             nSparseTile(device.handle, infoAddress, info.size(), out);
             return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
         } finally {

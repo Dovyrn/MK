@@ -11,6 +11,8 @@ public class ViewInfo {
     public int layers = 1;
     public int usage = Usage.SAMPLED;
 
+    public static final int SIZE = 28;
+
     public int size() {
         return 28;
     }

@@ -14,6 +14,8 @@ public class TextureInfo {
     public int usage = 0;
     public int memory = Memory.DEVICE;
 
+    public static final int SIZE = 40;
+
     public int size() {
         return 40;
     }

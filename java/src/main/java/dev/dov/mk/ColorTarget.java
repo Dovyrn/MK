@@ -13,6 +13,8 @@ public class ColorTarget {
     public int opAlpha = Op.ADD;
     public int mask = Mask.ALL;
 
+    public static final int SIZE = 36;
+
     public int size() {
         return 36;
     }

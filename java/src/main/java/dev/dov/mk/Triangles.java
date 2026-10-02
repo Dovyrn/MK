@@ -14,6 +14,8 @@ public class Triangles {
     public int count = 0;
     public boolean opaque = true;
 
+    public static final int SIZE = 48;
+
     public int size() {
         return 48;
     }

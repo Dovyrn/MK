@@ -15,6 +15,8 @@ public class TextureBarrier {
     public int baseLayer = 0;
     public int layers = -1;
 
+    public static final int SIZE = 44;
+
     public int size() {
         return 44;
     }

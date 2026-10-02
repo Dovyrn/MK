@@ -15,6 +15,8 @@ public class GeneratedInfo {
     public long countOffset = 0;
     public int draws = 0;
 
+    public static final int SIZE = 64;
+
     public int size() {
         return 64;
     }

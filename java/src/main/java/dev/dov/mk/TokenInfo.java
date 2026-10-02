@@ -9,6 +9,8 @@ public class TokenInfo {
     public int pushSize = 0;
     public int binding = 0;
 
+    public static final int SIZE = 20;
+
     public int size() {
         return 20;
     }

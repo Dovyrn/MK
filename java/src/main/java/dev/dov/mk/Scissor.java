@@ -8,6 +8,8 @@ public class Scissor {
     public int width = 0;
     public int height = 0;
 
+    public static final int SIZE = 16;
+
     public int size() {
         return 16;
     }

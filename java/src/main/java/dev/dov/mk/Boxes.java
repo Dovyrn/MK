@@ -9,6 +9,8 @@ public class Boxes {
     public int count = 0;
     public boolean opaque = true;
 
+    public static final int SIZE = 24;
+
     public int size() {
         return 24;
     }

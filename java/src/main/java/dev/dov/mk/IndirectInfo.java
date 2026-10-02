@@ -11,6 +11,8 @@ public class IndirectInfo {
     public int fragmentBuffers = 0;
     public int kernelBuffers = 0;
 
+    public static final int SIZE = 28;
+
     public int size() {
         return 28;
     }

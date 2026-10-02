@@ -13,6 +13,8 @@ public class SparseRegion {
     public int depth = 1;
     public int heapPage = 0;
 
+    public static final int SIZE = 36;
+
     public int size() {
         return 36;
     }

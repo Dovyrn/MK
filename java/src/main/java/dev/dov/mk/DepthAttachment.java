@@ -12,6 +12,8 @@ public class DepthAttachment {
     public int stencilStore = Store.DONT_CARE;
     public int stencil = 0;
 
+    public static final int SIZE = 32;
+
     public int size() {
         return 32;
     }

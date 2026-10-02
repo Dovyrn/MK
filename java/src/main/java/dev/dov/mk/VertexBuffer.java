@@ -6,6 +6,8 @@ public class VertexBuffer {
     public int stride = 0;
     public boolean instance = false;
 
+    public static final int SIZE = 8;
+
     public int size() {
         return 8;
     }

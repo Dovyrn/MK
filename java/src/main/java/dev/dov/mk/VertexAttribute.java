@@ -8,6 +8,8 @@ public class VertexAttribute {
     public int format = 0;
     public int offset = 0;
 
+    public static final int SIZE = 16;
+
     public int size() {
         return 16;
     }

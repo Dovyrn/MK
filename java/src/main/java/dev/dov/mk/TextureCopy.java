@@ -18,6 +18,8 @@ public class TextureCopy {
     public int height = 1;
     public int depth = 1;
 
+    public static final int SIZE = 60;
+
     public int size() {
         return 60;
     }

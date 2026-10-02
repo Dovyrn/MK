@@ -15,6 +15,8 @@ public class SamplerInfo {
     public float maxLod = 1000.0f;
     public int border = Border.TRANSPARENT_BLACK;
 
+    public static final int SIZE = 44;
+
     public int size() {
         return 44;
     }

@@ -23,6 +23,8 @@ public class TraceInfo {
     public int height = 1;
     public int depth = 1;
 
+    public static final int SIZE = 124;
+
     public int size() {
         return 124;
     }

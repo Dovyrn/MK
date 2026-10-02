@@ -15,6 +15,8 @@ public class ColorAttachment {
     public int resolve = -1;
     public int resolveLayout = Layout.COLOR;
 
+    public static final int SIZE = 44;
+
     public int size() {
         return 44;
     }

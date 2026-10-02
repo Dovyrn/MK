@@ -231,6 +231,25 @@ pub fn java(info: &Info) -> String {
         )
         .unwrap();
     }
+    if !borrows(info) {
+        let mut fixed = 0;
+        let mut parts = Vec::new();
+        for f in &info.fields {
+            match f.kind.as_str() {
+                "u64" => fixed += 8,
+                "u32x3" => fixed += 12,
+                "u32" | "f32" | "bool" => fixed += 4,
+                k => parts.push(format!("{k}.SIZE")),
+            }
+        }
+        parts.insert(0, fixed.to_string());
+        writeln!(
+            s,
+            "\n    public static final int SIZE = {};",
+            parts.join(" + ")
+        )
+        .unwrap();
+    }
     s += "\n    public int size() {\n";
     let mut fixed = 0;
     let mut parts = Vec::new();

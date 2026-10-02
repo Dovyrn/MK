@@ -7,6 +7,8 @@ public class SparseRange {
     public int count = 1;
     public int heapPage = 0;
 
+    public static final int SIZE = 12;
+
     public int size() {
         return 12;
     }

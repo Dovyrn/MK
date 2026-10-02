@@ -57,6 +57,8 @@ public class Caps {
     public int maxVolume = 0;
     public int maxLayers = 0;
 
+    public static final int SIZE = 216;
+
     public int size() {
         return 216;
     }

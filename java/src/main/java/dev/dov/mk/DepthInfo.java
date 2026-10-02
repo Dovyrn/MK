@@ -9,6 +9,8 @@ public class DepthInfo {
     public StencilFace front = new StencilFace();
     public StencilFace back = new StencilFace();
 
+    public static final int SIZE = 12 + StencilFace.SIZE + StencilFace.SIZE;
+
     public int size() {
         return 12 + front.size() + back.size();
     }

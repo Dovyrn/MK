@@ -10,6 +10,8 @@ public class Viewport {
     public float near = 0.0f;
     public float far = 1.0f;
 
+    public static final int SIZE = 24;
+
     public int size() {
         return 24;
     }

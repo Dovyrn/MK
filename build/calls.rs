@@ -411,7 +411,13 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             }
         }
         if outs(call) {
-            s += "            var out = stack.nmalloc(8, 256);\n";
+            let size = match call.result.as_str() {
+                "pair" | "handles" | "pair32" => "16".to_string(),
+                "u32x2" => "8".into(),
+                "u32x3" => "12".into(),
+                r => format!("{r}.SIZE"),
+            };
+            writeln!(s, "            var out = stack.nmalloc(8, {size});").unwrap();
             args.push("out".into());
         }
         let invoke = format!("{}({})", native(call), args.join(", "));

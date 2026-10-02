@@ -26,7 +26,7 @@ public class Device {
 
     public Caps caps() {
         try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 256);
+            var out = stack.nmalloc(8, Caps.SIZE);
             nCaps(handle, out);
             return Caps.read(out);
         }

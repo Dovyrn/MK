@@ -10,6 +10,8 @@ public class StencilFace {
     public int read = 0xff;
     public int write = 0xff;
 
+    public static final int SIZE = 24;
+
     public int size() {
         return 24;
     }
