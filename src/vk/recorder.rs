@@ -17,6 +17,7 @@ pub struct Recorder<'a> {
     pub ext: &'a Extensions,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
+    pub points: &'a [vk::PipelineBindPoint],
     pub res: &'a Resources,
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
@@ -121,15 +122,7 @@ impl Recorder<'_> {
             .push
             .as_ref()
             .ok_or("VK_KHR_push_descriptor is not enabled")?;
-        let points: &[vk::PipelineBindPoint] = match self.scope {
-            "render" => &[vk::PipelineBindPoint::GRAPHICS],
-            "compute" => &[vk::PipelineBindPoint::COMPUTE],
-            _ => &[
-                vk::PipelineBindPoint::COMPUTE,
-                vk::PipelineBindPoint::GRAPHICS,
-            ],
-        };
-        for point in points {
+        for point in self.points {
             unsafe { push.cmd_push_descriptor_set(self.buffer, *point, self.layout, 0, &[write]) };
         }
         Ok(())
@@ -241,18 +234,11 @@ impl Recorder<'_> {
     }
 
     pub fn run(&mut self, heap: vk::DescriptorSet, bytes: &[u8]) -> Result<(), &'static str> {
-        let mut points = vec![
-            vk::PipelineBindPoint::COMPUTE,
-            vk::PipelineBindPoint::GRAPHICS,
-        ];
-        if self.ext.rays.is_some() {
-            points.push(vk::PipelineBindPoint::RAY_TRACING_KHR);
-        }
-        for point in points {
+        for point in self.points {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
                     self.buffer,
-                    point,
+                    *point,
                     self.layout,
                     1,
                     &[heap],

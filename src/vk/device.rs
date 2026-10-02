@@ -207,9 +207,15 @@ impl Device {
             let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
             families.sort();
             families.dedup();
+            let flags = instance.get_physical_device_queue_family_properties(physical);
             let queues = match queues
                 .iter()
-                .map(|&(f, i)| Queue::new(&raw, f, i))
+                .map(|&(f, i)| {
+                    let graphics = flags[f as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::GRAPHICS);
+                    Queue::new(&raw, f, i, graphics)
+                })
                 .collect::<Result<Vec<_>, _>>()
             {
                 Ok(q) => q,

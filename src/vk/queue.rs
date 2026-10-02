@@ -10,6 +10,7 @@ use std::panic::AssertUnwindSafe;
 pub struct Queue {
     pub raw: vk::Queue,
     pub family: u32,
+    graphics: bool,
     pub semaphore: vk::Semaphore,
     pub count: u64,
     free: Vec<Frame>,
@@ -24,10 +25,16 @@ pub fn timeline(device: &ash::Device) -> Result<vk::Semaphore, vk::Result> {
 }
 
 impl Queue {
-    pub fn new(device: &ash::Device, family: u32, index: u32) -> Result<Self, String> {
+    pub fn new(
+        device: &ash::Device,
+        family: u32,
+        index: u32,
+        graphics: bool,
+    ) -> Result<Self, String> {
         Ok(Self {
             raw: unsafe { device.get_device_queue(family, index) },
             family,
+            graphics,
             semaphore: timeline(device).map_err(|e| e.to_string())?,
             count: 0,
             free: Vec::new(),
@@ -58,6 +65,13 @@ impl Queue {
             None => Frame::new(device, self.family).map_err(|e| e.to_string())?,
         };
         let value = self.count + 1;
+        let mut points = vec![vk::PipelineBindPoint::COMPUTE];
+        if self.graphics {
+            points.push(vk::PipelineBindPoint::GRAPHICS);
+        }
+        if ext.rays.is_some() {
+            points.push(vk::PipelineBindPoint::RAY_TRACING_KHR);
+        }
         let run = || -> Result<(), String> {
             let begin = vk::CommandBufferBeginInfo::default()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -68,6 +82,7 @@ impl Queue {
                 ext,
                 buffer: frame.buffer,
                 layout,
+                points: &points,
                 res,
                 colors: Vec::new(),
                 depth: None,
