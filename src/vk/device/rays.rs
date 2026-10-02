@@ -1,5 +1,6 @@
 use super::Device;
 use crate::RayInfo;
+use crate::vk::spirv;
 use ash::vk;
 use std::ffi::CString;
 
@@ -10,7 +11,17 @@ impl Device {
             .rays
             .as_ref()
             .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
-        let module = self.module(info.code)?;
+        let used: Vec<_> = [info.raygen]
+            .iter()
+            .chain(info.misses)
+            .chain(info.closest)
+            .chain(info.any)
+            .chain(info.intersection)
+            .chain(info.callables)
+            .copied()
+            .filter(|name| !name.is_empty())
+            .collect();
+        let module = self.module(&spirv::read(info.code, &used)?)?;
         let mut names = Vec::new();
         let mut stages = Vec::new();
         let mut stage = |name: &str, kind: vk::ShaderStageFlags| {

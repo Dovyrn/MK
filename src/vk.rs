@@ -14,6 +14,7 @@ mod query;
 mod queue;
 mod recorder;
 mod resources;
+mod spirv;
 mod texture;
 
 pub use device::Device;

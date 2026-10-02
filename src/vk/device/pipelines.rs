@@ -1,8 +1,8 @@
 use super::Device;
+use crate::vk::spirv;
 use crate::{ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, fill, format, topology};
 use ash::vk;
 use std::ffi::CString;
-use std::io::Cursor;
 
 impl Device {
     #[allow(clippy::too_many_arguments)]
@@ -26,7 +26,13 @@ impl Device {
         if fill == fill::LINE && self.ext.features.fill_mode_non_solid == 0 {
             return Err("line fill is not supported".into());
         }
-        let module = self.module(code)?;
+        let used: Vec<_> = entries
+            .iter()
+            .map(|(_, name)| *name)
+            .filter(|name| !name.is_empty())
+            .collect();
+        let words = spirv::read(code, &used)?;
+        let module = self.module(&words)?;
         let names: Vec<_> = entries
             .iter()
             .map(|(_, name)| CString::new(*name).unwrap())
@@ -253,9 +259,8 @@ impl Device {
         Ok(())
     }
 
-    pub(super) fn module(&self, code: &[u8]) -> Result<vk::ShaderModule, String> {
-        let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
-        let info = vk::ShaderModuleCreateInfo::default().code(&words);
+    pub(super) fn module(&self, words: &[u32]) -> Result<vk::ShaderModule, String> {
+        let info = vk::ShaderModuleCreateInfo::default().code(words);
         unsafe { self.raw.create_shader_module(&info, None) }.map_err(|e| e.to_string())
     }
 
@@ -273,7 +278,7 @@ impl Device {
             return Err("linked functions are Metal only".into());
         }
         let (code, entry) = (info.code, info.entry);
-        let module = self.module(code)?;
+        let module = self.module(&spirv::read(code, &[entry])?)?;
         let name = CString::new(entry).unwrap();
         let stage = vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::COMPUTE)
