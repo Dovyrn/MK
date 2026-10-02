@@ -27,11 +27,11 @@ public class MeshInfo {
     public int[] meshGroup = new int[] {1, 1, 1};
 
     int encodedSize() {
-        var colorsSize = 0;
+        var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 84 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
     }
 
     long encode(long p) {

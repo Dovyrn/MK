@@ -17,11 +17,11 @@ public class ComputeInfo {
     public boolean indirect = false;
 
     int encodedSize() {
-        var functionsSize = 0;
+        var functionsSize = 4;
         for (var x : functions) {
             functionsSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        return 40 + entry.getBytes(StandardCharsets.UTF_8).length + functionsSize;
+        return 36 + entry.getBytes(StandardCharsets.UTF_8).length + functionsSize;
     }
 
     long encode(long p) {

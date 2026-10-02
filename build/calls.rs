@@ -1,5 +1,5 @@
 use crate::field::Field;
-use crate::infos::reader;
+use crate::infos::{java_type, list_put, list_size, reader};
 use crate::{camel, class, list, member, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
@@ -262,25 +262,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let mut params = Vec::new();
         for p in &call.params {
             let t = match p.kind.as_str() {
-                "u32" | "usize" | "i32" => "int",
-                "u64" | "handle" | "object" | "pointer" => "long",
-                "f32s" => "float[]",
-                "[str]" => "String[]",
-                "f32" => "float",
-                "bool" => "boolean",
-                "str" => "String",
-                "bytes" | "mutbytes" => "ByteBuffer",
-                "commands" => "Commands",
-                "u32s" | "pairs" => "int[]",
-                "f32x12" => "float[]",
-                "waits" => "long[]",
-                k if k.starts_with('[') => &k[1..k.len() - 1],
-                k => k,
-            };
-            let t = if p.kind.starts_with('[') && p.kind != "[str]" {
-                format!("{t}[]")
-            } else {
-                t.to_string()
+                "usize" | "i32" => "int".into(),
+                "handle" | "object" | "pointer" => "long".into(),
+                "f32s" | "f32x12" => "float[]".into(),
+                "mutbytes" => "ByteBuffer".into(),
+                "commands" => "Commands".into(),
+                "u32s" | "pairs" => "int[]".into(),
+                "waits" => "long[]".into(),
+                k => java_type(k),
             };
             params.push(format!("{t} {}", camel(&p.name)));
         }
@@ -335,21 +324,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("memAddress(stack.floats({n}))"));
                     args.push(format!("{n}.length"));
                 }
-                "[str]" => {
+                k if list(k).is_some() => {
+                    list_size(&mut s, k, &n, "            ");
                     writeln!(
                         s,
-                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += 4 + x.getBytes(StandardCharsets.UTF_8).length;\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                var b = x.getBytes(StandardCharsets.UTF_8);\n                memPutInt({n}At, b.length);\n                memByteBuffer({n}At + 4, b.length).put(b);\n                {n}At += 4 + b.length;\n            }}"
+                        "            var {n}Address = stack.nmalloc(8, {n}Size);\n            var {n}At = {n}Address;"
                     )
                     .unwrap();
-                    args.push(format!("{n}Address"));
-                    args.push(format!("{n}Size"));
-                }
-                k if k.starts_with('[') => {
-                    writeln!(
-                        s,
-                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += x.encodedSize();\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                {n}At = x.encode({n}At);\n            }}"
-                    )
-                    .unwrap();
+                    list_put(&mut s, k, &n, &format!("{n}At"), "            ").unwrap();
                     args.push(format!("{n}Address"));
                     args.push(format!("{n}Size"));
                 }

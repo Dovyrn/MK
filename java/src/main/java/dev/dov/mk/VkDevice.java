@@ -254,8 +254,9 @@ public class VkDevice extends Device {
                 rangesSize += x.encodedSize();
             }
             var rangesAddress = stack.nmalloc(8, rangesSize);
-            memPutInt(rangesAddress, ranges.length);
-            var rangesAt = rangesAddress + 4;
+            var rangesAt = rangesAddress;
+            memPutInt(rangesAt, ranges.length);
+            rangesAt += 4;
             for (var x : ranges) {
                 rangesAt = x.encode(rangesAt);
             }
@@ -288,8 +289,9 @@ public class VkDevice extends Device {
                 regionsSize += x.encodedSize();
             }
             var regionsAddress = stack.nmalloc(8, regionsSize);
-            memPutInt(regionsAddress, regions.length);
-            var regionsAt = regionsAddress + 4;
+            var regionsAt = regionsAddress;
+            memPutInt(regionsAt, regions.length);
+            regionsAt += 4;
             for (var x : regions) {
                 regionsAt = x.encode(regionsAt);
             }

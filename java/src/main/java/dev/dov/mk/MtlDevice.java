@@ -256,8 +256,9 @@ public class MtlDevice extends Device {
                 rangesSize += x.encodedSize();
             }
             var rangesAddress = stack.nmalloc(8, rangesSize);
-            memPutInt(rangesAddress, ranges.length);
-            var rangesAt = rangesAddress + 4;
+            var rangesAt = rangesAddress;
+            memPutInt(rangesAt, ranges.length);
+            rangesAt += 4;
             for (var x : ranges) {
                 rangesAt = x.encode(rangesAt);
             }
@@ -290,8 +291,9 @@ public class MtlDevice extends Device {
                 regionsSize += x.encodedSize();
             }
             var regionsAddress = stack.nmalloc(8, regionsSize);
-            memPutInt(regionsAddress, regions.length);
-            var regionsAt = regionsAddress + 4;
+            var regionsAt = regionsAddress;
+            memPutInt(regionsAt, regions.length);
+            regionsAt += 4;
             for (var x : regions) {
                 regionsAt = x.encode(regionsAt);
             }
@@ -324,8 +326,9 @@ public class MtlDevice extends Device {
                 functionsSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
             }
             var functionsAddress = stack.nmalloc(8, functionsSize);
-            memPutInt(functionsAddress, functions.length);
-            var functionsAt = functionsAddress + 4;
+            var functionsAt = functionsAddress;
+            memPutInt(functionsAt, functions.length);
+            functionsAt += 4;
             for (var x : functions) {
                 var b = x.getBytes(StandardCharsets.UTF_8);
                 memPutInt(functionsAt, b.length);

@@ -136,7 +136,7 @@ fn rust_write(kind: &str, value: &str) -> String {
     }
 }
 
-fn java_type(kind: &str) -> String {
+pub fn java_type(kind: &str) -> String {
     match kind {
         "u32" => "int".into(),
         "u64" => "long".into(),
@@ -171,6 +171,33 @@ fn java_value(f: &Field) -> String {
             None => f.value.clone(),
         },
     }
+}
+
+pub fn list_size(s: &mut String, kind: &str, n: &str, indent: &str) {
+    let item = match kind {
+        "[str]" => "4 + x.getBytes(StandardCharsets.UTF_8).length",
+        _ => "x.encodedSize()",
+    };
+    writeln!(
+        s,
+        "{indent}var {n}Size = 4;\n{indent}for (var x : {n}) {{\n{indent}    {n}Size += {item};\n{indent}}}"
+    )
+    .unwrap();
+}
+
+pub fn list_put(s: &mut String, kind: &str, n: &str, at: &str, indent: &str) -> std::fmt::Result {
+    writeln!(
+        s,
+        "{indent}memPutInt({at}, {n}.length);\n{indent}{at} += 4;\n{indent}for (var x : {n}) {{"
+    )?;
+    match kind {
+        "[str]" => writeln!(
+            s,
+            "{indent}    var b = x.getBytes(StandardCharsets.UTF_8);\n{indent}    memPutInt({at}, b.length);\n{indent}    memByteBuffer({at} + 4, b.length).put(b);\n{indent}    {at} += 4 + b.length;"
+        )?,
+        _ => writeln!(s, "{indent}    {at} = x.encode({at});")?,
+    }
+    writeln!(s, "{indent}}}")
 }
 
 pub fn java(info: &Info) -> String {
@@ -234,18 +261,8 @@ pub fn java(info: &Info) -> String {
                 fixed += 4;
                 parts.push(format!("{n}.getBytes(StandardCharsets.UTF_8).length"));
             }
-            "[str]" => {
-                fixed += 4;
-                s += &format!(
-                    "        var {n}Size = 0;\n        for (var x : {n}) {{\n            {n}Size += 4 + x.getBytes(StandardCharsets.UTF_8).length;\n        }}\n"
-                );
-                parts.push(format!("{n}Size"));
-            }
             k if list(k).is_some() => {
-                fixed += 4;
-                s += &format!(
-                    "        var {n}Size = 0;\n        for (var x : {n}) {{\n            {n}Size += x.encodedSize();\n        }}\n"
-                );
+                list_size(&mut s, k, &n, "        ");
                 parts.push(format!("{n}Size"));
             }
             _ => parts.push(format!("{n}.encodedSize()")),
@@ -273,14 +290,7 @@ pub fn java(info: &Info) -> String {
                 s,
                 "        var {n}Bytes = {n}.getBytes(StandardCharsets.UTF_8);\n        memPutInt(p, {n}Bytes.length);\n        memByteBuffer(p + 4, {n}Bytes.length).put({n}Bytes);\n        p += 4 + {n}Bytes.length;"
             ),
-            "[str]" => writeln!(
-                s,
-                "        memPutInt(p, {n}.length);\n        p += 4;\n        for (var x : {n}) {{\n            var b = x.getBytes(StandardCharsets.UTF_8);\n            memPutInt(p, b.length);\n            memByteBuffer(p + 4, b.length).put(b);\n            p += 4 + b.length;\n        }}"
-            ),
-            k if list(k).is_some() => writeln!(
-                s,
-                "        memPutInt(p, {n}.length);\n        p += 4;\n        for (var x : {n}) {{\n            p = x.encode(p);\n        }}"
-            ),
+            k if list(k).is_some() => list_put(&mut s, k, &n, "p", "        "),
             _ => writeln!(s, "        p = {n}.encode(p);"),
         }
         .unwrap();

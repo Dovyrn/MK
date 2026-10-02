@@ -13,11 +13,11 @@ public class LayoutInfo {
     public TokenInfo[] tokens = new TokenInfo[0];
 
     int encodedSize() {
-        var tokensSize = 0;
+        var tokensSize = 4;
         for (var x : tokens) {
             tokensSize += x.encodedSize();
         }
-        return 12 + tokensSize;
+        return 8 + tokensSize;
     }
 
     long encode(long p) {

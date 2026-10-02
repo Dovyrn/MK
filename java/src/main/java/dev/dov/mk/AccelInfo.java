@@ -16,15 +16,15 @@ public class AccelInfo {
     public int flags = 0;
 
     int encodedSize() {
-        var trianglesSize = 0;
+        var trianglesSize = 4;
         for (var x : triangles) {
             trianglesSize += x.encodedSize();
         }
-        var boxesSize = 0;
+        var boxesSize = 4;
         for (var x : boxes) {
             boxesSize += x.encodedSize();
         }
-        return 28 + trianglesSize + boxesSize;
+        return 20 + trianglesSize + boxesSize;
     }
 
     long encode(long p) {

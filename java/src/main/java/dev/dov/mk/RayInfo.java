@@ -20,27 +20,27 @@ public class RayInfo {
     public int depth = 1;
 
     int encodedSize() {
-        var missesSize = 0;
+        var missesSize = 4;
         for (var x : misses) {
             missesSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        var closestSize = 0;
+        var closestSize = 4;
         for (var x : closest) {
             closestSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        var anySize = 0;
+        var anySize = 4;
         for (var x : any) {
             anySize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        var intersectionSize = 0;
+        var intersectionSize = 4;
         for (var x : intersection) {
             intersectionSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        var callablesSize = 0;
+        var callablesSize = 4;
         for (var x : callables) {
             callablesSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
         }
-        return 44 + raygen.getBytes(StandardCharsets.UTF_8).length + missesSize + closestSize + anySize + intersectionSize + callablesSize;
+        return 24 + raygen.getBytes(StandardCharsets.UTF_8).length + missesSize + closestSize + anySize + intersectionSize + callablesSize;
     }
 
     long encode(long p) {

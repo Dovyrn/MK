@@ -27,19 +27,19 @@ public class RenderInfo {
     public VertexAttribute[] attributes = new VertexAttribute[0];
 
     int encodedSize() {
-        var colorsSize = 0;
+        var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        var buffersSize = 0;
+        var buffersSize = 4;
         for (var x : buffers) {
             buffersSize += x.encodedSize();
         }
-        var attributesSize = 0;
+        var attributesSize = 4;
         for (var x : attributes) {
             attributesSize += x.encodedSize();
         }
-        return 72 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
+        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
     }
 
     long encode(long p) {
