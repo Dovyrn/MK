@@ -218,6 +218,7 @@ fields = [
     ["indirect", "bool", "false"],
     ["indirect_ids", "bool", "false"],
     ["indirect_offset", "bool", "false"],
+    ["wide_lines", "bool", "false"],
 ]
 
 [[info]]

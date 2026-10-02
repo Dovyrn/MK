@@ -50,9 +50,10 @@ public class Caps {
     public boolean indirect = false;
     public boolean indirectIds = false;
     public boolean indirectOffset = false;
+    public boolean wideLines = false;
 
     public int size() {
-        return 188;
+        return 192;
     }
 
     public long write(long p) {
@@ -149,6 +150,8 @@ public class Caps {
         memPutInt(p, indirectIds ? 1 : 0);
         p += 4;
         memPutInt(p, indirectOffset ? 1 : 0);
+        p += 4;
+        memPutInt(p, wideLines ? 1 : 0);
         p += 4;
         return p;
     }
@@ -248,6 +251,8 @@ public class Caps {
         r.indirectIds = memGetInt(p) != 0;
         p += 4;
         r.indirectOffset = memGetInt(p) != 0;
+        p += 4;
+        r.wideLines = memGetInt(p) != 0;
         p += 4;
         return r;
     }

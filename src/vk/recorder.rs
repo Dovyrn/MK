@@ -1173,7 +1173,12 @@ impl Recorder<'_> {
                     let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
                     debug.cmd_end_debug_utils_label(b);
                 }
-                Command::SetLineWidth { width } => d.cmd_set_line_width(b, width),
+                Command::SetLineWidth { width } => {
+                    if width != 1.0 && self.ext.features.wide_lines == 0 {
+                        return Err("wide lines are not enabled");
+                    }
+                    d.cmd_set_line_width(b, width)
+                }
             }
         }
         Ok(())

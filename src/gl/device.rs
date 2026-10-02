@@ -182,6 +182,7 @@ impl Device {
             indirect: self.at(42, "GL_ARB_draw_indirect") && self.at(42, "GL_ARB_base_instance"),
             indirect_ids: false,
             indirect_offset: false,
+            wide_lines: false,
             mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }

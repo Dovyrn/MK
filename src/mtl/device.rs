@@ -428,6 +428,7 @@ impl Device {
             indirect: true,
             indirect_ids: true,
             indirect_offset: true,
+            wide_lines: false,
         }
     }
 

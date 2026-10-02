@@ -445,6 +445,7 @@ impl Device {
             indirect: true,
             indirect_ids: true,
             indirect_offset: true,
+            wide_lines: features.wide_lines != 0,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,
