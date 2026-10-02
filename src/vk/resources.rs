@@ -20,4 +20,5 @@ pub struct Resources {
     pub rays: Slots<(vk::Pipeline, u32)>,
     pub queries: Slots<(vk::QueryPool, vk::QueryControlFlags, u64, u32)>,
     pub events: Slots<(vk::Semaphore, bool)>,
+    pub table: crate::table::Table,
 }

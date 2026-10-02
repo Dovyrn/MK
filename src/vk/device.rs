@@ -1,3 +1,4 @@
+use crate::check::Check;
 use crate::vk::accel::Accel;
 use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
@@ -10,9 +11,9 @@ use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, aspect, count};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Command, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo,
-    RayInfo, RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address,
-    border, dimension, fill, filter, format, index, memory, query, token, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address, border,
+    dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{conditional_rendering, external_memory_host, mesh_shader};
@@ -811,6 +812,7 @@ impl Device {
                 .map_err(|e| e.to_string())?
         };
         let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
+        self.res.table.textures.set(slot, *info);
         self.res.textures.get_mut(slot).tile = vk::Extent3D {
             width,
             height,
@@ -1075,7 +1077,9 @@ impl Device {
                 self.raw.destroy_image(image, None);
                 return Err(e.to_string());
             }
-            self.register(image, vk::DeviceMemory::null(), true, &whole(info))
+            let id = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
+            self.res.table.textures.set(id, *info);
+            Ok(id)
         }
     }
 
@@ -1381,17 +1385,20 @@ impl Device {
     }
 
     pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
-        self.res.buffers.insert(Buffer {
+        let id = self.res.buffers.insert(Buffer {
             raw,
             memory: vk::DeviceMemory::null(),
             address: 0,
             data: std::ptr::null_mut(),
             own: false,
             device: false,
-        })
+        });
+        self.res.table.buffers.set(id, u64::MAX);
+        id
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
+        self.res.table.buffers.clear(buffer);
         self.defer(move |d| {
             let buffer = d.res.buffers.remove(buffer);
             d.free_buffer(&buffer);
@@ -1433,6 +1440,7 @@ impl Device {
             .buffer(buffer.raw)
             .range(size.min(limits.max_storage_buffer_range as u64));
         let slot = self.res.buffers.insert(buffer);
+        self.res.table.buffers.set(slot, size);
         if slot < self.bindless.buffers {
             self.bindless.write_buffer(&self.raw, slot, info);
         }
@@ -1613,7 +1621,9 @@ impl Device {
             let topology = vertex.map_or(vk::PrimitiveTopology::TRIANGLE_LIST, |v| {
                 vk::PrimitiveTopology::from_raw(v.topology as i32)
             });
-            Ok(self.res.renders.insert((pipeline, topology)))
+            let id = self.res.renders.insert((pipeline, topology));
+            self.res.table.renders.set(id, ());
+            Ok(id)
         }
     }
 
@@ -1660,6 +1670,7 @@ impl Device {
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+        self.res.table.renders.clear(pipeline);
         self.defer(move |d| {
             let (pipeline, _) = d.res.renders.remove(pipeline);
             unsafe { d.raw.destroy_pipeline(pipeline, None) };
@@ -1667,10 +1678,13 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
-        Ok(self.res.depths.insert(*info))
+        let id = self.res.depths.insert(*info);
+        self.res.table.states.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
+        self.res.table.states.clear(state);
         self.res.depths.remove(state);
     }
 
@@ -1707,12 +1721,16 @@ impl Device {
                 self.raw.free_memory(memory, None);
                 return Err(e.to_string());
             }
-            self.register(image, memory, true, &whole(info))
+            let id = self.register(image, memory, true, &whole(info))?;
+            self.res.table.textures.set(id, *info);
+            Ok(id)
         }
     }
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
-        self.register(image, vk::DeviceMemory::null(), false, &whole(info))
+        let id = self.register(image, vk::DeviceMemory::null(), false, &whole(info))?;
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
@@ -1795,7 +1813,9 @@ impl Device {
             usage: info.usage & t.usage,
             ..*info
         };
-        self.register(t.image, vk::DeviceMemory::null(), false, &view)
+        let id = self.register(t.image, vk::DeviceMemory::null(), false, &view)?;
+        self.res.table.view(id, texture, info);
+        Ok(id)
     }
 
     fn register(
@@ -1911,6 +1931,7 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
+        self.res.table.textures.clear(texture);
         self.defer(move |d| {
             let texture = d.res.textures.remove(texture);
             d.free_texture(&texture);
@@ -1999,10 +2020,12 @@ impl Device {
         let image = vk::DescriptorImageInfo::default().sampler(sampler);
         self.bindless
             .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
+        self.res.table.samplers.set(slot, ());
         Ok(slot)
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
+        self.res.table.samplers.clear(sampler);
         self.defer(move |d| {
             let sampler = d.res.samplers.remove(sampler);
             unsafe { d.raw.destroy_sampler(sampler, None) };
@@ -2069,11 +2092,14 @@ impl Device {
             let result = self.raw.create_compute_pipelines(self.cache, &[info], None);
             self.raw.destroy_shader_module(module, None);
             let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
-            Ok(self.res.pipelines.insert(pipeline))
+            let id = self.res.pipelines.insert(pipeline);
+            self.res.table.pipelines.set(id, ());
+            Ok(id)
         }
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
+        self.res.table.pipelines.clear(pipeline);
         self.defer(move |d| {
             let pipeline = d.res.pipelines.remove(pipeline);
             unsafe { d.raw.destroy_pipeline(pipeline, None) };
@@ -2294,6 +2320,7 @@ impl Device {
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
         let caps = self.caps();
         let none = vk::QueryControlFlags::empty();
+        let wanted = kind;
         let (kind, flags) = match kind {
             query::TIMESTAMP if !caps.timestamps => {
                 return Err("timestamps are not supported".into());
@@ -2341,10 +2368,13 @@ impl Device {
         } else {
             8
         };
-        Ok(self.res.queries.insert((pool, flags, stride, count)))
+        let id = self.res.queries.insert((pool, flags, stride, count));
+        self.res.table.heaps.set(id, (wanted, count));
+        Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
+        self.res.table.heaps.clear(heap);
         self.defer(move |d| {
             let (pool, _, _, _) = d.res.queries.remove(heap);
             unsafe { d.raw.destroy_query_pool(pool, None) };
@@ -2404,7 +2434,12 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Command::check(commands.bytes(), &self.caps())?;
+        Check::run(
+            commands.bytes(),
+            commands.natives().len(),
+            &self.caps(),
+            &self.res.table,
+        )?;
         self.collect();
         self.queues[queue].submit(
             &self.raw,
@@ -2425,7 +2460,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Command::check(commands, &self.caps())?;
+        Check::run(commands, 0, &self.caps(), &self.res.table)?;
         self.collect();
         self.queues[queue].submit(
             &self.raw,

@@ -27,6 +27,7 @@ fn native(n: u32) -> (Device, u32, ()) {
                 format: format::RGBA8_UNORM,
                 width: n,
                 height: n,
+                usage: mk::usage::COLOR | mk::usage::COPY_SRC,
                 ..Default::default()
             },
         )

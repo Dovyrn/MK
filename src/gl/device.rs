@@ -1,3 +1,4 @@
+use crate::check::Check;
 use crate::gl::buffer::Buffer;
 use crate::gl::cache::Cache;
 use crate::gl::event::Event;
@@ -12,8 +13,8 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{self, State, binding, buffer};
 use crate::gl::texture::Texture;
 use crate::{
-    Caps, Command, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
-    TextureInfo, ViewInfo, address, border, dimension, filter, format, memory, query, usage,
+    Caps, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo,
+    ViewInfo, address, border, dimension, filter, format, memory, query, usage,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -237,27 +238,31 @@ impl Device {
                     "buffer allocation of {size} bytes failed ({error:#x})"
                 ));
             }
-            Ok(self.res.buffers.insert(Buffer {
+            let id = self.res.buffers.insert(Buffer {
                 raw,
                 size,
                 memory,
                 data: Cell::new(data),
                 persistent,
                 own: true,
-            }))
+            });
+            self.res.table.buffers.set(id, size);
+            Ok(id)
         }
     }
 
     pub fn import_buffer(&mut self, raw: u32, size: u64) -> u32 {
         let raw = glow::NativeBuffer(std::num::NonZeroU32::new(raw).expect("buffer 0"));
-        self.res.buffers.insert(Buffer {
+        let id = self.res.buffers.insert(Buffer {
             raw,
             size,
             memory: memory::DEVICE,
             data: Cell::new(std::ptr::null_mut()),
             persistent: false,
             own: false,
-        })
+        });
+        self.res.table.buffers.set(id, size);
+        id
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> u32 {
@@ -265,6 +270,7 @@ impl Device {
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
+        self.res.table.buffers.clear(buffer);
         let b = self.res.buffers.remove(buffer);
         if b.own {
             unsafe { self.gl.delete_buffer(b.raw) };
@@ -321,10 +327,13 @@ impl Device {
             self.cache.as_mut(),
         )?;
         self.units = self.units.max(program.pairs.len() as u32);
-        Ok(self.res.pipelines.insert(program))
+        let id = self.res.pipelines.insert(program);
+        self.res.table.pipelines.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
+        self.res.table.pipelines.clear(pipeline);
         let p = self.res.pipelines.remove(pipeline);
         unsafe { self.gl.delete_program(p.raw) };
     }
@@ -354,7 +363,7 @@ impl Device {
                 return Err(e);
             }
         };
-        Ok(self.res.renders.insert(Pipeline {
+        let id = self.res.renders.insert(Pipeline {
             program,
             vao,
             buffers: info.buffers.to_vec(),
@@ -364,7 +373,9 @@ impl Device {
             fill: info.fill,
             clamp: info.clamp,
             coverage: info.coverage,
-        }))
+        });
+        self.res.table.renders.set(id, ());
+        Ok(id)
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
@@ -398,7 +409,7 @@ impl Device {
                 return Err(e);
             }
         };
-        Ok(self.res.renders.insert(Pipeline {
+        let id = self.res.renders.insert(Pipeline {
             program,
             vao,
             buffers: Vec::new(),
@@ -408,10 +419,13 @@ impl Device {
             fill: info.fill,
             clamp: info.clamp,
             coverage: info.coverage,
-        }))
+        });
+        self.res.table.renders.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+        self.res.table.renders.clear(pipeline);
         let p = self.res.renders.remove(pipeline);
         unsafe {
             self.gl.delete_program(p.program.raw);
@@ -420,10 +434,13 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
-        Ok(self.res.depths.insert(*info))
+        let id = self.res.depths.insert(*info);
+        self.res.table.states.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
+        self.res.table.states.clear(state);
         self.res.depths.remove(state);
     }
 
@@ -563,22 +580,26 @@ impl Device {
                 gl.delete_texture(raw);
                 return Err("texture allocation failed".into());
             }
-            Ok(self.res.textures.insert(Texture {
+            let id = self.res.textures.insert(Texture {
                 raw: Some(raw),
                 target: kind,
                 format: info.format,
                 own: true,
-            }))
+            });
+            self.res.table.textures.set(id, *info);
+            Ok(id)
         }
     }
 
     pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<u32, String> {
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
             target: target(info.dimension, info.samples),
             format: info.format,
             own: false,
-        }))
+        });
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn raw_texture(&self, texture: u32) -> u32 {
@@ -711,16 +732,19 @@ impl Device {
                 gl.delete_texture(raw);
                 return Err(format!("texture view failed ({error:#x})"));
             }
-            Ok(self.res.textures.insert(Texture {
+            let id = self.res.textures.insert(Texture {
                 raw: Some(raw),
                 target: kind,
                 format: info.format,
                 own: true,
-            }))
+            });
+            self.res.table.view(id, texture, info);
+            Ok(id)
         }
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
+        self.res.table.textures.clear(texture);
         let t = self.res.textures.remove(texture);
         if t.own
             && let Some(raw) = t.raw
@@ -785,11 +809,14 @@ impl Device {
                     compare(info.compare) as i32,
                 );
             }
-            Ok(self.res.samplers.insert(raw))
+            let id = self.res.samplers.insert(raw);
+            self.res.table.samplers.set(id, ());
+            Ok(id)
         }
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
+        self.res.table.samplers.clear(sampler);
         let s = self.res.samplers.remove(sampler);
         unsafe { self.gl.delete_sampler(s) };
     }
@@ -836,10 +863,13 @@ impl Device {
         let ids = (0..count)
             .map(|_| unsafe { self.gl.create_query() })
             .collect::<Result<_, _>>()?;
-        Ok(self.res.queries.insert(Query { kind, ids }))
+        let id = self.res.queries.insert(Query { kind, ids });
+        self.res.table.heaps.set(id, (kind, count));
+        Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
+        self.res.table.heaps.clear(heap);
         let q = self.res.queries.remove(heap);
         for id in q.ids {
             unsafe { self.gl.delete_query(id) };
@@ -938,7 +968,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
-        Command::check(commands, &self.caps())?;
+        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
         if let Some(i) = self
             .res
             .buffers

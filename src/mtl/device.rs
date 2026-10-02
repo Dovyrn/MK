@@ -1,3 +1,4 @@
+use crate::check::Check;
 use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
@@ -9,10 +10,10 @@ use crate::mtl::resources::Resources;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, Command, Commands, ComputeInfo, DepthInfo, IndirectInfo,
-    MeshInfo, RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo,
-    ViewInfo, accel, address, blend, border, dimension, fill, filter, format, index, mask, memory,
-    query, topology, usage,
+    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, ViewInfo, accel,
+    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
+    usage,
 };
 use dispatch2::DispatchData;
 use objc2::AllocAnyThread;
@@ -452,7 +453,9 @@ impl Device {
             .newBufferWithLength_options(size as usize, options(memory))
             .ok_or("buffer allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*buffer));
-        Ok(self.res.buffers.insert(buffer))
+        let id = self.res.buffers.insert(buffer);
+        self.res.table.buffers.set(id, size);
+        Ok(id)
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
@@ -468,7 +471,9 @@ impl Device {
                 .ok_or("host buffer")?
         };
         self.residency.add(ProtocolObject::from_ref(&*buffer));
-        Ok(self.res.buffers.insert(buffer))
+        let id = self.res.buffers.insert(buffer);
+        self.res.table.buffers.set(id, size);
+        Ok(id)
     }
 
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
@@ -578,10 +583,12 @@ impl Device {
             .newTextureWithDescriptor_iosurface_plane(&desc, surface, 0)
             .ok_or("IOSurface texture")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        }))
+        });
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
@@ -597,7 +604,9 @@ impl Device {
                 .ok_or("sparse buffer allocation failed")?
         };
         self.residency.add(ProtocolObject::from_ref(&*buffer));
-        Ok(self.res.buffers.insert(buffer))
+        let id = self.res.buffers.insert(buffer);
+        self.res.table.buffers.set(id, size);
+        Ok(id)
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
@@ -609,10 +618,12 @@ impl Device {
             .newTextureWithDescriptor(&desc)
             .ok_or("sparse texture allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        }))
+        });
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     fn sparse(
@@ -764,7 +775,9 @@ impl Device {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
                 .ok_or("placed buffer does not fit the heap")?
         };
-        Ok(self.res.buffers.insert(buffer))
+        let id = self.res.buffers.insert(buffer);
+        self.res.table.buffers.set(id, size);
+        Ok(id)
     }
 
     pub fn create_placed_texture(
@@ -781,15 +794,20 @@ impl Device {
             h.newTextureWithDescriptor_offset(&desc, offset as usize)
                 .ok_or("placed texture does not fit the heap")?
         };
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        }))
+        });
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        self.res.buffers.insert(raw)
+        let size = raw.length() as u64;
+        let id = self.res.buffers.insert(raw);
+        self.res.table.buffers.set(id, size);
+        id
     }
 
     pub fn import_texture(
@@ -798,7 +816,20 @@ impl Device {
         format: u32,
     ) -> Result<u32, String> {
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        Ok(self.res.textures.insert(Texture { raw, format }))
+        let info = TextureInfo {
+            format,
+            width: raw.width() as u32,
+            height: raw.height() as u32,
+            depth: raw.depth() as u32,
+            layers: raw.arrayLength() as u32,
+            mips: raw.mipmapLevelCount() as u32,
+            samples: raw.sampleCount() as u32,
+            usage: !0,
+            ..Default::default()
+        };
+        let id = self.res.textures.insert(Texture { raw, format });
+        self.res.table.textures.set(id, info);
+        Ok(id)
     }
 
     pub fn import_event(&mut self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> u32 {
@@ -822,6 +853,7 @@ impl Device {
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
+        self.res.table.buffers.clear(buffer);
         let buffer = self.res.buffers.remove(buffer);
         self.discard(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
     }
@@ -871,7 +903,9 @@ impl Device {
             .map_err(|e| e.localizedDescription().to_string())?;
         threads(info.group, state.maxTotalThreadsPerThreadgroup())?;
         let group = size(info.group);
-        Ok(self.res.pipelines.insert(Pipeline { state, group }))
+        let id = self.res.pipelines.insert(Pipeline { state, group });
+        self.res.table.pipelines.set(id, ());
+        Ok(id)
     }
 
     pub fn create_function_table(
@@ -931,6 +965,7 @@ impl Device {
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
+        self.res.table.pipelines.clear(pipeline);
         let pipeline = self.res.pipelines.remove(pipeline);
         self.discard(move |_| drop(pipeline));
     }
@@ -1034,14 +1069,16 @@ impl Device {
                 Some(&self.options),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
-        Ok(self.res.renders.insert(Render {
+        let id = self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
             clip: clip(info.clamp),
             primitive: MTLPrimitiveType(info.topology as usize),
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
-        }))
+        });
+        self.res.table.renders.set(id, ());
+        Ok(id)
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
@@ -1077,14 +1114,16 @@ impl Device {
         if !info.task.is_empty() {
             threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
         }
-        Ok(self.res.renders.insert(Render {
+        let id = self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
             clip: clip(info.clamp),
             primitive: MTLPrimitiveType::Triangle,
             task: size(info.task_group),
             mesh: size(info.mesh_group),
-        }))
+        });
+        self.res.table.renders.set(id, ());
+        Ok(id)
     }
 
     pub fn create_tile_pipeline(
@@ -1111,17 +1150,20 @@ impl Device {
                 Some(&self.options),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
-        Ok(self.res.renders.insert(Render {
+        let id = self.res.renders.insert(Render {
             state,
             fill: MTLTriangleFillMode::Fill,
             clip: MTLDepthClipMode::Clip,
             primitive: MTLPrimitiveType::Triangle,
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
-        }))
+        });
+        self.res.table.renders.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+        self.res.table.renders.clear(pipeline);
         let pipeline = self.res.renders.remove(pipeline);
         self.discard(move |_| drop(pipeline));
     }
@@ -1138,10 +1180,13 @@ impl Device {
             .raw
             .newDepthStencilStateWithDescriptor(&desc)
             .ok_or("depth state creation failed")?;
-        Ok(self.res.depths.insert(state))
+        let id = self.res.depths.insert(state);
+        self.res.table.states.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
+        self.res.table.states.clear(state);
         let state = self.res.depths.remove(state);
         self.discard(move |_| drop(state));
     }
@@ -1163,10 +1208,12 @@ impl Device {
         if info.memory != memory::TRANSIENT {
             self.residency.add(ProtocolObject::from_ref(&*raw));
         }
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        }))
+        });
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
@@ -1262,13 +1309,16 @@ impl Device {
                 )
                 .ok_or("view creation failed")?
         };
-        Ok(self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(Texture {
             raw,
             format: info.format,
-        }))
+        });
+        self.res.table.view(id, texture, info);
+        Ok(id)
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
+        self.res.table.textures.clear(texture);
         let texture = self.res.textures.remove(texture);
         self.discard(move |r| r.remove(ProtocolObject::from_ref(&*texture.raw)));
     }
@@ -1323,10 +1373,13 @@ impl Device {
             .raw
             .newSamplerStateWithDescriptor(&desc)
             .ok_or("sampler creation failed")?;
-        Ok(self.res.samplers.insert(sampler))
+        let id = self.res.samplers.insert(sampler);
+        self.res.table.samplers.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
+        self.res.table.samplers.clear(sampler);
         let sampler = self.res.samplers.remove(sampler);
         self.discard(move |_| drop(sampler));
     }
@@ -1579,10 +1632,13 @@ impl Device {
             }
             k => panic!("unknown query kind {k}"),
         };
-        Ok(self.res.queries.insert(heap))
+        let id = self.res.queries.insert(heap);
+        self.res.table.heaps.set(id, (kind, count));
+        Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
+        self.res.table.heaps.clear(heap);
         let heap = self.res.queries.remove(heap);
         self.discard(move |r| {
             if let Query::Buffer(buffer) = &heap {
@@ -1632,7 +1688,12 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Command::check(commands.bytes(), &self.caps())?;
+        Check::run(
+            commands.bytes(),
+            commands.natives().len(),
+            &self.caps(),
+            &self.res.table,
+        )?;
         self.collect();
         let commands = (commands.bytes(), commands.natives());
         self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
@@ -1645,7 +1706,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Command::check(commands, &self.caps())?;
+        Check::run(commands, 0, &self.caps(), &self.res.table)?;
         self.collect();
         self.queues[queue].submit(&self.raw, &self.res, (commands, &[]), waits, signals)
     }

@@ -17,4 +17,5 @@ pub struct Resources {
     pub depths: Slots<DepthInfo>,
     pub queries: Slots<Query>,
     pub events: Slots<Event>,
+    pub table: crate::table::Table,
 }

@@ -9,8 +9,10 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 compile_error!("enable exactly one backend feature");
 
 mod caps;
+mod check;
 mod command;
 mod commands;
+mod entries;
 #[cfg(feature = "gl")]
 pub mod gl;
 #[cfg(feature = "jni")]
@@ -18,6 +20,7 @@ mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod slots;
+mod table;
 #[cfg(feature = "vk")]
 pub mod vk;
 #[cfg(feature = "jni")]

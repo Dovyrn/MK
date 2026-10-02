@@ -27,4 +27,5 @@ pub struct Resources {
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    pub table: crate::table::Table,
 }
