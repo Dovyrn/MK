@@ -20,7 +20,7 @@ public class Smoke {
         System.out.println("caps: mesh " + caps.mesh + ", push " + caps.push + ", ray " + caps.ray);
         if (!caps.compute) {
             record(Path.of(args[2]));
-            device.free();
+            device.close();
             System.out.println("java: no compute, stream recorded");
             return;
         }
@@ -64,7 +64,7 @@ public class Smoke {
             System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
         }
         record(Path.of(args[2]));
-        device.free();
+        device.close();
         System.out.println("java: 1024 values match");
     }
 

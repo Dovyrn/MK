@@ -331,7 +331,7 @@ fn offset(base: &str, at: usize) -> String {
 }
 
 const BASE: &str = "@Getter
-public class Commands {
+public class Commands implements AutoCloseable {
     private long address = nmemAlloc(4096);
     private int capacity = 4096;
     private int size;
@@ -340,14 +340,15 @@ public class Commands {
         size = 0;
     }
 
-    public void free() {
+    @Override
+    public void close() {
         nmemFree(address);
         address = 0;
     }
 
     protected long head(int op, int length) {
         if (address == 0) {
-            throw new IllegalStateException(\"commands used after free\");
+            throw new IllegalStateException(\"commands used after close\");
         }
         if (length > 0xffff) {
             throw new IllegalArgumentException(\"payload of \" + length + \" bytes is over 65535\");

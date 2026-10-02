@@ -22,7 +22,7 @@ pub fn call<'local, T: Default>(
 }
 
 pub fn device<'a>(handle: jlong) -> &'a mut Device {
-    assert!(handle != 0, "device used after free");
+    assert!(handle != 0, "device used after close");
     unsafe { &mut *(handle as *mut Device) }
 }
 
