@@ -6,6 +6,7 @@ pub struct Texture {
     pub memory: vk::DeviceMemory,
     pub view: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
+    pub format: u32,
     pub own: bool,
     pub tile: vk::Extent3D,
 }

@@ -115,10 +115,7 @@ fn equation(op: u32) -> u32 {
 }
 
 fn integer(f: u32) -> bool {
-    matches!(
-        format::gl(f)[1],
-        glow::RED_INTEGER | glow::RG_INTEGER | glow::RGB_INTEGER | glow::RGBA_INTEGER
-    )
+    format::uint(f) || format::sint(f)
 }
 
 fn barriers(a: u32) -> u32 {
@@ -674,7 +671,11 @@ impl<'a> Recorder<'a> {
                             continue;
                         }
                         let slot = if default { 0 } else { c.index };
-                        if integer(res.textures.get(c.texture).format) {
+                        let f = res.textures.get(c.texture).format;
+                        if format::sint(f) {
+                            let values = c.clear.map(|v| v as i32);
+                            gl.clear_buffer_i32_slice(glow::COLOR, slot, &values);
+                        } else if format::uint(f) {
                             let values = c.clear.map(|v| v as u32);
                             gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
                         } else {

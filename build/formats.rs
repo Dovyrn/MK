@@ -42,6 +42,20 @@ pub fn rust(table: &toml::Table) -> String {
         writeln!(s, "            {} => [{b}, {w}, {h}],", i + 1).unwrap();
     }
     s += "            _ => [0, 1, 1],\n        }\n    }\n";
+    for kind in ["uint", "sint"] {
+        let ids: Vec<String> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.name.ends_with(&format!("_{}", kind.to_uppercase())))
+            .map(|(i, _)| (i + 1).to_string())
+            .collect();
+        writeln!(
+            s,
+            "\n    #[cfg(any(feature = \"vk\", feature = \"gl\"))]\n    pub(crate) fn {kind}(format: u32) -> bool {{\n        matches!(format, {})\n    }}",
+            ids.join(" | ")
+        )
+        .unwrap();
+    }
     s += "\n    #[cfg(feature = \"vk\")]\n";
     s += "    pub(crate) fn vk(format: u32) -> ash::vk::Format {\n        match format {\n";
     for (i, r) in rows.iter().enumerate() {

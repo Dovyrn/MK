@@ -4,7 +4,7 @@ use crate::vk::ffi;
 use crate::vk::resources::Resources;
 use crate::vk::texture::Texture;
 use crate::vk::{Callback, Native};
-use crate::{Command, DepthInfo, compare, face, index, layout, load, stage, store};
+use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
 use ash::vk;
 use std::ffi::CString;
 
@@ -460,9 +460,19 @@ impl Recorder<'_> {
                     resolve,
                     resolve_layout,
                 } => {
+                    let f = self.res.textures.get(texture).format;
+                    let color = [r, g, blue, a];
                     let clear = vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [r, g, blue, a],
+                        color: if format::sint(f) {
+                            vk::ClearColorValue {
+                                int32: color.map(|v| v as i32),
+                            }
+                        } else if format::uint(f) {
+                            vk::ClearColorValue {
+                                uint32: color.map(|v| v as u32),
+                            }
+                        } else {
+                            vk::ClearColorValue { float32: color }
                         },
                     };
                     let mut info = self.attachment(texture, l, load, store, clear);

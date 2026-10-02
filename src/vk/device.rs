@@ -1608,6 +1608,7 @@ impl Device {
                 memory,
                 view,
                 aspect,
+                format: info.format,
                 own,
                 tile: vk::Extent3D::default(),
             });
