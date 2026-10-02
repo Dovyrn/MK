@@ -20,11 +20,6 @@ impl Device {
             address::MIRROR_CLAMP => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
             a => panic!("unknown address {a}"),
         };
-        let limits = unsafe {
-            self.instance
-                .get_physical_device_properties(self.physical)
-                .limits
-        };
         let sampler_info = vk::SamplerCreateInfo::default()
             .min_filter(filter(info.min))
             .mag_filter(filter(info.mag))
@@ -37,7 +32,7 @@ impl Device {
             .address_mode_v(address(info.v))
             .address_mode_w(address(info.w))
             .anisotropy_enable(info.anisotropy > 1)
-            .max_anisotropy((info.anisotropy as f32).min(limits.max_sampler_anisotropy))
+            .max_anisotropy((info.anisotropy as f32).min(self.limits.max_sampler_anisotropy))
             .compare_enable(info.compare != 0)
             .compare_op(vk::CompareOp::from_raw(
                 info.compare.saturating_sub(1) as i32

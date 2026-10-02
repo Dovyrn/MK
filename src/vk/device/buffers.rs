@@ -5,13 +5,13 @@ use ash::vk;
 
 impl Device {
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps().buffer(size, memory)?;
+        self.caps.buffer(size, memory)?;
         let buffer = self.allocate(size, memory, self.usage())?;
         Ok(self.insert_buffer(buffer, size))
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size, memory::UPLOAD)?;
+        self.caps.buffer(size, memory::UPLOAD)?;
         let host = self
             .ext
             .host
@@ -189,14 +189,9 @@ impl Device {
     pub fn unmap(&self, _buffer: u32) {}
 
     pub(super) fn insert_buffer(&mut self, buffer: Buffer, size: u64) -> u32 {
-        let limits = unsafe {
-            self.instance
-                .get_physical_device_properties(self.physical)
-                .limits
-        };
         let info = vk::DescriptorBufferInfo::default()
             .buffer(buffer.raw)
-            .range(size.min(limits.max_storage_buffer_range as u64));
+            .range(size.min(self.limits.max_storage_buffer_range as u64));
         let slot = self.res.buffers.insert(buffer);
         self.res.table.buffers.set(slot, size);
         if slot < self.bindless.buffers {

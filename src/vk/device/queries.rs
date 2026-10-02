@@ -5,7 +5,7 @@ use ash::vk;
 
 impl Device {
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
-        let caps = self.caps();
+        let caps = self.caps;
         let none = vk::QueryControlFlags::empty();
         let wanted = kind;
         let (kind, flags) = match kind {

@@ -158,7 +158,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
-        self.caps().buffer(size, memory::DEVICE)?;
+        self.caps.buffer(size, memory::DEVICE)?;
         let h = self.res.heaps.get(heap);
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();

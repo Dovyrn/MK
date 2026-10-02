@@ -5,7 +5,7 @@ use ash::vk;
 
 impl Device {
     pub fn sparse_page(&self) -> Result<u64, String> {
-        if !self.caps().sparse {
+        if !self.caps.sparse {
             return Err("sparse residency is not supported".into());
         }
         let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
@@ -25,7 +25,7 @@ impl Device {
 
     pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
         self.texture(info)?;
-        if !self.caps().sparse_textures {
+        if !self.caps.sparse_textures {
             return Err("sparse textures are not supported".into());
         }
         let f = &self.ext.features;
@@ -64,8 +64,8 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size, memory::DEVICE)?;
-        if !self.caps().sparse {
+        self.caps.buffer(size, memory::DEVICE)?;
+        if !self.caps.sparse {
             return Err("sparse residency is not supported".into());
         }
         let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();

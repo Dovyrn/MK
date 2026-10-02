@@ -11,6 +11,8 @@ mod samplers;
 mod sparse;
 mod textures;
 
+use caps::probe;
+
 use crate::check::Check;
 use crate::vk::Callback;
 use crate::vk::bindings;
@@ -19,7 +21,7 @@ use crate::vk::extensions::Extensions;
 use crate::vk::ffi;
 use crate::vk::queue::Queue;
 use crate::vk::resources::Resources;
-use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
+use crate::{Caps, TextureInfo, ViewInfo, dimension, format, memory, usage};
 use ash::vk;
 
 pub struct Device {
@@ -27,6 +29,9 @@ pub struct Device {
     pub physical: vk::PhysicalDevice,
     pub raw: ash::Device,
     ext: Extensions,
+    caps: Caps,
+    name: String,
+    limits: vk::PhysicalDeviceLimits,
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
     cache: vk::PipelineCache,
@@ -115,7 +120,8 @@ impl Device {
     ) -> Result<Self, String> {
         unsafe {
             let ext = Extensions::new(&instance, &raw, features);
-            let limits = instance.get_physical_device_properties(physical).limits;
+            let basic = instance.get_physical_device_properties(physical);
+            let limits = basic.limits;
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
                 .size(limits.max_push_constants_size.min(256));
@@ -166,8 +172,16 @@ impl Device {
                     }
                 }
             }
+            let memory = instance.get_physical_device_memory_properties(physical);
             Ok(Self {
-                memory: instance.get_physical_device_memory_properties(physical),
+                caps: probe(
+                    &instance, physical, &ext, &list, &bindless, &memory, &limits,
+                ),
+                name: basic
+                    .device_name_as_c_str()
+                    .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+                limits,
+                memory,
                 families,
                 cache: vk::PipelineCache::null(),
                 instance,
@@ -259,10 +273,7 @@ impl Device {
     }
 
     pub fn name(&self) -> String {
-        let properties = unsafe { self.instance.get_physical_device_properties(self.physical) };
-        properties
-            .device_name_as_c_str()
-            .map_or(String::new(), |n| n.to_string_lossy().into_owned())
+        self.name.clone()
     }
 
     fn buffer_info<'a>(
@@ -326,7 +337,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
+        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         self.collect();
         self.queues[queue].submit(
             &self.raw,

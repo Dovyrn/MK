@@ -101,7 +101,7 @@ impl Device {
 
     pub fn ray_handles(&self, pipeline: u32) -> Result<Vec<u8>, String> {
         let (raw, count) = *self.res.rays.get(pipeline);
-        let size = self.caps().handle_size as usize;
+        let size = self.caps.handle_size as usize;
         unsafe {
             self.ext
                 .rays
