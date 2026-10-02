@@ -48,6 +48,13 @@ fn rects(data: &[u8], size: usize, count: u32) {
     );
 }
 
+fn aligned(offset: u64, alignment: u32) {
+    assert!(
+        offset.is_multiple_of(alignment.max(1) as u64),
+        "bind offset {offset} is not a multiple of caps.bind_alignment {alignment}"
+    );
+}
+
 fn slot(slot: u32, count: u32) {
     assert!(slot < count, "slot {slot} is outside 0..{count}");
 }
@@ -84,8 +91,18 @@ impl Command<'_> {
                 assert!(open == "render", "end_render without begin_render");
                 return "outside";
             }
-            Command::BindUniform { slot: i, .. } => slot(i, slot::UNIFORMS),
-            Command::BindStorage { slot: i, .. } => slot(i, slot::STORAGES),
+            Command::BindUniform {
+                slot: i, offset, ..
+            } => {
+                slot(i, slot::UNIFORMS);
+                aligned(offset, caps.bind_alignment);
+            }
+            Command::BindStorage {
+                slot: i, offset, ..
+            } => {
+                slot(i, slot::STORAGES);
+                aligned(offset, caps.bind_alignment);
+            }
             Command::BindImage { slot: i, .. } => slot(i, slot::IMAGES),
             Command::BindTexture { slot: i, .. } => slot(i, slot::TEXTURES),
             Command::BindSampler { slot: i, .. } => slot(i, slot::SAMPLERS),
