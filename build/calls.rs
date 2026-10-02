@@ -242,9 +242,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
     if backend.is_none() {
-        s += "public class Device implements AutoCloseable {\n    protected long handle;\n\n";
-        s += "    public Device(long handle) {\n        this.handle = handle;\n    }\n\n";
-        s += "    @Override\n    public void close() {\n        if (handle != 0) {\n            nFree(handle);\n            handle = 0;\n        }\n    }\n\n    private static native void nFree(long device);\n";
+        s += include_str!("device.java");
     } else {
         writeln!(
             s,
