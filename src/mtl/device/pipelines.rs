@@ -93,6 +93,14 @@ fn coverage(on: bool) -> MTL4AlphaToCoverageState {
     }
 }
 
+fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
+    if on {
+        MTL4IndirectCommandBufferSupportState::Enabled
+    } else {
+        MTL4IndirectCommandBufferSupportState::Disabled
+    }
+}
+
 fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[ColorTarget]) {
     for (i, c) in targets.iter().enumerate() {
         let a = unsafe { array.objectAtIndexedSubscript(i) };
@@ -124,6 +132,18 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
 }
 
 impl Device {
+    fn compile(
+        &self,
+        desc: &MTL4PipelineDescriptor,
+    ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, String> {
+        self.compiler
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
+                desc,
+                Some(&self.options),
+            )
+            .map_err(|e| e.localizedDescription().to_string())
+    }
+
     fn library(&self, code: &[u8]) -> Result<Retained<ProtocolObject<dyn MTLLibrary>>, String> {
         self.raw
             .newLibraryWithData_error(&DispatchData::from_bytes(code))
@@ -144,9 +164,7 @@ impl Device {
             linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
             desc.setStaticLinkingDescriptor(Some(&linking));
         }
-        if info.indirect {
-            desc.setSupportIndirectCommandBuffers(MTL4IndirectCommandBufferSupportState::Enabled);
-        }
+        desc.setSupportIndirectCommandBuffers(support(info.indirect));
         let state = self
             .compiler
             .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
@@ -208,22 +226,9 @@ impl Device {
             t => panic!("unknown topology {t}"),
         });
         desc.setAlphaToCoverageState(coverage(info.coverage));
-        desc.setSupportIndirectCommandBuffers(if info.indirect {
-            MTL4IndirectCommandBufferSupportState::Enabled
-        } else {
-            MTL4IndirectCommandBufferSupportState::Disabled
-        });
-        if info.views > 1 {
-            unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
-        }
-        let base: &MTL4PipelineDescriptor = &desc;
-        let state = self
-            .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
-                base,
-                Some(&self.options),
-            )
-            .map_err(|e| e.localizedDescription().to_string())?;
+        desc.setSupportIndirectCommandBuffers(support(info.indirect));
+        unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
+        let state = self.compile(&desc)?;
         let id = self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
@@ -249,22 +254,9 @@ impl Device {
         colors(&desc.colorAttachments(), info.colors);
         unsafe { desc.setRasterSampleCount(info.samples as usize) };
         desc.setAlphaToCoverageState(coverage(info.coverage));
-        desc.setSupportIndirectCommandBuffers(if info.indirect {
-            MTL4IndirectCommandBufferSupportState::Enabled
-        } else {
-            MTL4IndirectCommandBufferSupportState::Disabled
-        });
-        if info.views > 1 {
-            unsafe { desc.setMaxVertexAmplificationCount(info.views as usize) };
-        }
-        let base: &MTL4PipelineDescriptor = &desc;
-        let state = self
-            .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
-                base,
-                Some(&self.options),
-            )
-            .map_err(|e| e.localizedDescription().to_string())?;
+        desc.setSupportIndirectCommandBuffers(support(info.indirect));
+        unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
+        let state = self.compile(&desc)?;
         threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
         if !info.task.is_empty() {
             threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
@@ -297,14 +289,7 @@ impl Device {
         }
         unsafe { desc.setRasterSampleCount(samples as usize) };
         desc.setThreadgroupSizeMatchesTileSize(true);
-        let base: &MTL4PipelineDescriptor = &desc;
-        let state = self
-            .compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
-                base,
-                Some(&self.options),
-            )
-            .map_err(|e| e.localizedDescription().to_string())?;
+        let state = self.compile(&desc)?;
         let id = self.res.renders.insert(Render {
             state,
             fill: MTLTriangleFillMode::Fill,
