@@ -12,6 +12,7 @@ impl Caps {
     pub(crate) fn texture(&self, info: &TextureInfo) -> Result<(), String> {
         let counts = [info.width, info.height, info.depth, info.layers, info.mips];
         assert!(counts.iter().all(|&n| n > 0), "texture size is 0");
+        assert!(info.usage != 0, "texture usage is 0");
         let largest = info.width.max(info.height).max(info.depth);
         assert!(
             info.mips <= 32 - largest.leading_zeros(),

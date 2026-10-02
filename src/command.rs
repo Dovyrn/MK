@@ -76,6 +76,13 @@ impl Command<'_> {
             "{self} runs only in {scope}, not {open}"
         );
         match *self {
+            Command::BeginRender {
+                width,
+                height,
+                layers,
+            } if width == 0 || height == 0 || layers == 0 => {
+                panic!("begin_render size {width}x{height}x{layers} has a zero");
+            }
             Command::BeginCompute | Command::BeginRender { .. } => {
                 assert!(open == "outside", "{self} inside begin_{open}");
                 return match self {
