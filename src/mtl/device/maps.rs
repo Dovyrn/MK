@@ -33,7 +33,7 @@ impl Device {
         let map = self
             .raw
             .newRasterizationRateMapWithDescriptor(&desc)
-            .ok_or("rasterization rate map")?;
+            .ok_or("rasterization rate map allocation failed")?;
         Ok(self.res.maps.insert(map))
     }
 

@@ -15,7 +15,10 @@ impl Device {
         desc.setResourceOptions(options(memory));
         desc.setSize(size as usize);
         desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
-        let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
+        let heap = self
+            .raw
+            .newHeapWithDescriptor(&desc)
+            .ok_or("heap allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*heap));
         Ok(self.res.heaps.insert((heap, memory)))
     }
@@ -49,7 +52,7 @@ impl Device {
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
-                .ok_or("placed buffer does not fit the heap")?
+                .ok_or("placed buffer allocation failed")?
         };
         let id = self.res.buffers.insert(buffer);
         self.res.table.buffers.set(id, size);
@@ -68,7 +71,7 @@ impl Device {
         desc.setResourceOptions(options(*memory));
         let raw = unsafe {
             h.newTextureWithDescriptor_offset(&desc, offset as usize)
-                .ok_or("placed texture does not fit the heap")?
+                .ok_or("placed texture allocation failed")?
         };
         let id = self.res.textures.insert(Texture {
             raw,

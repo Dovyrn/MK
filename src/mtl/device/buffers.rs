@@ -28,7 +28,7 @@ impl Device {
                     options(memory::READBACK),
                     None,
                 )
-                .ok_or("host buffer")?
+                .ok_or("host buffer allocation failed")?
         };
         self.residency.add(ProtocolObject::from_ref(&*buffer));
         let id = self.res.buffers.insert(buffer);

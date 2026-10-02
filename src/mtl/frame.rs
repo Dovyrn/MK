@@ -18,7 +18,7 @@ impl Frame {
         Ok(Self {
             allocator: device
                 .newCommandAllocator()
-                .ok_or("command allocator creation failed")?,
+                .ok_or("command allocator allocation failed")?,
             chunks: Vec::new(),
             chunk: 0,
             used: 0,

@@ -46,7 +46,7 @@ impl Resolve {
         let kernel = |name: &str| {
             let function = library
                 .newFunctionWithName(&NSString::from_str(name))
-                .ok_or("resolve kernel")?;
+                .ok_or("resolve kernel allocation failed")?;
             device
                 .newComputePipelineStateWithFunction_error(&function)
                 .map_err(|e| e.localizedDescription().to_string())

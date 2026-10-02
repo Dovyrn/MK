@@ -78,7 +78,7 @@ impl Device {
                     NSRange::new(info.base_mip as usize, info.mips as usize),
                     NSRange::new(info.base_layer as usize, info.layers as usize),
                 )
-                .ok_or("view creation failed")?
+                .ok_or("view allocation failed")?
         };
         let id = self.res.textures.insert(Texture {
             raw,

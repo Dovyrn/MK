@@ -24,7 +24,7 @@ impl Device {
                 let buffer = self
                     .raw
                     .newBufferWithLength_options(count as usize * 8, options)
-                    .ok_or("visibility buffer")?;
+                    .ok_or("visibility buffer allocation failed")?;
                 self.residency.add(ProtocolObject::from_ref(&*buffer));
                 Query::Buffer(buffer)
             }

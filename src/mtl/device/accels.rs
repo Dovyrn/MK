@@ -105,7 +105,7 @@ impl Device {
         let raw = self
             .raw
             .newAccelerationStructureWithSize(sizes.accelerationStructureSize)
-            .ok_or("acceleration structure")?;
+            .ok_or("acceleration structure allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.accels.insert(Accel {
             raw,
@@ -119,7 +119,7 @@ impl Device {
         let raw = self
             .raw
             .newAccelerationStructureWithSize(size as usize)
-            .ok_or("acceleration structure")?;
+            .ok_or("acceleration structure allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
         let desc = self.res.accels.get(accel).desc.clone();
         Ok(self.res.accels.insert(Accel {

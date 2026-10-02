@@ -29,7 +29,7 @@ impl Device {
             desc.setFunctionCount(handles.len());
             let table = state
                 .newIntersectionFunctionTableWithDescriptor(&desc)
-                .ok_or("intersection function table")?;
+                .ok_or("intersection function table allocation failed")?;
             for (i, h) in handles.iter().enumerate() {
                 table.setFunction_atIndex(Some(h), i);
             }
@@ -40,7 +40,7 @@ impl Device {
             unsafe { desc.setFunctionCount(handles.len()) };
             let table = state
                 .newVisibleFunctionTableWithDescriptor(&desc)
-                .ok_or("visible function table")?;
+                .ok_or("visible function table allocation failed")?;
             for (i, h) in handles.iter().enumerate() {
                 unsafe { table.setFunction_atIndex(Some(h), i) };
             }

@@ -13,7 +13,7 @@ impl Device {
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
-        let event = self.raw.newSharedEvent().ok_or("event creation failed")?;
+        let event = self.raw.newSharedEvent().ok_or("event allocation failed")?;
         Ok(self.res.events.insert(event))
     }
 

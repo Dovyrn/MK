@@ -19,7 +19,8 @@ impl Device {
         ];
         let values: Vec<&CFNumber> = values.iter().map(|v| &**v).collect();
         let properties = CFDictionary::<CFString, CFNumber>::from_slices(&keys, &values);
-        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }.ok_or("IOSurface")?;
+        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }
+            .ok_or("IOSurface allocation failed")?;
         let id = surface.id();
         Ok((self.surface_texture(&surface, info)?, id))
     }
@@ -65,7 +66,7 @@ impl Device {
         let raw = self
             .raw
             .newTextureWithDescriptor_iosurface_plane(&desc, surface, 0)
-            .ok_or("IOSurface texture")?;
+            .ok_or("IOSurface texture allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
         let id = self.res.textures.insert(Texture {
             raw,

@@ -23,7 +23,7 @@ impl Device {
                     MTLResourceOptions::StorageModePrivate
                         | MTLResourceOptions::HazardTrackingModeUntracked,
                 )
-                .ok_or("indirect command buffer")?
+                .ok_or("indirect command buffer allocation failed")?
         };
         self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.indirects.insert(raw))

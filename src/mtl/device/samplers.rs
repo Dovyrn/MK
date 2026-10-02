@@ -47,7 +47,7 @@ impl Device {
         let sampler = self
             .raw
             .newSamplerStateWithDescriptor(&desc)
-            .ok_or("sampler creation failed")?;
+            .ok_or("sampler allocation failed")?;
         let id = self.res.samplers.insert(sampler);
         self.res.table.samplers.set(id, ());
         Ok(id)

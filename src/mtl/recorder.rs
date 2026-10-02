@@ -228,7 +228,7 @@ impl<'a> Recorder<'a> {
         let encoder = self
             .buffer
             .computeCommandEncoder()
-            .ok_or("compute encoder creation failed")?;
+            .ok_or("compute encoder allocation failed")?;
         self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
         self.resolve
             .encode(&encoder, std::mem::take(&mut self.resolves));
@@ -289,7 +289,7 @@ impl<'a> Recorder<'a> {
                 let encoder = self
                     .buffer
                     .computeCommandEncoder()
-                    .ok_or("compute encoder creation failed")?;
+                    .ok_or("compute encoder allocation failed")?;
                 encoder.setArgumentTable(Some(self.table));
                 self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                 if let Some(p) = self.compute_pipeline {
@@ -569,7 +569,7 @@ impl<'a> Recorder<'a> {
                 let encoder = self
                     .buffer
                     .renderCommandEncoderWithDescriptor(&self.pass)
-                    .ok_or("render encoder creation failed")?;
+                    .ok_or("render encoder allocation failed")?;
                 let all = MTLRenderStages::Vertex
                     | MTLRenderStages::Fragment
                     | MTLRenderStages::Tile
@@ -924,7 +924,7 @@ impl<'a> Recorder<'a> {
                         let encoder = self
                             .buffer
                             .computeCommandEncoder()
-                            .ok_or("compute encoder creation failed")?;
+                            .ok_or("compute encoder allocation failed")?;
                         self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
                         unsafe {
                             encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(

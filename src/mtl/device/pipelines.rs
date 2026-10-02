@@ -319,7 +319,7 @@ impl Device {
         let state = self
             .raw
             .newDepthStencilStateWithDescriptor(&desc)
-            .ok_or("depth state creation failed")?;
+            .ok_or("depth state allocation failed")?;
         let id = self.res.depths.insert(state);
         self.res.table.states.set(id, ());
         Ok(id)

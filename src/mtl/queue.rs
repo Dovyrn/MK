@@ -40,7 +40,7 @@ impl Queue {
     ) -> Result<Self, String> {
         let raw = device
             .newMTL4CommandQueue()
-            .ok_or("no MTL4 command queue")?;
+            .ok_or("command queue allocation failed")?;
         let residency = device
             .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
             .map_err(|e| e.localizedDescription().to_string())?;
@@ -55,11 +55,13 @@ impl Queue {
             .map_err(|e| e.localizedDescription().to_string())?;
         Ok(Self {
             raw,
-            buffer: device.newCommandBuffer().ok_or("no MTL4 command buffer")?,
+            buffer: device
+                .newCommandBuffer()
+                .ok_or("command buffer allocation failed")?,
             table,
             residency,
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
-            event: device.newSharedEvent().ok_or("no shared event")?,
+            event: device.newSharedEvent().ok_or("event allocation failed")?,
             count: 0,
             free: Vec::new(),
             busy: VecDeque::new(),
