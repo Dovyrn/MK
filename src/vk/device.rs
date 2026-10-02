@@ -17,16 +17,9 @@ use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::ffi;
-use crate::vk::generated::Generated;
 use crate::vk::queue::Queue;
 use crate::vk::resources::Resources;
 use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
-use ash::ext::debug_utils;
-use ash::ext::{conditional_rendering, external_memory_host, mesh_shader};
-use ash::khr::push_descriptor;
-use ash::khr::{
-    acceleration_structure, external_memory_fd, fragment_shading_rate, ray_tracing_pipeline,
-};
 use ash::vk;
 
 pub struct Device {
@@ -46,19 +39,6 @@ pub struct Device {
 }
 
 type Free = Box<dyn FnOnce(&mut Device)>;
-
-unsafe fn chained<'a, T: vk::TaggedStructure>(
-    features: &'a vk::PhysicalDeviceFeatures2,
-) -> Option<&'a T> {
-    let mut next = features.p_next as *const vk::BaseInStructure;
-    while let Some(s) = unsafe { next.as_ref() } {
-        if s.s_type == T::STRUCTURE_TYPE {
-            return Some(unsafe { &*(next as *const T) });
-        }
-        next = s.p_next;
-    }
-    None
-}
 
 fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
@@ -134,47 +114,7 @@ impl Device {
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
         unsafe {
-            let has = |name: &std::ffi::CStr| {
-                (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr()).is_some()
-            };
-            let debug = has(c"vkCmdBeginDebugUtilsLabelEXT")
-                .then(|| debug_utils::Device::new(&instance, &raw));
-            let mesh = chained::<vk::PhysicalDeviceMeshShaderFeaturesEXT>(features)
-                .is_some_and(|f| f.mesh_shader != 0)
-                && has(c"vkCmdDrawMeshTasksEXT");
-            let mesh = mesh.then(|| mesh_shader::Device::new(&instance, &raw));
-            let ray = chained::<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>(features)
-                .is_some_and(|f| f.acceleration_structure != 0)
-                && has(c"vkCmdBuildAccelerationStructuresKHR");
-            let ray = ray.then(|| acceleration_structure::Device::new(&instance, &raw));
-            let generated = chained::<ffi::Features>(features).is_some_and(|f| f.generated != 0);
-            let generated = generated
-                .then(|| Generated::load(&instance, &raw))
-                .flatten();
-            let rays = chained::<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>(features)
-                .is_some_and(|f| f.ray_tracing_pipeline != 0)
-                && has(c"vkCreateRayTracingPipelinesKHR");
-            let rays = rays.then(|| ray_tracing_pipeline::Device::new(&instance, &raw));
-            let host = has(c"vkGetMemoryHostPointerPropertiesEXT")
-                .then(|| external_memory_host::Device::new(&instance, &raw));
-            let conditional =
-                chained::<vk::PhysicalDeviceConditionalRenderingFeaturesEXT>(features)
-                    .is_some_and(|f| f.conditional_rendering != 0)
-                    && has(c"vkCmdBeginConditionalRenderingEXT");
-            let conditional =
-                conditional.then(|| conditional_rendering::Device::new(&instance, &raw));
-            let fds =
-                has(c"vkGetMemoryFdKHR").then(|| external_memory_fd::Device::new(&instance, &raw));
-            let rates = chained::<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>(features)
-                .is_some_and(|f| f.pipeline_fragment_shading_rate != 0)
-                && has(c"vkCmdSetFragmentShadingRateKHR");
-            let rates = rates.then(|| fragment_shading_rate::Device::new(&instance, &raw));
-            let push = has(c"vkCmdPushDescriptorSetKHR")
-                .then(|| push_descriptor::Device::new(&instance, &raw));
-            let multiview = chained::<vk::PhysicalDeviceVulkan11Features>(features)
-                .is_some_and(|f| f.multiview != 0)
-                || chained::<vk::PhysicalDeviceMultiviewFeatures>(features)
-                    .is_some_and(|f| f.multiview != 0);
+            let ext = Extensions::new(&instance, &raw, features);
             let limits = instance.get_physical_device_properties(physical).limits;
             let range = vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::ALL)
@@ -183,11 +123,8 @@ impl Device {
             let mut properties =
                 vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
             instance.get_physical_device_properties2(physical, &mut properties);
-            let slots = bindings::layout(&raw, push.is_some()).map_err(|e| e.to_string())?;
-            let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
-            let buffers =
-                v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
-            let bindless = match Bindless::new(&raw, &properties12, buffers) {
+            let slots = bindings::layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
+            let bindless = match Bindless::new(&raw, &properties12, ext.buffers) {
                 Ok(b) => b,
                 Err(e) => {
                     raw.destroy_descriptor_set_layout(slots, None);
@@ -236,20 +173,7 @@ impl Device {
                 instance,
                 physical,
                 raw,
-                ext: Extensions {
-                    debug,
-                    mesh,
-                    ray,
-                    rays,
-                    rates,
-                    host,
-                    fds,
-                    conditional,
-                    generated,
-                    features: features.features,
-                    multiview,
-                    push,
-                },
+                ext,
                 slots,
                 bindless,
                 layout,
