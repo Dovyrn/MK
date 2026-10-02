@@ -9,7 +9,8 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{State, toggle};
 use crate::register;
 use crate::{
-    Caps, Command, DepthInfo, access, cull, face, format, index, load, slot, store, topology,
+    Caps, ColorAttachment, Command, DepthAttachment, DepthInfo, access, cull, face, format, index,
+    load, slot, store, topology,
 };
 use glow::HasContext;
 
@@ -41,24 +42,6 @@ const OFFSETS: [u32; 3] = [
     glow::POLYGON_OFFSET_POINT,
 ];
 
-struct Color {
-    index: u32,
-    texture: u32,
-    load: u32,
-    store: u32,
-    clear: [f32; 4],
-    resolve: u32,
-}
-
-struct Depth {
-    texture: u32,
-    load: u32,
-    store: u32,
-    depth: f32,
-    stencil_load: u32,
-    stencil: u32,
-}
-
 pub struct Recorder<'a> {
     gl: &'a glow::Context,
     extra: &'a Extra,
@@ -71,8 +54,8 @@ pub struct Recorder<'a> {
     snapshot: &'a dyn Fn() -> State,
     program: Option<&'a Program>,
     render: Option<&'a Pipeline>,
-    colors: Vec<Color>,
-    depth: Option<Depth>,
+    colors: Vec<ColorAttachment>,
+    depth: Option<DepthAttachment>,
     data: [u8; PUSH],
     size: usize,
     dirty: bool,
@@ -847,6 +830,7 @@ impl<'a> Recorder<'a> {
                 Command::ColorAttachment {
                     index,
                     texture,
+                    layout,
                     load,
                     store,
                     r,
@@ -854,33 +838,41 @@ impl<'a> Recorder<'a> {
                     b,
                     a,
                     resolve,
-                    ..
+                    resolve_layout,
                 } => {
                     self.colors.retain(|c| c.index != index);
-                    self.colors.push(Color {
+                    self.colors.push(ColorAttachment {
                         index,
                         texture,
+                        layout,
                         load,
                         store,
-                        clear: [r, g, b, a],
+                        r,
+                        g,
+                        b,
+                        a,
                         resolve,
+                        resolve_layout,
                     });
                 }
                 Command::DepthAttachment {
                     texture,
+                    layout,
                     load,
                     store,
                     depth,
                     stencil_load,
+                    stencil_store,
                     stencil,
-                    ..
                 } => {
-                    self.depth = Some(Depth {
+                    self.depth = Some(DepthAttachment {
                         texture,
+                        layout,
                         load,
                         store,
                         depth,
                         stencil_load,
+                        stencil_store,
                         stencil,
                     });
                 }
@@ -948,15 +940,16 @@ impl<'a> Recorder<'a> {
                             continue;
                         }
                         let slot = if default { 0 } else { c.index };
+                        let clear = [c.r, c.g, c.b, c.a];
                         let f = res.textures.get(c.texture).format;
                         if format::sint(f) {
-                            let values = c.clear.map(|v| v as i32);
+                            let values = clear.map(|v| v as i32);
                             gl.clear_buffer_i32_slice(glow::COLOR, slot, &values);
                         } else if format::uint(f) {
-                            let values = c.clear.map(|v| v as u32);
+                            let values = clear.map(|v| v as u32);
                             gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
                         } else {
-                            gl.clear_buffer_f32_slice(glow::COLOR, slot, &c.clear);
+                            gl.clear_buffer_f32_slice(glow::COLOR, slot, &clear);
                         }
                     }
                     if let Some(d) = &self.depth {
