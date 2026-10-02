@@ -1,0 +1,40 @@
+use super::{Device, id};
+use crate::IndirectInfo;
+use objc2::runtime::ProtocolObject;
+use objc2_metal::{
+    MTLDevice, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
+    MTLIndirectCommandType, MTLResourceOptions,
+};
+
+impl Device {
+    pub fn create_indirect(&mut self, info: &IndirectInfo) -> Result<u32, String> {
+        let desc = MTLIndirectCommandBufferDescriptor::new();
+        desc.setCommandTypes(MTLIndirectCommandType(info.kinds as usize));
+        desc.setInheritPipelineState(info.inherit_pipeline);
+        desc.setInheritBuffers(info.inherit_buffers);
+        desc.setMaxVertexBufferBindCount(info.vertex_buffers as usize);
+        desc.setMaxFragmentBufferBindCount(info.fragment_buffers as usize);
+        desc.setMaxKernelBufferBindCount(info.kernel_buffers as usize);
+        let raw = unsafe {
+            self.raw
+                .newIndirectCommandBufferWithDescriptor_maxCommandCount_options(
+                    &desc,
+                    info.count as usize,
+                    MTLResourceOptions::StorageModePrivate
+                        | MTLResourceOptions::HazardTrackingModeUntracked,
+                )
+                .ok_or("indirect command buffer")?
+        };
+        self.residency.add(ProtocolObject::from_ref(&*raw));
+        Ok(self.res.indirects.insert(raw))
+    }
+
+    pub fn destroy_indirect(&mut self, indirect: u32) {
+        let raw = self.res.indirects.remove(indirect);
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
+    }
+
+    pub fn indirect_handle(&self, indirect: u32) -> u64 {
+        id(self.res.indirects.get(indirect).gpuResourceID())
+    }
+}
