@@ -7,10 +7,11 @@ use crate::slot;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
+use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTL4VisibilityOptions, MTLDevice, MTLEvent, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLSharedEvent, MTLStages,
+    MTL4CommandQueue, MTL4VisibilityOptions, MTLComputePipelineState, MTLDevice, MTLEvent,
+    MTLLibrary, MTLResidencySet, MTLResidencySetDescriptor, MTLSharedEvent, MTLStages,
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
@@ -18,11 +19,33 @@ use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
+const RESOLVE: &str = "#include <metal_stdlib>
+using namespace metal;
+template <typename T>
+void resolve(texture2d_ms<T> src, texture2d<T, access::write> dst, uint2 id) {
+    if (id.x < dst.get_width() && id.y < dst.get_height()) {
+        dst.write(src.read(id, 0), id);
+    }
+}
+kernel void unsigned_resolve(texture2d_ms<uint> src [[texture(0)]],
+                             texture2d<uint, access::write> dst [[texture(1)]],
+                             uint2 id [[thread_position_in_grid]]) {
+    resolve(src, dst, id);
+}
+kernel void signed_resolve(texture2d_ms<int> src [[texture(0)]],
+                           texture2d<int, access::write> dst [[texture(1)]],
+                           uint2 id [[thread_position_in_grid]]) {
+    resolve(src, dst, id);
+}
+";
+
 pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
     pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
+    pub kernels: [Retained<ProtocolObject<dyn MTLComputePipelineState>>; 2],
+    pub scratch: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     pub count: u64,
@@ -52,11 +75,30 @@ impl Queue {
         let table = device
             .newArgumentTableWithDescriptor_error(&desc)
             .map_err(|e| e.localizedDescription().to_string())?;
+        let desc = MTL4ArgumentTableDescriptor::new();
+        desc.setMaxTextureBindCount(2);
+        let scratch = device
+            .newArgumentTableWithDescriptor_error(&desc)
+            .map_err(|e| e.localizedDescription().to_string())?;
+        let library = device
+            .newLibraryWithSource_options_error(&NSString::from_str(RESOLVE), None)
+            .map_err(|e| e.localizedDescription().to_string())?;
+        let kernel = |name: &str| {
+            let function = library
+                .newFunctionWithName(&NSString::from_str(name))
+                .ok_or("resolve kernel")?;
+            device
+                .newComputePipelineStateWithFunction_error(&function)
+                .map_err(|e| e.localizedDescription().to_string())
+        };
+        let kernels = [kernel("unsigned_resolve")?, kernel("signed_resolve")?];
         Ok(Self {
             raw,
             buffer: device.newCommandBuffer().ok_or("no MTL4 command buffer")?,
             table,
             residency,
+            kernels,
+            scratch,
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             event: device.newSharedEvent().ok_or("no shared event")?,
             count: 0,

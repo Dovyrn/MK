@@ -4,12 +4,14 @@ use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
+use crate::mtl::texture::Texture;
 use crate::mtl::{Callback, Native};
 use crate::{Command, access, face, format, index, load, stage, store};
 use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
+use objc2_metal::MTLComputePipelineState;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
@@ -26,6 +28,9 @@ pub struct Recorder<'a> {
     residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
+    kernels: &'a [Retained<ProtocolObject<dyn MTLComputePipelineState>>; 2],
+    scratch: &'a ProtocolObject<dyn MTL4ArgumentTable>,
+    resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
     res: &'a Resources,
     natives: &'a [Callback],
@@ -58,6 +63,31 @@ const RENDER: MTLStages = MTLStages(
 );
 
 const NONE: u32 = !0;
+
+pub fn integer(f: u32) -> Option<bool> {
+    match f {
+        format::R8_UINT
+        | format::RG8_UINT
+        | format::RGBA8_UINT
+        | format::RGB10A2_UINT
+        | format::R16_UINT
+        | format::RG16_UINT
+        | format::RGBA16_UINT
+        | format::R32_UINT
+        | format::RG32_UINT
+        | format::RGBA32_UINT => Some(false),
+        format::R8_SINT
+        | format::RG8_SINT
+        | format::RGBA8_SINT
+        | format::R16_SINT
+        | format::RG16_SINT
+        | format::RGBA16_SINT
+        | format::R32_SINT
+        | format::RG32_SINT
+        | format::RGBA32_SINT => Some(true),
+        _ => None,
+    }
+}
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
@@ -173,6 +203,9 @@ impl<'a> Recorder<'a> {
             residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
+            kernels: &queue.kernels,
+            scratch: &queue.scratch,
+            resolves: Vec::new(),
             frame,
             res,
             natives,
@@ -224,6 +257,41 @@ impl<'a> Recorder<'a> {
             );
         }
         order(ProtocolObject::from_ref(&**encoder), COMPUTE, barrier);
+    }
+
+    fn resolve(&mut self) -> Result<(), &'static str> {
+        if self.resolves.is_empty() {
+            return Ok(());
+        }
+        let encoder = self
+            .buffer
+            .computeCommandEncoder()
+            .ok_or("compute encoder creation failed")?;
+        self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
+        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(
+            MTLStages::Fragment,
+            MTLStages::Dispatch,
+            MTL4VisibilityOptions::None,
+        );
+        encoder.setArgumentTable(Some(self.scratch));
+        for (src, dst, signed) in std::mem::take(&mut self.resolves) {
+            unsafe {
+                self.scratch.setTexture_atIndex(src.raw.gpuResourceID(), 0);
+                self.scratch.setTexture_atIndex(dst.raw.gpuResourceID(), 1);
+            }
+            encoder.setComputePipelineState(&self.kernels[signed as usize]);
+            encoder.dispatchThreads_threadsPerThreadgroup(
+                size(dst.raw.width() as u32, dst.raw.height() as u32, 1),
+                size(8, 8, 1),
+            );
+        }
+        encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(
+            MTLStages::Dispatch,
+            MTLStages::All,
+            MTL4VisibilityOptions::None,
+        );
+        encoder.endEncoding();
+        Ok(())
     }
 
     fn flush(&mut self) -> Result<(), &'static str> {
@@ -470,22 +538,32 @@ impl<'a> Recorder<'a> {
                 resolve,
                 ..
             } => {
+                let res = self.res;
+                let t = res.textures.get(texture);
                 let attachment = unsafe {
                     self.pass
                         .colorAttachments()
                         .objectAtIndexedSubscript(index as usize)
                 };
-                attachment.setTexture(Some(&self.res.textures.get(texture).raw));
+                attachment.setTexture(Some(&t.raw));
                 attachment.setLoadAction(load(l));
-                attachment.setStoreAction(store(s, resolve != NONE));
+                let signed = integer(t.format).filter(|_| resolve != NONE);
+                attachment.setStoreAction(match signed {
+                    Some(_) => MTLStoreAction::Store,
+                    None => store(s, resolve != NONE),
+                });
                 attachment.setClearColor(MTLClearColor {
                     red: r as f64,
                     green: g as f64,
                     blue: b as f64,
                     alpha: a as f64,
                 });
-                if resolve != NONE {
-                    attachment.setResolveTexture(Some(&self.res.textures.get(resolve).raw));
+                match signed {
+                    Some(signed) => self.resolves.push((t, res.textures.get(resolve), signed)),
+                    None if resolve != NONE => {
+                        attachment.setResolveTexture(Some(&res.textures.get(resolve).raw))
+                    }
+                    None => {}
                 }
             }
             Command::DepthAttachment {
@@ -563,6 +641,7 @@ impl<'a> Recorder<'a> {
             Command::EndRender => {
                 let encoder = self.render.take().unwrap();
                 encoder.endEncoding();
+                self.resolve()?;
             }
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);

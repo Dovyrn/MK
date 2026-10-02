@@ -2,7 +2,7 @@ use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
-use crate::mtl::recorder::VERTICES;
+use crate::mtl::recorder::{VERTICES, integer};
 use crate::mtl::render::Render;
 use crate::mtl::residency::Residency;
 use crate::mtl::resources::Resources;
@@ -259,6 +259,16 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     }
     if info.usage & usage::VIEW != 0 {
         flags |= MTLTextureUsage::PixelFormatView;
+    }
+    if integer(info.format).is_some()
+        && info.usage & usage::COLOR != 0
+        && info.memory != memory::TRANSIENT
+    {
+        flags |= if info.samples > 1 {
+            MTLTextureUsage::ShaderRead
+        } else {
+            MTLTextureUsage::ShaderWrite
+        };
     }
     let desc = MTLTextureDescriptor::new();
     desc.setTextureType(kind(info.dimension, info.samples));
