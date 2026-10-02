@@ -108,14 +108,6 @@ fn render_stage(bits: u32) -> MTLRenderStages {
     }
 }
 
-fn visibility(src: u32, dst: u32) -> MTL4VisibilityOptions {
-    if (src | dst) & (access::HOST_READ | access::HOST_WRITE) != 0 {
-        MTL4VisibilityOptions::Device
-    } else {
-        MTL4VisibilityOptions::None
-    }
-}
-
 fn origin(x: u32, y: u32, z: u32) -> MTLOrigin {
     MTLOrigin {
         x: x as usize,
@@ -217,25 +209,6 @@ impl<'a> Recorder<'a> {
     fn opened(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
         order(encoder, mask, self.pending);
         self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
-    }
-
-    fn barrier(&mut self, src: (u32, u32), dst: (u32, u32)) {
-        let barrier = (stages(src.0), stages(dst.0), visibility(src.1, dst.1));
-        let Some(encoder) = &self.compute else {
-            self.pending.0 |= barrier.0;
-            self.pending.1 |= barrier.1;
-            self.pending.2 |= barrier.2;
-            return;
-        };
-        let (from, to, options) = barrier;
-        if !(from & COMPUTE).is_empty() && !(to & COMPUTE).is_empty() {
-            encoder.barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
-                from & COMPUTE,
-                to & COMPUTE,
-                options,
-            );
-        }
-        order(ProtocolObject::from_ref(&**encoder), COMPUTE, barrier);
     }
 
     fn resolve(&mut self) -> Result<(), &'static str> {
@@ -412,7 +385,33 @@ impl<'a> Recorder<'a> {
                 src_access,
                 dst_stage,
                 dst_access,
-            } => self.barrier((src_stage, src_access), (dst_stage, dst_access)),
+            } => {
+                let host = access::HOST_READ | access::HOST_WRITE;
+                let options = if (src_access | dst_access) & host != 0 {
+                    MTL4VisibilityOptions::Device
+                } else {
+                    MTL4VisibilityOptions::None
+                };
+                let (from, to) = (stages(src_stage), stages(dst_stage));
+                let Some(encoder) = &self.compute else {
+                    self.pending.0 |= from;
+                    self.pending.1 |= to;
+                    self.pending.2 |= options;
+                    return Ok(());
+                };
+                if !(from & COMPUTE).is_empty() && !(to & COMPUTE).is_empty() {
+                    encoder.barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
+                        from & COMPUTE,
+                        to & COMPUTE,
+                        options,
+                    );
+                }
+                order(
+                    ProtocolObject::from_ref(&**encoder),
+                    COMPUTE,
+                    (from, to, options),
+                );
+            }
             Command::CopyBufferToTexture {
                 buffer,
                 offset,
