@@ -285,12 +285,21 @@ impl<'a> Recorder<'a> {
 
     fn attach(&self, target: u32, point: u32, texture: u32, layers: u32) {
         let t = self.res.textures.get(texture);
+        let gl = self.gl;
         unsafe {
-            if layers > 1 {
-                self.gl.framebuffer_texture(target, point, t.raw, 0);
-            } else {
-                self.gl
-                    .framebuffer_texture_2d(target, point, t.target, t.raw, 0);
+            match t.target {
+                _ if layers > 1 => gl.framebuffer_texture(target, point, t.raw, 0),
+                glow::TEXTURE_2D | glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_1D => {
+                    gl.framebuffer_texture(target, point, t.raw, 0)
+                }
+                glow::TEXTURE_CUBE_MAP => gl.framebuffer_texture_2d(
+                    target,
+                    point,
+                    glow::TEXTURE_CUBE_MAP_POSITIVE_X,
+                    t.raw,
+                    0,
+                ),
+                _ => gl.framebuffer_texture_layer(target, point, t.raw, 0, 0),
             }
         }
     }
