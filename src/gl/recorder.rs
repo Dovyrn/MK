@@ -8,7 +8,7 @@ use crate::register;
 use crate::{
     Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
 };
-use glow::{HasContext, PixelPackData, PixelUnpackData};
+use glow::HasContext;
 
 const QUERY_BUFFER: u32 = 0x9192;
 
@@ -250,13 +250,13 @@ impl<'a> Recorder<'a> {
                     glow::BGRA => glow::BGRA as i32,
                     _ => 4,
                 };
-                let at = (offset + a.offset as u64) as i32;
+                let at = (offset + a.offset as u64) as usize as *const std::ffi::c_void;
                 let stride = layout.stride as i32;
                 if integer(a.format) {
-                    gl.vertex_attrib_pointer_i32(a.location, size, ty, stride, at);
+                    (self.extra.integer)(a.location, size, ty, stride, at);
                 } else {
                     let normalized = ty != glow::FLOAT && ty != glow::HALF_FLOAT;
-                    gl.vertex_attrib_pointer_f32(a.location, size, ty, normalized, stride, at);
+                    (self.extra.attribute)(a.location, size, ty, normalized as u8, stride, at);
                 }
                 gl.enable_vertex_attrib_array(a.location);
                 gl.vertex_attrib_divisor(a.location, layout.instance as u32);
@@ -346,12 +346,13 @@ impl<'a> Recorder<'a> {
                     gl.dispatch_compute(x, y, z);
                 }
                 Command::DispatchIndirect { buffer, offset } => {
+                    let dispatch = self.extra.dispatch.ok_or("compute shaders need GL 4.3")?;
                     self.prepare();
                     gl.bind_buffer(
                         glow::DISPATCH_INDIRECT_BUFFER,
                         Some(res.buffers.get(buffer).raw),
                     );
-                    gl.dispatch_compute_indirect(offset as i32);
+                    dispatch(offset as isize);
                 }
                 Command::CopyBuffer {
                     src,
@@ -362,12 +363,12 @@ impl<'a> Recorder<'a> {
                 } => {
                     gl.bind_buffer(glow::COPY_READ_BUFFER, Some(res.buffers.get(src).raw));
                     gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(res.buffers.get(dst).raw));
-                    gl.copy_buffer_sub_data(
+                    (self.extra.copy)(
                         glow::COPY_READ_BUFFER,
                         glow::COPY_WRITE_BUFFER,
-                        src_offset as i32,
-                        dst_offset as i32,
-                        size as i32,
+                        src_offset as isize,
+                        dst_offset as isize,
+                        size as isize,
                     );
                 }
                 Command::FillBuffer {
@@ -444,51 +445,31 @@ impl<'a> Recorder<'a> {
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
                     gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, row_count as i32);
                     gl.bind_texture(t.target, t.raw);
-                    let data = PixelUnpackData::BufferOffset(offset as u32);
+                    let data = offset as usize as *const std::ffi::c_void;
                     let (w, h, d) = (width as i32, height as i32, depth as i32);
+                    let (mip, x, y) = (mip as i32, x as i32, y as i32);
+                    let e = self.extra;
                     match t.target {
-                        glow::TEXTURE_2D => gl.tex_sub_image_2d(
-                            t.target, mip as i32, x as i32, y as i32, w, h, f, ty, data,
-                        ),
-                        glow::TEXTURE_1D_ARRAY => gl.tex_sub_image_2d(
-                            t.target,
-                            mip as i32,
-                            x as i32,
-                            layer as i32,
-                            w,
-                            1,
-                            f,
-                            ty,
-                            data,
-                        ),
-                        glow::TEXTURE_CUBE_MAP => gl.tex_sub_image_2d(
+                        glow::TEXTURE_1D => (e.image1)(t.target, mip, x, w, f, ty, data),
+                        glow::TEXTURE_2D => (e.image2)(t.target, mip, x, y, w, h, f, ty, data),
+                        glow::TEXTURE_1D_ARRAY => {
+                            (e.image2)(t.target, mip, x, layer as i32, w, 1, f, ty, data)
+                        }
+                        glow::TEXTURE_CUBE_MAP => (e.image2)(
                             glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
-                            mip as i32,
-                            x as i32,
-                            y as i32,
+                            mip,
+                            x,
+                            y,
                             w,
                             h,
                             f,
                             ty,
                             data,
                         ),
-                        glow::TEXTURE_3D => gl.tex_sub_image_3d(
-                            t.target, mip as i32, x as i32, y as i32, z as i32, w, h, d, f, ty,
-                            data,
-                        ),
-                        _ => gl.tex_sub_image_3d(
-                            t.target,
-                            mip as i32,
-                            x as i32,
-                            y as i32,
-                            layer as i32,
-                            w,
-                            h,
-                            1,
-                            f,
-                            ty,
-                            data,
-                        ),
+                        glow::TEXTURE_3D => {
+                            (e.image3)(t.target, mip, x, y, z as i32, w, h, d, f, ty, data)
+                        }
+                        _ => (e.image3)(t.target, mip, x, y, layer as i32, w, h, 1, f, ty, data),
                     }
                     gl.bind_texture(t.target, None);
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
@@ -547,14 +528,14 @@ impl<'a> Recorder<'a> {
                     gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(res.buffers.get(buffer).raw));
                     gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
                     gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
-                    gl.read_pixels(
+                    (self.extra.read)(
                         x as i32,
                         y as i32,
                         width as i32,
                         height as i32,
                         f,
                         ty,
-                        PixelPackData::BufferOffset(offset as u32),
+                        offset as usize as *mut std::ffi::c_void,
                     );
                     gl.pixel_store_i32(glow::PACK_ROW_LENGTH, 0);
                     gl.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
@@ -929,9 +910,9 @@ impl<'a> Recorder<'a> {
                     let (_, offset, kind) =
                         self.index.expect("draw_indexed without an index buffer");
                     let size = if kind == glow::UNSIGNED_SHORT { 2 } else { 4 };
-                    let at = (offset + first_index as u64 * size) as i32;
+                    let at = (offset + first_index as u64 * size) as usize as *const _;
                     if first_instance == 0 {
-                        gl.draw_elements_instanced_base_vertex(
+                        (self.extra.elements)(
                             self.mode,
                             indices as i32,
                             kind,
@@ -939,8 +920,8 @@ impl<'a> Recorder<'a> {
                             instances as i32,
                             base_vertex,
                         );
-                    } else if self.caps.storage {
-                        gl.draw_elements_instanced_base_vertex_base_instance(
+                    } else if let Some(draw) = self.extra.elements_base {
+                        draw(
                             self.mode,
                             indices as i32,
                             kind,
@@ -965,7 +946,8 @@ impl<'a> Recorder<'a> {
                         Some(res.buffers.get(buffer).raw),
                     );
                     if count == 1 {
-                        gl.draw_arrays_indirect_offset(self.mode, offset as i32);
+                        let draw = self.extra.indirect.ok_or("indirect draws need GL 4.0")?;
+                        draw(self.mode, offset as usize as *const _);
                     } else {
                         let multi = self
                             .extra
@@ -994,7 +976,11 @@ impl<'a> Recorder<'a> {
                         Some(res.buffers.get(buffer).raw),
                     );
                     if count == 1 {
-                        gl.draw_elements_indirect_offset(self.mode, kind, offset as i32);
+                        let draw = self
+                            .extra
+                            .indexed_indirect
+                            .ok_or("indirect draws need GL 4.0")?;
+                        draw(self.mode, kind, offset as usize as *const _);
                     } else {
                         let multi = self
                             .extra
@@ -1127,12 +1113,12 @@ impl<'a> Recorder<'a> {
                     buffer,
                     offset,
                     size,
-                } => gl.bind_buffer_range(
+                } => (self.extra.range)(
                     glow::UNIFORM_BUFFER,
                     register::UNIFORM + slot,
-                    Some(res.buffers.get(buffer).raw),
-                    offset as i32,
-                    size as i32,
+                    res.buffers.get(buffer).raw.0.get(),
+                    offset as isize,
+                    size as isize,
                 ),
                 Command::BindStorage {
                     slot,
@@ -1143,12 +1129,12 @@ impl<'a> Recorder<'a> {
                     if !self.caps.storage {
                         return Err("storage slots need GL 4.3".into());
                     }
-                    gl.bind_buffer_range(
+                    (self.extra.range)(
                         glow::SHADER_STORAGE_BUFFER,
                         slot,
-                        Some(res.buffers.get(buffer).raw),
-                        offset as i32,
-                        size as i32,
+                        res.buffers.get(buffer).raw.0.get(),
+                        offset as isize,
+                        size as isize,
                     );
                 }
                 Command::BindImage { slot, texture } => {

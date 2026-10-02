@@ -59,6 +59,13 @@ pub fn target(dimension: u32, samples: u32) -> u32 {
     }
 }
 
+unsafe fn drain(gl: &glow::Context) {
+    while !matches!(
+        unsafe { gl.get_error() },
+        glow::NO_ERROR | glow::CONTEXT_LOST
+    ) {}
+}
+
 fn at(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bool {
     version >= minimum
         || extensions
@@ -97,7 +104,7 @@ impl Device {
                 .map(|i| gl.get_parameter_indexed_string(glow::EXTENSIONS, i))
                 .collect();
             extensions.sort();
-            let extra = Extra::load(proc, &|v, e| at(version, &extensions, v, e));
+            let extra = Extra::load(proc, &|v, e| at(version, &extensions, v, e))?;
             let push = gl.create_buffer()?;
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
             gl.buffer_data_size(glow::UNIFORM_BUFFER, 256, glow::DYNAMIC_DRAW);
@@ -171,7 +178,7 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        let persistent = self.at(44, "GL_ARB_buffer_storage");
+        let persistent = self.extra.storage.is_some();
         let gl = &self.gl;
         let (flags, usage) = match memory {
             memory::DEVICE => (0, glow::STATIC_DRAW),
@@ -180,28 +187,35 @@ impl Device {
             memory::TRANSIENT => return Err("memoryless storage is not supported".into()),
             m => panic!("unknown memory {m}"),
         };
+        let length =
+            isize::try_from(size).map_err(|_| format!("buffer size {size} is too large"))?;
+        let target = glow::COPY_WRITE_BUFFER;
         unsafe {
+            drain(gl);
             let raw = gl.create_buffer()?;
-            gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(raw));
-            let mut data = std::ptr::null_mut();
-            if persistent {
+            gl.bind_buffer(target, Some(raw));
+            let mut data: *mut u8 = std::ptr::null_mut();
+            if let Some(storage) = self.extra.storage {
                 let access = if flags == 0 {
                     0
                 } else {
                     flags | glow::MAP_PERSISTENT_BIT | glow::MAP_COHERENT_BIT
                 };
-                let storage = access | glow::DYNAMIC_STORAGE_BIT;
-                gl.buffer_storage(glow::COPY_WRITE_BUFFER, size as i32, None, storage);
+                let bits = access | glow::DYNAMIC_STORAGE_BIT;
+                storage(target, length, std::ptr::null(), bits);
                 if flags != 0 {
-                    data = gl.map_buffer_range(glow::COPY_WRITE_BUFFER, 0, size as i32, access);
+                    data = (self.extra.map)(target, 0, length, access).cast();
                 }
             } else {
-                gl.buffer_data_size(glow::COPY_WRITE_BUFFER, size as i32, usage);
+                (self.extra.data)(target, length, std::ptr::null(), usage);
             }
-            gl.bind_buffer(glow::COPY_WRITE_BUFFER, None);
-            if gl.get_error() == glow::OUT_OF_MEMORY {
+            gl.bind_buffer(target, None);
+            let error = gl.get_error();
+            if error != glow::NO_ERROR || (flags != 0 && persistent && data.is_null()) {
                 gl.delete_buffer(raw);
-                return Err("buffer allocation failed".into());
+                return Err(format!(
+                    "buffer allocation of {size} bytes failed ({error:#x})"
+                ));
             }
             Ok(self.res.buffers.insert(Buffer {
                 raw,
@@ -251,13 +265,13 @@ impl Device {
         };
         unsafe {
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(b.raw));
-            let data = self
-                .gl
-                .map_buffer_range(glow::COPY_WRITE_BUFFER, 0, b.size as i32, access);
+            let data = (self.extra.map)(glow::COPY_WRITE_BUFFER, 0, b.size as isize, access);
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, None);
-            b.data.set(data);
+            b.data.set(data.cast());
         }
-        self.mapped.set(self.mapped.get() + 1);
+        if !b.data.get().is_null() {
+            self.mapped.set(self.mapped.get() + 1);
+        }
         b.data.get()
     }
 
