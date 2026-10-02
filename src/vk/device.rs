@@ -460,7 +460,7 @@ impl Device {
             "transient memory is for textures"
         );
         let buffer = self.allocate(size, memory, self.usage())?;
-        Ok(self.insert_buffer(buffer))
+        Ok(self.insert_buffer(buffer, size))
     }
 
     fn buffer_info<'a>(
@@ -579,14 +579,17 @@ impl Device {
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            Ok(self.insert_buffer(Buffer {
-                raw,
-                memory,
-                address,
-                data: pointer,
-                own: true,
-                device: false,
-            }))
+            Ok(self.insert_buffer(
+                Buffer {
+                    raw,
+                    memory,
+                    address,
+                    data: pointer,
+                    own: true,
+                    device: false,
+                },
+                size,
+            ))
         }
     }
 
@@ -721,14 +724,17 @@ impl Device {
             let address = self
                 .raw
                 .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            Ok(self.insert_buffer(Buffer {
-                raw,
-                memory: vk::DeviceMemory::null(),
-                address,
-                data: std::ptr::null_mut(),
-                own: true,
-                device: false,
-            }))
+            Ok(self.insert_buffer(
+                Buffer {
+                    raw,
+                    memory: vk::DeviceMemory::null(),
+                    address,
+                    data: std::ptr::null_mut(),
+                    own: true,
+                    device: false,
+                },
+                size,
+            ))
         }
     }
 
@@ -960,14 +966,17 @@ impl Device {
             } else {
                 h.data.add(offset as usize)
             };
-            Ok(self.insert_buffer(Buffer {
-                raw,
-                memory: vk::DeviceMemory::null(),
-                address,
-                data,
-                own: true,
-                device: h.device,
-            }))
+            Ok(self.insert_buffer(
+                Buffer {
+                    raw,
+                    memory: vk::DeviceMemory::null(),
+                    address,
+                    data,
+                    own: true,
+                    device: h.device,
+                },
+                size,
+            ))
         }
     }
 
@@ -1337,10 +1346,15 @@ impl Device {
 
     pub fn unmap(&self, _buffer: u32) {}
 
-    fn insert_buffer(&mut self, buffer: Buffer) -> u32 {
+    fn insert_buffer(&mut self, buffer: Buffer, size: u64) -> u32 {
+        let limits = unsafe {
+            self.instance
+                .get_physical_device_properties(self.physical)
+                .limits
+        };
         let info = vk::DescriptorBufferInfo::default()
             .buffer(buffer.raw)
-            .range(vk::WHOLE_SIZE);
+            .range(size.min(limits.max_storage_buffer_range as u64));
         let slot = self.res.buffers.insert(buffer);
         if slot < self.bindless.buffers {
             self.bindless.write_buffer(&self.raw, slot, info);
