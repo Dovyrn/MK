@@ -379,7 +379,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     if kinds.contains(&"bytes") {
-        s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\n";
+        s += "import java.nio.ByteBuffer;\n";
     }
     if kinds.contains(&"str") {
         s += "import java.nio.charset.StandardCharsets;\n";
@@ -443,7 +443,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
             match f.kind.as_str() {
                 "bytes" => writeln!(
                     s,
-                    "        memCopy(memAddress({n}), {p}, {n}.remaining());\n        Reference.reachabilityFence({n});"
+                    "        memByteBuffer({p}, {n}.remaining()).put(0, {n}, {n}.position(), {n}.remaining());"
                 ),
                 "str" => writeln!(s, "        memByteBuffer({p}, b.length).put(b);"),
                 k if list(k).is_some() => {

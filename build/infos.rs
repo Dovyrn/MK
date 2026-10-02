@@ -297,7 +297,7 @@ pub fn java(info: &Info) -> String {
             ),
             "bytes" => writeln!(
                 s,
-                "        memPutLong(p, {n} == null ? 0 : memAddress({n}));\n        memPutLong(p + 8, {n} == null ? 0 : {n}.remaining());\n        p += 16;"
+                "        if ({n} != null && !{n}.isDirect()) {{\n            throw new IllegalArgumentException(\"{n} must be a direct ByteBuffer\");\n        }}\n        memPutLong(p, {n} == null ? 0 : memAddress({n}));\n        memPutLong(p + 8, {n} == null ? 0 : {n}.remaining());\n        p += 16;"
             ),
             "str" => writeln!(
                 s,

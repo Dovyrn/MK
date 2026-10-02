@@ -144,6 +144,9 @@ public class MtlDevice {
 
     public static void writeInstance(Device device, ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
+            if (!out.isDirect()) {
+                throw new IllegalArgumentException("out must be a direct ByteBuffer");
+            }
             nWriteInstance(device.handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
         } finally {
             Reference.reachabilityFence(out);
@@ -218,6 +221,9 @@ public class MtlDevice {
 
     public static int createTilePipeline(Device device, ByteBuffer code, String entry, int[] colors, int samples) {
         try (var stack = MemoryStack.stackPush()) {
+            if (!code.isDirect()) {
+                throw new IllegalArgumentException("code must be a direct ByteBuffer");
+            }
             var entryBytes = stack.UTF8(entry, false);
             return nCreateTilePipeline(device.handle, memAddress(code), code.remaining(), memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(colors)), colors.length, samples);
         } finally {

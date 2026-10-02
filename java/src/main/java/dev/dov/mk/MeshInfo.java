@@ -31,6 +31,9 @@ public class MeshInfo {
     }
 
     public long write(long p) {
+        if (code != null && !code.isDirect()) {
+            throw new IllegalArgumentException("code must be a direct ByteBuffer");
+        }
         memPutLong(p, code == null ? 0 : memAddress(code));
         memPutLong(p + 8, code == null ? 0 : code.remaining());
         p += 16;

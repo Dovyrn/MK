@@ -378,6 +378,11 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}Bytes.remaining()"));
                 }
                 "bytes" | "mutbytes" => {
+                    writeln!(
+                        s,
+                        "            if (!{n}.isDirect()) {{\n                throw new IllegalArgumentException(\"{n} must be a direct ByteBuffer\");\n            }}"
+                    )
+                    .unwrap();
                     args.push(format!("memAddress({n})"));
                     args.push(format!("{n}.remaining()"));
                 }

@@ -144,6 +144,9 @@ public class VkDevice {
 
     public static void writeInstance(Device device, ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
+            if (!out.isDirect()) {
+                throw new IllegalArgumentException("out must be a direct ByteBuffer");
+            }
             nWriteInstance(device.handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
         } finally {
             Reference.reachabilityFence(out);

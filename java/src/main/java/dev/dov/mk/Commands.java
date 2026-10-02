@@ -2,7 +2,6 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import lombok.Getter;
@@ -57,8 +56,7 @@ public class Commands implements AutoCloseable {
     public void pushConstants(int offset, ByteBuffer data) {
         var p = head(3, 4 + data.remaining());
         memPutInt(p, offset);
-        memCopy(memAddress(data), p + 4, data.remaining());
-        Reference.reachabilityFence(data);
+        memByteBuffer(p + 4, data.remaining()).put(0, data, data.position(), data.remaining());
     }
 
     public void dispatch(int x, int y, int z) {
