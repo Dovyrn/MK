@@ -437,9 +437,6 @@ impl Device {
             );
             return Err("memoryless storage is not supported".into());
         }
-        if !self.at(42, "GL_ARB_texture_storage") {
-            return Err("textures need ARB_texture_storage".into());
-        }
         let supported = self.format_usage(info.format);
         if supported == 0 {
             return Err(format!("format {} is not supported on GL", info.format));
@@ -451,34 +448,108 @@ impl Device {
                 info.format
             ));
         }
-        let [internal, _, _] = format::gl(info.format);
+        let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
         let gl = &self.gl;
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
         let (mips, layers) = (info.mips as i32, info.layers as i32);
         let samples = info.samples as i32;
+        let storage = self.at(42, "GL_ARB_texture_storage");
         unsafe {
             drain(gl);
             let raw = gl.create_texture()?;
             let old = gl.get_parameter_i32(binding(kind)) as u32;
+            let unpack = buffer(gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING));
             gl.bind_texture(kind, Some(raw));
-            match kind {
-                glow::TEXTURE_1D => gl.tex_storage_1d(kind, mips, internal, w),
-                glow::TEXTURE_1D_ARRAY => gl.tex_storage_2d(kind, mips, internal, w, layers),
-                glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
-                    gl.tex_storage_2d(kind, mips, internal, w, h)
+            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
+            let multisample = matches!(
+                kind,
+                glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
+            );
+            if !storage && !multisample {
+                let [bytes, bw, bh] = format::block(info.format);
+                let internal = internal as i32;
+                for m in 0..mips {
+                    let (w, h, d) = ((w >> m).max(1), (h >> m).max(1), (d >> m).max(1));
+                    let size = (w as u32).div_ceil(bw) * (h as u32).div_ceil(bh) * bytes;
+                    let size = size as i32;
+                    let data = vec![0; (size * d.max(layers)) as usize];
+                    let none = glow::PixelUnpackData::Slice(None);
+                    match kind {
+                        glow::TEXTURE_1D if layout == 0 => {
+                            gl.compressed_tex_image_1d(kind, m, internal, w, 0, size, &data)
+                        }
+                        glow::TEXTURE_1D => {
+                            gl.tex_image_1d(kind, m, internal, w, 0, layout, kind_of, none)
+                        }
+                        glow::TEXTURE_2D | glow::TEXTURE_1D_ARRAY | glow::TEXTURE_CUBE_MAP => {
+                            let h = if kind == glow::TEXTURE_1D_ARRAY {
+                                layers
+                            } else {
+                                h
+                            };
+                            let faces = if kind == glow::TEXTURE_CUBE_MAP { 6 } else { 1 };
+                            for f in 0..faces {
+                                let face = if faces == 6 {
+                                    glow::TEXTURE_CUBE_MAP_POSITIVE_X + f
+                                } else {
+                                    kind
+                                };
+                                if layout == 0 {
+                                    gl.compressed_tex_image_2d(
+                                        face, m, internal, w, h, 0, size, &data,
+                                    );
+                                } else {
+                                    let none = glow::PixelUnpackData::Slice(None);
+                                    gl.tex_image_2d(
+                                        face, m, internal, w, h, 0, layout, kind_of, none,
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            let d = if kind == glow::TEXTURE_3D { d } else { layers };
+                            if layout == 0 {
+                                gl.compressed_tex_image_3d(
+                                    kind,
+                                    m,
+                                    internal,
+                                    w,
+                                    h,
+                                    d,
+                                    0,
+                                    size * d,
+                                    &data,
+                                );
+                            } else {
+                                gl.tex_image_3d(
+                                    kind, m, internal, w, h, d, 0, layout, kind_of, none,
+                                );
+                            }
+                        }
+                    }
                 }
-                glow::TEXTURE_2D_MULTISAMPLE => {
-                    let f = self.extra.storage2.unwrap_or(self.extra.samples2);
-                    f(kind, samples, internal, w, h, 1)
+                gl.tex_parameter_i32(kind, glow::TEXTURE_MAX_LEVEL, mips - 1);
+            } else {
+                match kind {
+                    glow::TEXTURE_1D => gl.tex_storage_1d(kind, mips, internal, w),
+                    glow::TEXTURE_1D_ARRAY => gl.tex_storage_2d(kind, mips, internal, w, layers),
+                    glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
+                        gl.tex_storage_2d(kind, mips, internal, w, h)
+                    }
+                    glow::TEXTURE_2D_MULTISAMPLE => {
+                        let f = self.extra.storage2.unwrap_or(self.extra.samples2);
+                        f(kind, samples, internal, w, h, 1)
+                    }
+                    glow::TEXTURE_2D_MULTISAMPLE_ARRAY => {
+                        let f = self.extra.storage3.unwrap_or(self.extra.samples3);
+                        f(kind, samples, internal, w, h, layers, 1)
+                    }
+                    glow::TEXTURE_3D => gl.tex_storage_3d(kind, mips, internal, w, h, d),
+                    _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
                 }
-                glow::TEXTURE_2D_MULTISAMPLE_ARRAY => {
-                    let f = self.extra.storage3.unwrap_or(self.extra.samples3);
-                    f(kind, samples, internal, w, h, layers, 1)
-                }
-                glow::TEXTURE_3D => gl.tex_storage_3d(kind, mips, internal, w, h, d),
-                _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
             }
+            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, unpack);
             gl.bind_texture(
                 kind,
                 std::num::NonZeroU32::new(old).map(glow::NativeTexture),
@@ -530,15 +601,11 @@ impl Device {
             _ => true,
         };
         let [internal, kind, _] = format::gl(format);
-        if !present || internal == 0 || !self.at(42, "GL_ARB_texture_storage") {
+        if !present || internal == 0 {
             return 0;
         }
-        let base = usage::SAMPLED
-            | if self.at(43, "GL_ARB_texture_view") {
-                usage::VIEW
-            } else {
-                0
-            };
+        let views = self.at(43, "GL_ARB_texture_view") && self.at(42, "GL_ARB_texture_storage");
+        let base = usage::SAMPLED | if views { usage::VIEW } else { 0 };
         let copies = usage::COPY_SRC | usage::COPY_DST;
         match kind {
             0 => base | usage::COPY_DST,
