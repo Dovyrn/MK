@@ -13,8 +13,8 @@ use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
-    MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBuffer, MTLClearColor, MTLCullMode,
-    MTLDevice, MTLGPUFamily, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
+    MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
+    MTLCullMode, MTLDevice, MTLGPUFamily, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
     MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
     MTLStoreAction, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
     MTLVisibilityResultMode, MTLWinding,
@@ -123,12 +123,22 @@ fn size(x: u32, y: u32, z: u32) -> MTLSize {
     }
 }
 
-fn pitch(format: u32, width: u32, length: u32, height: u32, count: u32) -> (usize, usize) {
+fn pitch(
+    format: u32,
+    width: u32,
+    length: u32,
+    height: u32,
+    count: u32,
+) -> (usize, usize, MTLBlitOption) {
     let [bytes, w, h] = format::block(format);
+    let (bytes, option) = match format {
+        format::D24_UNORM_S8 | format::D32_FLOAT_S8 => (4, MTLBlitOption::DepthFromDepthStencil),
+        _ => (bytes, MTLBlitOption::None),
+    };
     let length = if length == 0 { width } else { length };
     let count = if count == 0 { height } else { count };
     let row = length.div_ceil(w) * bytes;
-    (row as usize, (count.div_ceil(h) * row) as usize)
+    (row as usize, (count.div_ceil(h) * row) as usize, option)
 }
 
 fn load(l: u32) -> MTLLoadAction {
@@ -397,10 +407,10 @@ impl<'a> Recorder<'a> {
                 ..
             } => {
                 let t = self.res.textures.get(texture);
-                let (row, image) = pitch(t.format, width, row_length, height, row_count);
+                let (row, image, option) = pitch(t.format, width, row_length, height, row_count);
                 unsafe {
                     self.compute()
-                        .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                        .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin_options(
                             self.res.buffers.get(buffer),
                             offset as usize,
                             row,
@@ -410,6 +420,7 @@ impl<'a> Recorder<'a> {
                             layer as usize,
                             mip as usize,
                             origin(x, y, z),
+                            option,
                         )
                 }
             }
@@ -430,10 +441,10 @@ impl<'a> Recorder<'a> {
                 ..
             } => {
                 let t = self.res.textures.get(texture);
-                let (row, image) = pitch(t.format, width, row_length, height, row_count);
+                let (row, image, option) = pitch(t.format, width, row_length, height, row_count);
                 unsafe {
                     self.compute()
-                        .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(
+                        .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage_options(
                             &t.raw,
                             layer as usize,
                             mip as usize,
@@ -443,6 +454,7 @@ impl<'a> Recorder<'a> {
                             offset as usize,
                             row,
                             image,
+                            option,
                         )
                 }
             }
