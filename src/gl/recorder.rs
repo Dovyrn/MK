@@ -464,7 +464,11 @@ impl<'a> Recorder<'a> {
                     if !self.caps.labels {
                         return Err("debug labels need GL 4.3".into());
                     }
-                    gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
+                    gl.push_debug_group(
+                        glow::DEBUG_SOURCE_APPLICATION,
+                        0,
+                        text.split('\0').next().unwrap_or(""),
+                    );
                 }
                 Command::EndLabel => {
                     if !self.caps.labels {
