@@ -243,6 +243,34 @@ impl Device {
             .find(|&i| bits & (1 << i) != 0 && types[i as usize].property_flags.contains(flags))
     }
 
+    fn attach(
+        &self,
+        index: u32,
+        info: vk::MemoryAllocateInfo,
+        bind: impl FnOnce(vk::DeviceMemory) -> Result<(), vk::Result>,
+    ) -> Result<vk::DeviceMemory, String> {
+        let info = info.memory_type_index(index);
+        let memory = unsafe { self.raw.allocate_memory(&info, None) }.map_err(|e| e.to_string())?;
+        bind(memory).map_err(|e| {
+            unsafe { self.raw.free_memory(memory, None) };
+            e.to_string()
+        })?;
+        Ok(memory)
+    }
+
+    fn mapped(&self, memory: vk::DeviceMemory, index: u32) -> Result<*mut u8, String> {
+        let flags = self.memory.memory_types[index as usize].property_flags;
+        if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
+            return Ok(std::ptr::null_mut());
+        }
+        unsafe {
+            self.raw
+                .map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+        }
+        .map(|p| p.cast())
+        .map_err(|e| e.to_string())
+    }
+
     pub fn adopt_raw(
         proc: u64,
         instance: u64,

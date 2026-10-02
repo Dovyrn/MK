@@ -1,6 +1,7 @@
 use super::Device;
 use crate::vk::accel::Accel;
 use crate::{AccelInfo, format, index, memory};
+use ash::khr::acceleration_structure;
 use ash::vk;
 
 impl Device {
@@ -113,40 +114,14 @@ impl Device {
                 &mut sizes,
             )
         };
-        let buffer = self.allocate(
-            sizes.acceleration_structure_size,
-            memory::DEVICE,
-            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        )?;
-        let create = vk::AccelerationStructureCreateInfoKHR::default()
-            .buffer(buffer.raw)
-            .size(sizes.acceleration_structure_size)
-            .ty(kind);
-        let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
-            Ok(r) => r,
-            Err(e) => {
-                buffer.free(&self.raw);
-                return Err(e.to_string());
-            }
-        };
-        let address = unsafe {
-            ray.get_acceleration_structure_device_address(
-                &vk::AccelerationStructureDeviceAddressInfoKHR::default()
-                    .acceleration_structure(raw),
-            )
-        };
-        Ok(self.res.accels.insert(Accel {
-            raw,
-            buffer,
-            address,
-            kind,
-            flags,
+        let accel = Accel {
             geometry,
             ranges,
             build: sizes.build_scratch_size,
             update: sizes.update_scratch_size,
-        }))
+            ..self.new_accel(ray, sizes.acceleration_structure_size, kind, flags)?
+        };
+        Ok(self.res.accels.insert(accel))
     }
 
     pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
@@ -156,32 +131,32 @@ impl Device {
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
         let source = self.res.accels.get(accel);
-        let kind = source.kind;
-        let flags = source.flags;
-        let buffer = self.allocate(
-            size,
-            memory::DEVICE,
-            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        )?;
+        let accel = self.new_accel(ray, size, source.kind, source.flags)?;
+        Ok(self.res.accels.insert(accel))
+    }
+
+    fn new_accel(
+        &self,
+        loader: &acceleration_structure::Device,
+        size: u64,
+        kind: vk::AccelerationStructureTypeKHR,
+        flags: vk::BuildAccelerationStructureFlagsKHR,
+    ) -> Result<Accel, String> {
+        let usage = vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
+        let buffer = self.allocate(size, memory::DEVICE, usage)?;
         let create = vk::AccelerationStructureCreateInfoKHR::default()
             .buffer(buffer.raw)
             .size(size)
             .ty(kind);
-        let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
-            Ok(r) => r,
-            Err(e) => {
-                buffer.free(&self.raw);
-                return Err(e.to_string());
-            }
-        };
-        let address = unsafe {
-            ray.get_acceleration_structure_device_address(
-                &vk::AccelerationStructureDeviceAddressInfoKHR::default()
-                    .acceleration_structure(raw),
-            )
-        };
-        Ok(self.res.accels.insert(Accel {
+        let raw = unsafe { loader.create_acceleration_structure(&create, None) }.map_err(|e| {
+            buffer.free(&self.raw);
+            e.to_string()
+        })?;
+        let info =
+            vk::AccelerationStructureDeviceAddressInfoKHR::default().acceleration_structure(raw);
+        let address = unsafe { loader.get_acceleration_structure_device_address(&info) };
+        Ok(Accel {
             raw,
             buffer,
             address,
@@ -191,7 +166,7 @@ impl Device {
             ranges: Vec::new(),
             build: 0,
             update: 0,
-        }))
+        })
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {

@@ -27,12 +27,7 @@ impl Device {
             return Err("line fill is not supported".into());
         }
         unsafe {
-            let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
-            let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
-            let module = self
-                .raw
-                .create_shader_module(&module_info, None)
-                .map_err(|e| e.to_string())?;
+            let module = self.module(code)?;
             let names: Vec<_> = entries
                 .iter()
                 .map(|(_, name)| CString::new(*name).unwrap())
@@ -259,6 +254,12 @@ impl Device {
         Ok(())
     }
 
+    pub(super) fn module(&self, code: &[u8]) -> Result<vk::ShaderModule, String> {
+        let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
+        let info = vk::ShaderModuleCreateInfo::default().code(&words);
+        unsafe { self.raw.create_shader_module(&info, None) }.map_err(|e| e.to_string())
+    }
+
     fn new_cache(&self, data: &[u8]) -> Result<vk::PipelineCache, String> {
         let info = vk::PipelineCacheCreateInfo::default().initial_data(data);
         unsafe {
@@ -274,12 +275,7 @@ impl Device {
         }
         let (code, entry) = (info.code, info.entry);
         unsafe {
-            let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
-            let info = vk::ShaderModuleCreateInfo::default().code(&words);
-            let module = self
-                .raw
-                .create_shader_module(&info, None)
-                .map_err(|e| e.to_string())?;
+            let module = self.module(code)?;
             let name = CString::new(entry).unwrap();
             let stage = vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::COMPUTE)

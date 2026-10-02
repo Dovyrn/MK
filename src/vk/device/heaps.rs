@@ -60,36 +60,17 @@ impl Device {
         } else if shared {
             info = info.push_next(&mut export);
         }
-        unsafe {
-            let memory = self
-                .raw
-                .allocate_memory(&info, None)
-                .map_err(|e| e.to_string())?;
-            let visible = self.memory.memory_types[index as usize]
-                .property_flags
-                .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-            let data = if visible {
-                match self
-                    .raw
-                    .map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
-                {
-                    Ok(p) => p.cast(),
-                    Err(e) => {
-                        self.raw.free_memory(memory, None);
-                        return Err(e.to_string());
-                    }
-                }
-            } else {
-                std::ptr::null_mut()
-            };
-            Ok(self.res.heaps.insert(Heap {
-                memory,
-                data,
-                shared,
-                device,
-                index,
-            }))
-        }
+        let memory = unsafe { self.raw.allocate_memory(&info, None) }.map_err(|e| e.to_string())?;
+        let data = self
+            .mapped(memory, index)
+            .inspect_err(|_| unsafe { self.raw.free_memory(memory, None) })?;
+        Ok(self.res.heaps.insert(Heap {
+            memory,
+            data,
+            shared,
+            device,
+            index,
+        }))
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {

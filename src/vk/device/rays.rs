@@ -2,7 +2,6 @@ use super::Device;
 use crate::RayInfo;
 use ash::vk;
 use std::ffi::CString;
-use std::io::Cursor;
 
 impl Device {
     pub fn create_ray_pipeline(&mut self, info: &RayInfo) -> Result<u32, String> {
@@ -11,13 +10,7 @@ impl Device {
             .rays
             .as_ref()
             .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
-        let words = ash::util::read_spv(&mut Cursor::new(info.code)).map_err(|e| e.to_string())?;
-        let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
-        let module = unsafe {
-            self.raw
-                .create_shader_module(&module_info, None)
-                .map_err(|e| e.to_string())?
-        };
+        let module = self.module(info.code)?;
         let mut names = Vec::new();
         let mut stages = Vec::new();
         let mut stage = |name: &str, kind: vk::ShaderStageFlags| {

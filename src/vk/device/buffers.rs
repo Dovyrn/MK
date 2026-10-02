@@ -35,54 +35,41 @@ impl Device {
         let info = self
             .buffer_info(size, self.usage(), &mut wide)
             .push_next(&mut external);
-        unsafe {
-            let raw = self
-                .raw
-                .create_buffer(&info, None)
-                .map_err(|e| e.to_string())?;
-            let needs = self.raw.get_buffer_memory_requirements(raw);
-            let bits = needs.memory_type_bits & properties.memory_type_bits;
-            let Some(index) = self.find_type(bits, vk::MemoryPropertyFlags::HOST_VISIBLE) else {
-                self.raw.destroy_buffer(raw, None);
-                return Err("no host visible memory type fits this pointer".into());
-            };
-            let mut import = vk::ImportMemoryHostPointerInfoEXT::default()
-                .handle_type(kind)
-                .host_pointer(pointer.cast());
-            let mut flags = vk::MemoryAllocateFlagsInfo::default()
-                .flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
-            let alloc = vk::MemoryAllocateInfo::default()
-                .allocation_size(size)
-                .memory_type_index(index)
-                .push_next(&mut import)
-                .push_next(&mut flags);
-            let memory = match self.raw.allocate_memory(&alloc, None) {
-                Ok(m) => m,
-                Err(e) => {
-                    self.raw.destroy_buffer(raw, None);
-                    return Err(e.to_string());
-                }
-            };
-            if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
-                self.raw.destroy_buffer(raw, None);
-                self.raw.free_memory(memory, None);
-                return Err(e.to_string());
-            }
-            let address = self
-                .raw
-                .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(raw));
-            Ok(self.insert_buffer(
-                Buffer {
-                    raw,
-                    memory,
-                    address,
-                    data: pointer,
-                    own: true,
-                    device: false,
-                },
-                size,
-            ))
-        }
+        let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
+        let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
+        let needs = unsafe { self.raw.get_buffer_memory_requirements(raw) };
+        let bits = needs.memory_type_bits & properties.memory_type_bits;
+        let Some(index) = self.find_type(bits, vk::MemoryPropertyFlags::HOST_VISIBLE) else {
+            destroy();
+            return Err("no host visible memory type fits this pointer".into());
+        };
+        let mut import = vk::ImportMemoryHostPointerInfoEXT::default()
+            .handle_type(kind)
+            .host_pointer(pointer.cast());
+        let mut flags =
+            vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
+        let alloc = vk::MemoryAllocateInfo::default()
+            .allocation_size(size)
+            .push_next(&mut import)
+            .push_next(&mut flags);
+        let memory = self
+            .attach(index, alloc, |m| unsafe {
+                self.raw.bind_buffer_memory(raw, m, 0)
+            })
+            .inspect_err(|_| destroy())?;
+        let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
+        let address = unsafe { self.raw.get_buffer_device_address(&info) };
+        Ok(self.insert_buffer(
+            Buffer {
+                raw,
+                memory,
+                address,
+                data: pointer,
+                own: true,
+                device: false,
+            },
+            size,
+        ))
     }
 
     pub(super) fn allocate(
@@ -91,68 +78,39 @@ impl Device {
         memory: u32,
         usage: vk::BufferUsageFlags,
     ) -> Result<Buffer, String> {
-        let device = memory == memory::DEVICE;
-        unsafe {
-            let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-            let info = self.buffer_info(size, usage, &mut wide);
-            let raw = self
-                .raw
-                .create_buffer(&info, None)
-                .map_err(|e| e.to_string())?;
-            let needs = self.raw.get_buffer_memory_requirements(raw);
-            let index = match self.memory_type(needs.memory_type_bits, memory) {
-                Ok(i) => i,
-                Err(e) => {
-                    self.raw.destroy_buffer(raw, None);
-                    return Err(e);
-                }
-            };
-            let mut flags = vk::MemoryAllocateFlagsInfo::default()
-                .flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
-            let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().buffer(raw);
-            let info = vk::MemoryAllocateInfo::default()
-                .allocation_size(needs.size)
-                .memory_type_index(index)
-                .push_next(&mut flags)
-                .push_next(&mut dedicated);
-            let memory = match self.raw.allocate_memory(&info, None) {
-                Ok(m) => m,
-                Err(e) => {
-                    self.raw.destroy_buffer(raw, None);
-                    return Err(e.to_string());
-                }
-            };
-            let mut buffer = Buffer {
-                raw,
-                memory,
-                address: 0,
-                data: std::ptr::null_mut(),
-                own: true,
-                device,
-            };
-            if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
-                buffer.free(&self.raw);
-                return Err(e.to_string());
-            }
-            let visible = self.memory.memory_types[index as usize]
-                .property_flags
-                .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-            if visible {
-                match self
-                    .raw
-                    .map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
-                {
-                    Ok(data) => buffer.data = data.cast(),
-                    Err(e) => {
-                        buffer.free(&self.raw);
-                        return Err(e.to_string());
-                    }
-                }
-            }
-            let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
-            buffer.address = self.raw.get_buffer_device_address(&info);
-            Ok(buffer)
-        }
+        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
+        let info = self.buffer_info(size, usage, &mut wide);
+        let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
+        let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
+        let needs = unsafe { self.raw.get_buffer_memory_requirements(raw) };
+        let index = self
+            .memory_type(needs.memory_type_bits, memory)
+            .inspect_err(|_| destroy())?;
+        let mut flags =
+            vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
+        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().buffer(raw);
+        let alloc = vk::MemoryAllocateInfo::default()
+            .allocation_size(needs.size)
+            .push_next(&mut flags)
+            .push_next(&mut dedicated);
+        let mut buffer = Buffer {
+            raw,
+            memory: self
+                .attach(index, alloc, |m| unsafe {
+                    self.raw.bind_buffer_memory(raw, m, 0)
+                })
+                .inspect_err(|_| destroy())?,
+            address: 0,
+            data: std::ptr::null_mut(),
+            own: true,
+            device: memory == memory::DEVICE,
+        };
+        buffer.data = self
+            .mapped(buffer.memory, index)
+            .inspect_err(|_| buffer.free(&self.raw))?;
+        let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
+        buffer.address = unsafe { self.raw.get_buffer_device_address(&info) };
+        Ok(buffer)
     }
 
     pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {

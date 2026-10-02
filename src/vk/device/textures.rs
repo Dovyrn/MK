@@ -12,40 +12,25 @@ impl Device {
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         self.texture(info)?;
-        unsafe {
-            let image = self
-                .raw
-                .create_image(&self.share_image(image_info(info)), None)
-                .map_err(|e| e.to_string())?;
-            let needs = self.raw.get_image_memory_requirements(image);
-            let index = match self.memory_type(needs.memory_type_bits, info.memory) {
-                Ok(i) => i,
-                Err(e) => {
-                    self.raw.destroy_image(image, None);
-                    return Err(e);
-                }
-            };
-            let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
-            let alloc = vk::MemoryAllocateInfo::default()
-                .allocation_size(needs.size)
-                .memory_type_index(index)
-                .push_next(&mut dedicated);
-            let memory = match self.raw.allocate_memory(&alloc, None) {
-                Ok(m) => m,
-                Err(e) => {
-                    self.raw.destroy_image(image, None);
-                    return Err(e.to_string());
-                }
-            };
-            if let Err(e) = self.raw.bind_image_memory(image, memory, 0) {
-                self.raw.destroy_image(image, None);
-                self.raw.free_memory(memory, None);
-                return Err(e.to_string());
-            }
-            let id = self.register(image, memory, true, &whole(info))?;
-            self.res.table.textures.set(id, *info);
-            Ok(id)
-        }
+        let create = self.share_image(image_info(info));
+        let image = unsafe { self.raw.create_image(&create, None) }.map_err(|e| e.to_string())?;
+        let destroy = || unsafe { self.raw.destroy_image(image, None) };
+        let needs = unsafe { self.raw.get_image_memory_requirements(image) };
+        let index = self
+            .memory_type(needs.memory_type_bits, info.memory)
+            .inspect_err(|_| destroy())?;
+        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
+        let alloc = vk::MemoryAllocateInfo::default()
+            .allocation_size(needs.size)
+            .push_next(&mut dedicated);
+        let memory = self
+            .attach(index, alloc, |m| unsafe {
+                self.raw.bind_image_memory(image, m, 0)
+            })
+            .inspect_err(|_| destroy())?;
+        let id = self.register(image, memory, true, &whole(info))?;
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
