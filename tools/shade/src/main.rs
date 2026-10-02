@@ -46,3 +46,10 @@ fn run(command: &mut Command) -> String {
     }
     String::from_utf8(output.stdout).unwrap()
 }
+
+fn shifts() -> (u32, u32) {
+    let table: toml::Table = include_str!("../../../constants.toml").parse().unwrap();
+    let get = |group: &str, name: &str| table[group][name].as_integer().unwrap() as u32;
+    let textures = get("register", "IMAGE") + get("slot", "IMAGES");
+    (textures, textures + get("slot", "TEXTURES"))
+}

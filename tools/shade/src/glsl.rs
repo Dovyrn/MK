@@ -4,11 +4,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const TEXTURES: u32 = 17;
-
-const SAMPLERS: u32 = 25;
+const LOCATIONS: u32 = 16;
 
 pub fn glsl(out: &Path, name: &str) {
+    let (textures, samplers) = crate::shifts();
     let spv = out.join(format!("{name}.spv"));
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
@@ -27,7 +26,7 @@ pub fn glsl(out: &Path, name: &str) {
             _ => None,
         };
         if let Some(d) = direction {
-            for l in 0..16 {
+            for l in 0..LOCATIONS {
                 renames.push("--rename-interface-variable".to_string());
                 renames.push(d.into());
                 renames.push(l.to_string());
@@ -144,9 +143,9 @@ pub fn glsl(out: &Path, name: &str) {
                 let rest = &pair[texture.len()..];
                 match separate.iter().find(|(n, _)| n == rest) {
                     Some((_, sampler)) => {
-                        format!("texture {name} {} {}", slot - TEXTURES, sampler - SAMPLERS)
+                        format!("texture {name} {} {}", slot - textures, sampler - samplers)
                     }
-                    None => format!("texture {name} {}", slot - TEXTURES),
+                    None => format!("texture {name} {}", slot - textures),
                 }
             } else {
                 format!("{kind} {name} {slot}")

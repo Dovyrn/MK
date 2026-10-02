@@ -2,23 +2,6 @@ use crate::run;
 use std::path::Path;
 use std::process::Command;
 
-const SLOTS: [&str; 14] = [
-    "-bindless-space-index",
-    "1",
-    "-fvk-b-shift",
-    "0",
-    "0",
-    "-fvk-u-shift",
-    "0",
-    "0",
-    "-fvk-t-shift",
-    "17",
-    "0",
-    "-fvk-s-shift",
-    "25",
-    "0",
-];
-
 pub fn spirv(dir: &Path, out: &Path, name: &str) {
     let glsl = dir.join(format!("{name}.glsl"));
     let spv = out.join(format!("{name}.spv"));
@@ -30,6 +13,7 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             .arg(&spv));
         return;
     }
+    let (textures, samplers) = crate::shifts();
     run(Command::new("slangc")
         .arg(dir.join(format!("{name}.slang")))
         .args([
@@ -39,7 +23,10 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             "-fvk-use-entrypoint-name",
         ])
         .args(["-fvk-invert-y"])
-        .args(SLOTS)
+        .args(["-bindless-space-index", "1"])
+        .args(["-fvk-b-shift", "0", "0", "-fvk-u-shift", "0", "0"])
+        .args(["-fvk-t-shift", &textures.to_string(), "0"])
+        .args(["-fvk-s-shift", &samplers.to_string(), "0"])
         .arg("-o")
         .arg(&spv));
 }
