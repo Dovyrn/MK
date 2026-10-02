@@ -44,13 +44,13 @@ use objc2_metal::{
     MTLIndirectCommandType, MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor,
     MTLLibrary, MTLMatrixLayout, MTLOrigin, MTLPrimitiveTopologyClass, MTLPrimitiveType,
     MTLRasterizationRateLayerDescriptor, MTLRasterizationRateMap,
-    MTLRasterizationRateMapDescriptor, MTLRegion, MTLResource, MTLResourceID, MTLResourceOptions,
-    MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter,
-    MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize,
-    MTLSparseTextureMappingMode, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode,
-    MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
-    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction, MTLVisibleFunctionTable,
-    MTLVisibleFunctionTableDescriptor,
+    MTLRasterizationRateMapDescriptor, MTLRegion, MTLRenderPipelineState, MTLResource,
+    MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
+    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
+    MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode, MTLStencilDescriptor,
+    MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureType,
+    MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
+    MTLVertexStepFunction, MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
@@ -164,6 +164,16 @@ fn size(s: [u32; 3]) -> MTLSize {
         height: s[1] as usize,
         depth: s[2] as usize,
     }
+}
+
+fn threads(group: [u32; 3], max: usize) -> Result<(), String> {
+    let count = group.iter().map(|&g| g as usize).product::<usize>();
+    if count > max {
+        return Err(format!(
+            "group {group:?} has {count} threads, the pipeline allows {max}"
+        ));
+    }
+    Ok(())
 }
 
 fn fill(f: u32) -> MTLTriangleFillMode {
@@ -834,6 +844,7 @@ impl Device {
                 Some(&self.options),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
+        threads(info.group, state.maxTotalThreadsPerThreadgroup())?;
         let group = size(info.group);
         Ok(self.res.pipelines.insert(Pipeline { state, group }))
     }
@@ -1037,6 +1048,10 @@ impl Device {
                 Some(&self.options),
             )
             .map_err(|e| e.localizedDescription().to_string())?;
+        threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
+        if !info.task.is_empty() {
+            threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
+        }
         Ok(self.res.renders.insert(Render {
             state,
             fill: fill(info.fill),
