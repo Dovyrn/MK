@@ -17,7 +17,7 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
-    MTLCullMode, MTLDevice, MTLGPUFamily, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
+    MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
     MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
     MTLStoreAction, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
     MTLVisibilityResultMode, MTLWinding,
@@ -852,13 +852,10 @@ impl<'a> Recorder<'a> {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
-            Command::ResetQueries { heap, first, count } => {
-                self.res.queries.get(heap).check(first, count)
-            }
+            Command::ResetQueries { .. } => {}
             Command::WriteTimestamp { heap, index, stage } => {
-                self.res.queries.get(heap).check(index, 1);
                 let Query::Timestamp(heap) = self.res.queries.get(heap) else {
-                    panic!("write_timestamp needs a timestamp heap");
+                    unreachable!()
                 };
                 let index = index as usize;
                 unsafe {
@@ -879,24 +876,18 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
-            Command::BeginQuery { heap, index } => {
-                self.res.queries.get(heap).check(index, 1);
-                unsafe {
-                    self.render().setVisibilityResultMode_offset(
-                        MTLVisibilityResultMode::Counting,
-                        index as usize * 8,
-                    )
-                }
-            }
-            Command::EndQuery { heap, index } => {
-                self.res.queries.get(heap).check(index, 1);
-                unsafe {
-                    self.render().setVisibilityResultMode_offset(
-                        MTLVisibilityResultMode::Disabled,
-                        index as usize * 8,
-                    )
-                }
-            }
+            Command::BeginQuery { index, .. } => unsafe {
+                self.render().setVisibilityResultMode_offset(
+                    MTLVisibilityResultMode::Counting,
+                    index as usize * 8,
+                )
+            },
+            Command::EndQuery { index, .. } => unsafe {
+                self.render().setVisibilityResultMode_offset(
+                    MTLVisibilityResultMode::Disabled,
+                    index as usize * 8,
+                )
+            },
             Command::ResolveQueries {
                 heap,
                 first,
@@ -905,7 +896,6 @@ impl<'a> Recorder<'a> {
                 offset,
             } => {
                 let dst = self.res.buffers.get(buffer);
-                self.res.queries.get(heap).check(first, count);
                 match self.res.queries.get(heap) {
                     Query::Timestamp(heap) => unsafe {
                         self.buffer
@@ -999,10 +989,7 @@ impl<'a> Recorder<'a> {
             Command::Multiview { views } => self.views = views,
             Command::Callback { index } => {
                 self.flush()?;
-                (self
-                    .natives
-                    .get(index as usize)
-                    .expect("callback recorded without its closure"))(&Native {
+                self.natives[index as usize](&Native {
                     buffer: self.buffer,
                     table: self.table,
                     compute: self.compute.as_deref(),
@@ -1049,9 +1036,8 @@ impl<'a> Recorder<'a> {
                 .pass
                 .setRasterizationRateMap(Some(self.res.maps.get(map))),
             Command::WriteCompactedSize { accel, heap, index } => {
-                self.res.queries.get(heap).check(index, 1);
                 let Query::Buffer(buffer) = self.res.queries.get(heap) else {
-                    panic!("write_compacted_size needs a compacted heap");
+                    unreachable!()
                 };
                 unsafe {
                     self.compute()
@@ -1108,9 +1094,6 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::SetDepthBounds { min, max } => {
-                if !self.device.supportsFamily(MTLGPUFamily::Apple10) {
-                    return Err("depth bounds are not supported");
-                }
                 self.render().setDepthTestMinBound_maxBound(min, max)
             }
             Command::BeginLabel { text } => {
