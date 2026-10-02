@@ -284,6 +284,8 @@ fn id(id: MTLResourceID) -> u64 {
     unsafe { std::mem::transmute(id) }
 }
 
+type Free = Box<dyn FnOnce(&mut Residency)>;
+
 pub struct Device {
     pub raw: Retained<ProtocolObject<dyn MTLDevice>>,
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
@@ -293,6 +295,15 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
+    trash: Vec<(Vec<u64>, Free)>,
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        for q in &self.queues {
+            q.idle();
+        }
+    }
 }
 
 impl Device {
@@ -317,7 +328,25 @@ impl Device {
             res: Resources::default(),
             queues,
             lost,
+            trash: Vec::new(),
         })
+    }
+
+    fn discard(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
+        let counts = self.queues.iter().map(|q| q.count).collect();
+        self.trash.push((counts, Box::new(free)));
+        self.collect();
+    }
+
+    fn collect(&mut self) {
+        let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
+        for (counts, free) in std::mem::take(&mut self.trash) {
+            if counts.iter().zip(&done).all(|(c, d)| c <= d) {
+                free(&mut self.residency);
+            } else {
+                self.trash.push((counts, free));
+            }
+        }
     }
 
     pub fn adopt_raw(device: u64, queues: usize) -> Result<Self, String> {
@@ -587,7 +616,9 @@ impl Device {
                 )
             },
             heap,
-        )
+        )?;
+        self.queues[queue].signal();
+        Ok(())
     }
 
     pub fn map_sparse_texture(
@@ -635,12 +666,14 @@ impl Device {
                 )
             },
             heap,
-        )
+        )?;
+        self.queues[queue].signal();
+        Ok(())
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
         let (heap, _) = self.res.heaps.remove(heap);
-        self.residency.remove(ProtocolObject::from_ref(&*heap));
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*heap)));
     }
 
     pub fn buffer_size(&self, size: u64, memory: u32) -> (u64, u64) {
@@ -726,7 +759,7 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         let buffer = self.res.buffers.remove(buffer);
-        self.residency.remove(ProtocolObject::from_ref(&*buffer));
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
@@ -817,10 +850,11 @@ impl Device {
     }
 
     pub fn destroy_function_table(&mut self, table: u32) {
-        match self.res.tables.remove(table) {
-            Table::Visible(t) => self.residency.remove(ProtocolObject::from_ref(&*t)),
-            Table::Intersection(t) => self.residency.remove(ProtocolObject::from_ref(&*t)),
-        }
+        let table = self.res.tables.remove(table);
+        self.discard(move |r| match table {
+            Table::Visible(t) => r.remove(ProtocolObject::from_ref(&*t)),
+            Table::Intersection(t) => r.remove(ProtocolObject::from_ref(&*t)),
+        });
     }
 
     pub fn function_table_handle(&self, table: u32) -> u64 {
@@ -831,7 +865,8 @@ impl Device {
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
-        self.res.pipelines.remove(pipeline);
+        let pipeline = self.res.pipelines.remove(pipeline);
+        self.discard(move |_| drop(pipeline));
     }
 
     pub fn record_cache(&mut self) -> Result<(), String> {
@@ -1017,7 +1052,8 @@ impl Device {
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
-        self.res.renders.remove(pipeline);
+        let pipeline = self.res.renders.remove(pipeline);
+        self.discard(move |_| drop(pipeline));
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
@@ -1036,7 +1072,8 @@ impl Device {
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
-        self.res.depths.remove(state);
+        let state = self.res.depths.remove(state);
+        self.discard(move |_| drop(state));
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
@@ -1079,8 +1116,7 @@ impl Device {
 
     pub fn destroy_texture(&mut self, texture: u32) {
         let texture = self.res.textures.remove(texture);
-        self.residency
-            .remove(ProtocolObject::from_ref(&*texture.raw));
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*texture.raw)));
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
@@ -1137,7 +1173,8 @@ impl Device {
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
-        self.res.samplers.remove(sampler);
+        let sampler = self.res.samplers.remove(sampler);
+        self.discard(move |_| drop(sampler));
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {
@@ -1261,7 +1298,7 @@ impl Device {
 
     pub fn destroy_accel(&mut self, accel: u32) {
         let a = self.res.accels.remove(accel);
-        self.residency.remove(ProtocolObject::from_ref(&*a.raw));
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*a.raw)));
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
@@ -1316,7 +1353,7 @@ impl Device {
 
     pub fn destroy_indirect(&mut self, indirect: u32) {
         let raw = self.res.indirects.remove(indirect);
-        self.residency.remove(ProtocolObject::from_ref(&*raw));
+        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
     }
 
     pub fn indirect_handle(&self, indirect: u32) -> u64 {
@@ -1359,7 +1396,8 @@ impl Device {
     }
 
     pub fn destroy_rate_map(&mut self, map: u32) {
-        self.res.maps.remove(map);
+        let map = self.res.maps.remove(map);
+        self.discard(move |_| drop(map));
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
@@ -1391,9 +1429,12 @@ impl Device {
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        if let Query::Buffer(buffer) = self.res.queries.remove(heap) {
-            self.residency.remove(ProtocolObject::from_ref(&*buffer));
-        }
+        let heap = self.res.queries.remove(heap);
+        self.discard(move |r| {
+            if let Query::Buffer(buffer) = &heap {
+                r.remove(ProtocolObject::from_ref(&**buffer));
+            }
+        });
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
@@ -1402,7 +1443,8 @@ impl Device {
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        self.res.events.remove(event);
+        let event = self.res.events.remove(event);
+        self.discard(move |_| drop(event));
     }
 
     fn healthy(&self) -> Result<(), String> {
@@ -1412,17 +1454,19 @@ impl Device {
         }
     }
 
-    pub fn event_value(&self, event: u32) -> Result<u64, String> {
+    pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
+        self.collect();
         self.healthy()?;
         Ok(self.res.events.get(event).signaledValue())
     }
 
-    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
         let done = self
             .res
             .events
             .get(event)
             .waitUntilSignaledValue_timeoutMS(value, timeout);
+        self.collect();
         self.healthy()?;
         Ok(done)
     }
@@ -1435,6 +1479,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands.bytes(), &self.caps())?;
+        self.collect();
         let commands = (commands.bytes(), commands.natives());
         self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
     }
@@ -1447,6 +1492,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands, &self.caps())?;
+        self.collect();
         self.queues[queue].submit(&self.raw, &self.res, (commands, &[]), waits, signals)
     }
 }

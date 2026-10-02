@@ -25,7 +25,7 @@ pub struct Queue {
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
-    count: u64,
+    pub count: u64,
     free: Vec<Frame>,
     busy: VecDeque<(Frame, u64)>,
     lost: Arc<Mutex<Option<String>>>,
@@ -130,10 +130,23 @@ impl Queue {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.signalEvent_value(event, value);
         }
+        self.signal();
+        self.busy.push_back((frame, self.count));
+        Ok(())
+    }
+
+    pub fn signal(&mut self) {
         self.count += 1;
         let own = ProtocolObject::<dyn MTLEvent>::from_ref(&*self.event);
         self.raw.signalEvent_value(own, self.count);
-        self.busy.push_back((frame, self.count));
-        Ok(())
+    }
+
+    pub fn done(&self) -> u64 {
+        self.event.signaledValue()
+    }
+
+    pub fn idle(&self) {
+        self.event
+            .waitUntilSignaledValue_timeoutMS(self.count, u64::MAX);
     }
 }
