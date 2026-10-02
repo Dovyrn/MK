@@ -5,6 +5,7 @@ use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
 use ash::vk;
 use std::collections::VecDeque;
+use std::panic::AssertUnwindSafe;
 
 pub struct Queue {
     pub raw: vk::Queue,
@@ -56,66 +57,69 @@ impl Queue {
             Some(f) => f,
             None => Frame::new(device, self.family).map_err(|e| e.to_string())?,
         };
-        let begin = vk::CommandBufferBeginInfo::default()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        if let Err(e) = unsafe { device.begin_command_buffer(frame.buffer, &begin) } {
-            self.free.push(frame);
-            return Err(e.to_string());
-        }
-        let result = Recorder {
-            device,
-            ext,
-            buffer: frame.buffer,
-            layout,
-            res,
-            colors: Vec::new(),
-            depth: None,
-            stencil: vk::RenderingAttachmentInfo::default(),
-            views: 0,
-            natives,
-            bound: (vk::Pipeline::null(), vk::Pipeline::null()),
-            rate: None,
-            scope: "outside",
-        }
-        .run(heap, commands);
-        let ended = unsafe { device.end_command_buffer(frame.buffer) };
-        if let Err(e) = result
-            .map_err(String::from)
-            .and(ended.map_err(|e| e.to_string()))
-        {
-            frame.reset(device).map_err(|e| e.to_string())?;
-            self.free.push(frame);
-            return Err(e);
-        }
-        let info = |semaphore, value| {
-            vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore)
-                .value(value)
-                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+        let value = self.count + 1;
+        let run = || -> Result<(), String> {
+            let begin = vk::CommandBufferBeginInfo::default()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            unsafe { device.begin_command_buffer(frame.buffer, &begin) }
+                .map_err(|e| e.to_string())?;
+            let result = Recorder {
+                device,
+                ext,
+                buffer: frame.buffer,
+                layout,
+                res,
+                colors: Vec::new(),
+                depth: None,
+                stencil: vk::RenderingAttachmentInfo::default(),
+                views: 0,
+                natives,
+                bound: (vk::Pipeline::null(), vk::Pipeline::null()),
+                rate: None,
+                scope: "outside",
+            }
+            .run(heap, commands);
+            let ended = unsafe { device.end_command_buffer(frame.buffer) };
+            result?;
+            ended.map_err(|e| e.to_string())?;
+            let info = |semaphore, value| {
+                vk::SemaphoreSubmitInfo::default()
+                    .semaphore(semaphore)
+                    .value(value)
+                    .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            };
+            let waits: Vec<_> = waits
+                .iter()
+                .map(|&(e, v)| info(res.events.get(e).0, v))
+                .collect();
+            let mut signals: Vec<_> = signals
+                .iter()
+                .map(|&(e, v)| info(res.events.get(e).0, v))
+                .collect();
+            signals.push(info(self.semaphore, value));
+            let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.buffer)];
+            let submit = vk::SubmitInfo2::default()
+                .wait_semaphore_infos(&waits)
+                .command_buffer_infos(&buffers)
+                .signal_semaphore_infos(&signals);
+            unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }
+                .map_err(|e| e.to_string())
         };
-        let waits: Vec<_> = waits
-            .iter()
-            .map(|&(e, v)| info(res.events.get(e).0, v))
-            .collect();
-        self.count += 1;
-        let mut signals: Vec<_> = signals
-            .iter()
-            .map(|&(e, v)| info(res.events.get(e).0, v))
-            .collect();
-        signals.push(info(self.semaphore, self.count));
-        let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.buffer)];
-        let submit = vk::SubmitInfo2::default()
-            .wait_semaphore_infos(&waits)
-            .command_buffer_infos(&buffers)
-            .signal_semaphore_infos(&signals);
-        if let Err(e) = unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) } {
-            self.count -= 1;
-            frame.reset(device).map_err(|e| e.to_string())?;
-            self.free.push(frame);
-            return Err(e.to_string());
+        match std::panic::catch_unwind(AssertUnwindSafe(run)) {
+            Ok(Ok(())) => {
+                self.count = value;
+                self.busy.push_back((frame, value));
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                frame.destroy(device);
+                Err(e)
+            }
+            Err(panic) => {
+                frame.destroy(device);
+                std::panic::resume_unwind(panic)
+            }
         }
-        self.busy.push_back((frame, self.count));
-        Ok(())
     }
 
     pub fn destroy(&mut self, device: &ash::Device) {
