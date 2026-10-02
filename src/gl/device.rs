@@ -751,7 +751,7 @@ impl Device {
         }
     }
 
-    pub fn event_value(&self, event: u32) -> Result<u64, String> {
+    pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
         self.healthy()?;
         let e = self.res.events.get(event);
         let mut value = e.value;
@@ -764,7 +764,7 @@ impl Device {
         Ok(value)
     }
 
-    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
         self.healthy()?;
         let e = self.res.events.get(event);
         if e.value >= value {
