@@ -1,5 +1,8 @@
 #[cfg(feature = "vk")]
-use mk::{Commands, Device, access, memory, stage};
+use mk::{Commands, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "vk"))]
 fn main() {
@@ -8,7 +11,7 @@ fn main() {
 
 #[cfg(feature = "vk")]
 fn main() {
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if !device.caps().shared_memory {
         println!("no shared memory");
         return;

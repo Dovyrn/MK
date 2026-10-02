@@ -1,5 +1,8 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Command, Commands, Device, access, memory, stage};
+use mk::{Command, Commands, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
@@ -13,7 +16,7 @@ fn main() {
 
 #[cfg(not(feature = "gl"))]
 fn main() {
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     println!("{:?}", device.caps());
     let n = 1024u32;
     let buffer = device

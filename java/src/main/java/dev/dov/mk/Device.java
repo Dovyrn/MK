@@ -19,14 +19,6 @@ public class Device {
 
     private static native void nFree(long device);
 
-    public static Device create(int queues) {
-        try (var stack = MemoryStack.stackPush()) {
-            return new Device(nNew(queues));
-        }
-    }
-
-    private static native long nNew(int queues);
-
     public Caps caps() {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, 256);
@@ -419,48 +411,6 @@ public class Device {
 
     private static native void nSubmit(long device, int queue, long commands, long commandsLength, long waits, int waitsLength, long signals, int signalsLength);
 
-    public int acquire(int queue, int surface) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nAcquire(handle, queue, surface);
-        }
-    }
-
-    private static native int nAcquire(long device, int queue, int surface);
-
-    public boolean present(int queue, int surface) {
-        try (var stack = MemoryStack.stackPush()) {
-            return nPresent(handle, queue, surface);
-        }
-    }
-
-    private static native boolean nPresent(long device, int queue, int surface);
-
-    public int[] surfaceSize(int surface) {
-        try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 256);
-            nSurfaceSize(handle, surface, out);
-            return new int[] {memGetInt(out), memGetInt(out + 4)};
-        }
-    }
-
-    private static native void nSurfaceSize(long device, int surface, long out);
-
-    public void resizeSurface(int surface, int width, int height) {
-        try (var stack = MemoryStack.stackPush()) {
-            nResizeSurface(handle, surface, width, height);
-        }
-    }
-
-    private static native void nResizeSurface(long device, int surface, int width, int height);
-
-    public void destroySurface(int surface) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroySurface(handle, surface);
-        }
-    }
-
-    private static native void nDestroySurface(long device, int surface);
-
     public int createCompacted(int accel, long size) {
         try (var stack = MemoryStack.stackPush()) {
             return nCreateCompacted(handle, accel, size);
@@ -570,14 +520,4 @@ public class Device {
     }
 
     private static native void nMapSparseTexture(long device, int queue, int texture, int heap, long regions, int regionsLength, long waits, int waitsLength, long signals, int signalsLength);
-
-    public int createSurfaceRaw(long handle, SurfaceInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateSurfaceRaw(handle, handle, infoAddress, info.size());
-        }
-    }
-
-    private static native int nCreateSurfaceRaw(long device, long handle, long info, int infoLength);
 }

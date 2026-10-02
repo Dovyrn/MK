@@ -2,7 +2,6 @@ use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
-use crate::mtl::surface::Surface;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::mtl::upscaler::Upscaler;
@@ -29,6 +28,5 @@ pub struct Resources {
     pub upscalers: Slots<Upscaler>,
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
-    pub surfaces: Slots<Surface>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
 }

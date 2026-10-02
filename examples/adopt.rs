@@ -1,6 +1,5 @@
 use mk::{Commands, Device, access, format, layout, load, memory, stage, store};
 
-#[cfg(feature = "gl")]
 #[path = "support/host.rs"]
 mod host;
 
@@ -61,10 +60,10 @@ fn native(
 ) -> (
     Device,
     u32,
-    (Device, mk::ash::vk::Image, mk::ash::vk::DeviceMemory),
+    (host::Host, mk::ash::vk::Image, mk::ash::vk::DeviceMemory),
 ) {
     use mk::ash::vk;
-    let host = Device::new(1).unwrap();
+    let host = host::device(1);
     let families = unsafe {
         host.instance
             .get_physical_device_queue_family_properties(host.physical)
@@ -107,7 +106,6 @@ fn native(
         (image, memory)
     };
     let mut device = Device::adopt(
-        host.entry.clone(),
         host.instance.clone(),
         host.physical,
         host.raw.clone(),

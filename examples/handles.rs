@@ -1,5 +1,8 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Commands, ComputeInfo, Device, access, memory, stage};
+use mk::{Commands, ComputeInfo, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/handles.metallib");
@@ -14,7 +17,7 @@ fn main() {
 #[cfg(not(feature = "gl"))]
 fn main() {
     let n = 256u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if device.caps().buffers == 0 {
         println!("no buffer handles in the bindless heap");
         return;

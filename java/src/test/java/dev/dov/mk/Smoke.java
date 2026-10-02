@@ -8,14 +8,22 @@ import java.nio.file.Path;
 public class Smoke {
     public static void main(String[] args) throws Exception {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
+        Device device;
         if (args[0].contains("mk_gl")) {
-            record(Path.of(args[2]));
-            System.out.println("java: GL needs a host context, stream recorded");
-            return;
+            device = GlHost.device();
+        } else if (args[0].contains("mk_vk")) {
+            device = VulkanHost.device();
+        } else {
+            device = MetalHost.device();
         }
-        var device = Device.create(1);
         var caps = device.caps();
         System.out.println("caps: mesh " + caps.mesh + ", push " + caps.push + ", ray " + caps.ray);
+        if (!caps.compute) {
+            record(Path.of(args[2]));
+            device.free();
+            System.out.println("java: no compute, stream recorded");
+            return;
+        }
         var n = 1024;
         var buffer = device.createBuffer(n * 4L, Memory.READBACK);
         var bytes = Files.readAllBytes(Path.of(args[1]));

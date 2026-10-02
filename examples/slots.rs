@@ -1,7 +1,10 @@
 use mk::{
-    ColorTarget, Command, Commands, ComputeInfo, Device, RenderInfo, SamplerInfo, TextureInfo,
-    access, address, filter, format, layout, load, memory, stage, store, usage,
+    ColorTarget, Command, Commands, ComputeInfo, RenderInfo, SamplerInfo, TextureInfo, access,
+    address, filter, format, layout, load, memory, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/slots.metallib");
@@ -17,15 +20,8 @@ fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32,
     );
 }
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     if !caps.slots {
         println!("no slot bindings");

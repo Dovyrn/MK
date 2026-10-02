@@ -1,5 +1,8 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Commands, Device, access, memory, stage};
+use mk::{Commands, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
@@ -13,7 +16,7 @@ fn main() {
 
 #[cfg(not(feature = "gl"))]
 fn main() {
-    let Ok(mut device) = Device::new(2) else {
+    let Some(mut device) = host::try_device(2) else {
         println!("one queue only");
         return;
     };

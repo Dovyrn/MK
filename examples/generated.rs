@@ -1,8 +1,11 @@
 #[cfg(feature = "vk")]
 use mk::{
-    ColorTarget, Commands, Device, LayoutInfo, RenderInfo, TextureInfo, TokenInfo, VertexAttribute,
+    ColorTarget, Commands, LayoutInfo, RenderInfo, TextureInfo, TokenInfo, VertexAttribute,
     VertexBuffer, access, format, layout, load, memory, stage, store, token, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "vk"))]
 fn main() {
@@ -12,7 +15,7 @@ fn main() {
 #[cfg(feature = "vk")]
 fn main() {
     let n = 32u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if !device.caps().generated {
         println!("no device generated commands");
         return;

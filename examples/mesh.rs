@@ -1,7 +1,10 @@
 use mk::{
-    ColorTarget, Commands, Device, MeshInfo, TextureInfo, access, format, layout, load, memory,
-    stage, store, usage,
+    ColorTarget, Commands, MeshInfo, TextureInfo, access, format, layout, load, memory, stage,
+    store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/mesh.metallib");
@@ -11,16 +14,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/mesh.spv");
 #[cfg(feature = "gl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/mesh.gl");
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
     let n = 64u32;
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let color = device
         .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,

@@ -1,5 +1,8 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Commands, Device, access, stage};
+use mk::{Commands, access, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/fill.metallib");
@@ -13,7 +16,7 @@ fn main() {
 
 #[cfg(not(feature = "gl"))]
 fn main() {
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     if !caps.host_memory {
         println!("no host memory import");

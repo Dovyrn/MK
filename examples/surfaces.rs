@@ -1,5 +1,8 @@
 #[cfg(feature = "mtl")]
-use mk::{Commands, Device, TextureInfo, access, format, layout, memory, stage, usage};
+use mk::{Commands, TextureInfo, access, format, layout, memory, stage, usage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "mtl"))]
 fn main() {
@@ -9,7 +12,7 @@ fn main() {
 #[cfg(feature = "mtl")]
 fn main() {
     let n = 64u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let info = TextureInfo {
         format: format::RGBA8_UNORM,
         width: n,

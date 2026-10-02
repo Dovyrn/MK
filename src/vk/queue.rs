@@ -118,47 +118,6 @@ impl Queue {
         Ok(())
     }
 
-    pub fn done(&self, device: &ash::Device, value: u64) -> Result<(), String> {
-        let semaphores = [self.semaphore];
-        let values = [value];
-        let info = vk::SemaphoreWaitInfo::default()
-            .semaphores(&semaphores)
-            .values(&values);
-        unsafe { device.wait_semaphores(&info, u64::MAX) }.map_err(|e| e.to_string())
-    }
-
-    pub fn sync(
-        &mut self,
-        device: &ash::Device,
-        wait: vk::Semaphore,
-        signal: vk::Semaphore,
-    ) -> Result<u64, String> {
-        let info = |semaphore, value| {
-            vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore)
-                .value(value)
-                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-        };
-        self.count += 1;
-        let waits: Vec<_> = [wait]
-            .into_iter()
-            .filter(|w| *w != vk::Semaphore::null())
-            .map(|w| info(w, 0))
-            .collect();
-        let mut signals = vec![info(self.semaphore, self.count)];
-        if signal != vk::Semaphore::null() {
-            signals.push(info(signal, 0));
-        }
-        let submit = vk::SubmitInfo2::default()
-            .wait_semaphore_infos(&waits)
-            .signal_semaphore_infos(&signals);
-        if let Err(e) = unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) } {
-            self.count -= 1;
-            return Err(e.to_string());
-        }
-        Ok(self.count)
-    }
-
     pub fn destroy(&mut self, device: &ash::Device) {
         for frame in self.free.drain(..) {
             frame.destroy(device);

@@ -1,24 +1,15 @@
 use mk::{ColorTarget, Device, RenderInfo, VertexAttribute, VertexBuffer, format};
 use std::time::Instant;
 
+#[path = "support/host.rs"]
+mod host;
+
 #[cfg(feature = "mtl")]
 const SUFFIX: &str = "metallib";
 #[cfg(feature = "vk")]
 const SUFFIX: &str = "spv";
 #[cfg(feature = "gl")]
 const SUFFIX: &str = "gl";
-
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
-fn open() -> Device {
-    #[cfg(feature = "gl")]
-    let device = Device::adopt(host::proc());
-    #[cfg(not(feature = "gl"))]
-    let device = Device::new(1);
-    device.unwrap()
-}
 
 fn build(device: &mut Device) -> f64 {
     let fill = std::fs::read(format!("shaders/out/count.{SUFFIX}")).unwrap();
@@ -72,7 +63,7 @@ fn main() {
     let path = std::env::temp_dir().join(format!("mk-cache-{SUFFIX}"));
     let path = path.to_str().unwrap();
     let _ = std::fs::remove_file(path);
-    let mut device = open();
+    let mut device = host::device(1);
     if !device.caps().cache {
         println!("no pipeline cache");
         return;
@@ -82,7 +73,7 @@ fn main() {
     device.save_cache(path).unwrap();
     drop(device);
     let size = std::fs::metadata(path).unwrap().len();
-    let mut device = open();
+    let mut device = host::device(1);
     if let Err(e) = device.load_cache(path) {
         println!("cache rejected: {e}");
     }

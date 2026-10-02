@@ -1,6 +1,9 @@
 #[cfg(not(feature = "gl"))]
 use mk::{AccelInfo, Boxes, Commands, Device, access, memory, stage};
 
+#[path = "support/host.rs"]
+mod host;
+
 #[cfg(feature = "gl")]
 fn main() {
     println!("ray tracing is Vulkan and Metal only");
@@ -40,12 +43,10 @@ fn scene(device: &mut Device) -> (u32, u32, u32, u32, u32) {
             ..Default::default()
         })
         .unwrap();
-    let bottom = device
-        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
-        .unwrap();
-    let top = device
-        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
-        .unwrap();
+    let size = device.accel_scratch(blas).0.max(4);
+    let bottom = device.create_buffer(size, memory::DEVICE).unwrap();
+    let size = device.accel_scratch(tlas).0.max(4);
+    let top = device.create_buffer(size, memory::DEVICE).unwrap();
     (blas, tlas, bottom, top, instances)
 }
 
@@ -155,7 +156,7 @@ fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
 #[cfg(not(feature = "gl"))]
 fn main() {
     let n = 16u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     if !caps.ray || cfg!(feature = "vk") && caps.handle_size == 0 {
         println!("no procedural ray tracing");

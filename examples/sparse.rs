@@ -1,8 +1,10 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    Commands, Device, SparseRange, SparseRegion, TextureInfo, access, format, layout, memory,
-    stage, usage,
+    Commands, SparseRange, SparseRegion, TextureInfo, access, format, layout, memory, stage, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "gl")]
 fn main() {
@@ -11,7 +13,7 @@ fn main() {
 
 #[cfg(not(feature = "gl"))]
 fn main() {
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if !device.caps().sparse {
         println!("no sparse resources");
         return;

@@ -1,7 +1,10 @@
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, access, format, layout, load, memory,
-    stage, store, usage,
+    ColorTarget, Commands, RenderInfo, TextureInfo, access, format, layout, load, memory, stage,
+    store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/viewports.metallib");
@@ -11,16 +14,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/viewports.spv");
 #[cfg(feature = "gl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/viewports.gl");
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
     let (w, h) = (64u32, 32u32);
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if device.caps().viewports < 2 {
         println!("one viewport only");
         return;

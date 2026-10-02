@@ -1,8 +1,11 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    ColorTarget, Commands, DepthInfo, Device, RenderInfo, TextureInfo, VertexAttribute,
-    VertexBuffer, access, compare, format, layout, load, memory, stage, store, usage,
+    ColorTarget, Commands, DepthInfo, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer,
+    access, compare, format, layout, load, memory, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
@@ -17,7 +20,7 @@ fn main() {
 #[cfg(not(feature = "gl"))]
 fn main() {
     let n = 64u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     let color_info = TextureInfo {
         format: format::RGBA8_UNORM,

@@ -1,7 +1,8 @@
 #[cfg(feature = "mtl")]
-use mk::{
-    Commands, Device, TextureInfo, UpscaleInfo, access, format, layout, memory, stage, usage,
-};
+use mk::{Commands, TextureInfo, UpscaleInfo, access, format, layout, memory, stage, usage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "mtl"))]
 fn main() {
@@ -18,7 +19,7 @@ fn half(v: f32) -> u16 {
 #[cfg(feature = "mtl")]
 fn main() {
     let (input, output) = (64u32, 128u32);
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let upscaler = device
         .create_upscaler(&UpscaleInfo {
             input_width: input,

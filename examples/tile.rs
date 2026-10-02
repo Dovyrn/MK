@@ -1,8 +1,11 @@
 #[cfg(feature = "mtl")]
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access,
-    format, layout, load, memory, stage, store, usage,
+    ColorTarget, Commands, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access, format,
+    layout, load, memory, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "mtl"))]
 fn main() {
@@ -12,7 +15,7 @@ fn main() {
 #[cfg(feature = "mtl")]
 fn main() {
     let n = 64u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let color = device
         .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,

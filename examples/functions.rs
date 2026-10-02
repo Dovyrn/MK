@@ -1,5 +1,8 @@
 #[cfg(feature = "mtl")]
-use mk::{Commands, Device, access, memory, stage};
+use mk::{Commands, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "mtl"))]
 fn main() {
@@ -9,7 +12,7 @@ fn main() {
 #[cfg(feature = "mtl")]
 fn main() {
     let n = 256u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: include_bytes!("../shaders/out/functions.metallib"),

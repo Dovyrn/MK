@@ -1,7 +1,10 @@
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access,
-    format, layout, load, memory, query, stage, store, usage,
+    ColorTarget, Commands, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access, format,
+    layout, load, memory, query, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const FILL: &[u8] = include_bytes!("../shaders/out/count.metallib");
@@ -16,16 +19,9 @@ const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 #[cfg(feature = "gl")]
 const TRIANGLE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
     let n = 64u32;
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     if !caps.occlusion || !caps.compute {
         println!("no occlusion queries or no compute");

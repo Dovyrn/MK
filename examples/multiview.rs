@@ -1,8 +1,11 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, access, dimension, format, layout,
-    load, memory, stage, store, usage,
+    ColorTarget, Commands, RenderInfo, TextureInfo, access, dimension, format, layout, load,
+    memory, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
@@ -17,7 +20,7 @@ fn main() {
 #[cfg(not(feature = "gl"))]
 fn main() {
     let n = 32u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if device.caps().views < 2 {
         println!("no multiview");
         return;

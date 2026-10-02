@@ -1,5 +1,8 @@
 #[cfg(not(feature = "gl"))]
-use mk::{AccelInfo, Commands, Device, Triangles, access, memory, stage};
+use mk::{AccelInfo, Commands, Triangles, access, memory, stage};
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/trace.metallib");
@@ -14,7 +17,7 @@ fn main() {
 #[cfg(not(feature = "gl"))]
 fn main() {
     let n = 16u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let caps = device.caps();
     if !caps.ray {
         println!("no ray tracing");
@@ -61,12 +64,10 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let bottom = device
-        .create_buffer(device.accel_scratch(blas).0.max(4), memory::DEVICE)
-        .unwrap();
-    let top = device
-        .create_buffer(device.accel_scratch(tlas).0.max(4), memory::DEVICE)
-        .unwrap();
+    let size = device.accel_scratch(blas).0.max(4);
+    let bottom = device.create_buffer(size, memory::DEVICE).unwrap();
+    let size = device.accel_scratch(tlas).0.max(4);
+    let top = device.create_buffer(size, memory::DEVICE).unwrap();
     let out = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();

@@ -4,6 +4,9 @@ use mk::{
     stage, store, usage,
 };
 
+#[path = "support/host.rs"]
+mod host;
+
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/multiview.metallib");
 #[cfg(feature = "vk")]
@@ -224,7 +227,7 @@ fn draw(
 
 #[cfg(not(feature = "gl"))]
 fn main() {
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let red = [255, 0, 0, 255];
     let blue = [0, 0, 255, 255];
     assert_eq!(

@@ -8,7 +8,6 @@ mod queue;
 mod recorder;
 mod render;
 mod resources;
-mod surface;
 mod table;
 mod texture;
 mod upscaler;

@@ -1,17 +1,12 @@
 use mk::{
-    Commands, Device, TextureInfo, ViewInfo, access, format, layout, load, memory, stage, store,
-    usage,
+    Commands, TextureInfo, ViewInfo, access, format, layout, load, memory, stage, store, usage,
 };
 
-#[cfg(feature = "gl")]
 #[path = "support/host.rs"]
 mod host;
 
 fn main() {
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     if !device.caps().texture_views {
         println!("no texture views");
         return;

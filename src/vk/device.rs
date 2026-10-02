@@ -8,33 +8,27 @@ use crate::vk::generated::Generated;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
-use crate::vk::surface::Surface;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
     AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
-    RenderInfo, SamplerInfo, SparseRange, SparseRegion, SurfaceInfo, TextureInfo, ViewInfo,
-    address, border, dimension, fill, filter, format, index, memory, query, token, topology, usage,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address, border,
+    dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
-use ash::ext::{conditional_rendering, external_memory_host, mesh_shader, mutable_descriptor_type};
+use ash::ext::{conditional_rendering, external_memory_host, mesh_shader};
 use ash::khr::push_descriptor;
 use ash::khr::{
-    acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
-    maintenance5, portability_enumeration, portability_subset, ray_query, ray_tracing_pipeline,
-    surface, swapchain,
+    acceleration_structure, external_memory_fd, fragment_shading_rate, ray_tracing_pipeline,
 };
 use ash::vk;
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::io::Cursor;
 
 pub struct Device {
-    pub entry: ash::Entry,
     pub instance: ash::Instance,
     pub physical: vk::PhysicalDevice,
     pub raw: ash::Device,
     ext: Extensions,
-    owned: bool,
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
     cache: vk::PipelineCache,
@@ -126,318 +120,8 @@ fn whole(info: &TextureInfo) -> ViewInfo {
     }
 }
 
-fn has(list: &[vk::ExtensionProperties], name: &CStr) -> bool {
-    list.iter().any(|e| e.extension_name_as_c_str() == Ok(name))
-}
-
 impl Device {
-    pub fn new(queues: usize) -> Result<Self, String> {
-        unsafe {
-            let entry = ash::Entry::load().map_err(|e| e.to_string())?;
-            let available = entry
-                .enumerate_instance_extension_properties(None)
-                .map_err(|e| e.to_string())?;
-            let mut extensions = Vec::new();
-            let mut flags = vk::InstanceCreateFlags::empty();
-            if has(&available, debug_utils::NAME) {
-                extensions.push(debug_utils::NAME.as_ptr());
-            }
-            for name in [
-                surface::NAME,
-                c"VK_EXT_metal_surface",
-                c"VK_KHR_win32_surface",
-                c"VK_KHR_xlib_surface",
-                c"VK_KHR_xcb_surface",
-                c"VK_KHR_wayland_surface",
-                c"VK_KHR_android_surface",
-            ] {
-                if has(&available, name) {
-                    extensions.push(name.as_ptr());
-                }
-            }
-            if has(&available, portability_enumeration::NAME) {
-                extensions.push(portability_enumeration::NAME.as_ptr());
-                flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
-            }
-            let app = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_3);
-            let info = vk::InstanceCreateInfo::default()
-                .flags(flags)
-                .application_info(&app)
-                .enabled_extension_names(&extensions);
-            let instance = entry
-                .create_instance(&info, None)
-                .map_err(|e| e.to_string())?;
-            let physicals = instance
-                .enumerate_physical_devices()
-                .map_err(|e| e.to_string())?;
-            let physical = *physicals
-                .iter()
-                .find(|&&p| {
-                    instance.get_physical_device_properties(p).device_type
-                        == vk::PhysicalDeviceType::DISCRETE_GPU
-                })
-                .or(physicals.first())
-                .ok_or("no Vulkan device")?;
-            let families = instance.get_physical_device_queue_family_properties(physical);
-            let mut order: Vec<_> = (0..families.len() as u32)
-                .filter(|&f| {
-                    families[f as usize]
-                        .queue_flags
-                        .contains(vk::QueueFlags::COMPUTE)
-                })
-                .collect();
-            order.sort_by_key(|&f| {
-                !families[f as usize]
-                    .queue_flags
-                    .contains(vk::QueueFlags::GRAPHICS)
-            });
-            let slots: Vec<(u32, u32)> = order
-                .iter()
-                .flat_map(|&f| (0..families[f as usize].queue_count).map(move |i| (f, i)))
-                .take(queues)
-                .collect();
-            if slots.len() < queues {
-                return Err(format!("device has {} queues", slots.len()));
-            }
-            let priorities = vec![1.0; queues];
-            let infos: Vec<_> = order
-                .iter()
-                .filter_map(|&f| {
-                    let count = slots.iter().filter(|s| s.0 == f).count();
-                    (count > 0).then(|| {
-                        vk::DeviceQueueCreateInfo::default()
-                            .queue_family_index(f)
-                            .queue_priorities(&priorities[..count])
-                    })
-                })
-                .collect();
-            let available = instance
-                .enumerate_device_extension_properties(physical)
-                .map_err(|e| e.to_string())?;
-            let mut extensions = vec![mutable_descriptor_type::NAME.as_ptr()];
-            if has(&available, swapchain::NAME) {
-                extensions.push(swapchain::NAME.as_ptr());
-            }
-            if has(&available, portability_subset::NAME) {
-                extensions.push(portability_subset::NAME.as_ptr());
-            }
-            if has(&available, push_descriptor::NAME) {
-                extensions.push(push_descriptor::NAME.as_ptr());
-            }
-            let mut supported_generated = ffi::Features {
-                s_type: ffi::FEATURES,
-                next: std::ptr::null_mut(),
-                generated: 0,
-                dynamic: 0,
-            };
-            let mut query = vk::PhysicalDeviceFeatures2 {
-                p_next: (&raw mut supported_generated).cast(),
-                ..Default::default()
-            };
-            instance.get_physical_device_features2(physical, &mut query);
-            let generated = has(&available, c"VK_EXT_device_generated_commands")
-                && has(&available, maintenance5::NAME)
-                && supported_generated.generated != 0;
-            let mut enabled_generated = ffi::Features {
-                s_type: ffi::FEATURES,
-                next: std::ptr::null_mut(),
-                generated: 1,
-                dynamic: 0,
-            };
-            let mut maintenance =
-                vk::PhysicalDeviceMaintenance5FeaturesKHR::default().maintenance5(true);
-            if generated {
-                extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
-                extensions.push(maintenance5::NAME.as_ptr());
-            }
-            let mut supported_conditional =
-                vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default();
-            let mut query =
-                vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_conditional);
-            instance.get_physical_device_features2(physical, &mut query);
-            let conditional = has(&available, conditional_rendering::NAME)
-                && supported_conditional.conditional_rendering != 0;
-            let mut conditions = vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default()
-                .conditional_rendering(true);
-            if conditional {
-                extensions.push(conditional_rendering::NAME.as_ptr());
-            }
-            if has(&available, external_memory_fd::NAME) {
-                extensions.push(external_memory_fd::NAME.as_ptr());
-            }
-            if has(&available, external_memory_host::NAME) {
-                extensions.push(external_memory_host::NAME.as_ptr());
-            }
-            let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
-            let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
-            instance.get_physical_device_features2(physical, &mut query);
-            let rated = has(&available, fragment_shading_rate::NAME)
-                && supported_rate.pipeline_fragment_shading_rate != 0;
-            let mut rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default()
-                .pipeline_fragment_shading_rate(true)
-                .primitive_fragment_shading_rate(
-                    supported_rate.primitive_fragment_shading_rate != 0,
-                )
-                .attachment_fragment_shading_rate(
-                    supported_rate.attachment_fragment_shading_rate != 0,
-                );
-            if rated {
-                extensions.push(fragment_shading_rate::NAME.as_ptr());
-            }
-            let mut supported_mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
-            let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_mesh);
-            instance.get_physical_device_features2(physical, &mut query);
-            let mut mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
-                .task_shader(supported_mesh.task_shader != 0)
-                .mesh_shader(supported_mesh.mesh_shader != 0);
-            let meshes = has(&available, mesh_shader::NAME) && supported_mesh.mesh_shader != 0;
-            let mut supported_accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-            let mut supported_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
-            let mut supported_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-            let mut query = vk::PhysicalDeviceFeatures2::default()
-                .push_next(&mut supported_accel)
-                .push_next(&mut supported_query)
-                .push_next(&mut supported_pipeline);
-            instance.get_physical_device_features2(physical, &mut query);
-            let rays = has(&available, acceleration_structure::NAME)
-                && has(&available, deferred_host_operations::NAME)
-                && has(&available, ray_query::NAME)
-                && supported_accel.acceleration_structure != 0
-                && supported_query.ray_query != 0;
-            let mut accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
-                .acceleration_structure(true);
-            let mut rq = vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
-            let pipelines = rays
-                && has(&available, ray_tracing_pipeline::NAME)
-                && supported_pipeline.ray_tracing_pipeline != 0;
-            let mut rt = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
-                .ray_tracing_pipeline(true);
-            if rays {
-                extensions.push(acceleration_structure::NAME.as_ptr());
-                extensions.push(deferred_host_operations::NAME.as_ptr());
-                extensions.push(ray_query::NAME.as_ptr());
-            }
-            if pipelines {
-                extensions.push(ray_tracing_pipeline::NAME.as_ptr());
-            }
-            if meshes {
-                extensions.push(mesh_shader::NAME.as_ptr());
-            }
-            let supported = instance.get_physical_device_features(physical);
-            let features = vk::PhysicalDeviceFeatures::default()
-                .sampler_anisotropy(supported.sampler_anisotropy != 0)
-                .multi_viewport(supported.multi_viewport != 0)
-                .depth_bounds(supported.depth_bounds != 0)
-                .pipeline_statistics_query(supported.pipeline_statistics_query != 0)
-                .depth_clamp(supported.depth_clamp != 0)
-                .sparse_binding(supported.sparse_binding != 0)
-                .sparse_residency_buffer(supported.sparse_residency_buffer != 0)
-                .sparse_residency_image2_d(supported.sparse_residency_image2_d != 0)
-                .shader_int64(supported.shader_int64 != 0)
-                .occlusion_query_precise(supported.occlusion_query_precise != 0)
-                .fill_mode_non_solid(supported.fill_mode_non_solid != 0)
-                .multi_draw_indirect(supported.multi_draw_indirect != 0)
-                .depth_bias_clamp(supported.depth_bias_clamp != 0)
-                .independent_blend(supported.independent_blend != 0)
-                .dual_src_blend(supported.dual_src_blend != 0)
-                .shader_storage_image_read_without_format(
-                    supported.shader_storage_image_read_without_format != 0,
-                )
-                .shader_storage_image_write_without_format(
-                    supported.shader_storage_image_write_without_format != 0,
-                );
-            let mut v11 = vk::PhysicalDeviceVulkan11Features::default()
-                .multiview(true)
-                .shader_draw_parameters(true);
-            let mut supported_v12 = vk::PhysicalDeviceVulkan12Features::default();
-            let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_v12);
-            instance.get_physical_device_features2(physical, &mut query);
-            let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
-                .buffer_device_address(true)
-                .timeline_semaphore(true)
-                .descriptor_indexing(true)
-                .runtime_descriptor_array(true)
-                .descriptor_binding_partially_bound(true)
-                .descriptor_binding_sampled_image_update_after_bind(true)
-                .descriptor_binding_storage_image_update_after_bind(true)
-                .shader_sampled_image_array_non_uniform_indexing(true)
-                .shader_storage_image_array_non_uniform_indexing(true)
-                .descriptor_binding_storage_buffer_update_after_bind(
-                    supported_v12.descriptor_binding_storage_buffer_update_after_bind != 0,
-                )
-                .shader_storage_buffer_array_non_uniform_indexing(
-                    supported_v12.shader_storage_buffer_array_non_uniform_indexing != 0,
-                )
-                .shader_output_viewport_index(supported_v12.shader_output_viewport_index != 0)
-                .shader_output_layer(supported_v12.shader_output_layer != 0);
-            let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
-                .mutable_descriptor_type(true);
-            let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
-                .synchronization2(true)
-                .dynamic_rendering(true)
-                .maintenance4(true);
-            let info = vk::DeviceCreateInfo::default()
-                .queue_create_infos(&infos)
-                .enabled_extension_names(&extensions)
-                .enabled_features(&features)
-                .push_next(&mut v11)
-                .push_next(&mut v12)
-                .push_next(&mut v13)
-                .push_next(&mut mutable);
-            let info = if meshes {
-                info.push_next(&mut mesh)
-            } else {
-                info
-            };
-            let info = if rays {
-                info.push_next(&mut accel).push_next(&mut rq)
-            } else {
-                info
-            };
-            let mut info = if pipelines {
-                info.push_next(&mut rt)
-            } else {
-                info
-            };
-            if rated {
-                info = info.push_next(&mut rate);
-            }
-            if conditional {
-                info = info.push_next(&mut conditions);
-            }
-            if generated {
-                info = info.push_next(&mut maintenance);
-                enabled_generated.next = info.p_next as *mut _;
-                info.p_next = (&raw const enabled_generated).cast();
-            }
-            let device = instance
-                .create_device(physical, &info, None)
-                .map_err(|e| e.to_string())?;
-            let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
-            enabled.p_next = info.p_next as *mut _;
-            match Self::adopt(
-                entry,
-                instance.clone(),
-                physical,
-                device.clone(),
-                &slots,
-                &enabled,
-            ) {
-                Ok(mut d) => {
-                    d.owned = true;
-                    Ok(d)
-                }
-                Err(e) => {
-                    device.destroy_device(None);
-                    instance.destroy_instance(None);
-                    Err(e)
-                }
-            }
-        }
-    }
-
     pub fn adopt(
-        entry: ash::Entry,
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -470,14 +154,6 @@ impl Device {
             let name = c"vkCmdSetFragmentShadingRateKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let rates = loaded.map(|_| fragment_shading_rate::Device::new(&instance, &raw));
-            let name = c"vkCreateSwapchainKHR";
-            let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
-            let surfaces = loaded.map(|_| {
-                (
-                    surface::Instance::new(&entry, &instance),
-                    swapchain::Device::new(&instance, &raw),
-                )
-            });
             let name = c"vkCmdPushDescriptorSetKHR";
             let loaded = (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr());
             let push = loaded.map(|_| push_descriptor::Device::new(&instance, &raw));
@@ -536,7 +212,6 @@ impl Device {
                 memory: instance.get_physical_device_memory_properties(physical),
                 families,
                 cache: vk::PipelineCache::null(),
-                entry,
                 instance,
                 physical,
                 raw,
@@ -550,12 +225,10 @@ impl Device {
                     fds,
                     conditional,
                     generated,
-                    surfaces,
                     features: features.features,
                     push,
                 },
                 slots,
-                owned: false,
                 bindless,
                 layout,
                 res: Resources::default(),
@@ -606,7 +279,6 @@ impl Device {
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
             Self::adopt(
-                entry,
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,
@@ -706,7 +378,6 @@ impl Device {
                 })
                 .fold(0, |mask, (i, _)| mask | 1 << i),
             labels: self.ext.debug.is_some(),
-            surfaces: self.ext.surfaces.is_some(),
             rays: self.ext.rays.is_some(),
             anisotropy: features.sampler_anisotropy != 0,
             depth_clamp: features.depth_clamp != 0,
@@ -2104,241 +1775,6 @@ impl Device {
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
-    pub fn create_surface(
-        &mut self,
-        window: &(impl HasWindowHandle + HasDisplayHandle),
-        info: &SurfaceInfo,
-    ) -> Result<u32, String> {
-        let display = window.display_handle().map_err(|e| e.to_string())?;
-        let handle = window.window_handle().map_err(|e| e.to_string())?;
-        let raw = unsafe {
-            ash_window::create_surface(
-                &self.entry,
-                &self.instance,
-                display.as_raw(),
-                handle.as_raw(),
-                None,
-            )
-            .map_err(|e| e.to_string())?
-        };
-        self.surface(raw, true, info)
-    }
-
-    pub fn create_surface_raw(&mut self, surface: u64, info: &SurfaceInfo) -> Result<u32, String> {
-        self.surface(vk::Handle::from_raw(surface), false, info)
-    }
-
-    fn surface(
-        &mut self,
-        raw: vk::SurfaceKHR,
-        own: bool,
-        info: &SurfaceInfo,
-    ) -> Result<u32, String> {
-        let mut s = Surface {
-            raw,
-            own,
-            swapchain: vk::SwapchainKHR::null(),
-            format: info.format,
-            vsync: info.vsync,
-            count: info.images,
-            usage: info.usage,
-            size: [0; 2],
-            suboptimal: false,
-            images: Vec::new(),
-            acquires: Vec::new(),
-            presents: Vec::new(),
-            next: 0,
-            index: 0,
-        };
-        self.swapchain(&mut s, info.width, info.height)?;
-        Ok(self.res.surfaces.insert(s))
-    }
-
-    fn swapchain(&mut self, s: &mut Surface, width: u32, height: u32) -> Result<(), String> {
-        let (surfaces, swapchains) = self
-            .ext
-            .surfaces
-            .as_ref()
-            .ok_or("VK_KHR_swapchain is not enabled")?;
-        unsafe {
-            let caps = surfaces
-                .get_physical_device_surface_capabilities(self.physical, s.raw)
-                .map_err(|e| e.to_string())?;
-            let modes = surfaces
-                .get_physical_device_surface_present_modes(self.physical, s.raw)
-                .map_err(|e| e.to_string())?;
-            let mode = if s.vsync {
-                vk::PresentModeKHR::FIFO
-            } else {
-                [vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
-                    .into_iter()
-                    .find(|m| modes.contains(m))
-                    .ok_or("the surface has no present mode without vsync")?
-            };
-            let max = if caps.max_image_count == 0 {
-                u32::MAX
-            } else {
-                caps.max_image_count
-            };
-            if s.count < caps.min_image_count || s.count > max {
-                return Err(format!(
-                    "{} images is outside the surface range {}..={max}",
-                    s.count, caps.min_image_count
-                ));
-            }
-            let extent = if caps.current_extent.width == u32::MAX {
-                vk::Extent2D { width, height }
-            } else {
-                caps.current_extent
-            };
-            s.size = [extent.width, extent.height];
-            let usage = image_usage(s.usage);
-            if !caps.supported_usage_flags.contains(usage) {
-                return Err(format!("the surface does not support usage {}", s.usage));
-            }
-            let native = format::vk(s.format);
-            let old = s.swapchain;
-            let info = vk::SwapchainCreateInfoKHR::default()
-                .surface(s.raw)
-                .min_image_count(s.count)
-                .image_format(native)
-                .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
-                .image_extent(extent)
-                .image_array_layers(1)
-                .image_usage(usage)
-                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .pre_transform(caps.current_transform)
-                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                .present_mode(mode)
-                .clipped(true)
-                .old_swapchain(old);
-            s.swapchain = swapchains
-                .create_swapchain(&info, None)
-                .map_err(|e| e.to_string())?;
-            for slot in s.images.drain(..) {
-                let t = self.res.textures.remove(slot);
-                self.raw.destroy_image_view(t.view, None);
-            }
-            if old != vk::SwapchainKHR::null() {
-                swapchains.destroy_swapchain(old, None);
-            }
-            for image in swapchains
-                .get_swapchain_images(s.swapchain)
-                .map_err(|e| e.to_string())?
-            {
-                let view_info = vk::ImageViewCreateInfo::default()
-                    .image(image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(native)
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    });
-                let view = self.raw.create_image_view(&view_info, None).unwrap();
-                s.images.push(self.res.textures.insert(Texture {
-                    image,
-                    memory: vk::DeviceMemory::null(),
-                    view,
-                    aspect: vk::ImageAspectFlags::COLOR,
-                    own: false,
-                    tile: vk::Extent3D::default(),
-                }));
-            }
-            let binary = vk::SemaphoreCreateInfo::default();
-            while s.presents.len() < s.images.len() {
-                s.presents
-                    .push(self.raw.create_semaphore(&binary, None).unwrap());
-            }
-            while s.acquires.len() < s.images.len() + 1 {
-                s.acquires
-                    .push((self.raw.create_semaphore(&binary, None).unwrap(), 0));
-            }
-        }
-        Ok(())
-    }
-
-    pub fn resize_surface(&mut self, surface: u32, width: u32, height: u32) -> Result<(), String> {
-        let mut s = self.res.surfaces.remove(surface);
-        let result = self.swapchain(&mut s, width, height);
-        self.res.surfaces.insert(s);
-        result
-    }
-
-    pub fn destroy_surface(&mut self, surface: u32) {
-        let s = self.res.surfaces.remove(surface);
-        let (surfaces, swapchains) = self.ext.surfaces.as_ref().unwrap();
-        unsafe {
-            for slot in s.images {
-                let t = self.res.textures.remove(slot);
-                self.raw.destroy_image_view(t.view, None);
-            }
-            for (semaphore, _) in s.acquires {
-                self.raw.destroy_semaphore(semaphore, None);
-            }
-            for semaphore in s.presents {
-                self.raw.destroy_semaphore(semaphore, None);
-            }
-            swapchains.destroy_swapchain(s.swapchain, None);
-            if s.own {
-                surfaces.destroy_surface(s.raw, None);
-            }
-        }
-    }
-
-    pub fn acquire(&mut self, queue: usize, surface: u32) -> Result<u32, String> {
-        let (_, swapchains) = self
-            .ext
-            .surfaces
-            .as_ref()
-            .ok_or("VK_KHR_swapchain is not enabled")?;
-        let s = self.res.surfaces.get_mut(surface);
-        let q = &mut self.queues[queue];
-        let (semaphore, used) = s.acquires[s.next];
-        q.done(&self.raw, used)?;
-        let (index, suboptimal) = unsafe {
-            swapchains
-                .acquire_next_image(s.swapchain, u64::MAX, semaphore, vk::Fence::null())
-                .map_err(|e| e.to_string())?
-        };
-        s.suboptimal = suboptimal;
-        s.acquires[s.next].1 = q.sync(&self.raw, semaphore, vk::Semaphore::null())?;
-        s.next = (s.next + 1) % s.acquires.len();
-        s.index = index;
-        Ok(s.images[index as usize])
-    }
-
-    pub fn surface_size(&self, surface: u32) -> [u32; 2] {
-        self.res.surfaces.get(surface).size
-    }
-
-    pub fn present(&mut self, queue: usize, surface: u32) -> Result<bool, String> {
-        let (_, swapchains) = self
-            .ext
-            .surfaces
-            .as_ref()
-            .ok_or("VK_KHR_swapchain is not enabled")?;
-        let s = self.res.surfaces.get(surface);
-        let q = &mut self.queues[queue];
-        let semaphore = s.presents[s.index as usize];
-        q.sync(&self.raw, vk::Semaphore::null(), semaphore)?;
-        let waits = [semaphore];
-        let swapchain = [s.swapchain];
-        let indices = [s.index];
-        let info = vk::PresentInfoKHR::default()
-            .wait_semaphores(&waits)
-            .swapchains(&swapchain)
-            .image_indices(&indices);
-        let suboptimal = unsafe {
-            swapchains
-                .queue_present(q.raw, &info)
-                .map_err(|e| e.to_string())?
-        };
-        Ok(suboptimal || s.suboptimal)
-    }
-
     pub fn create_ray_pipeline(&mut self, info: &RayInfo) -> Result<u32, String> {
         let rays = self
             .ext
@@ -2688,9 +2124,6 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            if self.owned {
-                self.raw.device_wait_idle().ok();
-            }
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);
             }
@@ -2701,20 +2134,6 @@ impl Drop for Device {
             let textures: Vec<_> = self.res.textures.drain().collect();
             for texture in textures {
                 self.free_texture(&texture);
-            }
-            let surfaces: Vec<_> = self.res.surfaces.drain().collect();
-            for s in surfaces {
-                let (surfaces, swapchains) = self.ext.surfaces.as_ref().unwrap();
-                for (semaphore, _) in s.acquires {
-                    self.raw.destroy_semaphore(semaphore, None);
-                }
-                for semaphore in s.presents {
-                    self.raw.destroy_semaphore(semaphore, None);
-                }
-                swapchains.destroy_swapchain(s.swapchain, None);
-                if s.own {
-                    surfaces.destroy_surface(s.raw, None);
-                }
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
@@ -2758,10 +2177,6 @@ impl Drop for Device {
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
             self.raw.destroy_descriptor_set_layout(self.slots, None);
-            if self.owned {
-                self.raw.destroy_device(None);
-                self.instance.destroy_instance(None);
-            }
         }
     }
 }

@@ -1,5 +1,8 @@
 use mk::{Commands, Device, access, memory, stage};
 
+#[path = "support/host.rs"]
+mod host;
+
 #[cfg(feature = "gl")]
 fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
     use mk::glow::HasContext;
@@ -32,16 +35,9 @@ fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
     });
 }
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
     let n = 4096u64;
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let data = device.create_buffer(n, memory::DEVICE).unwrap();
     let back = device.create_buffer(n, memory::READBACK).unwrap();
     let event = device.create_event().unwrap();

@@ -1,8 +1,11 @@
 #[cfg(feature = "mtl")]
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, access, format, layout, load, memory,
-    stage, store, usage,
+    ColorTarget, Commands, RenderInfo, TextureInfo, access, format, layout, load, memory, stage,
+    store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(not(feature = "mtl"))]
 fn main() {
@@ -12,7 +15,7 @@ fn main() {
 #[cfg(feature = "mtl")]
 fn main() {
     let screen = 64u32;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let map = device
         .create_rate_map(screen, screen, &[0.5, 0.5], &[0.5, 0.5])
         .unwrap();

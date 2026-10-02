@@ -30,7 +30,6 @@ public class Caps {
     public int views = 0;
     public int graphics = 0;
     public boolean labels = false;
-    public boolean surfaces = false;
     public boolean rays = false;
     public boolean anisotropy = false;
     public boolean depthClamp = false;
@@ -48,7 +47,7 @@ public class Caps {
     public boolean cache = false;
 
     public int size() {
-        return 172;
+        return 168;
     }
 
     public long write(long p) {
@@ -105,8 +104,6 @@ public class Caps {
         memPutInt(p, graphics);
         p += 4;
         memPutInt(p, labels ? 1 : 0);
-        p += 4;
-        memPutInt(p, surfaces ? 1 : 0);
         p += 4;
         memPutInt(p, rays ? 1 : 0);
         p += 4;
@@ -196,8 +193,6 @@ public class Caps {
         r.graphics = memGetInt(p);
         p += 4;
         r.labels = memGetInt(p) != 0;
-        p += 4;
-        r.surfaces = memGetInt(p) != 0;
         p += 4;
         r.rays = memGetInt(p) != 0;
         p += 4;

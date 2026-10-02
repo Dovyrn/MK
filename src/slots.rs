@@ -36,6 +36,7 @@ impl<T> Slots<T> {
         self.items[i as usize].as_ref().unwrap()
     }
 
+    #[cfg(any(feature = "vk", feature = "gl"))]
     pub fn get_mut(&mut self, i: u32) -> &mut T {
         self.items[i as usize].as_mut().unwrap()
     }

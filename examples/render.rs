@@ -1,7 +1,10 @@
 use mk::{
-    ColorTarget, Commands, DepthInfo, Device, RenderInfo, TextureInfo, VertexAttribute,
-    VertexBuffer, access, compare, format, index, layout, load, memory, stage, store, usage,
+    ColorTarget, Commands, DepthInfo, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer,
+    access, compare, format, index, layout, load, memory, stage, store, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
@@ -11,16 +14,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 #[cfg(feature = "gl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.gl");
 
-#[cfg(feature = "gl")]
-#[path = "support/host.rs"]
-mod host;
-
 fn main() {
     let n = 64u32;
-    #[cfg(feature = "gl")]
-    let mut device = Device::adopt(host::proc()).unwrap();
-    #[cfg(not(feature = "gl"))]
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let target = |format, usage| TextureInfo {
         format,
         width: n,

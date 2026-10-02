@@ -3,7 +3,6 @@ use ash::ext::{conditional_rendering, debug_utils, external_memory_host, mesh_sh
 use ash::khr::push_descriptor;
 use ash::khr::{
     acceleration_structure, external_memory_fd, fragment_shading_rate, ray_tracing_pipeline,
-    surface, swapchain,
 };
 use ash::vk;
 
@@ -17,7 +16,6 @@ pub struct Extensions {
     pub fds: Option<external_memory_fd::Device>,
     pub conditional: Option<conditional_rendering::Device>,
     pub generated: Option<Generated>,
-    pub surfaces: Option<(surface::Instance, swapchain::Device)>,
     pub features: vk::PhysicalDeviceFeatures,
     pub push: Option<push_descriptor::Device>,
 }

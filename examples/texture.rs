@@ -1,8 +1,11 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    Command, Commands, Device, SamplerInfo, TextureInfo, access, address, filter, format, layout,
-    memory, stage, usage,
+    Command, Commands, SamplerInfo, TextureInfo, access, address, filter, format, layout, memory,
+    stage, usage,
 };
+
+#[path = "support/host.rs"]
+mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = include_bytes!("../shaders/out/blit.metallib");
@@ -18,7 +21,7 @@ fn main() {
 fn main() {
     let n = 16u32;
     let texels = (n * n) as usize;
-    let mut device = Device::new(1).unwrap();
+    let mut device = host::device(1);
     let info = |usage| TextureInfo {
         format: format::RGBA8_UNORM,
         width: n,

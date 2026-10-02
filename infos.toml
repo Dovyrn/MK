@@ -133,17 +133,6 @@ fields = [
 ]
 
 [[info]]
-name = "SurfaceInfo"
-fields = [
-    ["width", "u32", "1"],
-    ["height", "u32", "1"],
-    ["format", "u32", "format::BGRA8_UNORM"],
-    ["vsync", "bool", "true"],
-    ["images", "u32", "3"],
-    ["usage", "u32", "usage::COLOR"],
-]
-
-[[info]]
 name = "Triangles"
 fields = [
     ["vertices", "u32", "0"],
@@ -209,7 +198,6 @@ fields = [
     ["views", "u32", "0"],
     ["graphics", "u32", "0"],
     ["labels", "bool", "false"],
-    ["surfaces", "bool", "false"],
     ["rays", "bool", "false"],
     ["anisotropy", "bool", "false"],
     ["depth_clamp", "bool", "false"],
