@@ -512,7 +512,32 @@ impl Device {
         surface: &IOSurfaceRef,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        assert!(
+            info.dimension == dimension::D2
+                && info.mips == 1
+                && info.layers == 1
+                && info.samples == 1,
+            "a shared texture is 2D with one mip, one layer and one sample"
+        );
+        let [bytes, width, _] = format::block(info.format);
+        assert!(
+            width == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&info.format),
+            "a shared texture cannot use depth, stencil or compressed format {}",
+            info.format
+        );
         self.supports(info)?;
+        if info.width as usize > surface.width()
+            || info.height as usize > surface.height()
+            || (info.width * bytes) as usize > surface.bytes_per_row()
+        {
+            return Err(format!(
+                "a {}x{} texture of format {} does not fit IOSurface {}",
+                info.width,
+                info.height,
+                info.format,
+                surface.id()
+            ));
+        }
         let desc = texture_desc(info);
         desc.setResourceOptions(options(memory::READBACK));
         let raw = self
