@@ -56,7 +56,7 @@ impl Device {
     pub fn destroy_sampler(&mut self, sampler: u32) {
         self.res.table.samplers.clear(sampler);
         let sampler = self.res.samplers.remove(sampler);
-        self.discard(move |_| drop(sampler));
+        self.defer(move |_| drop(sampler));
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {

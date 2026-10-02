@@ -19,7 +19,7 @@ impl Device {
 
     pub fn destroy_event(&mut self, event: u32) {
         let event = self.res.events.remove(event);
-        self.discard(move |_| drop(event));
+        self.defer(move |_| drop(event));
     }
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {

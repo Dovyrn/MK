@@ -22,7 +22,7 @@ impl Device {
 
     pub fn destroy_heap(&mut self, heap: u32) {
         let (heap, _) = self.res.heaps.remove(heap);
-        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*heap)));
+        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*heap)));
     }
 
     pub fn buffer_size(&self, size: u64, memory: u32) -> (u64, u64) {

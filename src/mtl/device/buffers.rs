@@ -51,7 +51,7 @@ impl Device {
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.res.table.buffers.clear(buffer);
         let buffer = self.res.buffers.remove(buffer);
-        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
+        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {

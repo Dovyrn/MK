@@ -51,7 +51,7 @@ impl Device {
 
     pub fn destroy_function_table(&mut self, table: u32) {
         let table = self.res.tables.remove(table);
-        self.discard(move |r| match table {
+        self.defer(move |r| match table {
             Table::Visible(t) => r.remove(ProtocolObject::from_ref(&*t)),
             Table::Intersection(t) => r.remove(ProtocolObject::from_ref(&*t)),
         });

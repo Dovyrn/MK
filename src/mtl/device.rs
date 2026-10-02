@@ -191,7 +191,7 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
-    trash: Vec<(Vec<u64>, Free)>,
+    garbage: Vec<(Vec<u64>, Free)>,
     caps: Caps,
 }
 
@@ -226,24 +226,24 @@ impl Device {
             res: Resources::default(),
             queues,
             lost,
-            trash: Vec::new(),
+            garbage: Vec::new(),
             caps,
         })
     }
 
-    fn discard(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
+    fn defer(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
         let counts = self.queues.iter().map(|q| q.count).collect();
-        self.trash.push((counts, Box::new(free)));
+        self.garbage.push((counts, Box::new(free)));
         self.collect();
     }
 
     fn collect(&mut self) {
         let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
-        for (counts, free) in std::mem::take(&mut self.trash) {
+        for (counts, free) in std::mem::take(&mut self.garbage) {
             if counts.iter().zip(&done).all(|(c, d)| c <= d) {
                 free(&mut self.residency);
             } else {
-                self.trash.push((counts, free));
+                self.garbage.push((counts, free));
             }
         }
     }

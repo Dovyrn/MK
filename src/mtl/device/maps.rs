@@ -44,6 +44,6 @@ impl Device {
 
     pub fn destroy_rate_map(&mut self, map: u32) {
         let map = self.res.maps.remove(map);
-        self.discard(move |_| drop(map));
+        self.defer(move |_| drop(map));
     }
 }

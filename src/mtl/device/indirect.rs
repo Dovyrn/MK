@@ -31,7 +31,7 @@ impl Device {
 
     pub fn destroy_indirect(&mut self, indirect: u32) {
         let raw = self.res.indirects.remove(indirect);
-        self.discard(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
+        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
     }
 
     pub fn indirect_handle(&self, indirect: u32) -> u64 {
