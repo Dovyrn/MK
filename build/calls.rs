@@ -221,19 +221,22 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     s
 }
 
-fn plain(body: &str, fenced: bool) -> String {
-    if fenced {
-        return body.replacen("try (var stack = MemoryStack.stackPush()) {", "try {", 1);
-    }
-    let lines: Vec<&str> = body.lines().collect();
-    let inner = &lines[1..lines.len() - 2];
-    let mut s: String = inner
-        .iter()
-        .map(|l| format!("{}\n", l.strip_prefix("    ").unwrap_or(l)))
-        .collect();
-    s += lines[lines.len() - 1];
-    s += "\n";
-    s
+fn direct(kind: &str) -> bool {
+    matches!(
+        kind,
+        "u32"
+            | "usize"
+            | "i32"
+            | "u64"
+            | "handle"
+            | "object"
+            | "pointer"
+            | "f32"
+            | "bool"
+            | "bytes"
+            | "mutbytes"
+            | "commands"
+    )
 }
 
 pub fn java(calls: &[Call], backend: Option<&str>) -> String {
@@ -295,8 +298,28 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
-        let start = s.len();
-        s += "        try (var stack = MemoryStack.stackPush()) {\n";
+        let fenced: Vec<_> = call
+            .params
+            .iter()
+            .filter(|p| matches!(p.kind.as_str(), "bytes" | "mutbytes") || info(&p.kind))
+            .map(|p| {
+                format!(
+                    "            Reference.reachabilityFence({});",
+                    camel(&p.name)
+                )
+            })
+            .collect();
+        let stack = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
+        let indent = if stack || !fenced.is_empty() {
+            "            "
+        } else {
+            "        "
+        };
+        if stack {
+            s += "        try (var stack = MemoryStack.stackPush()) {\n";
+        } else if !fenced.is_empty() {
+            s += "        try {\n";
+        }
         let mut args = Vec::new();
         if !statics(call) {
             args.push("handle".to_string());
@@ -390,43 +413,30 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let line = match call.result.as_str() {
             "" => format!("{invoke};"),
             "pair" | "handles" | "pair32" => format!(
-                "{invoke};\n            return new long[] {{memGetLong(out), memGetLong(out + 8)}};"
+                "{invoke};\n{indent}return new long[] {{memGetLong(out), memGetLong(out + 8)}};"
             ),
             "u32x2" => format!(
-                "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4)}};"
+                "{invoke};\n{indent}return new int[] {{memGetInt(out), memGetInt(out + 4)}};"
             ),
             "u32x3" => format!(
-                "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
+                "{invoke};\n{indent}return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
             ),
             "device" => format!("return new {name}({invoke});"),
-            r if info(r) => format!("{invoke};\n            return {r}.decode(out);"),
+            r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
-        let fenced: Vec<_> = call
-            .params
-            .iter()
-            .filter(|p| matches!(p.kind.as_str(), "bytes" | "mutbytes") || info(&p.kind))
-            .map(|p| {
-                format!(
-                    "            Reference.reachabilityFence({});",
-                    camel(&p.name)
-                )
-            })
-            .collect();
-        if fenced.is_empty() {
-            writeln!(s, "            {line}\n        }}\n    }}").unwrap();
-        } else {
+        writeln!(s, "{indent}{line}").unwrap();
+        if !fenced.is_empty() {
             writeln!(
                 s,
-                "            {line}\n        }} finally {{\n{}\n        }}\n    }}",
+                "        }} finally {{\n{}\n        }}",
                 fenced.join("\n")
             )
             .unwrap();
+        } else if stack {
+            s += "        }\n";
         }
-        if !s[start..].contains("stack.") {
-            let body = s.split_off(start);
-            s += &plain(&body, !fenced.is_empty());
-        }
+        s += "    }\n";
         let mut natives_params = Vec::new();
         if !statics(call) {
             natives_params.push("long device".to_string());
