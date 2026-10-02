@@ -1,5 +1,6 @@
 use crate::field::Field;
-use crate::{camel, class, member, pascal};
+use crate::infos::reader;
+use crate::{camel, class, list, member, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -82,7 +83,6 @@ fn rust_arg(p: &Field) -> String {
         "i32" => n,
         "pointer" => format!("{n} as usize as *mut u8"),
         "f32s" => format!("{j}::f32s({n}, {n}_length as i64)"),
-        "[str]" => format!("&{j}::strs(&mut {j}::bytes({n}, {n}_length as i64))"),
         "usize" => format!("{n} as usize"),
         "u64" => format!("{n} as u64"),
         "f32" => n,
@@ -96,11 +96,13 @@ fn rust_arg(p: &Field) -> String {
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
         "handle" => format!("ash::vk::Handle::from_raw({n} as u64)"),
         "object" => format!("{j}::object({n})"),
-        k if k.starts_with('[') => format!(
-            "&{j}::list(&mut {j}::bytes({n}, {n}_length as i64), crate::{}::read)",
-            &k[1..k.len() - 1]
-        ),
-        k => format!("&crate::{k}::read(&mut {j}::bytes({n}, {n}_length as i64))"),
+        k => match list(k) {
+            Some(item) => format!(
+                "&crate::wire::list(&mut {j}::bytes({n}, {n}_length as i64), {})",
+                reader(item)
+            ),
+            None => format!("&{}(&mut {j}::bytes({n}, {n}_length as i64))", reader(k)),
+        },
     }
 }
 

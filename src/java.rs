@@ -79,18 +79,6 @@ pub fn f32s<'a>(address: jlong, count: i64) -> &'a [f32] {
     unsafe { std::slice::from_raw_parts(address as *const f32, count as usize) }
 }
 
-#[cfg(feature = "mtl")]
-pub fn strs<'a>(b: &mut &'a [u8]) -> Vec<&'a str> {
-    (0..crate::wire::u32(b))
-        .map(|_| crate::wire::str(b))
-        .collect()
-}
-
-#[cfg(any(feature = "vk", feature = "mtl"))]
-pub fn list<T>(b: &mut &[u8], f: impl Fn(&mut &[u8]) -> T) -> Vec<T> {
-    (0..crate::wire::u32(b)).map(|_| f(b)).collect()
-}
-
 #[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn u32s_out(out: jlong, v: &[u32]) {
     unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };

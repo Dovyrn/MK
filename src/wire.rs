@@ -25,18 +25,17 @@ pub fn u32x3(b: &mut &[u8]) -> [u32; 3] {
 }
 
 pub fn bytes<'a>(b: &mut &[u8]) -> &'a [u8] {
-    let address = u64(b) as usize;
-    let length = u64(b) as usize;
-    if address == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(address as *const u8, length) }
-    }
+    let address = u64(b) as i64;
+    crate::java::bytes(address, u64(b) as i64)
 }
 
 pub fn str<'a>(b: &mut &'a [u8]) -> &'a str {
     let n = u32(b) as usize;
     std::str::from_utf8(take(b, n)).unwrap()
+}
+
+pub fn list<'a, T>(b: &mut &'a [u8], f: impl Fn(&mut &'a [u8]) -> T) -> Vec<T> {
+    (0..u32(b)).map(|_| f(b)).collect()
 }
 
 pub fn put_u32(out: &mut Vec<u8>, v: u32) {

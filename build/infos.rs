@@ -111,20 +111,19 @@ pub fn rust(infos: &[Info]) -> String {
     s
 }
 
-fn rust_read(kind: &str) -> String {
+pub fn reader(kind: &str) -> String {
     match kind {
         "u32" | "u64" | "f32" | "bool" | "bytes" | "str" | "u32x3" => {
-            format!("crate::wire::{kind}(b)")
+            format!("crate::wire::{kind}")
         }
-        "[str]" => {
-            "(0..crate::wire::u32(b)).map(|_| crate::wire::str(b)).collect::<Vec<_>>()".into()
-        }
-        k => match list(k) {
-            Some(item) => {
-                format!("(0..crate::wire::u32(b)).map(|_| {item}::read(b)).collect::<Vec<_>>()")
-            }
-            None => format!("{k}::read(b)"),
-        },
+        k => format!("crate::{k}::read"),
+    }
+}
+
+fn rust_read(kind: &str) -> String {
+    match list(kind) {
+        Some(item) => format!("crate::wire::list(b, {})", reader(item)),
+        None => format!("{}(b)", reader(kind)),
     }
 }
 
