@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
 
 public class Device implements AutoCloseable {
-    public long handle;
+    protected long handle;
 
     public Device(long handle) {
         this.handle = handle;

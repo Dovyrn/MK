@@ -274,21 +274,21 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
     if backend.is_none() {
-        s += "public class Device implements AutoCloseable {\n    public long handle;\n\n";
+        s += "public class Device implements AutoCloseable {\n    protected long handle;\n\n";
         s += "    public Device(long handle) {\n        this.handle = handle;\n    }\n\n";
         s += "    @Override\n    public void close() {\n        if (handle != 0) {\n            nFree(handle);\n            handle = 0;\n        }\n    }\n\n    private static native void nFree(long device);\n";
     } else {
-        s += "import lombok.experimental.UtilityClass;\n\n";
-        writeln!(s, "@UtilityClass\npublic class {name} {{").unwrap();
+        writeln!(
+            s,
+            "public class {name} extends Device {{\n    public {name}(long handle) {{\n        super(handle);\n    }}"
+        )
+        .unwrap();
     }
     for call in calls
         .iter()
         .filter(|c| member(c.backend.as_deref(), backend))
     {
         let mut params = Vec::new();
-        if !statics(call) && backend.is_some() {
-            params.push("Device device".to_string());
-        }
         for p in &call.params {
             let t = match p.kind.as_str() {
                 "u32" | "usize" | "i32" => "int",
@@ -317,15 +317,11 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let ret = match call.result.as_str() {
             "pair" | "handles" | "pair32" => "long[]".to_string(),
             "u32x2" | "u32x3" => "int[]".into(),
-            "device" => "Device".into(),
+            "device" => name.into(),
             r if info(r) => r.into(),
             _ => java_ret.into(),
         };
-        let modifier = if statics(call) || backend.is_some() {
-            "static "
-        } else {
-            ""
-        };
+        let modifier = if statics(call) { "static " } else { "" };
         writeln!(
             s,
             "\n    public {modifier}{ret} {}({}) {{",
@@ -336,14 +332,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         s += "        try (var stack = MemoryStack.stackPush()) {\n";
         let mut args = Vec::new();
         if !statics(call) {
-            args.push(
-                if backend.is_some() {
-                    "device.handle"
-                } else {
-                    "handle"
-                }
-                .to_string(),
-            );
+            args.push("handle".to_string());
         }
         for p in &call.params {
             let n = camel(&p.name);
@@ -437,7 +426,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             "u32x3" => format!(
                 "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
             ),
-            "device" => format!("return new Device({invoke});"),
+            "device" => format!("return new {name}({invoke});"),
             r if info(r) => format!("{invoke};\n            return {r}.read(out);"),
             _ => format!("return {invoke};"),
         };

@@ -7,51 +7,51 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
 
-import lombok.experimental.UtilityClass;
+public class MtlDevice extends Device {
+    public MtlDevice(long handle) {
+        super(handle);
+    }
 
-@UtilityClass
-public class MtlDevice {
-
-    public static long address(Device device, int buffer) {
+    public long address(int buffer) {
         try (var stack = MemoryStack.stackPush()) {
-            return nAddress(device.handle, buffer);
+            return nAddress(handle, buffer);
         }
     }
 
     private static native long nAddress(long device, int buffer);
 
-    public static int createHeap(Device device, long size, int memory) {
+    public int createHeap(long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreateHeap(device.handle, size, memory);
+            return nCreateHeap(handle, size, memory);
         }
     }
 
     private static native int nCreateHeap(long device, long size, int memory);
 
-    public static void destroyHeap(Device device, int heap) {
+    public void destroyHeap(int heap) {
         try (var stack = MemoryStack.stackPush()) {
-            nDestroyHeap(device.handle, heap);
+            nDestroyHeap(handle, heap);
         }
     }
 
     private static native void nDestroyHeap(long device, int heap);
 
-    public static long[] bufferSize(Device device, long size, int memory) {
+    public long[] bufferSize(long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, 16);
-            nBufferSize(device.handle, size, memory, out);
+            nBufferSize(handle, size, memory, out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
     }
 
     private static native void nBufferSize(long device, long size, int memory, long out);
 
-    public static long[] textureSize(Device device, TextureInfo info) {
+    public long[] textureSize(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             var out = stack.nmalloc(8, 16);
-            nTextureSize(device.handle, infoAddress, info.size(), out);
+            nTextureSize(handle, infoAddress, info.size(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -60,19 +60,19 @@ public class MtlDevice {
 
     private static native void nTextureSize(long device, long info, int infoLength, long out);
 
-    public static int createPlacedBuffer(Device device, int heap, long offset, long size) {
+    public int createPlacedBuffer(int heap, long offset, long size) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreatePlacedBuffer(device.handle, heap, offset, size);
+            return nCreatePlacedBuffer(handle, heap, offset, size);
         }
     }
 
     private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
 
-    public static int createPlacedTexture(Device device, int heap, long offset, TextureInfo info) {
+    public int createPlacedTexture(int heap, long offset, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            return nCreatePlacedTexture(device.handle, heap, offset, infoAddress, info.size());
+            return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.size());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -80,35 +80,35 @@ public class MtlDevice {
 
     private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
-    public static long textureHandle(Device device, int texture) {
+    public long textureHandle(int texture) {
         try (var stack = MemoryStack.stackPush()) {
-            return nTextureHandle(device.handle, texture);
+            return nTextureHandle(handle, texture);
         }
     }
 
     private static native long nTextureHandle(long device, int texture);
 
-    public static long imageHandle(Device device, int texture) {
+    public long imageHandle(int texture) {
         try (var stack = MemoryStack.stackPush()) {
-            return nImageHandle(device.handle, texture);
+            return nImageHandle(handle, texture);
         }
     }
 
     private static native long nImageHandle(long device, int texture);
 
-    public static long samplerHandle(Device device, int sampler) {
+    public long samplerHandle(int sampler) {
         try (var stack = MemoryStack.stackPush()) {
-            return nSamplerHandle(device.handle, sampler);
+            return nSamplerHandle(handle, sampler);
         }
     }
 
     private static native long nSamplerHandle(long device, int sampler);
 
-    public static int createAccel(Device device, AccelInfo info) {
+    public int createAccel(AccelInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            return nCreateAccel(device.handle, infoAddress, info.size());
+            return nCreateAccel(handle, infoAddress, info.size());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -116,38 +116,38 @@ public class MtlDevice {
 
     private static native int nCreateAccel(long device, long info, int infoLength);
 
-    public static void destroyAccel(Device device, int accel) {
+    public void destroyAccel(int accel) {
         try (var stack = MemoryStack.stackPush()) {
-            nDestroyAccel(device.handle, accel);
+            nDestroyAccel(handle, accel);
         }
     }
 
     private static native void nDestroyAccel(long device, int accel);
 
-    public static long[] accelScratch(Device device, int accel) {
+    public long[] accelScratch(int accel) {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, 16);
-            nAccelScratch(device.handle, accel, out);
+            nAccelScratch(handle, accel, out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
     }
 
     private static native void nAccelScratch(long device, int accel, long out);
 
-    public static long accelHandle(Device device, int accel) {
+    public long accelHandle(int accel) {
         try (var stack = MemoryStack.stackPush()) {
-            return nAccelHandle(device.handle, accel);
+            return nAccelHandle(handle, accel);
         }
     }
 
     private static native long nAccelHandle(long device, int accel);
 
-    public static void writeInstance(Device device, ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
+    public void writeInstance(ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
             if (!out.isDirect()) {
                 throw new IllegalArgumentException("out must be a direct ByteBuffer");
             }
-            nWriteInstance(device.handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
+            nWriteInstance(handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
         } finally {
             Reference.reachabilityFence(out);
         }
@@ -155,77 +155,77 @@ public class MtlDevice {
 
     private static native void nWriteInstance(long device, long out, long outLength, int accel, long transform, int id, int mask, int flags);
 
-    public static Device adoptRaw(long device, int queues) {
+    public static MtlDevice adoptRaw(long device, int queues) {
         try (var stack = MemoryStack.stackPush()) {
-            return new Device(nAdoptRaw(device, queues));
+            return new MtlDevice(nAdoptRaw(device, queues));
         }
     }
 
     private static native long nAdoptRaw(long device, int queues);
 
-    public static int importBuffer(Device device, long raw) {
+    public int importBuffer(long raw) {
         try (var stack = MemoryStack.stackPush()) {
-            return nImportBuffer(device.handle, raw);
+            return nImportBuffer(handle, raw);
         }
     }
 
     private static native int nImportBuffer(long device, long raw);
 
-    public static int importTexture(Device device, long raw, int format) {
+    public int importTexture(long raw, int format) {
         try (var stack = MemoryStack.stackPush()) {
-            return nImportTexture(device.handle, raw, format);
+            return nImportTexture(handle, raw, format);
         }
     }
 
     private static native int nImportTexture(long device, long raw, int format);
 
-    public static int importEvent(Device device, long raw) {
+    public int importEvent(long raw) {
         try (var stack = MemoryStack.stackPush()) {
-            return nImportEvent(device.handle, raw);
+            return nImportEvent(handle, raw);
         }
     }
 
     private static native int nImportEvent(long device, long raw);
 
-    public static long rawBuffer(Device device, int buffer) {
+    public long rawBuffer(int buffer) {
         try (var stack = MemoryStack.stackPush()) {
-            return nRawBuffer(device.handle, buffer);
+            return nRawBuffer(handle, buffer);
         }
     }
 
     private static native long nRawBuffer(long device, int buffer);
 
-    public static long rawTexture(Device device, int texture) {
+    public long rawTexture(int texture) {
         try (var stack = MemoryStack.stackPush()) {
-            return nRawTexture(device.handle, texture);
+            return nRawTexture(handle, texture);
         }
     }
 
     private static native long nRawTexture(long device, int texture);
 
-    public static long rawEvent(Device device, int event) {
+    public long rawEvent(int event) {
         try (var stack = MemoryStack.stackPush()) {
-            return nRawEvent(device.handle, event);
+            return nRawEvent(handle, event);
         }
     }
 
     private static native long nRawEvent(long device, int event);
 
-    public static long rawQueue(Device device, int queue) {
+    public long rawQueue(int queue) {
         try (var stack = MemoryStack.stackPush()) {
-            return nRawQueue(device.handle, queue);
+            return nRawQueue(handle, queue);
         }
     }
 
     private static native long nRawQueue(long device, int queue);
 
-    public static int createTilePipeline(Device device, ByteBuffer code, String entry, int[] colors, int samples) {
+    public int createTilePipeline(ByteBuffer code, String entry, int[] colors, int samples) {
         try (var stack = MemoryStack.stackPush()) {
             if (!code.isDirect()) {
                 throw new IllegalArgumentException("code must be a direct ByteBuffer");
             }
             var entryBytes = stack.UTF8(entry, false);
-            return nCreateTilePipeline(device.handle, memAddress(code), code.remaining(), memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(colors)), colors.length, samples);
+            return nCreateTilePipeline(handle, memAddress(code), code.remaining(), memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(colors)), colors.length, samples);
         } finally {
             Reference.reachabilityFence(code);
         }
@@ -233,36 +233,36 @@ public class MtlDevice {
 
     private static native int nCreateTilePipeline(long device, long code, long codeLength, long entry, int entryLength, long colors, int colorsLength, int samples);
 
-    public static int createCompacted(Device device, int accel, long size) {
+    public int createCompacted(int accel, long size) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreateCompacted(device.handle, accel, size);
+            return nCreateCompacted(handle, accel, size);
         }
     }
 
     private static native int nCreateCompacted(long device, int accel, long size);
 
-    public static int createHostBuffer(Device device, long pointer, long size) {
+    public int createHostBuffer(long pointer, long size) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreateHostBuffer(device.handle, pointer, size);
+            return nCreateHostBuffer(handle, pointer, size);
         }
     }
 
     private static native int nCreateHostBuffer(long device, long pointer, long size);
 
-    public static long sparsePage(Device device) {
+    public long sparsePage() {
         try (var stack = MemoryStack.stackPush()) {
-            return nSparsePage(device.handle);
+            return nSparsePage(handle);
         }
     }
 
     private static native long nSparsePage(long device);
 
-    public static int[] sparseTile(Device device, TextureInfo info) {
+    public int[] sparseTile(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             var out = stack.nmalloc(8, 12);
-            nSparseTile(device.handle, infoAddress, info.size(), out);
+            nSparseTile(handle, infoAddress, info.size(), out);
             return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -271,19 +271,19 @@ public class MtlDevice {
 
     private static native void nSparseTile(long device, long info, int infoLength, long out);
 
-    public static int createSparseBuffer(Device device, long size) {
+    public int createSparseBuffer(long size) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreateSparseBuffer(device.handle, size);
+            return nCreateSparseBuffer(handle, size);
         }
     }
 
     private static native int nCreateSparseBuffer(long device, long size);
 
-    public static int createSparseTexture(Device device, TextureInfo info) {
+    public int createSparseTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            return nCreateSparseTexture(device.handle, infoAddress, info.size());
+            return nCreateSparseTexture(handle, infoAddress, info.size());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -291,7 +291,7 @@ public class MtlDevice {
 
     private static native int nCreateSparseTexture(long device, long info, int infoLength);
 
-    public static void mapSparseBuffer(Device device, int queue, int buffer, int heap, SparseRange[] ranges, long[] waits, long[] signals) {
+    public void mapSparseBuffer(int queue, int buffer, int heap, SparseRange[] ranges, long[] waits, long[] signals) {
         try (var stack = MemoryStack.stackPush()) {
             var rangesSize = 4;
             for (var x : ranges) {
@@ -313,13 +313,13 @@ public class MtlDevice {
                 memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
                 memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
             }
-            nMapSparseBuffer(device.handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            nMapSparseBuffer(handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
         }
     }
 
     private static native void nMapSparseBuffer(long device, int queue, int buffer, int heap, long ranges, int rangesLength, long waits, int waitsLength, long signals, int signalsLength);
 
-    public static void mapSparseTexture(Device device, int queue, int texture, int heap, SparseRegion[] regions, long[] waits, long[] signals) {
+    public void mapSparseTexture(int queue, int texture, int heap, SparseRegion[] regions, long[] waits, long[] signals) {
         try (var stack = MemoryStack.stackPush()) {
             var regionsSize = 4;
             for (var x : regions) {
@@ -341,13 +341,13 @@ public class MtlDevice {
                 memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
                 memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
             }
-            nMapSparseTexture(device.handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            nMapSparseTexture(handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
         }
     }
 
     private static native void nMapSparseTexture(long device, int queue, int texture, int heap, long regions, int regionsLength, long waits, int waitsLength, long signals, int signalsLength);
 
-    public static int createFunctionTable(Device device, int pipeline, String[] functions, boolean intersection) {
+    public int createFunctionTable(int pipeline, String[] functions, boolean intersection) {
         try (var stack = MemoryStack.stackPush()) {
             var functionsSize = 4;
             for (var x : functions) {
@@ -362,33 +362,33 @@ public class MtlDevice {
                 memByteBuffer(functionsAt + 4, b.length).put(b);
                 functionsAt += 4 + b.length;
             }
-            return nCreateFunctionTable(device.handle, pipeline, functionsAddress, functionsSize, intersection);
+            return nCreateFunctionTable(handle, pipeline, functionsAddress, functionsSize, intersection);
         }
     }
 
     private static native int nCreateFunctionTable(long device, int pipeline, long functions, int functionsLength, boolean intersection);
 
-    public static void destroyFunctionTable(Device device, int table) {
+    public void destroyFunctionTable(int table) {
         try (var stack = MemoryStack.stackPush()) {
-            nDestroyFunctionTable(device.handle, table);
+            nDestroyFunctionTable(handle, table);
         }
     }
 
     private static native void nDestroyFunctionTable(long device, int table);
 
-    public static long functionTableHandle(Device device, int table) {
+    public long functionTableHandle(int table) {
         try (var stack = MemoryStack.stackPush()) {
-            return nFunctionTableHandle(device.handle, table);
+            return nFunctionTableHandle(handle, table);
         }
     }
 
     private static native long nFunctionTableHandle(long device, int table);
 
-    public static int createIndirect(Device device, IndirectInfo info) {
+    public int createIndirect(IndirectInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            return nCreateIndirect(device.handle, infoAddress, info.size());
+            return nCreateIndirect(handle, infoAddress, info.size());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -396,54 +396,54 @@ public class MtlDevice {
 
     private static native int nCreateIndirect(long device, long info, int infoLength);
 
-    public static void destroyIndirect(Device device, int indirect) {
+    public void destroyIndirect(int indirect) {
         try (var stack = MemoryStack.stackPush()) {
-            nDestroyIndirect(device.handle, indirect);
+            nDestroyIndirect(handle, indirect);
         }
     }
 
     private static native void nDestroyIndirect(long device, int indirect);
 
-    public static long indirectHandle(Device device, int indirect) {
+    public long indirectHandle(int indirect) {
         try (var stack = MemoryStack.stackPush()) {
-            return nIndirectHandle(device.handle, indirect);
+            return nIndirectHandle(handle, indirect);
         }
     }
 
     private static native long nIndirectHandle(long device, int indirect);
 
-    public static int createRateMap(Device device, int width, int height, float[] horizontal, float[] vertical) {
+    public int createRateMap(int width, int height, float[] horizontal, float[] vertical) {
         try (var stack = MemoryStack.stackPush()) {
-            return nCreateRateMap(device.handle, width, height, memAddress(stack.floats(horizontal)), horizontal.length, memAddress(stack.floats(vertical)), vertical.length);
+            return nCreateRateMap(handle, width, height, memAddress(stack.floats(horizontal)), horizontal.length, memAddress(stack.floats(vertical)), vertical.length);
         }
     }
 
     private static native int nCreateRateMap(long device, int width, int height, long horizontal, int horizontalLength, long vertical, int verticalLength);
 
-    public static int[] rateMapSize(Device device, int map) {
+    public int[] rateMapSize(int map) {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, 8);
-            nRateMapSize(device.handle, map, out);
+            nRateMapSize(handle, map, out);
             return new int[] {memGetInt(out), memGetInt(out + 4)};
         }
     }
 
     private static native void nRateMapSize(long device, int map, long out);
 
-    public static void destroyRateMap(Device device, int map) {
+    public void destroyRateMap(int map) {
         try (var stack = MemoryStack.stackPush()) {
-            nDestroyRateMap(device.handle, map);
+            nDestroyRateMap(handle, map);
         }
     }
 
     private static native void nDestroyRateMap(long device, int map);
 
-    public static long[] createSharedTexture(Device device, TextureInfo info) {
+    public long[] createSharedTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
             var out = stack.nmalloc(8, 16);
-            nCreateSharedTexture(device.handle, infoAddress, info.size(), out);
+            nCreateSharedTexture(handle, infoAddress, info.size(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -452,11 +452,11 @@ public class MtlDevice {
 
     private static native void nCreateSharedTexture(long device, long info, int infoLength, long out);
 
-    public static int importSharedTexture(Device device, int id, TextureInfo info) {
+    public int importSharedTexture(int id, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
             info.write(infoAddress);
-            return nImportSharedTexture(device.handle, id, infoAddress, info.size());
+            return nImportSharedTexture(handle, id, infoAddress, info.size());
         } finally {
             Reference.reachabilityFence(info);
         }
