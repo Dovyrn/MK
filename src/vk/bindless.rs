@@ -1,3 +1,4 @@
+use crate::usage;
 use ash::vk;
 
 pub struct Bindless {
@@ -9,6 +10,8 @@ pub struct Bindless {
     pub buffers: u32,
 }
 
+const SAMPLER: u32 = 0;
+const HEAP: u32 = 2;
 const SAMPLERS: u32 = 4096;
 const IMAGES: u32 = 1 << 17;
 const BUFFERS: u32 = 1 << 16;
@@ -40,12 +43,12 @@ impl Bindless {
         ];
         let bindings = [
             vk::DescriptorSetLayoutBinding::default()
-                .binding(0)
+                .binding(SAMPLER)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .descriptor_count(samplers)
                 .stage_flags(vk::ShaderStageFlags::ALL),
             vk::DescriptorSetLayoutBinding::default()
-                .binding(2)
+                .binding(HEAP)
                 .descriptor_type(vk::DescriptorType::MUTABLE_EXT)
                 .descriptor_count(images + buffers)
                 .stage_flags(vk::ShaderStageFlags::ALL),
@@ -110,7 +113,23 @@ impl Bindless {
         }
     }
 
-    pub fn write(
+    pub fn textures(&self) -> u32 {
+        self.images / 2
+    }
+
+    pub fn texture(slot: u32) -> u32 {
+        slot * 2
+    }
+
+    pub fn image(slot: u32) -> u32 {
+        slot * 2 + 1
+    }
+
+    pub fn buffer(&self, slot: u32) -> u32 {
+        self.images + slot
+    }
+
+    fn write(
         &self,
         device: &ash::Device,
         binding: u32,
@@ -128,12 +147,31 @@ impl Bindless {
         unsafe { device.update_descriptor_sets(&[write], &[]) };
     }
 
-    pub fn write_buffer(&self, device: &ash::Device, index: u32, info: vk::DescriptorBufferInfo) {
+    pub fn write_sampler(&self, device: &ash::Device, slot: u32, sampler: vk::Sampler) {
+        let info = vk::DescriptorImageInfo::default().sampler(sampler);
+        self.write(device, SAMPLER, slot, vk::DescriptorType::SAMPLER, info);
+    }
+
+    pub fn write_texture(&self, device: &ash::Device, slot: u32, view: vk::ImageView, usage: u32) {
+        let info = vk::DescriptorImageInfo::default().image_view(view);
+        if usage & usage::SAMPLED != 0 {
+            let info = info.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+            let kind = vk::DescriptorType::SAMPLED_IMAGE;
+            self.write(device, HEAP, Self::texture(slot), kind, info);
+        }
+        if usage & usage::STORAGE != 0 {
+            let info = info.image_layout(vk::ImageLayout::GENERAL);
+            let kind = vk::DescriptorType::STORAGE_IMAGE;
+            self.write(device, HEAP, Self::image(slot), kind, info);
+        }
+    }
+
+    pub fn write_buffer(&self, device: &ash::Device, slot: u32, info: vk::DescriptorBufferInfo) {
         let infos = [info];
         let write = vk::WriteDescriptorSet::default()
             .dst_set(self.set)
-            .dst_binding(2)
-            .dst_array_element(self.images + index)
+            .dst_binding(HEAP)
+            .dst_array_element(self.buffer(slot))
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&infos);
         unsafe { device.update_descriptor_sets(&[write], &[]) };

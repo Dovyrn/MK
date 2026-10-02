@@ -56,9 +56,7 @@ impl Device {
             unsafe { self.raw.destroy_sampler(sampler, None) };
             return Err("the bindless heap has no sampler slot left".into());
         }
-        let image = vk::DescriptorImageInfo::default().sampler(sampler);
-        self.bindless
-            .write(&self.raw, 0, slot, vk::DescriptorType::SAMPLER, image);
+        self.bindless.write_sampler(&self.raw, slot, sampler);
         self.res.table.samplers.set(slot, ());
         Ok(slot)
     }

@@ -31,30 +31,27 @@ impl Device {
             query::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
             k => panic!("unknown query kind {k}"),
         };
+        let statistics = if kind == vk::QueryType::PIPELINE_STATISTICS {
+            vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
+                | vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
+                | vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
+                | vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
+                | vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
+                | vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS
+                | vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS
+        } else {
+            vk::QueryPipelineStatisticFlags::empty()
+        };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
             .query_count(count)
-            .pipeline_statistics(if kind == vk::QueryType::PIPELINE_STATISTICS {
-                vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
-                    | vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
-                    | vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
-                    | vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
-                    | vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
-                    | vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS
-                    | vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS
-            } else {
-                vk::QueryPipelineStatisticFlags::empty()
-            });
+            .pipeline_statistics(statistics);
         let pool = unsafe {
             self.raw
                 .create_query_pool(&info, None)
                 .map_err(|e| e.to_string())?
         };
-        let stride = if kind == vk::QueryType::PIPELINE_STATISTICS {
-            56
-        } else {
-            8
-        };
+        let stride = statistics.as_raw().count_ones().max(1) as u64 * 8;
         let id = self.res.queries.insert(Query {
             pool,
             flags,

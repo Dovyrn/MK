@@ -1,5 +1,6 @@
 use super::{Device, image_info, image_usage, whole};
 use crate::caps::supports;
+use crate::vk::bindless::Bindless;
 use crate::vk::texture::{Texture, aspect, count};
 use crate::{TextureInfo, ViewInfo, dimension, format, usage};
 use ash::vk;
@@ -137,35 +138,13 @@ impl Device {
         let view = t.view;
         let slot = self.res.textures.insert(t);
         let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
-        if bound && slot * 2 + 1 >= self.bindless.images {
+        if bound && slot >= self.bindless.textures() {
             let t = self.res.textures.remove(slot);
             t.free(&self.raw);
             return Err("the bindless heap has no texture slot left".into());
         }
-        if info.usage & usage::SAMPLED != 0 {
-            let image = vk::DescriptorImageInfo::default()
-                .image_view(view)
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-            self.bindless.write(
-                &self.raw,
-                2,
-                slot * 2,
-                vk::DescriptorType::SAMPLED_IMAGE,
-                image,
-            );
-        }
-        if info.usage & usage::STORAGE != 0 {
-            let image = vk::DescriptorImageInfo::default()
-                .image_view(view)
-                .image_layout(vk::ImageLayout::GENERAL);
-            self.bindless.write(
-                &self.raw,
-                2,
-                slot * 2 + 1,
-                vk::DescriptorType::STORAGE_IMAGE,
-                image,
-            );
-        }
+        self.bindless
+            .write_texture(&self.raw, slot, view, info.usage);
         Ok(slot)
     }
 
@@ -178,10 +157,10 @@ impl Device {
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
-        texture as u64 * 2
+        Bindless::texture(texture) as u64
     }
 
     pub fn image_handle(&self, texture: u32) -> u64 {
-        texture as u64 * 2 + 1
+        Bindless::image(texture) as u64
     }
 }

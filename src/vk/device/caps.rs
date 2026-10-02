@@ -41,7 +41,7 @@ pub(super) fn probe(
         push: limits.max_push_constants_size.min(256),
         queues: queues.len() as u32,
         samplers: bindless.samplers,
-        textures: bindless.images / 2,
+        textures: bindless.textures(),
         tick: limits.timestamp_period,
         timestamps: queues
             .iter()
