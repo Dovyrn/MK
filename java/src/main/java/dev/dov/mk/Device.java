@@ -28,7 +28,7 @@ public class Device implements AutoCloseable {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, Caps.SIZE);
             nCaps(handle, out);
-            return Caps.read(out);
+            return Caps.decode(out);
         }
     }
 
@@ -72,9 +72,9 @@ public class Device implements AutoCloseable {
 
     public int createPipeline(ComputeInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreatePipeline(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreatePipeline(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -90,9 +90,9 @@ public class Device implements AutoCloseable {
 
     public int createRenderPipeline(RenderInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateRenderPipeline(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -102,9 +102,9 @@ public class Device implements AutoCloseable {
 
     public int createMeshPipeline(MeshInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateMeshPipeline(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -120,9 +120,9 @@ public class Device implements AutoCloseable {
 
     public int createDepthState(DepthInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateDepthState(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateDepthState(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -138,9 +138,9 @@ public class Device implements AutoCloseable {
 
     public int createTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateTexture(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateTexture(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -162,9 +162,9 @@ public class Device implements AutoCloseable {
 
     public int createView(int texture, ViewInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateView(handle, texture, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateView(handle, texture, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -180,9 +180,9 @@ public class Device implements AutoCloseable {
 
     public int createSampler(SamplerInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateSampler(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateSampler(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }

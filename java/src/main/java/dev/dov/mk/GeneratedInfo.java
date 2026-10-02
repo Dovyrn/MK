@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class GeneratedInfo {
     public int layout = 0;
     public int indirect = 0;
@@ -17,11 +22,11 @@ public class GeneratedInfo {
 
     public static final int SIZE = 64;
 
-    public int size() {
+    int encodedSize() {
         return 64;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, layout);
         p += 4;
         memPutInt(p, indirect);
@@ -47,7 +52,7 @@ public class GeneratedInfo {
         return p;
     }
 
-    public static GeneratedInfo read(long p) {
+    static GeneratedInfo decode(long p) {
         var r = new GeneratedInfo();
         r.layout = memGetInt(p);
         p += 4;

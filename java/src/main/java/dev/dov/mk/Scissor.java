@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class Scissor {
     public int x = 0;
     public int y = 0;
@@ -10,11 +15,11 @@ public class Scissor {
 
     public static final int SIZE = 16;
 
-    public int size() {
+    int encodedSize() {
         return 16;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, x);
         p += 4;
         memPutInt(p, y);
@@ -26,7 +31,7 @@ public class Scissor {
         return p;
     }
 
-    public static Scissor read(long p) {
+    static Scissor decode(long p) {
         var r = new Scissor();
         r.x = memGetInt(p);
         p += 4;

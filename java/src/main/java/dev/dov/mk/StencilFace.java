@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class StencilFace {
     public int fail = Stencil.KEEP;
     public int depthFail = Stencil.KEEP;
@@ -12,11 +17,11 @@ public class StencilFace {
 
     public static final int SIZE = 24;
 
-    public int size() {
+    int encodedSize() {
         return 24;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, fail);
         p += 4;
         memPutInt(p, depthFail);
@@ -32,7 +37,7 @@ public class StencilFace {
         return p;
     }
 
-    public static StencilFace read(long p) {
+    static StencilFace decode(long p) {
         var r = new StencilFace();
         r.fail = memGetInt(p);
         p += 4;

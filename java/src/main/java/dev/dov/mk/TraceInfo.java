@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class TraceInfo {
     public int raygen = 0;
     public long raygenOffset = 0;
@@ -25,11 +30,11 @@ public class TraceInfo {
 
     public static final int SIZE = 124;
 
-    public int size() {
+    int encodedSize() {
         return 124;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, raygen);
         p += 4;
         memPutLong(p, raygenOffset);
@@ -71,7 +76,7 @@ public class TraceInfo {
         return p;
     }
 
-    public static TraceInfo read(long p) {
+    static TraceInfo decode(long p) {
         var r = new TraceInfo();
         r.raygen = memGetInt(p);
         p += 4;

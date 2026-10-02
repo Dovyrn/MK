@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class IndirectInfo {
     public int kinds = Indirect.DRAW;
     public int count = 1;
@@ -13,11 +18,11 @@ public class IndirectInfo {
 
     public static final int SIZE = 28;
 
-    public int size() {
+    int encodedSize() {
         return 28;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, kinds);
         p += 4;
         memPutInt(p, count);
@@ -35,7 +40,7 @@ public class IndirectInfo {
         return p;
     }
 
-    public static IndirectInfo read(long p) {
+    static IndirectInfo decode(long p) {
         var r = new IndirectInfo();
         r.kinds = memGetInt(p);
         p += 4;

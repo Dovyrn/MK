@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class SamplerInfo {
     public int min = Filter.LINEAR;
     public int mag = Filter.LINEAR;
@@ -17,11 +22,11 @@ public class SamplerInfo {
 
     public static final int SIZE = 44;
 
-    public int size() {
+    int encodedSize() {
         return 44;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, min);
         p += 4;
         memPutInt(p, mag);
@@ -47,7 +52,7 @@ public class SamplerInfo {
         return p;
     }
 
-    public static SamplerInfo read(long p) {
+    static SamplerInfo decode(long p) {
         var r = new SamplerInfo();
         r.min = memGetInt(p);
         p += 4;

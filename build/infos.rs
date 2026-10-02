@@ -217,10 +217,13 @@ pub fn java(info: &Info) -> String {
     if strings {
         s += "import java.nio.charset.StandardCharsets;\n";
     }
-    if kinds.contains(&"bytes") || strings {
-        s += "\n";
-    }
-    writeln!(s, "public class {} {{", info.name).unwrap();
+    s += "import lombok.Setter;\nimport lombok.experimental.Accessors;\n\n";
+    writeln!(
+        s,
+        "@Setter\n@Accessors(fluent = true, chain = true)\npublic class {} {{",
+        info.name
+    )
+    .unwrap();
     for f in &info.fields {
         writeln!(
             s,
@@ -250,7 +253,7 @@ pub fn java(info: &Info) -> String {
         )
         .unwrap();
     }
-    s += "\n    public int size() {\n";
+    s += "\n    int encodedSize() {\n";
     let mut fixed = 0;
     let mut parts = Vec::new();
     for f in &info.fields {
@@ -274,16 +277,16 @@ pub fn java(info: &Info) -> String {
             k if list(k).is_some() => {
                 fixed += 4;
                 s += &format!(
-                    "        var {n}Size = 0;\n        for (var x : {n}) {{\n            {n}Size += x.size();\n        }}\n"
+                    "        var {n}Size = 0;\n        for (var x : {n}) {{\n            {n}Size += x.encodedSize();\n        }}\n"
                 );
                 parts.push(format!("{n}Size"));
             }
-            _ => parts.push(format!("{n}.size()")),
+            _ => parts.push(format!("{n}.encodedSize()")),
         }
     }
     parts.insert(0, fixed.to_string());
     writeln!(s, "        return {};\n    }}", parts.join(" + ")).unwrap();
-    s += "\n    public long write(long p) {\n";
+    s += "\n    long encode(long p) {\n";
     for f in &info.fields {
         let n = camel(&f.name);
         match f.kind.as_str() {
@@ -309,9 +312,9 @@ pub fn java(info: &Info) -> String {
             ),
             k if list(k).is_some() => writeln!(
                 s,
-                "        memPutInt(p, {n}.length);\n        p += 4;\n        for (var x : {n}) {{\n            p = x.write(p);\n        }}"
+                "        memPutInt(p, {n}.length);\n        p += 4;\n        for (var x : {n}) {{\n            p = x.encode(p);\n        }}"
             ),
-            _ => writeln!(s, "        p = {n}.write(p);"),
+            _ => writeln!(s, "        p = {n}.encode(p);"),
         }
         .unwrap();
     }
@@ -319,7 +322,7 @@ pub fn java(info: &Info) -> String {
     if !borrows(info) {
         writeln!(
             s,
-            "\n    public static {0} read(long p) {{\n        var r = new {0}();",
+            "\n    static {0} decode(long p) {{\n        var r = new {0}();",
             info.name
         )
         .unwrap();
@@ -334,7 +337,7 @@ pub fn java(info: &Info) -> String {
                     s,
                     "        for (var i = 0; i < 3; i++) {{\n            r.{n}[i] = memGetInt(p);\n            p += 4;\n        }}"
                 ),
-                k => writeln!(s, "        r.{n} = {k}.read(p);\n        p += r.{n}.size();"),
+                k => writeln!(s, "        r.{n} = {k}.decode(p);\n        p += r.{n}.encodedSize();"),
             }
             .unwrap();
         }

@@ -4,7 +4,11 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
+@Setter
+@Accessors(fluent = true, chain = true)
 public class RenderInfo {
     public ByteBuffer code = null;
     public String vertex = "";
@@ -22,23 +26,23 @@ public class RenderInfo {
     public VertexBuffer[] buffers = new VertexBuffer[0];
     public VertexAttribute[] attributes = new VertexAttribute[0];
 
-    public int size() {
+    int encodedSize() {
         var colorsSize = 0;
         for (var x : colors) {
-            colorsSize += x.size();
+            colorsSize += x.encodedSize();
         }
         var buffersSize = 0;
         for (var x : buffers) {
-            buffersSize += x.size();
+            buffersSize += x.encodedSize();
         }
         var attributesSize = 0;
         for (var x : attributes) {
-            attributesSize += x.size();
+            attributesSize += x.encodedSize();
         }
         return 72 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         if (code != null && !code.isDirect()) {
             throw new IllegalArgumentException("code must be a direct ByteBuffer");
         }
@@ -56,7 +60,7 @@ public class RenderInfo {
         memPutInt(p, colors.length);
         p += 4;
         for (var x : colors) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         memPutInt(p, depth);
         p += 4;
@@ -79,12 +83,12 @@ public class RenderInfo {
         memPutInt(p, buffers.length);
         p += 4;
         for (var x : buffers) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         memPutInt(p, attributes.length);
         p += 4;
         for (var x : attributes) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         return p;
     }

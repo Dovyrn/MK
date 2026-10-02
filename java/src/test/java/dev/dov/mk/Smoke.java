@@ -28,10 +28,10 @@ public class Smoke {
         var buffer = device.createBuffer(n * 4L, Memory.READBACK);
         var bytes = Files.readAllBytes(Path.of(args[1]));
         var code = memAlloc(bytes.length).put(bytes).flip();
-        var info = new ComputeInfo();
-        info.code = code;
-        info.entry = "fill";
-        info.group = new int[] {64, 1, 1};
+        var info = new ComputeInfo()
+                .code(code)
+                .entry("fill")
+                .group(new int[] {64, 1, 1});
         var pipeline = device.createPipeline(info);
         var event = device.createEvent();
         var push = memAlloc(8);
@@ -81,22 +81,16 @@ public class Smoke {
         s.beginLabel("frame");
         s.endLabel();
         s.endCompute();
-        var viewport = new Viewport();
-        viewport.x = 0.5f;
-        viewport.y = 1.5f;
-        viewport.width = 64;
-        viewport.height = 32;
-        s.setViewport(viewport);
+        s.setViewport(new Viewport().x(0.5f).y(1.5f).width(64).height(32));
         s.drawIndexed(3, 1, 0, -5, 2);
-        var barrier = new TextureBarrier();
-        barrier.texture = 1;
-        barrier.srcStage = 2;
-        barrier.srcAccess = 3;
-        barrier.dstStage = 4;
-        barrier.dstAccess = 5;
-        barrier.before = 6;
-        barrier.after = 7;
-        s.textureBarrier(barrier);
+        s.textureBarrier(new TextureBarrier()
+                .texture(1)
+                .srcStage(2)
+                .srcAccess(3)
+                .dstStage(4)
+                .dstAccess(5)
+                .before(6)
+                .after(7));
         var recorded = new byte[s.getSize()];
         memByteBuffer(s.getAddress(), s.getSize()).get(recorded);
         Files.write(out, recorded);

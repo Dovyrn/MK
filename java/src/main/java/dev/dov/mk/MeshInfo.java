@@ -4,7 +4,11 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
+@Setter
+@Accessors(fluent = true, chain = true)
 public class MeshInfo {
     public ByteBuffer code = null;
     public String task = "";
@@ -22,15 +26,15 @@ public class MeshInfo {
     public int[] taskGroup = new int[] {1, 1, 1};
     public int[] meshGroup = new int[] {1, 1, 1};
 
-    public int size() {
+    int encodedSize() {
         var colorsSize = 0;
         for (var x : colors) {
-            colorsSize += x.size();
+            colorsSize += x.encodedSize();
         }
         return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         if (code != null && !code.isDirect()) {
             throw new IllegalArgumentException("code must be a direct ByteBuffer");
         }
@@ -52,7 +56,7 @@ public class MeshInfo {
         memPutInt(p, colors.length);
         p += 4;
         for (var x : colors) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         memPutInt(p, depth);
         p += 4;

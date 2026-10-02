@@ -26,9 +26,9 @@ public class GlDevice extends Device {
 
     public int importTexture(int raw, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nImportTexture(handle, raw, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nImportTexture(handle, raw, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }

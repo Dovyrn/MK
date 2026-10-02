@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class Viewport {
     public float x = 0.0f;
     public float y = 0.0f;
@@ -12,11 +17,11 @@ public class Viewport {
 
     public static final int SIZE = 24;
 
-    public int size() {
+    int encodedSize() {
         return 24;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutFloat(p, x);
         p += 4;
         memPutFloat(p, y);
@@ -32,7 +37,7 @@ public class Viewport {
         return p;
     }
 
-    public static Viewport read(long p) {
+    static Viewport decode(long p) {
         var r = new Viewport();
         r.x = memGetFloat(p);
         p += 4;

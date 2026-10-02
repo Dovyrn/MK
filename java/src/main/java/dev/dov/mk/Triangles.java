@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class Triangles {
     public int vertices = 0;
     public long vertexOffset = 0;
@@ -16,11 +21,11 @@ public class Triangles {
 
     public static final int SIZE = 48;
 
-    public int size() {
+    int encodedSize() {
         return 48;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, vertices);
         p += 4;
         memPutLong(p, vertexOffset);
@@ -44,7 +49,7 @@ public class Triangles {
         return p;
     }
 
-    public static Triangles read(long p) {
+    static Triangles decode(long p) {
         var r = new Triangles();
         r.vertices = memGetInt(p);
         p += 4;

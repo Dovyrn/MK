@@ -371,7 +371,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 k if k.starts_with('[') => {
                     writeln!(
                         s,
-                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += x.size();\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                {n}At = x.write({n}At);\n            }}"
+                        "            var {n}Size = 4;\n            for (var x : {n}) {{\n                {n}Size += x.encodedSize();\n            }}\n            var {n}Address = stack.nmalloc(8, {n}Size);\n            memPutInt({n}Address, {n}.length);\n            var {n}At = {n}Address + 4;\n            for (var x : {n}) {{\n                {n}At = x.encode({n}At);\n            }}"
                     )
                     .unwrap();
                     args.push(format!("{n}Address"));
@@ -414,9 +414,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}.length / 2"));
                 }
                 _ => {
-                    writeln!(s, "            var {n}Address = stack.nmalloc(8, {n}.size());\n            {n}.write({n}Address);").unwrap();
+                    writeln!(s, "            var {n}Address = stack.nmalloc(8, {n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();
                     args.push(format!("{n}Address"));
-                    args.push(format!("{n}.size()"));
+                    args.push(format!("{n}.encodedSize()"));
                 }
             }
         }
@@ -443,7 +443,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "{invoke};\n            return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
             ),
             "device" => format!("return new {name}({invoke});"),
-            r if info(r) => format!("{invoke};\n            return {r}.read(out);"),
+            r if info(r) => format!("{invoke};\n            return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
         let fenced: Vec<_> = call

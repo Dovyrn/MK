@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class Boxes {
     public int buffer = 0;
     public long offset = 0;
@@ -11,11 +16,11 @@ public class Boxes {
 
     public static final int SIZE = 24;
 
-    public int size() {
+    int encodedSize() {
         return 24;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, buffer);
         p += 4;
         memPutLong(p, offset);
@@ -29,7 +34,7 @@ public class Boxes {
         return p;
     }
 
-    public static Boxes read(long p) {
+    static Boxes decode(long p) {
         var r = new Boxes();
         r.buffer = memGetInt(p);
         p += 4;

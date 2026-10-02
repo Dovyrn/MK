@@ -42,10 +42,10 @@ public class MtlDevice extends Device {
 
     public long[] textureSize(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
             var out = stack.nmalloc(8, 16);
-            nTextureSize(handle, infoAddress, info.size(), out);
+            nTextureSize(handle, infoAddress, info.encodedSize(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -62,9 +62,9 @@ public class MtlDevice extends Device {
 
     public int createPlacedTexture(int heap, long offset, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -92,9 +92,9 @@ public class MtlDevice extends Device {
 
     public int createAccel(AccelInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateAccel(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateAccel(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -219,10 +219,10 @@ public class MtlDevice extends Device {
 
     public int[] sparseTile(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
             var out = stack.nmalloc(8, 12);
-            nSparseTile(handle, infoAddress, info.size(), out);
+            nSparseTile(handle, infoAddress, info.encodedSize(), out);
             return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -239,9 +239,9 @@ public class MtlDevice extends Device {
 
     public int createSparseTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateSparseTexture(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateSparseTexture(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -253,13 +253,13 @@ public class MtlDevice extends Device {
         try (var stack = MemoryStack.stackPush()) {
             var rangesSize = 4;
             for (var x : ranges) {
-                rangesSize += x.size();
+                rangesSize += x.encodedSize();
             }
             var rangesAddress = stack.nmalloc(8, rangesSize);
             memPutInt(rangesAddress, ranges.length);
             var rangesAt = rangesAddress + 4;
             for (var x : ranges) {
-                rangesAt = x.write(rangesAt);
+                rangesAt = x.encode(rangesAt);
             }
             var waitsAddress = stack.nmalloc(8, waits.length * 8);
             for (var i = 0; i < waits.length / 2; i++) {
@@ -281,13 +281,13 @@ public class MtlDevice extends Device {
         try (var stack = MemoryStack.stackPush()) {
             var regionsSize = 4;
             for (var x : regions) {
-                regionsSize += x.size();
+                regionsSize += x.encodedSize();
             }
             var regionsAddress = stack.nmalloc(8, regionsSize);
             memPutInt(regionsAddress, regions.length);
             var regionsAt = regionsAddress + 4;
             for (var x : regions) {
-                regionsAt = x.write(regionsAt);
+                regionsAt = x.encode(regionsAt);
             }
             var waitsAddress = stack.nmalloc(8, waits.length * 8);
             for (var i = 0; i < waits.length / 2; i++) {
@@ -340,9 +340,9 @@ public class MtlDevice extends Device {
 
     public int createIndirect(IndirectInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateIndirect(handle, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nCreateIndirect(handle, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }
@@ -388,10 +388,10 @@ public class MtlDevice extends Device {
 
     public long[] createSharedTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
             var out = stack.nmalloc(8, 16);
-            nCreateSharedTexture(handle, infoAddress, info.size(), out);
+            nCreateSharedTexture(handle, infoAddress, info.encodedSize(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
         } finally {
             Reference.reachabilityFence(info);
@@ -402,9 +402,9 @@ public class MtlDevice extends Device {
 
     public int importSharedTexture(int id, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nImportSharedTexture(handle, id, infoAddress, info.size());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            info.encode(infoAddress);
+            return nImportSharedTexture(handle, id, infoAddress, info.encodedSize());
         } finally {
             Reference.reachabilityFence(info);
         }

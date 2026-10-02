@@ -4,7 +4,11 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
+@Setter
+@Accessors(fluent = true, chain = true)
 public class RayInfo {
     public ByteBuffer code = null;
     public String raygen = "";
@@ -15,7 +19,7 @@ public class RayInfo {
     public String[] callables = new String[0];
     public int depth = 1;
 
-    public int size() {
+    int encodedSize() {
         var missesSize = 0;
         for (var x : misses) {
             missesSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
@@ -39,7 +43,7 @@ public class RayInfo {
         return 44 + raygen.getBytes(StandardCharsets.UTF_8).length + missesSize + closestSize + anySize + intersectionSize + callablesSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         if (code != null && !code.isDirect()) {
             throw new IllegalArgumentException("code must be a direct ByteBuffer");
         }

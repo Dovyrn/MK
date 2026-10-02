@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class ViewInfo {
     public int dimension = Dimension.D2;
     public int format = Format.NONE;
@@ -13,11 +18,11 @@ public class ViewInfo {
 
     public static final int SIZE = 28;
 
-    public int size() {
+    int encodedSize() {
         return 28;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, dimension);
         p += 4;
         memPutInt(p, format);
@@ -35,7 +40,7 @@ public class ViewInfo {
         return p;
     }
 
-    public static ViewInfo read(long p) {
+    static ViewInfo decode(long p) {
         var r = new ViewInfo();
         r.dimension = memGetInt(p);
         p += 4;

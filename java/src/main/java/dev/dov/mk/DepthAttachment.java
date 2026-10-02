@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class DepthAttachment {
     public int texture = 0;
     public int layout = Layout.DEPTH;
@@ -14,11 +19,11 @@ public class DepthAttachment {
 
     public static final int SIZE = 32;
 
-    public int size() {
+    int encodedSize() {
         return 32;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, texture);
         p += 4;
         memPutInt(p, layout);
@@ -38,7 +43,7 @@ public class DepthAttachment {
         return p;
     }
 
-    public static DepthAttachment read(long p) {
+    static DepthAttachment decode(long p) {
         var r = new DepthAttachment();
         r.texture = memGetInt(p);
         p += 4;

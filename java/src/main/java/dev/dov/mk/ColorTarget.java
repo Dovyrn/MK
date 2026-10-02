@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class ColorTarget {
     public int format = Format.NONE;
     public boolean blend = false;
@@ -15,11 +20,11 @@ public class ColorTarget {
 
     public static final int SIZE = 36;
 
-    public int size() {
+    int encodedSize() {
         return 36;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, format);
         p += 4;
         memPutInt(p, blend ? 1 : 0);
@@ -41,7 +46,7 @@ public class ColorTarget {
         return p;
     }
 
-    public static ColorTarget read(long p) {
+    static ColorTarget decode(long p) {
         var r = new ColorTarget();
         r.format = memGetInt(p);
         p += 4;

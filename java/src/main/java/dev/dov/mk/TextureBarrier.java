@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class TextureBarrier {
     public int texture = 0;
     public int srcStage = 0;
@@ -17,11 +22,11 @@ public class TextureBarrier {
 
     public static final int SIZE = 44;
 
-    public int size() {
+    int encodedSize() {
         return 44;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, texture);
         p += 4;
         memPutInt(p, srcStage);
@@ -47,7 +52,7 @@ public class TextureBarrier {
         return p;
     }
 
-    public static TextureBarrier read(long p) {
+    static TextureBarrier decode(long p) {
         var r = new TextureBarrier();
         r.texture = memGetInt(p);
         p += 4;

@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class VertexAttribute {
     public int location = 0;
     public int buffer = 0;
@@ -10,11 +15,11 @@ public class VertexAttribute {
 
     public static final int SIZE = 16;
 
-    public int size() {
+    int encodedSize() {
         return 16;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, location);
         p += 4;
         memPutInt(p, buffer);
@@ -26,7 +31,7 @@ public class VertexAttribute {
         return p;
     }
 
-    public static VertexAttribute read(long p) {
+    static VertexAttribute decode(long p) {
         var r = new VertexAttribute();
         r.location = memGetInt(p);
         p += 4;

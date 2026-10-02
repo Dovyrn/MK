@@ -4,7 +4,11 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
+@Setter
+@Accessors(fluent = true, chain = true)
 public class ComputeInfo {
     public ByteBuffer code = null;
     public String entry = "";
@@ -12,7 +16,7 @@ public class ComputeInfo {
     public String[] functions = new String[0];
     public boolean indirect = false;
 
-    public int size() {
+    int encodedSize() {
         var functionsSize = 0;
         for (var x : functions) {
             functionsSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
@@ -20,7 +24,7 @@ public class ComputeInfo {
         return 40 + entry.getBytes(StandardCharsets.UTF_8).length + functionsSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         if (code != null && !code.isDirect()) {
             throw new IllegalArgumentException("code must be a direct ByteBuffer");
         }

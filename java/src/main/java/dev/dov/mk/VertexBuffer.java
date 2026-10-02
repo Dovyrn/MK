@@ -2,17 +2,22 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class VertexBuffer {
     public int stride = 0;
     public boolean instance = false;
 
     public static final int SIZE = 8;
 
-    public int size() {
+    int encodedSize() {
         return 8;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, stride);
         p += 4;
         memPutInt(p, instance ? 1 : 0);
@@ -20,7 +25,7 @@ public class VertexBuffer {
         return p;
     }
 
-    public static VertexBuffer read(long p) {
+    static VertexBuffer decode(long p) {
         var r = new VertexBuffer();
         r.stride = memGetInt(p);
         p += 4;

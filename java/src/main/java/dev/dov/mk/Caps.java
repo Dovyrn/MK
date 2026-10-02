@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class Caps {
     public boolean mesh = false;
     public int push = 0;
@@ -59,11 +64,11 @@ public class Caps {
 
     public static final int SIZE = 216;
 
-    public int size() {
+    int encodedSize() {
         return 216;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, mesh ? 1 : 0);
         p += 4;
         memPutInt(p, push);
@@ -173,7 +178,7 @@ public class Caps {
         return p;
     }
 
-    public static Caps read(long p) {
+    static Caps decode(long p) {
         var r = new Caps();
         r.mesh = memGetInt(p) != 0;
         p += 4;

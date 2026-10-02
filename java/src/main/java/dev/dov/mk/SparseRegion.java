@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class SparseRegion {
     public int mip = 0;
     public int layer = 0;
@@ -15,11 +20,11 @@ public class SparseRegion {
 
     public static final int SIZE = 36;
 
-    public int size() {
+    int encodedSize() {
         return 36;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, mip);
         p += 4;
         memPutInt(p, layer);
@@ -41,7 +46,7 @@ public class SparseRegion {
         return p;
     }
 
-    public static SparseRegion read(long p) {
+    static SparseRegion decode(long p) {
         var r = new SparseRegion();
         r.mip = memGetInt(p);
         p += 4;

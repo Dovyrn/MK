@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class TextureInfo {
     public int dimension = Dimension.D2;
     public int format = Format.NONE;
@@ -16,11 +21,11 @@ public class TextureInfo {
 
     public static final int SIZE = 40;
 
-    public int size() {
+    int encodedSize() {
         return 40;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, dimension);
         p += 4;
         memPutInt(p, format);
@@ -44,7 +49,7 @@ public class TextureInfo {
         return p;
     }
 
-    public static TextureInfo read(long p) {
+    static TextureInfo decode(long p) {
         var r = new TextureInfo();
         r.dimension = memGetInt(p);
         p += 4;

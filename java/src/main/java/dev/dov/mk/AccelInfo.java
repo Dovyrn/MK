@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class AccelInfo {
     public Triangles[] triangles = new Triangles[0];
     public Boxes[] boxes = new Boxes[0];
@@ -10,28 +15,28 @@ public class AccelInfo {
     public int instanceCount = 0;
     public int flags = 0;
 
-    public int size() {
+    int encodedSize() {
         var trianglesSize = 0;
         for (var x : triangles) {
-            trianglesSize += x.size();
+            trianglesSize += x.encodedSize();
         }
         var boxesSize = 0;
         for (var x : boxes) {
-            boxesSize += x.size();
+            boxesSize += x.encodedSize();
         }
         return 28 + trianglesSize + boxesSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, triangles.length);
         p += 4;
         for (var x : triangles) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         memPutInt(p, boxes.length);
         p += 4;
         for (var x : boxes) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         memPutInt(p, instances);
         p += 4;

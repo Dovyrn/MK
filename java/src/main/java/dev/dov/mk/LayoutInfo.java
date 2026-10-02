@@ -2,20 +2,25 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class LayoutInfo {
     public int stride = 0;
     public boolean compute = false;
     public TokenInfo[] tokens = new TokenInfo[0];
 
-    public int size() {
+    int encodedSize() {
         var tokensSize = 0;
         for (var x : tokens) {
-            tokensSize += x.size();
+            tokensSize += x.encodedSize();
         }
         return 12 + tokensSize;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, stride);
         p += 4;
         memPutInt(p, compute ? 1 : 0);
@@ -23,7 +28,7 @@ public class LayoutInfo {
         memPutInt(p, tokens.length);
         p += 4;
         for (var x : tokens) {
-            p = x.write(p);
+            p = x.encode(p);
         }
         return p;
     }

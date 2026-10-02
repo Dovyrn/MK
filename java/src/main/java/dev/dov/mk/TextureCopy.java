@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class TextureCopy {
     public int buffer = 0;
     public long offset = 0;
@@ -20,11 +25,11 @@ public class TextureCopy {
 
     public static final int SIZE = 60;
 
-    public int size() {
+    int encodedSize() {
         return 60;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, buffer);
         p += 4;
         memPutLong(p, offset);
@@ -56,7 +61,7 @@ public class TextureCopy {
         return p;
     }
 
-    public static TextureCopy read(long p) {
+    static TextureCopy decode(long p) {
         var r = new TextureCopy();
         r.buffer = memGetInt(p);
         p += 4;

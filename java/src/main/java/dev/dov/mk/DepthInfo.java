@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class DepthInfo {
     public int compare = Compare.NONE;
     public boolean write = false;
@@ -11,23 +16,23 @@ public class DepthInfo {
 
     public static final int SIZE = 12 + StencilFace.SIZE + StencilFace.SIZE;
 
-    public int size() {
-        return 12 + front.size() + back.size();
+    int encodedSize() {
+        return 12 + front.encodedSize() + back.encodedSize();
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, compare);
         p += 4;
         memPutInt(p, write ? 1 : 0);
         p += 4;
         memPutInt(p, stencil ? 1 : 0);
         p += 4;
-        p = front.write(p);
-        p = back.write(p);
+        p = front.encode(p);
+        p = back.encode(p);
         return p;
     }
 
-    public static DepthInfo read(long p) {
+    static DepthInfo decode(long p) {
         var r = new DepthInfo();
         r.compare = memGetInt(p);
         p += 4;
@@ -35,10 +40,10 @@ public class DepthInfo {
         p += 4;
         r.stencil = memGetInt(p) != 0;
         p += 4;
-        r.front = StencilFace.read(p);
-        p += r.front.size();
-        r.back = StencilFace.read(p);
-        p += r.back.size();
+        r.front = StencilFace.decode(p);
+        p += r.front.encodedSize();
+        r.back = StencilFace.decode(p);
+        p += r.back.encodedSize();
         return r;
     }
 }

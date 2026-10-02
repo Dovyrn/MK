@@ -2,6 +2,11 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Setter
+@Accessors(fluent = true, chain = true)
 public class ColorAttachment {
     public int index = 0;
     public int texture = 0;
@@ -17,11 +22,11 @@ public class ColorAttachment {
 
     public static final int SIZE = 44;
 
-    public int size() {
+    int encodedSize() {
         return 44;
     }
 
-    public long write(long p) {
+    long encode(long p) {
         memPutInt(p, index);
         p += 4;
         memPutInt(p, texture);
@@ -47,7 +52,7 @@ public class ColorAttachment {
         return p;
     }
 
-    public static ColorAttachment read(long p) {
+    static ColorAttachment decode(long p) {
         var r = new ColorAttachment();
         r.index = memGetInt(p);
         p += 4;
