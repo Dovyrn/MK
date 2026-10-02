@@ -12,6 +12,7 @@ type MeshIndirect = unsafe extern "system" fn(isize);
 type MeshMulti = unsafe extern "system" fn(isize, i32, i32);
 type Data = unsafe extern "system" fn(u32, isize, *const c_void, u32);
 type Sub = unsafe extern "system" fn(u32, isize, isize, *const c_void);
+type Get = unsafe extern "system" fn(u32, isize, isize, *mut c_void);
 type Map = unsafe extern "system" fn(u32, isize, isize, u32) -> *mut c_void;
 type Copy = unsafe extern "system" fn(u32, u32, isize, isize, isize);
 type Range = unsafe extern "system" fn(u32, u32, u32, isize, isize);
@@ -50,6 +51,7 @@ pub struct Extra {
     pub storage: Option<Data>,
     pub map: Map,
     pub sub: Sub,
+    pub get: Get,
     pub copy: Copy,
     pub range: Range,
     pub dispatch: Option<Dispatch>,
@@ -134,6 +136,7 @@ impl Extra {
                 storage: get("glBufferStorage", 44, "GL_ARB_buffer_storage").map(|p| cast(p)),
                 map: cast(need("glMapBufferRange")?),
                 sub: cast(need("glBufferSubData")?),
+                get: cast(need("glGetBufferSubData")?),
                 copy: cast(need("glCopyBufferSubData")?),
                 range: cast(need("glBindBufferRange")?),
                 dispatch: get("glDispatchComputeIndirect", 43, "GL_ARB_compute_shader")

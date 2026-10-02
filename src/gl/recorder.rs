@@ -138,7 +138,10 @@ fn integer(f: u32) -> bool {
 
 fn barriers(a: u32) -> u32 {
     let map = [
-        (access::INDIRECT_READ, glow::COMMAND_BARRIER_BIT),
+        (
+            access::INDIRECT_READ,
+            glow::COMMAND_BARRIER_BIT | glow::BUFFER_UPDATE_BARRIER_BIT,
+        ),
         (access::INDEX_READ, glow::ELEMENT_ARRAY_BARRIER_BIT),
         (access::VERTEX_READ, glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT),
         (access::UNIFORM_READ, glow::UNIFORM_BARRIER_BIT),
@@ -266,6 +269,20 @@ impl<'a> Recorder<'a> {
                 return true;
             };
             gl.bind_vertex_array(Some(p.vao));
+            self.attributes(p, 0);
+            if let Some((buffer, _, _)) = self.index {
+                gl.bind_buffer(
+                    glow::ELEMENT_ARRAY_BUFFER,
+                    Some(self.res.buffers.get(buffer).raw),
+                );
+            }
+        }
+        true
+    }
+
+    fn attributes(&self, p: &Pipeline, instance: u32) {
+        let gl = self.gl;
+        unsafe {
             for a in &p.attributes {
                 let Some((buffer, offset)) = self.vertices[a.buffer as usize] else {
                     gl.disable_vertex_attrib_array(a.location);
@@ -281,7 +298,12 @@ impl<'a> Recorder<'a> {
                     glow::BGRA => glow::BGRA as i32,
                     _ => 4,
                 };
-                let at = (offset + a.offset as u64) as usize as *const std::ffi::c_void;
+                let skip = if layout.instance {
+                    instance as u64 * layout.stride as u64
+                } else {
+                    0
+                };
+                let at = (offset + skip + a.offset as u64) as usize as *const std::ffi::c_void;
                 let stride = layout.stride as i32;
                 if integer(a.format) {
                     (self.extra.integer)(a.location, size, ty, stride, at);
@@ -292,14 +314,113 @@ impl<'a> Recorder<'a> {
                 gl.enable_vertex_attrib_array(a.location);
                 gl.vertex_attrib_divisor(a.location, layout.instance as u32);
             }
-            if let Some((buffer, _, _)) = self.index {
-                gl.bind_buffer(
-                    glow::ELEMENT_ARRAY_BUFFER,
-                    Some(self.res.buffers.get(buffer).raw),
-                );
+        }
+    }
+
+    fn direct(
+        &self,
+        indexed: bool,
+        count: u32,
+        instances: u32,
+        first: u32,
+        base: i32,
+        instance: u32,
+    ) {
+        let gl = self.gl;
+        let Some(p) = self.render else {
+            return;
+        };
+        let native = self.extra.elements_base.is_some();
+        unsafe {
+            let base = if indexed { base } else { first as i32 };
+            if let Some(l) = &p.program.base {
+                gl.uniform_1_i32(Some(l), base);
+            }
+            if let Some(l) = &p.program.instance {
+                gl.uniform_1_i32(Some(l), instance as i32);
+            }
+            if instance != 0 && !native {
+                self.attributes(p, instance);
+            }
+            let (count, instances) = (count as i32, instances as i32);
+            match self.index.filter(|_| indexed) {
+                Some((_, offset, kind)) => {
+                    let size = if kind == glow::UNSIGNED_SHORT { 2 } else { 4 };
+                    let at = (offset + first as u64 * size) as usize as *const _;
+                    match self.extra.elements_base {
+                        Some(draw) if instance != 0 => {
+                            draw(self.mode, count, kind, at, instances, base, instance)
+                        }
+                        _ => (self.extra.elements)(self.mode, count, kind, at, instances, base),
+                    }
+                }
+                None if indexed => {}
+                None if instance != 0 && native => gl.draw_arrays_instanced_base_instance(
+                    self.mode,
+                    first as i32,
+                    count,
+                    instances,
+                    instance,
+                ),
+                None => gl.draw_arrays_instanced(self.mode, first as i32, count, instances),
+            }
+            if instance != 0 && !native {
+                self.attributes(p, 0);
             }
         }
-        true
+    }
+
+    fn indirect(&self, indexed: bool, buffer: u32, offset: u64, count: u32, stride: u32) {
+        let gl = self.gl;
+        let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
+            return;
+        };
+        let size = if indexed { 20 } else { 16 };
+        let stride = if stride == 0 { size } else { stride as u64 };
+        let shifted = indexed && self.index.is_some_and(|(_, offset, _)| offset != 0);
+        let emulate = self.extra.indirect.is_none() || p.program.base.is_some() || shifted;
+        let target = if emulate {
+            glow::COPY_READ_BUFFER
+        } else {
+            glow::DRAW_INDIRECT_BUFFER
+        };
+        unsafe {
+            gl.bind_buffer(target, Some(self.res.buffers.get(buffer).raw));
+            let pointer = offset as usize as *const std::ffi::c_void;
+            let kind = self.index.map_or(0, |(_, _, k)| k);
+            let (n, step) = (count as i32, stride as i32);
+            let single = emulate || count == 1;
+            match (indexed, self.extra.multi_indexed, self.extra.multi) {
+                (true, Some(multi), _) if !single => {
+                    return multi(self.mode, kind, pointer, n, step);
+                }
+                (false, _, Some(multi)) if !single => {
+                    return multi(self.mode, pointer, n, step);
+                }
+                _ => {}
+            }
+            for i in 0..count as u64 {
+                let at = offset + i * stride;
+                if !emulate {
+                    let pointer = at as usize as *const std::ffi::c_void;
+                    match (indexed, self.extra.indirect, self.extra.indexed_indirect) {
+                        (true, _, Some(draw)) => {
+                            draw(self.mode, self.index.map_or(0, |(_, _, k)| k), pointer)
+                        }
+                        (false, Some(draw), _) => draw(self.mode, pointer),
+                        _ => {}
+                    }
+                    continue;
+                }
+                let mut args = [0u32; 5];
+                (self.extra.get)(target, at as isize, size as isize, args.as_mut_ptr().cast());
+                if indexed {
+                    self.direct(true, args[0], args[1], args[2], args[3] as i32, args[4]);
+                } else {
+                    self.direct(false, args[0], args[1], args[2], 0, args[3]);
+                }
+            }
+        }
     }
 
     fn range(&self, target: u32, index: u32, buffer: u32, offset: u64, size: u64) {
@@ -1012,26 +1133,8 @@ impl<'a> Recorder<'a> {
                     first_vertex,
                     first_instance,
                 } => {
-                    if !self.prepare(true) {
-                        return Ok(());
-                    }
-                    if first_instance == 0 {
-                        gl.draw_arrays_instanced(
-                            self.mode,
-                            first_vertex as i32,
-                            vertices as i32,
-                            instances as i32,
-                        );
-                    } else if self.caps.storage {
-                        gl.draw_arrays_instanced_base_instance(
-                            self.mode,
-                            first_vertex as i32,
-                            vertices as i32,
-                            instances as i32,
-                            first_instance,
-                        );
-                    } else {
-                        return Err("first_instance needs GL 4.2".into());
+                    if self.prepare(true) {
+                        self.direct(false, vertices, instances, first_vertex, 0, first_instance);
                     }
                 }
                 Command::DrawIndexed {
@@ -1041,35 +1144,15 @@ impl<'a> Recorder<'a> {
                     base_vertex,
                     first_instance,
                 } => {
-                    if !self.prepare(true) {
-                        return Ok(());
-                    }
-                    let Some((_, offset, kind)) = self.index else {
-                        return Ok(());
-                    };
-                    let size = if kind == glow::UNSIGNED_SHORT { 2 } else { 4 };
-                    let at = (offset + first_index as u64 * size) as usize as *const _;
-                    if first_instance == 0 {
-                        (self.extra.elements)(
-                            self.mode,
-                            indices as i32,
-                            kind,
-                            at,
-                            instances as i32,
-                            base_vertex,
-                        );
-                    } else if let Some(draw) = self.extra.elements_base {
-                        draw(
-                            self.mode,
-                            indices as i32,
-                            kind,
-                            at,
-                            instances as i32,
+                    if self.prepare(true) {
+                        self.direct(
+                            true,
+                            indices,
+                            instances,
+                            first_index,
                             base_vertex,
                             first_instance,
                         );
-                    } else {
-                        return Err("first_instance needs GL 4.2".into());
                     }
                 }
                 Command::DrawIndirect {
@@ -1078,27 +1161,8 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if !self.prepare(true) {
-                        return Ok(());
-                    }
-                    gl.bind_buffer(
-                        glow::DRAW_INDIRECT_BUFFER,
-                        Some(res.buffers.get(buffer).raw),
-                    );
-                    if count == 1 {
-                        let draw = self.extra.indirect.ok_or("indirect draws need GL 4.0")?;
-                        draw(self.mode, offset as usize as *const _);
-                    } else {
-                        let multi = self
-                            .extra
-                            .multi
-                            .ok_or("multi draw indirect is not supported")?;
-                        multi(
-                            self.mode,
-                            offset as usize as *const _,
-                            count as i32,
-                            stride as i32,
-                        );
+                    if self.prepare(true) {
+                        self.indirect(false, buffer, offset, count, stride);
                     }
                 }
                 Command::DrawIndexedIndirect {
@@ -1107,34 +1171,8 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if !self.prepare(true) {
-                        return Ok(());
-                    }
-                    let Some((_, _, kind)) = self.index else {
-                        return Ok(());
-                    };
-                    gl.bind_buffer(
-                        glow::DRAW_INDIRECT_BUFFER,
-                        Some(res.buffers.get(buffer).raw),
-                    );
-                    if count == 1 {
-                        let draw = self
-                            .extra
-                            .indexed_indirect
-                            .ok_or("indirect draws need GL 4.0")?;
-                        draw(self.mode, kind, offset as usize as *const _);
-                    } else {
-                        let multi = self
-                            .extra
-                            .multi_indexed
-                            .ok_or("multi draw indirect is not supported")?;
-                        multi(
-                            self.mode,
-                            kind,
-                            offset as usize as *const _,
-                            count as i32,
-                            stride as i32,
-                        );
+                    if self.prepare(true) {
+                        self.indirect(true, buffer, offset, count, stride);
                     }
                 }
                 Command::DrawMesh { x, y, z } => {

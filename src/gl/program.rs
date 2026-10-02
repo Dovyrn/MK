@@ -6,6 +6,8 @@ use glow::HasContext;
 pub struct Program {
     pub raw: glow::Program,
     pub pairs: Vec<(u32, Option<u32>)>,
+    pub base: Option<glow::UniformLocation>,
+    pub instance: Option<glow::UniformLocation>,
 }
 
 const STORAGE_BLOCK: u32 = 0x92E6;
@@ -142,7 +144,12 @@ impl Program {
                 }
             }
             gl.use_program(None);
-            Ok(Self { raw, pairs })
+            Ok(Self {
+                raw,
+                pairs,
+                base: gl.get_uniform_location(raw, "SPIRV_Cross_BaseVertex"),
+                instance: gl.get_uniform_location(raw, "SPIRV_Cross_BaseInstance"),
+            })
         }
     }
 }

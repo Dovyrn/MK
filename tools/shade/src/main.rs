@@ -301,6 +301,14 @@ fn glsl(out: &Path, name: &str) {
         } else {
             plain
         };
+        let plain = ["BaseVertex", "BaseInstance"].iter().fold(plain, |text, b| {
+            text.replace(
+                &format!(
+                    "#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_{b} gl_{b}ARB\n#else\nuniform int SPIRV_Cross_{b};\n#endif\n"
+                ),
+                &format!("uniform int SPIRV_Cross_{b};\n"),
+            )
+        });
         container += &format!("//@ entry {entry}\n{plain}");
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         let mut table = Vec::new();
