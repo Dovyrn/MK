@@ -1,6 +1,6 @@
 use crate::field::Field;
 use crate::infos::Info;
-use crate::{camel, cfg, list, member, pascal};
+use crate::{camel, cfg, class, list, member, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -327,7 +327,7 @@ public class Commands implements AutoCloseable {
     }
 ";
 
-pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
+pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
     let mine: Vec<_> = ops
         .iter()
         .enumerate()
@@ -357,7 +357,12 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
     }
     match backend {
         None => s += BASE,
-        Some(_) => writeln!(s, "public class {class} extends Commands {{").unwrap(),
+        Some(_) => writeln!(
+            s,
+            "public class {} extends Commands {{",
+            class(backend, "Commands")
+        )
+        .unwrap(),
     }
     for (i, op) in mine {
         let params: Vec<_> = match &op.info {

@@ -37,16 +37,6 @@ fn main() {
     ops::resolve(&mut list, &infos);
     fs::write(out.join("command.rs"), ops::command(&list)).unwrap();
     fs::write(out.join("commands.rs"), ops::commands(&list)).unwrap();
-    for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
-        let class = format!("{}Commands", backend.map_or(String::new(), pascal));
-        let path = dir.join(format!("{class}.java"));
-        match ops::java(&list, backend, &class) {
-            Some(text) => save(&path, &text),
-            None => {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
     let table = fs::read_to_string("constants.toml")
         .unwrap()
         .parse()
@@ -59,25 +49,28 @@ fn main() {
     let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
-    let list = infos;
-    let borrowing: Vec<String> = list
+    let borrowing: Vec<String> = infos
         .iter()
         .filter(|i| infos::borrows(i))
         .map(|i| i.name.clone())
         .collect();
-    fs::write(out.join("infos.rs"), infos::rust(&list)).unwrap();
-    for info in &list {
+    fs::write(out.join("infos.rs"), infos::rust(&infos)).unwrap();
+    for info in &infos {
         save(&dir.join(format!("{}.java", info.name)), &infos::java(info));
     }
-    let list: Vec<calls::Call> = load("calls.toml", "call");
-    fs::write(out.join("java.rs"), calls::rust(&list, &borrowing)).unwrap();
-    save(&dir.join("Device.java"), &calls::java(&list, None));
-    save(&dir.join("VkDevice.java"), &calls::java(&list, Some("vk")));
-    save(
-        &dir.join("MtlDevice.java"),
-        &calls::java(&list, Some("mtl")),
-    );
-    save(&dir.join("GlDevice.java"), &calls::java(&list, Some("gl")));
+    let calls: Vec<calls::Call> = load("calls.toml", "call");
+    fs::write(out.join("java.rs"), calls::rust(&calls, &borrowing)).unwrap();
+    for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
+        let path = dir.join(format!("{}.java", class(backend, "Commands")));
+        match ops::java(&list, backend) {
+            Some(text) => save(&path, &text),
+            None => {
+                let _ = fs::remove_file(path);
+            }
+        }
+        let path = dir.join(format!("{}.java", class(backend, "Device")));
+        save(&path, &calls::java(&calls, backend));
+    }
 }
 
 fn load<T: DeserializeOwned>(file: &str, key: &str) -> Vec<T> {
@@ -123,6 +116,10 @@ fn member(backend: Option<&str>, class: Option<&str>) -> bool {
 
 fn list(kind: &str) -> Option<&str> {
     kind.strip_prefix('[')?.strip_suffix(']')
+}
+
+fn class(backend: Option<&str>, kind: &str) -> String {
+    format!("{}{kind}", backend.map_or(String::new(), pascal))
 }
 
 fn pascal(name: &str) -> String {

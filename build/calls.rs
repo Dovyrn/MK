@@ -1,5 +1,5 @@
 use crate::field::Field;
-use crate::{camel, member, pascal};
+use crate::{camel, class, member, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -14,15 +14,6 @@ pub struct Call {
     result: String,
     #[serde(default)]
     fails: bool,
-}
-
-fn class(backend: Option<&str>) -> &'static str {
-    match backend {
-        Some("vk") => "VkDevice",
-        Some("mtl") => "MtlDevice",
-        Some("gl") => "GlDevice",
-        _ => "Device",
-    }
 }
 
 fn info(kind: &str) -> bool {
@@ -215,7 +206,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             writeln!(
                 s,
                 "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
-                class(b),
+                class(b, "Device"),
                 native(call),
                 params.join(", ")
             )
@@ -246,7 +237,7 @@ fn plain(body: &str, fenced: bool) -> String {
 }
 
 pub fn java(calls: &[Call], backend: Option<&str>) -> String {
-    let name = class(backend);
+    let name = class(backend, "Device");
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
@@ -294,7 +285,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let ret = match call.result.as_str() {
             "pair" | "handles" | "pair32" => "long[]".to_string(),
             "u32x2" | "u32x3" => "int[]".into(),
-            "device" => name.into(),
+            "device" => name.clone(),
             r if info(r) => r.into(),
             _ => java_ret.into(),
         };
