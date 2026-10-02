@@ -389,6 +389,8 @@ impl Device {
             texture_views: true,
             occlusion: true,
             cache: true,
+            bias_clamp: features.depth_bias_clamp != 0,
+            blends: features.independent_blend != 0,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,
@@ -1520,6 +1522,32 @@ impl Device {
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
         self.register(image, vk::DeviceMemory::null(), false, &whole(info))
+    }
+
+    pub fn format_usage(&self, format: u32) -> u32 {
+        let raw = format::vk(format);
+        if raw == vk::Format::UNDEFINED {
+            return 0;
+        }
+        let features = unsafe {
+            self.instance
+                .get_physical_device_format_properties(self.physical, raw)
+        }
+        .optimal_tiling_features;
+        [
+            (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),
+            (vk::FormatFeatureFlags::STORAGE_IMAGE, usage::STORAGE),
+            (vk::FormatFeatureFlags::COLOR_ATTACHMENT, usage::COLOR),
+            (
+                vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+                usage::DEPTH,
+            ),
+            (vk::FormatFeatureFlags::TRANSFER_SRC, usage::COPY_SRC),
+            (vk::FormatFeatureFlags::TRANSFER_DST, usage::COPY_DST),
+        ]
+        .into_iter()
+        .filter(|(f, _)| features.contains(*f))
+        .fold(usage::VIEW, |u, (_, b)| u | b)
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {

@@ -156,6 +156,8 @@ impl Device {
             texture_views: self.extra.view.is_some(),
             occlusion: results,
             cache: self.binaries(),
+            bias_clamp: self.at(46, "GL_ARB_polygon_offset_clamp"),
+            blends: self.at(40, "GL_ARB_draw_buffers_blend"),
             mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }
@@ -438,6 +440,10 @@ impl Device {
 
     pub fn raw_texture(&self, texture: u32) -> u32 {
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
+    }
+
+    pub fn format_usage(&self, format: u32) -> u32 {
+        todo!("format_usage {format}")
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {

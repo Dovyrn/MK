@@ -215,6 +215,14 @@ public class Device {
 
     private static native int nCreateTexture(long device, long info, int infoLength);
 
+    public int formatUsage(int format) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nFormatUsage(handle, format);
+        }
+    }
+
+    private static native int nFormatUsage(long device, int format);
+
     public int createView(int texture, ViewInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());

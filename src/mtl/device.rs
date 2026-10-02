@@ -376,6 +376,8 @@ impl Device {
             texture_views: true,
             occlusion: true,
             cache: true,
+            bias_clamp: true,
+            blends: true,
         }
     }
 
@@ -1081,6 +1083,10 @@ impl Device {
             raw,
             format: info.format,
         }))
+    }
+
+    pub fn format_usage(&self, format: u32) -> u32 {
+        todo!("format_usage {format}")
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {

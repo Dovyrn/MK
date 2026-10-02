@@ -45,9 +45,11 @@ public class Caps {
     public boolean textureViews = false;
     public boolean occlusion = false;
     public boolean cache = false;
+    public boolean biasClamp = false;
+    public boolean blends = false;
 
     public int size() {
-        return 168;
+        return 176;
     }
 
     public long write(long p) {
@@ -134,6 +136,10 @@ public class Caps {
         memPutInt(p, occlusion ? 1 : 0);
         p += 4;
         memPutInt(p, cache ? 1 : 0);
+        p += 4;
+        memPutInt(p, biasClamp ? 1 : 0);
+        p += 4;
+        memPutInt(p, blends ? 1 : 0);
         p += 4;
         return p;
     }
@@ -223,6 +229,10 @@ public class Caps {
         r.occlusion = memGetInt(p) != 0;
         p += 4;
         r.cache = memGetInt(p) != 0;
+        p += 4;
+        r.biasClamp = memGetInt(p) != 0;
+        p += 4;
+        r.blends = memGetInt(p) != 0;
         p += 4;
         return r;
     }

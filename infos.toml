@@ -213,6 +213,8 @@ fields = [
     ["texture_views", "bool", "false"],
     ["occlusion", "bool", "false"],
     ["cache", "bool", "false"],
+    ["bias_clamp", "bool", "false"],
+    ["blends", "bool", "false"],
 ]
 
 [[info]]
