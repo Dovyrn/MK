@@ -768,10 +768,11 @@ impl Device {
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
         let b = self.res.buffers.get(buffer);
-        match b.storageMode() {
-            MTLStorageMode::Shared | MTLStorageMode::Managed => b.contents().as_ptr().cast(),
-            _ => std::ptr::null_mut(),
-        }
+        assert!(
+            b.storageMode() != MTLStorageMode::Private,
+            "map of a device buffer"
+        );
+        b.contents().as_ptr().cast()
     }
 
     pub fn unmap(&self, _buffer: u32) {}
