@@ -510,7 +510,8 @@ impl<'a> Recorder<'a> {
             } => {
                 self.pass.setRenderTargetWidth(width as usize);
                 self.pass.setRenderTargetHeight(height as usize);
-                self.pass.setRenderTargetArrayLength(layers as usize);
+                self.pass
+                    .setRenderTargetArrayLength(layers.max(self.views) as usize);
                 let encoder = self
                     .buffer
                     .renderCommandEncoderWithDescriptor(&self.pass)
