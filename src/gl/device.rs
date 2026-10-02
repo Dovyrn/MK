@@ -30,7 +30,6 @@ pub struct Device {
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     resolve: Resolve,
-    mapped: Cell<u32>,
     cache: Option<Cache>,
     units: u32,
 }
@@ -130,7 +129,6 @@ impl Device {
                 fbo,
                 read,
                 resolve,
-                mapped: Cell::new(0),
                 cache: None,
                 units: 0,
             })
@@ -268,9 +266,6 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         let b = self.res.buffers.remove(buffer);
-        if !b.persistent && !b.data.get().is_null() {
-            self.mapped.set(self.mapped.get() - 1);
-        }
         if b.own {
             unsafe { self.gl.delete_buffer(b.raw) };
         }
@@ -293,9 +288,6 @@ impl Device {
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
             b.data.set(data.cast());
         }
-        if !b.data.get().is_null() {
-            self.mapped.set(self.mapped.get() + 1);
-        }
         b.data.get()
     }
 
@@ -311,7 +303,6 @@ impl Device {
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
         }
         b.data.set(std::ptr::null_mut());
-        self.mapped.set(self.mapped.get() - 1);
     }
 
     pub fn buffer_handle(&self, _buffer: u32) -> Result<u64, String> {
@@ -948,11 +939,13 @@ impl Device {
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
         Command::check(commands, &self.caps())?;
-        assert!(
-            self.mapped.get() == 0,
-            "submit with {} buffers mapped",
-            self.mapped.get()
-        );
+        if let Some(i) = self
+            .res
+            .buffers
+            .find(|b| !b.persistent && !b.data.get().is_null())
+        {
+            panic!("submit while buffer {i} is mapped; unmap it first");
+        }
         self.healthy()?;
         for &(event, value) in waits {
             let e = self.res.events.get(event);

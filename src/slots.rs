@@ -41,6 +41,14 @@ impl<T> Slots<T> {
         self.items[i as usize].as_mut().unwrap()
     }
 
+    #[cfg(feature = "gl")]
+    pub fn find(&self, f: impl Fn(&T) -> bool) -> Option<u32> {
+        self.items
+            .iter()
+            .position(|t| t.as_ref().is_some_and(&f))
+            .map(|i| i as u32)
+    }
+
     #[cfg(any(feature = "vk", feature = "gl"))]
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.free.clear();
