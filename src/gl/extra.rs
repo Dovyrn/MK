@@ -32,6 +32,12 @@ type Compressed2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, 
 type Compressed3 =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
 type Clamp = unsafe extern "system" fn(f32, f32, f32);
+type Integers = unsafe extern "system" fn(u32, u32, *mut i32);
+type Booleans = unsafe extern "system" fn(u32, u32, *mut u8);
+type Floats = unsafe extern "system" fn(u32, u32, *mut f32);
+type Doubles = unsafe extern "system" fn(u32, u32, *mut f64);
+type Enabled = unsafe extern "system" fn(u32, u32) -> u8;
+type ClampColor = unsafe extern "system" fn(u32, u32);
 type Provoking = unsafe extern "system" fn(u32);
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
@@ -68,6 +74,12 @@ pub struct Extra {
     pub compressed2: Compressed2,
     pub compressed3: Compressed3,
     pub provoking: Provoking,
+    pub integers: Integers,
+    pub booleans: Booleans,
+    pub floats: Option<Floats>,
+    pub doubles: Option<Doubles>,
+    pub enabled: Enabled,
+    pub clamp_color: ClampColor,
     pub offset_clamp: Option<Clamp>,
     pub samples2: Samples2,
     pub samples3: Samples3,
@@ -159,6 +171,12 @@ impl Extra {
                 compressed2: cast(need("glCompressedTexSubImage2D")?),
                 compressed3: cast(need("glCompressedTexSubImage3D")?),
                 provoking: cast(need("glProvokingVertex")?),
+                integers: cast(need("glGetIntegeri_v")?),
+                booleans: cast(need("glGetBooleani_v")?),
+                floats: get("glGetFloati_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),
+                doubles: get("glGetDoublei_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),
+                enabled: cast(need("glIsEnabledi")?),
+                clamp_color: cast(need("glClampColor")?),
                 offset_clamp: get("glPolygonOffsetClamp", 46, "GL_ARB_polygon_offset_clamp")
                     .map(|p| cast(p)),
                 samples2: cast(need("glTexImage2DMultisample")?),

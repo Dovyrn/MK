@@ -9,6 +9,7 @@ mod program;
 mod query;
 mod recorder;
 mod resources;
+mod state;
 mod texture;
 
 pub use device::Device;

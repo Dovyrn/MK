@@ -12,6 +12,28 @@ use glow::HasContext;
 
 const QUERY_BUFFER: u32 = 0x9192;
 
+const UNUSED: [u32; 19] = [
+    glow::RASTERIZER_DISCARD,
+    glow::COLOR_LOGIC_OP,
+    glow::SAMPLE_COVERAGE,
+    glow::SAMPLE_MASK,
+    glow::SAMPLE_ALPHA_TO_ONE,
+    glow::SAMPLE_ALPHA_TO_COVERAGE,
+    glow::DEPTH_CLAMP,
+    glow::DITHER,
+    glow::PRIMITIVE_RESTART,
+    glow::LINE_SMOOTH,
+    glow::POLYGON_SMOOTH,
+    glow::CLIP_DISTANCE0,
+    glow::CLIP_DISTANCE1,
+    glow::CLIP_DISTANCE2,
+    glow::CLIP_DISTANCE3,
+    glow::CLIP_DISTANCE4,
+    glow::CLIP_DISTANCE5,
+    glow::CLIP_DISTANCE6,
+    glow::CLIP_DISTANCE7,
+];
+
 const OFFSETS: [u32; 3] = [
     glow::POLYGON_OFFSET_FILL,
     glow::POLYGON_OFFSET_LINE,
@@ -60,6 +82,8 @@ pub struct Recorder<'a> {
     references: (u32, u32),
     extent: (i32, i32),
     rendering: bool,
+    query: Option<u32>,
+    labels: u32,
     natives: &'a [Callback],
 }
 
@@ -212,6 +236,8 @@ impl<'a> Recorder<'a> {
             references: (0, 0),
             extent: (0, 0),
             rendering: false,
+            query: None,
+            labels: 0,
             natives,
         }
     }
@@ -231,9 +257,12 @@ impl<'a> Recorder<'a> {
     pub fn finish(&self) {
         let gl = self.gl;
         unsafe {
-            gl.use_program(None);
-            gl.bind_vertex_array(None);
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            if let Some(target) = self.query {
+                gl.end_query(target);
+            }
+            for _ in 0..self.labels {
+                gl.pop_debug_group();
+            }
         }
     }
 
@@ -495,6 +524,16 @@ impl<'a> Recorder<'a> {
             gl.depth_mask(false);
             gl.disable(glow::STENCIL_TEST);
             gl.line_width(1.0);
+            for e in UNUSED {
+                gl.disable(e);
+            }
+            gl.enable(glow::MULTISAMPLE);
+            gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
+            (self.extra.clamp_color)(glow::CLAMP_READ_COLOR, glow::FIXED_ONLY);
+            for i in 0..slot::COLORS {
+                gl.color_mask_draw_buffer(i, true, true, true, true);
+                gl.disable_draw_buffer(glow::BLEND, i);
+            }
         }
     }
 
@@ -625,12 +664,16 @@ impl<'a> Recorder<'a> {
                         0,
                         text.split('\0').next().unwrap_or(""),
                     );
+                    self.labels += 1;
                 }
                 Command::EndLabel => {
                     if !self.caps.labels {
                         return Err("debug labels need GL 4.3".into());
                     }
-                    gl.pop_debug_group();
+                    if self.labels > 0 {
+                        gl.pop_debug_group();
+                        self.labels -= 1;
+                    }
                 }
                 Command::CopyBufferToTexture {
                     buffer,
@@ -655,6 +698,7 @@ impl<'a> Recorder<'a> {
                     gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
                     gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, row_count as i32);
+                    gl.active_texture(glow::TEXTURE0);
                     gl.bind_texture(t.target, t.raw);
                     let data = offset as usize as *const std::ffi::c_void;
                     let (w, h, d) = (width as i32, height as i32, depth as i32);
@@ -1230,6 +1274,7 @@ impl<'a> Recorder<'a> {
                         glow::ANY_SAMPLES_PASSED
                     };
                     gl.begin_query(target, q.id(index));
+                    self.query = Some(target);
                 }
                 Command::EndQuery { heap, index } => {
                     let q = res.queries.get(heap);
@@ -1239,7 +1284,9 @@ impl<'a> Recorder<'a> {
                     } else {
                         glow::ANY_SAMPLES_PASSED
                     };
-                    gl.end_query(target);
+                    if self.query.take() == Some(target) {
+                        gl.end_query(target);
+                    }
                 }
                 Command::ResolveQueries {
                     heap,

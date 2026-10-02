@@ -8,6 +8,7 @@ use crate::gl::program::Program;
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
+use crate::gl::state::{self, State, binding, buffer};
 use crate::gl::texture::Texture;
 use crate::{
     Caps, Command, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
@@ -16,6 +17,7 @@ use crate::{
 use glow::HasContext;
 use std::cell::Cell;
 use std::ffi::{c_char, c_void};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 
 pub struct Device {
     pub gl: glow::Context,
@@ -28,6 +30,7 @@ pub struct Device {
     read: glow::Framebuffer,
     mapped: Cell<u32>,
     cache: Option<Cache>,
+    units: u32,
 }
 
 const MAX_ANISOTROPY: u32 = 0x84FE;
@@ -108,9 +111,10 @@ impl Device {
             extensions.sort();
             let extra = Extra::load(proc, &|v, e| at(version, &extensions, v, e))?;
             let push = gl.create_buffer()?;
+            let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
             gl.buffer_data_size(glow::UNIFORM_BUFFER, 256, glow::DYNAMIC_DRAW);
-            gl.bind_buffer(glow::UNIFORM_BUFFER, None);
+            gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;
             Ok(Self {
@@ -124,6 +128,7 @@ impl Device {
                 read,
                 mapped: Cell::new(0),
                 cache: None,
+                units: 0,
             })
         }
     }
@@ -195,6 +200,7 @@ impl Device {
         unsafe {
             drain(gl);
             let raw = gl.create_buffer()?;
+            let old = buffer(gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
             gl.bind_buffer(target, Some(raw));
             let mut data: *mut u8 = std::ptr::null_mut();
             if let Some(storage) = self.extra.storage {
@@ -211,7 +217,7 @@ impl Device {
             } else {
                 (self.extra.data)(target, length, std::ptr::null(), usage);
             }
-            gl.bind_buffer(target, None);
+            gl.bind_buffer(target, old);
             let error = gl.get_error();
             if error != glow::NO_ERROR || (flags != 0 && persistent && data.is_null()) {
                 gl.delete_buffer(raw);
@@ -267,9 +273,10 @@ impl Device {
             _ => glow::MAP_READ_BIT,
         };
         unsafe {
+            let old = state::buffer(self.gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(b.raw));
             let data = (self.extra.map)(glow::COPY_WRITE_BUFFER, 0, b.size as isize, access);
-            self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, None);
+            self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
             b.data.set(data.cast());
         }
         if !b.data.get().is_null() {
@@ -284,9 +291,10 @@ impl Device {
             return;
         }
         unsafe {
+            let old = state::buffer(self.gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(b.raw));
             self.gl.unmap_buffer(glow::COPY_WRITE_BUFFER);
-            self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, None);
+            self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
         }
         b.data.set(std::ptr::null_mut());
         self.mapped.set(self.mapped.get() - 1);
@@ -307,6 +315,7 @@ impl Device {
             &[(glow::COMPUTE_SHADER, info.entry)],
             self.cache.as_mut(),
         )?;
+        self.units = self.units.max(program.pairs.len() as u32);
         Ok(self.res.pipelines.insert(program))
     }
 
@@ -332,6 +341,7 @@ impl Device {
             ],
             self.cache.as_mut(),
         )?;
+        self.units = self.units.max(program.pairs.len() as u32);
         let vao = match unsafe { self.gl.create_vertex_array() } {
             Ok(v) => v,
             Err(e) => {
@@ -375,6 +385,7 @@ impl Device {
             &stages,
             self.cache.as_mut(),
         )?;
+        self.units = self.units.max(program.pairs.len() as u32);
         let vao = match unsafe { self.gl.create_vertex_array() } {
             Ok(v) => v,
             Err(e) => {
@@ -442,6 +453,7 @@ impl Device {
         unsafe {
             drain(gl);
             let raw = gl.create_texture()?;
+            let old = gl.get_parameter_i32(binding(kind)) as u32;
             gl.bind_texture(kind, Some(raw));
             match kind {
                 glow::TEXTURE_1D => gl.tex_storage_1d(kind, mips, internal, w),
@@ -460,7 +472,10 @@ impl Device {
                 glow::TEXTURE_3D => gl.tex_storage_3d(kind, mips, internal, w, h, d),
                 _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
             }
-            gl.bind_texture(kind, None);
+            gl.bind_texture(
+                kind,
+                std::num::NonZeroU32::new(old).map(glow::NativeTexture),
+            );
             if gl.get_error() != glow::NO_ERROR {
                 gl.delete_texture(raw);
                 return Err("texture allocation failed".into());
@@ -842,6 +857,14 @@ impl Device {
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
         let caps = self.caps();
+        let state = State::save(
+            &self.gl,
+            &self.extra,
+            &caps,
+            &|v, e| self.at(v, e),
+            self.units.max(1),
+        );
+        state.clear(&self.gl);
         let mut recorder = Recorder::new(
             &self.gl,
             &self.extra,
@@ -851,9 +874,10 @@ impl Device {
             (self.fbo, self.read),
             natives,
         );
-        let result = recorder.run(commands);
+        let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
         recorder.finish();
-        result?;
+        state.restore(&self.gl, &self.extra);
+        result.unwrap_or_else(|p| resume_unwind(p))?;
         for &(event, value) in signals {
             let fence = unsafe { self.gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)? };
             let e = self.res.events.get_mut(event);

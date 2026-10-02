@@ -99,6 +99,7 @@ impl Program {
                 }
             }
             let mut pairs = Vec::new();
+            let old = gl.get_parameter_i32(glow::CURRENT_PROGRAM) as u32;
             gl.use_program(Some(raw));
             let lines = stages
                 .iter()
@@ -143,7 +144,7 @@ impl Program {
                     _ => {}
                 }
             }
-            gl.use_program(None);
+            gl.use_program(std::num::NonZeroU32::new(old).map(glow::NativeProgram));
             Ok(Self {
                 raw,
                 pairs,
