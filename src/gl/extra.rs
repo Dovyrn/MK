@@ -26,6 +26,8 @@ type Image2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, u32, 
 type Image3 =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
 type Read = unsafe extern "system" fn(i32, i32, i32, i32, u32, u32, *mut c_void);
+type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
+type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
 pub struct Extra {
     pub view: Option<View>,
@@ -54,6 +56,10 @@ pub struct Extra {
     pub image2: Image2,
     pub image3: Image3,
     pub read: Read,
+    pub samples2: Samples2,
+    pub samples3: Samples3,
+    pub storage2: Option<Samples2>,
+    pub storage3: Option<Samples3>,
 }
 
 unsafe fn cast<F>(p: *const c_void) -> F {
@@ -79,6 +85,7 @@ impl Extra {
         };
         let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         let indirect = |name| get(name, 40, "GL_ARB_draw_indirect");
+        let multisample = |name| get(name, 43, "GL_ARB_texture_storage_multisample");
         unsafe {
             Ok(Self {
                 view: get("glTextureView", 43, "GL_ARB_texture_view").map(|p| cast(p)),
@@ -134,6 +141,10 @@ impl Extra {
                 image2: cast(need("glTexSubImage2D")?),
                 image3: cast(need("glTexSubImage3D")?),
                 read: cast(need("glReadPixels")?),
+                samples2: cast(need("glTexImage2DMultisample")?),
+                samples3: cast(need("glTexImage3DMultisample")?),
+                storage2: multisample("glTexStorage2DMultisample").map(|p| cast(p)),
+                storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
             })
         }
     }

@@ -417,6 +417,7 @@ impl Device {
         let gl = &self.gl;
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
         let (mips, layers) = (info.mips as i32, info.layers as i32);
+        let samples = info.samples as i32;
         unsafe {
             let raw = gl.create_texture()?;
             gl.bind_texture(kind, Some(raw));
@@ -427,7 +428,12 @@ impl Device {
                     gl.tex_storage_2d(kind, mips, internal, w, h)
                 }
                 glow::TEXTURE_2D_MULTISAMPLE => {
-                    gl.tex_storage_2d_multisample(kind, info.samples as i32, internal, w, h, true)
+                    let f = self.extra.storage2.unwrap_or(self.extra.samples2);
+                    f(kind, samples, internal, w, h, 1)
+                }
+                glow::TEXTURE_2D_MULTISAMPLE_ARRAY => {
+                    let f = self.extra.storage3.unwrap_or(self.extra.samples3);
+                    f(kind, samples, internal, w, h, layers, 1)
                 }
                 glow::TEXTURE_3D => gl.tex_storage_3d(kind, mips, internal, w, h, d),
                 _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
