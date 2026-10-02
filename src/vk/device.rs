@@ -76,6 +76,10 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
 }
 
 fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
+    assert!(
+        info.memory != memory::TRANSIENT || info.usage & !(usage::COLOR | usage::DEPTH) == 0,
+        "transient textures are attachments only"
+    );
     let kind = match info.dimension {
         dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
         dimension::D3 => vk::ImageType::TYPE_3D,
