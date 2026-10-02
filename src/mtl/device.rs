@@ -1267,7 +1267,7 @@ impl Device {
         desc.setSAddressMode(address(info.u));
         desc.setTAddressMode(address(info.v));
         desc.setRAddressMode(address(info.w));
-        desc.setMaxAnisotropy(info.anisotropy as usize);
+        desc.setMaxAnisotropy(info.anisotropy.clamp(1, 16) as usize);
         if info.compare != 0 {
             desc.setCompareFunction(compare(info.compare));
         }
