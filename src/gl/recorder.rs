@@ -201,13 +201,9 @@ impl<'a> Recorder<'a> {
             self.gl
                 .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
         };
-        let mut open = "";
         while !bytes.is_empty() {
-            let command = Command::read(&mut bytes)?;
-            open = command.enter(open);
-            self.step(command)?;
+            self.step(Command::read(&mut bytes)?)?;
         }
-        assert!(open.is_empty(), "stream ends inside begin_{open}");
         Ok(())
     }
 

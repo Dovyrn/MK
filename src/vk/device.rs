@@ -10,9 +10,9 @@ use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, aspect};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
-    RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address, border,
-    dimension, fill, filter, format, index, memory, query, token, topology, usage,
+    AccelInfo, Caps, ColorTarget, Command, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo,
+    RayInfo, RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address,
+    border, dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
 use ash::ext::debug_utils;
 use ash::ext::{conditional_rendering, external_memory_host, mesh_shader};
@@ -2089,6 +2089,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        Command::check(commands.bytes(), &self.caps())?;
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
@@ -2108,6 +2109,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        Command::check(commands, &self.caps())?;
         self.queues[queue].submit(
             &self.raw,
             &self.ext,

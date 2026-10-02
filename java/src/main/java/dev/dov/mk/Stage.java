@@ -9,6 +9,7 @@ public class Stage {
     public final int TILE = 4;
     public final int TASK = 8;
     public final int MESH = 16;
+    public final int RAY = 512;
     public final int INDIRECT = 32;
     public final int DEPTH = 64;
     public final int COLOR = 128;

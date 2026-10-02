@@ -9,4 +9,6 @@ public class Slot {
     public final int IMAGES = 4;
     public final int TEXTURES = 8;
     public final int SAMPLERS = 8;
+    public final int VERTICES = 16;
+    public final int COLORS = 8;
 }

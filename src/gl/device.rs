@@ -10,8 +10,8 @@ use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
 use crate::gl::texture::Texture;
 use crate::{
-    Caps, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo,
-    ViewInfo, address, border, dimension, filter, format, memory, query,
+    Caps, Command, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
+    TextureInfo, ViewInfo, address, border, dimension, filter, format, memory, query,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -688,6 +688,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
+        Command::check(commands, &self.caps())?;
         assert!(
             self.mapped.get() == 0,
             "submit with {} buffers mapped",

@@ -238,13 +238,9 @@ impl<'a> Recorder<'a> {
     }
 
     pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
-        let mut open = "";
         while !bytes.is_empty() {
-            let command = Command::read(&mut bytes)?;
-            open = command.enter(open);
-            self.step(command)?;
+            self.step(Command::read(&mut bytes)?)?;
         }
-        assert!(open.is_empty(), "stream ends inside begin_{open}");
         Ok(())
     }
 

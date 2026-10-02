@@ -1,46 +1,92 @@
-use crate::slot;
+use crate::{Caps, slot};
 
 include!(concat!(env!("OUT_DIR"), "/command.rs"));
 
-fn check(open: &'static str, slot: u32, count: u32) -> &'static str {
+fn rects(data: &[u8], size: usize, count: u32) {
+    assert!(
+        data.len().is_multiple_of(size),
+        "rect data is not a multiple of {size} bytes"
+    );
+    assert!(
+        data.len() / size <= count as usize,
+        "{} rects is more than {count} viewports",
+        data.len() / size
+    );
+}
+
+fn slot(slot: u32, count: u32) {
     assert!(slot < count, "slot {slot} is outside 0..{count}");
-    open
 }
 
 impl Command<'_> {
-    pub fn enter(&self, open: &'static str) -> &'static str {
-        let (begin, end) = match self {
-            Command::BeginCompute => ("compute", ""),
-            Command::BeginRender { .. } => ("render", ""),
-            Command::EndCompute => ("", "compute"),
-            Command::EndRender => ("", "render"),
-            Command::BindUniform { slot, .. } => {
-                return check(open, *slot, slot::UNIFORMS);
-            }
-            Command::BindStorage { slot, .. } => {
-                return check(open, *slot, slot::STORAGES);
-            }
-            Command::BindImage { slot, .. } => {
-                return check(open, *slot, slot::IMAGES);
-            }
-            Command::BindTexture { slot, .. } => {
-                return check(open, *slot, slot::TEXTURES);
-            }
-            Command::BindSampler { slot, .. } => {
-                return check(open, *slot, slot::SAMPLERS);
-            }
-            c => {
-                let scope = c.scope();
-                assert!(scope.is_empty() || scope == open, "{c} needs begin_{scope}");
-                return open;
-            }
-        };
-        if begin.is_empty() {
-            assert!(open == end, "end_{end} without begin_{end}");
-        } else {
-            assert!(open.is_empty(), "begin_{begin} inside begin_{open}");
+    pub fn check(mut bytes: &[u8], caps: &Caps) -> Result<(), &'static str> {
+        let mut open = "outside";
+        while !bytes.is_empty() {
+            open = Command::read(&mut bytes)?.enter(open, caps);
         }
-        begin
+        assert!(open == "outside", "stream ends inside begin_{open}");
+        Ok(())
+    }
+
+    fn enter(&self, open: &'static str, caps: &Caps) -> &'static str {
+        let scope = self.scope();
+        assert!(
+            scope.is_empty() || scope.split(' ').any(|s| s == open),
+            "{self} runs only in {scope}, not {open}"
+        );
+        match *self {
+            Command::BeginCompute | Command::BeginRender { .. } => {
+                assert!(open == "outside", "{self} inside begin_{open}");
+                return match self {
+                    Command::BeginCompute => "compute",
+                    _ => "render",
+                };
+            }
+            Command::EndCompute => {
+                assert!(open == "compute", "end_compute without begin_compute");
+                return "outside";
+            }
+            Command::EndRender => {
+                assert!(open == "render", "end_render without begin_render");
+                return "outside";
+            }
+            Command::BindUniform { slot: i, .. } => slot(i, slot::UNIFORMS),
+            Command::BindStorage { slot: i, .. } => slot(i, slot::STORAGES),
+            Command::BindImage { slot: i, .. } => slot(i, slot::IMAGES),
+            Command::BindTexture { slot: i, .. } => slot(i, slot::TEXTURES),
+            Command::BindSampler { slot: i, .. } => slot(i, slot::SAMPLERS),
+            Command::BindVertexBuffer { slot: i, .. } => slot(i, slot::VERTICES),
+            Command::ColorAttachment { index, .. } => slot(index, slot::COLORS),
+            Command::PushConstants { offset, data } => {
+                let end = offset as usize + data.len();
+                assert!(
+                    offset.is_multiple_of(4) && data.len().is_multiple_of(4),
+                    "push_constants offset {offset} and size {} must be multiples of 4",
+                    data.len()
+                );
+                assert!(
+                    end <= caps.push as usize,
+                    "push_constants ends at {end}, past {} bytes",
+                    caps.push
+                );
+            }
+            Command::FillBuffer { offset, size, .. } => {
+                assert!(
+                    offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
+                    "fill_buffer offset {offset} and size {size} must be multiples of 4"
+                );
+            }
+            Command::SetViewports { data } => rects(data, 24, caps.viewports),
+            Command::SetScissors { data } => rects(data, 16, caps.viewports),
+            Command::WriteTimestamp { stage, .. } => {
+                assert!(
+                    stage.count_ones() == 1,
+                    "write_timestamp stage {stage:#x} must be one stage"
+                );
+            }
+            _ => {}
+        }
+        open
     }
 
     pub fn dump(mut bytes: &[u8]) -> String {

@@ -7,10 +7,10 @@ use crate::mtl::resources::Resources;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo,
-    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, ViewInfo, accel,
-    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
-    usage,
+    AccelInfo, Caps, ColorTarget, Command, Commands, ComputeInfo, DepthInfo, IndirectInfo,
+    MeshInfo, RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo,
+    ViewInfo, accel, address, blend, border, dimension, fill, filter, format, index, mask, memory,
+    query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::AllocAnyThread;
@@ -1473,6 +1473,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        Command::check(commands.bytes(), &self.caps())?;
         if self.dirty {
             self.residency.commit();
             self.dirty = false;
@@ -1488,6 +1489,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        Command::check(commands, &self.caps())?;
         if self.dirty {
             self.residency.commit();
             self.dirty = false;

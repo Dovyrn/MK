@@ -265,14 +265,14 @@ impl Recorder<'_> {
     fn stream(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
         while !bytes.is_empty() {
             let command = Command::read(&mut bytes)?;
-            self.scope = command.enter(self.scope);
+            self.scope = match command {
+                Command::BeginCompute => "compute",
+                Command::BeginRender { .. } => "render",
+                Command::EndCompute | Command::EndRender => "outside",
+                _ => self.scope,
+            };
             self.step(command)?;
         }
-        assert!(
-            self.scope.is_empty(),
-            "stream ends inside begin_{}",
-            self.scope
-        );
         Ok(())
     }
 
