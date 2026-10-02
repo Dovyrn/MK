@@ -14,6 +14,7 @@ use objc2_metal::{
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
@@ -88,7 +89,7 @@ impl Queue {
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
         let mut recorder = Recorder::new(device, self, &mut frame, res, natives);
-        let result = recorder.run(commands);
+        let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
         if let Some(e) = recorder.compute.take() {
             e.endEncoding();
         }
@@ -97,10 +98,12 @@ impl Queue {
         }
         let pending = recorder.pending;
         self.buffer.endCommandBuffer();
-        if let Err(name) = result {
+        if !matches!(result, Ok(Ok(()))) {
             frame.reset();
             self.free.push(frame);
-            return Err(name.into());
+            return result
+                .unwrap_or_else(|p| resume_unwind(p))
+                .map_err(String::from);
         }
         self.pending = pending;
         for &(event, value) in waits {
