@@ -18,7 +18,9 @@ const CODE: &[u8] = include_bytes!("../shaders/out/triangle.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/triangle.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+fn main() {
+    println!("GL windows come from the host that owns the context");
+}
 
 #[cfg(not(feature = "gl"))]
 struct State {

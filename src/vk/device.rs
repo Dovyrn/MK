@@ -717,6 +717,7 @@ impl Device {
             compute: true,
             texture_views: true,
             occlusion: true,
+            cache: true,
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,

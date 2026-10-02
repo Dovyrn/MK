@@ -88,6 +88,7 @@ pub fn list<T>(b: &mut &[u8], f: impl Fn(&mut &[u8]) -> T) -> Vec<T> {
     (0..crate::wire::u32(b)).map(|_| f(b)).collect()
 }
 
+#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn u32s_out(out: jlong, v: &[u32]) {
     unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };
 }

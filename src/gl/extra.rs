@@ -7,6 +7,9 @@ type Resource = unsafe extern "system" fn(u32, u32, *const i8) -> u32;
 type Reset = unsafe extern "system" fn() -> u32;
 type Results = unsafe extern "system" fn(u32, u32, u32, isize);
 type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const c_void);
+type Mesh = unsafe extern "system" fn(u32, u32, u32);
+type MeshIndirect = unsafe extern "system" fn(isize);
+type MeshMulti = unsafe extern "system" fn(isize, i32, i32);
 
 pub struct Extra {
     pub view: Option<View>,
@@ -16,6 +19,9 @@ pub struct Extra {
     pub reset: Option<Reset>,
     pub results: Option<Results>,
     pub clear: Option<Clear>,
+    pub mesh: Option<Mesh>,
+    pub mesh_indirect: Option<MeshIndirect>,
+    pub mesh_multi: Option<MeshMulti>,
 }
 
 impl Extra {
@@ -36,6 +42,11 @@ impl Extra {
                 results: get("glGetQueryBufferObjectui64v")
                     .map(|p| std::mem::transmute::<_, Results>(p)),
                 clear: get("glClearBufferSubData").map(|p| std::mem::transmute::<_, Clear>(p)),
+                mesh: get("glDrawMeshTasksEXT").map(|p| std::mem::transmute::<_, Mesh>(p)),
+                mesh_indirect: get("glDrawMeshTasksIndirectEXT")
+                    .map(|p| std::mem::transmute::<_, MeshIndirect>(p)),
+                mesh_multi: get("glMultiDrawMeshTasksIndirectEXT")
+                    .map(|p| std::mem::transmute::<_, MeshMulti>(p)),
             }
         }
     }

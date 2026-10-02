@@ -34,7 +34,7 @@ pub fn apple() -> impl Fn(&str) -> *const c_void {
     }
 }
 
-pub fn mesa() -> impl Fn(&str) -> *const c_void {
+pub fn mesa(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
     use khronos_egl as egl;
     unsafe {
         let egl = egl::DynamicInstance::<egl::EGL1_5>::load_required_from_filename("libEGL.dylib")
@@ -46,9 +46,9 @@ pub fn mesa() -> impl Fn(&str) -> *const c_void {
         egl.bind_api(egl::OPENGL_API).unwrap();
         let attributes = [
             egl::CONTEXT_MAJOR_VERSION,
-            3,
+            major,
             egl::CONTEXT_MINOR_VERSION,
-            3,
+            minor,
             egl::CONTEXT_OPENGL_PROFILE_MASK,
             egl::CONTEXT_OPENGL_CORE_PROFILE_BIT,
             egl::NONE,
@@ -68,10 +68,10 @@ pub fn mesa() -> impl Fn(&str) -> *const c_void {
 
 pub type Proc = Box<dyn Fn(&str) -> *const c_void>;
 
-pub fn proc() -> Option<Proc> {
+pub fn proc() -> Proc {
     match std::env::var("MK_HOST").as_deref() {
-        Ok("apple") => Some(Box::new(apple())),
-        Ok("mesa") => Some(Box::new(mesa())),
-        _ => None,
+        Ok("apple") => Box::new(apple()),
+        Ok("legacy") => Box::new(mesa(3, 3)),
+        _ => Box::new(mesa(4, 6)),
     }
 }

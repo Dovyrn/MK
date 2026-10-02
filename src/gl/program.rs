@@ -1,3 +1,4 @@
+use crate::gl::cache::{Cache, key};
 use crate::gl::extra::Extra;
 use crate::register;
 use glow::HasContext;
@@ -21,47 +22,77 @@ fn source<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     Ok(&text[start..end])
 }
 
+unsafe fn link(
+    gl: &glow::Context,
+    raw: glow::Program,
+    text: &str,
+    stages: &[(u32, &str)],
+) -> Result<(), String> {
+    unsafe {
+        let mut shaders = Vec::new();
+        let mut failure = None;
+        for &(kind, entry) in stages {
+            let shader = gl.create_shader(kind)?;
+            shaders.push(shader);
+            match source(text, entry) {
+                Ok(s) => gl.shader_source(shader, s),
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+            gl.compile_shader(shader);
+            if !gl.get_shader_compile_status(shader) {
+                failure = Some(format!("{entry}: {}", gl.get_shader_info_log(shader)));
+                break;
+            }
+            gl.attach_shader(raw, shader);
+        }
+        if failure.is_none() {
+            gl.link_program(raw);
+            if !gl.get_program_link_status(raw) {
+                failure = Some(gl.get_program_info_log(raw));
+            }
+        }
+        for shader in shaders {
+            gl.delete_shader(shader);
+        }
+        failure.map_or(Ok(()), Err)
+    }
+}
+
 impl Program {
     pub fn new(
         gl: &glow::Context,
         extra: &Extra,
         code: &[u8],
         stages: &[(u32, &str)],
+        cache: Option<&mut Cache>,
     ) -> Result<Self, String> {
         let text = std::str::from_utf8(code).map_err(|e| e.to_string())?;
+        let key = key(code, stages);
         unsafe {
             let raw = gl.create_program()?;
-            let mut shaders = Vec::new();
-            let mut failure = None;
-            for &(kind, entry) in stages {
-                let shader = gl.create_shader(kind)?;
-                shaders.push(shader);
-                match source(text, entry) {
-                    Ok(s) => gl.shader_source(shader, s),
-                    Err(e) => {
-                        failure = Some(e);
-                        break;
-                    }
+            let loaded = match cache.as_ref().and_then(|c| c.programs.get(&key)) {
+                Some(binary) => {
+                    gl.program_binary(raw, binary);
+                    gl.get_program_link_status(raw)
                 }
-                gl.compile_shader(shader);
-                if !gl.get_shader_compile_status(shader) {
-                    failure = Some(format!("{entry}: {}", gl.get_shader_info_log(shader)));
-                    break;
+                None => false,
+            };
+            if !loaded {
+                if cache.is_some() {
+                    gl.program_binary_retrievable_hint(raw, true);
                 }
-                gl.attach_shader(raw, shader);
-            }
-            if failure.is_none() {
-                gl.link_program(raw);
-                if !gl.get_program_link_status(raw) {
-                    failure = Some(gl.get_program_info_log(raw));
+                if let Err(e) = link(gl, raw, text, stages) {
+                    gl.delete_program(raw);
+                    return Err(e);
                 }
-            }
-            for shader in shaders {
-                gl.delete_shader(shader);
-            }
-            if let Some(e) = failure {
-                gl.delete_program(raw);
-                return Err(e);
+                if let Some(c) = cache
+                    && let Some(binary) = gl.get_program_binary(raw)
+                {
+                    c.programs.insert(key, binary);
+                }
             }
             let mut pairs = Vec::new();
             gl.use_program(Some(raw));

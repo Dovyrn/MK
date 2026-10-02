@@ -205,7 +205,11 @@ fn glsl(out: &Path, name: &str) {
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
     let mut container = String::new();
     let mut table = Vec::new();
-    for e in reflection["entryPoints"].as_array().unwrap() {
+    let entries = reflection["entryPoints"].as_array().unwrap();
+    let meshy = entries
+        .iter()
+        .any(|e| e["mode"] == "task" || e["mode"] == "mesh");
+    for e in entries {
         let entry = e["name"].as_str().unwrap();
         let stage = e["mode"].as_str().unwrap();
         let mut renames = Vec::new();
@@ -223,7 +227,31 @@ fn glsl(out: &Path, name: &str) {
             }
         }
         let mut source = None;
+        if meshy {
+            let output = Command::new("spirv-cross")
+                .arg(&spv)
+                .args([
+                    "--entry",
+                    entry,
+                    "--version",
+                    "450",
+                    "--no-es",
+                    "--vulkan-semantics",
+                ])
+                .args(["--glsl-emit-push-constant-as-ubo", "--fixup-clipspace"])
+                .output()
+                .unwrap();
+            if !output.status.success() {
+                return;
+            }
+            let vulkan = String::from_utf8(output.stdout).unwrap();
+            let fixed = unset(&vulkan.replace("layout(push_constant, ", "layout("));
+            source = Some((fixed.clone(), fixed, vulkan));
+        }
         for version in ["330", "430", "450"] {
+            if source.is_some() {
+                break;
+            }
             let base = |extra: &[&str]| {
                 Command::new("spirv-cross")
                     .arg(&spv)
@@ -311,6 +339,18 @@ fn glsl(out: &Path, name: &str) {
         container += &format!("//@ {b}\n");
     }
     fs::write(out.join(format!("{name}.gl")), container).unwrap();
+}
+
+fn unset(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("(set = ") {
+        out += &rest[..i + 1];
+        let tail = &rest[i + 7..];
+        let digits = tail.chars().take_while(char::is_ascii_digit).count();
+        rest = tail[digits..].trim_start_matches(", ");
+    }
+    out + rest
 }
 
 fn binding(line: &str) -> Option<(String, u32)> {

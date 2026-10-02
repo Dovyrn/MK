@@ -393,6 +393,7 @@ impl Device {
             compute: true,
             texture_views: true,
             occlusion: true,
+            cache: true,
         }
     }
 

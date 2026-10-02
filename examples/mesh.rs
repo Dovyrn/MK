@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorTarget, Commands, Device, MeshInfo, TextureInfo, access, format, layout, load, memory,
     stage, store, usage,
@@ -10,11 +9,17 @@ const CODE: &[u8] = include_bytes!("../shaders/out/mesh.metallib");
 const CODE: &[u8] = include_bytes!("../shaders/out/mesh.spv");
 
 #[cfg(feature = "gl")]
-fn main() {}
+const CODE: &[u8] = include_bytes!("../shaders/out/mesh.gl");
 
-#[cfg(not(feature = "gl"))]
+#[cfg(feature = "gl")]
+#[path = "support/host.rs"]
+mod host;
+
 fn main() {
     let n = 64u32;
+    #[cfg(feature = "gl")]
+    let mut device = Device::adopt(host::proc()).unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let color = device
         .create_texture(&TextureInfo {

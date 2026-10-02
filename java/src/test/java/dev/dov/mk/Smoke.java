@@ -8,6 +8,11 @@ import java.nio.file.Path;
 public class Smoke {
     public static void main(String[] args) throws Exception {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
+        if (args[0].contains("mk_gl")) {
+            record(Path.of(args[2]));
+            System.out.println("java: GL needs a host context, stream recorded");
+            return;
+        }
         var device = Device.create(1);
         var caps = device.caps();
         System.out.println("caps: mesh " + caps.mesh + ", push " + caps.push + ", ray " + caps.ray);
@@ -50,6 +55,12 @@ public class Smoke {
         } catch (RuntimeException e) {
             System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
         }
+        record(Path.of(args[2]));
+        device.free();
+        System.out.println("java: 1024 values match");
+    }
+
+    static void record(Path out) throws Exception {
         var s = new Commands();
         s.beginCompute();
         s.bindPipeline(7);
@@ -67,8 +78,6 @@ public class Smoke {
         s.textureBarrier(1, 2, 3, 4, 5, 6, 7, 0, -1, 0, -1);
         var recorded = new byte[s.getSize()];
         memByteBuffer(s.getAddress(), s.getSize()).get(recorded);
-        Files.write(Path.of(args[2]), recorded);
-        device.free();
-        System.out.println("java: 1024 values match");
+        Files.write(out, recorded);
     }
 }

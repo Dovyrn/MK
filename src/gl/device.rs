@@ -1,5 +1,5 @@
 use crate::gl::buffer::Buffer;
-use crate::gl::context::Context;
+use crate::gl::cache::Cache;
 use crate::gl::event::Event;
 use crate::gl::extra::Extra;
 use crate::gl::native::Callback;
@@ -10,18 +10,16 @@ use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
 use crate::gl::texture::Texture;
 use crate::{
-    Caps, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, SurfaceInfo,
-    TextureInfo, ViewInfo, address, border, dimension, filter, format, memory, query,
+    Caps, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo,
+    ViewInfo, address, border, dimension, filter, format, memory, query,
 };
 use glow::HasContext;
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::cell::Cell;
 use std::ffi::{c_char, c_void};
 
 pub struct Device {
     pub gl: glow::Context,
     extra: Extra,
-    context: Option<Context>,
     version: u32,
     extensions: Vec<String>,
     res: Resources,
@@ -29,11 +27,14 @@ pub struct Device {
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     mapped: Cell<u32>,
+    cache: Option<Cache>,
 }
 
 const MAX_ANISOTROPY: u32 = 0x84FE;
 
-const SURFACES: &str = "surfaces are not supported on GL";
+const TASK_SHADER: u32 = 0x955A;
+
+const MESH_SHADER: u32 = 0x9559;
 
 pub fn compare(c: u32) -> u32 {
     match c {
@@ -59,16 +60,6 @@ pub fn target(dimension: u32, samples: u32) -> u32 {
 }
 
 impl Device {
-    pub fn new(queues: usize) -> Result<Self, String> {
-        if queues != 1 {
-            return Err("GL has one queue".into());
-        }
-        let context = Context::new()?;
-        let mut d = Self::load(&|name| context.proc(name))?;
-        d.context = Some(context);
-        Ok(d)
-    }
-
     pub fn adopt(proc: impl Fn(&str) -> *const c_void) -> Result<Self, String> {
         Self::load(&proc)
     }
@@ -109,7 +100,6 @@ impl Device {
             Ok(Self {
                 gl,
                 extra,
-                context: None,
                 version,
                 extensions,
                 res: Resources::default(),
@@ -117,6 +107,7 @@ impl Device {
                 fbo,
                 read,
                 mapped: Cell::new(0),
+                cache: None,
             })
         }
     }
@@ -164,6 +155,8 @@ impl Device {
             compute: self.at(43, "GL_ARB_compute_shader"),
             texture_views: self.extra.view.is_some(),
             occlusion: results,
+            cache: self.binaries(),
+            mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }
     }
@@ -290,6 +283,7 @@ impl Device {
             &self.extra,
             info.code,
             &[(glow::COMPUTE_SHADER, info.entry)],
+            self.cache.as_mut(),
         )?;
         Ok(self.res.pipelines.insert(program))
     }
@@ -311,6 +305,7 @@ impl Device {
                 (glow::VERTEX_SHADER, info.vertex),
                 (glow::FRAGMENT_SHADER, info.fragment),
             ],
+            self.cache.as_mut(),
         )?;
         let vao = match unsafe { self.gl.create_vertex_array() } {
             Ok(v) => v,
@@ -332,8 +327,44 @@ impl Device {
         }))
     }
 
-    pub fn create_mesh_pipeline(&mut self, _info: &MeshInfo) -> Result<u32, String> {
-        Err("mesh shaders are not supported on GL".into())
+    pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        if !self.caps().mesh {
+            return Err("GL_EXT_mesh_shader is not supported".into());
+        }
+        if info.views > 1 {
+            return Err("multiview is not supported on GL".into());
+        }
+        let mut stages = Vec::new();
+        if !info.task.is_empty() {
+            stages.push((TASK_SHADER, info.task));
+        }
+        stages.push((MESH_SHADER, info.mesh));
+        stages.push((glow::FRAGMENT_SHADER, info.fragment));
+        let program = Program::new(
+            &self.gl,
+            &self.extra,
+            info.code,
+            &stages,
+            self.cache.as_mut(),
+        )?;
+        let vao = match unsafe { self.gl.create_vertex_array() } {
+            Ok(v) => v,
+            Err(e) => {
+                unsafe { self.gl.delete_program(program.raw) };
+                return Err(e);
+            }
+        };
+        Ok(self.res.renders.insert(Pipeline {
+            program,
+            vao,
+            buffers: Vec::new(),
+            attributes: Vec::new(),
+            colors: info.colors.to_vec(),
+            topology: crate::topology::TRIANGLE,
+            fill: info.fill,
+            clamp: info.clamp,
+            coverage: info.coverage,
+        }))
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
@@ -513,16 +544,30 @@ impl Device {
         unsafe { self.gl.delete_sampler(s) };
     }
 
+    fn binaries(&self) -> bool {
+        unsafe { self.gl.get_parameter_i32(glow::NUM_PROGRAM_BINARY_FORMATS) > 0 }
+    }
+
     pub fn record_cache(&mut self) -> Result<(), String> {
-        Err("pipeline caches are not supported on GL".into())
+        if !self.binaries() {
+            return Err("program binaries are not supported".into());
+        }
+        self.cache.get_or_insert_default();
+        Ok(())
     }
 
-    pub fn save_cache(&self, _path: &str) -> Result<(), String> {
-        Err("pipeline caches are not supported on GL".into())
+    pub fn save_cache(&self, path: &str) -> Result<(), String> {
+        let cache = self.cache.as_ref().ok_or("record_cache was not called")?;
+        std::fs::write(path, cache.encode()).map_err(|e| e.to_string())
     }
 
-    pub fn load_cache(&mut self, _path: &str) -> Result<(), String> {
-        Err("pipeline caches are not supported on GL".into())
+    pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
+        if !self.binaries() {
+            return Err("program binaries are not supported".into());
+        }
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        self.cache = Some(Cache::decode(&data)?);
+        Ok(())
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
@@ -694,41 +739,6 @@ impl Device {
         }
         unsafe { self.gl.flush() };
         Ok(())
-    }
-
-    pub fn create_surface(
-        &mut self,
-        _window: &(impl HasWindowHandle + HasDisplayHandle),
-        _info: &SurfaceInfo,
-    ) -> Result<u32, String> {
-        Err(SURFACES.into())
-    }
-
-    pub fn create_surface_raw(&mut self, _handle: u64, _info: &SurfaceInfo) -> Result<u32, String> {
-        Err(SURFACES.into())
-    }
-
-    pub fn resize_surface(
-        &mut self,
-        _surface: u32,
-        _width: u32,
-        _height: u32,
-    ) -> Result<(), String> {
-        Err(SURFACES.into())
-    }
-
-    pub fn destroy_surface(&mut self, _surface: u32) {}
-
-    pub fn acquire(&mut self, _queue: usize, _surface: u32) -> Result<u32, String> {
-        Err(SURFACES.into())
-    }
-
-    pub fn present(&mut self, _queue: usize, _surface: u32) -> Result<bool, String> {
-        Err(SURFACES.into())
-    }
-
-    pub fn surface_size(&self, _surface: u32) -> [u32; 2] {
-        [0, 0]
     }
 }
 

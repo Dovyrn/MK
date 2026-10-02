@@ -7,7 +7,7 @@ mod host;
 #[cfg(feature = "gl")]
 fn native(n: u32) -> (Device, u32, ()) {
     use mk::glow::HasContext;
-    let proc = host::proc().unwrap_or_else(|| Box::new(host::apple()));
+    let proc = host::proc();
     let gl = unsafe { mk::glow::Context::from_loader_function(|name| proc(name)) };
     let texture = unsafe {
         let t = gl.create_texture().unwrap();

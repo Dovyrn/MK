@@ -1,33 +1,43 @@
-#[cfg(not(feature = "gl"))]
 use mk::{ColorTarget, Device, RenderInfo, VertexAttribute, VertexBuffer, format};
-#[cfg(not(feature = "gl"))]
 use std::time::Instant;
 
 #[cfg(feature = "mtl")]
 const SUFFIX: &str = "metallib";
 #[cfg(feature = "vk")]
 const SUFFIX: &str = "spv";
+#[cfg(feature = "gl")]
+const SUFFIX: &str = "gl";
 
 #[cfg(feature = "gl")]
-fn main() {}
+#[path = "support/host.rs"]
+mod host;
 
-#[cfg(not(feature = "gl"))]
+fn open() -> Device {
+    #[cfg(feature = "gl")]
+    let device = Device::adopt(host::proc());
+    #[cfg(not(feature = "gl"))]
+    let device = Device::new(1);
+    device.unwrap()
+}
+
 fn build(device: &mut Device) -> f64 {
-    let fill = std::fs::read(format!("shaders/out/fill.{SUFFIX}")).unwrap();
+    let fill = std::fs::read(format!("shaders/out/count.{SUFFIX}")).unwrap();
     let mesh = std::fs::read(format!("shaders/out/triangle.{SUFFIX}")).unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
     }];
     let start = Instant::now();
-    device
-        .create_pipeline(&mk::ComputeInfo {
-            code: &fill,
-            entry: "fill",
-            group: [64, 1, 1],
-            ..Default::default()
-        })
-        .unwrap();
+    if device.caps().compute {
+        device
+            .create_pipeline(&mk::ComputeInfo {
+                code: &fill,
+                entry: "fill",
+                group: [64, 1, 1],
+                ..Default::default()
+            })
+            .unwrap();
+    }
     device
         .create_render_pipeline(&RenderInfo {
             code: &mesh,
@@ -58,18 +68,21 @@ fn build(device: &mut Device) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-#[cfg(not(feature = "gl"))]
 fn main() {
     let path = std::env::temp_dir().join(format!("mk-cache-{SUFFIX}"));
     let path = path.to_str().unwrap();
     let _ = std::fs::remove_file(path);
-    let mut device = Device::new(1).unwrap();
+    let mut device = open();
+    if !device.caps().cache {
+        println!("no pipeline cache");
+        return;
+    }
     device.record_cache().unwrap();
     let cold = build(&mut device);
     device.save_cache(path).unwrap();
     drop(device);
     let size = std::fs::metadata(path).unwrap().len();
-    let mut device = Device::new(1).unwrap();
+    let mut device = open();
     if let Err(e) = device.load_cache(path) {
         println!("cache rejected: {e}");
     }

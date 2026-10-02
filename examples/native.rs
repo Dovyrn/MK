@@ -32,8 +32,15 @@ fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
     });
 }
 
+#[cfg(feature = "gl")]
+#[path = "support/host.rs"]
+mod host;
+
 fn main() {
     let n = 4096u64;
+    #[cfg(feature = "gl")]
+    let mut device = Device::adopt(host::proc()).unwrap();
+    #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let data = device.create_buffer(n, memory::DEVICE).unwrap();
     let back = device.create_buffer(n, memory::READBACK).unwrap();

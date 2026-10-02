@@ -1,5 +1,6 @@
 [[call]]
 name = "new"
+backend = "vk mtl"
 params = [["queues", "usize"]]
 result = "device"
 fails = true
@@ -243,28 +244,33 @@ fails = true
 
 [[call]]
 name = "acquire"
+backend = "vk mtl"
 params = [["queue", "usize"], ["surface", "u32"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "present"
+backend = "vk mtl"
 params = [["queue", "usize"], ["surface", "u32"]]
 result = "bool"
 fails = true
 
 [[call]]
 name = "surface_size"
+backend = "vk mtl"
 params = [["surface", "u32"]]
 result = "u32x2"
 
 [[call]]
 name = "resize_surface"
+backend = "vk mtl"
 params = [["surface", "u32"], ["width", "u32"], ["height", "u32"]]
 fails = true
 
 [[call]]
 name = "destroy_surface"
+backend = "vk mtl"
 params = [["surface", "u32"]]
 
 [[call]]
@@ -429,6 +435,7 @@ fails = true
 
 [[call]]
 name = "create_surface_raw"
+backend = "vk mtl"
 params = [["handle", "u64"], ["info", "SurfaceInfo"]]
 result = "u32"
 fails = true

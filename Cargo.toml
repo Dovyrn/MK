@@ -20,7 +20,7 @@ mtl = [
     "dep:objc2-metal-fx",
     "dep:dispatch2",
 ]
-gl = ["dep:glow", "dep:khronos-egl"]
+gl = ["dep:glow"]
 jni = ["dep:jni"]
 
 [dependencies]
@@ -37,7 +37,6 @@ objc2-quartz-core = { version = "0.3", optional = true, features = ["objc2-metal
 dispatch2 = { version = "0.3", optional = true }
 raw-window-handle = "0.6"
 glow = { version = "0.17", optional = true }
-khronos-egl = { version = "6", optional = true, features = ["dynamic"] }
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]

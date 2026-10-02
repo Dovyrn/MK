@@ -1013,8 +1013,38 @@ impl<'a> Recorder<'a> {
                         );
                     }
                 }
-                Command::DrawMesh { .. } | Command::DrawMeshIndirect { .. } => {
-                    return Err("mesh shaders are not supported on GL".into());
+                Command::DrawMesh { x, y, z } => {
+                    let mesh = self
+                        .extra
+                        .mesh
+                        .ok_or("GL_EXT_mesh_shader is not supported")?;
+                    self.prepare();
+                    mesh(x, y, z);
+                }
+                Command::DrawMeshIndirect {
+                    buffer,
+                    offset,
+                    count,
+                    stride,
+                } => {
+                    self.prepare();
+                    gl.bind_buffer(
+                        glow::DRAW_INDIRECT_BUFFER,
+                        Some(res.buffers.get(buffer).raw),
+                    );
+                    if count == 1 {
+                        let draw = self
+                            .extra
+                            .mesh_indirect
+                            .ok_or("GL_EXT_mesh_shader is not supported")?;
+                        draw(offset as isize);
+                    } else {
+                        let multi = self
+                            .extra
+                            .mesh_multi
+                            .ok_or("multi draw indirect is not supported")?;
+                        multi(offset as isize, count as i32, stride as i32);
+                    }
                 }
                 Command::OcclusionHeap { .. } | Command::ResetQueries { .. } => {}
                 Command::WriteTimestamp { heap, index, .. } => {

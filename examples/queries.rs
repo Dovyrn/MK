@@ -23,9 +23,7 @@ mod host;
 fn main() {
     let n = 64u32;
     #[cfg(feature = "gl")]
-    let mut device = host::proc()
-        .map_or_else(|| Device::new(1), Device::adopt)
-        .unwrap();
+    let mut device = Device::adopt(host::proc()).unwrap();
     #[cfg(not(feature = "gl"))]
     let mut device = Device::new(1).unwrap();
     let caps = device.caps();

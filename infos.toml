@@ -224,6 +224,7 @@ fields = [
     ["compute", "bool", "false"],
     ["texture_views", "bool", "false"],
     ["occlusion", "bool", "false"],
+    ["cache", "bool", "false"],
 ]
 
 [[info]]
