@@ -1,4 +1,4 @@
-use crate::{camel, cfg, pascal, single};
+use crate::{camel, member, pascal};
 use std::fmt::Write;
 
 pub struct Param {
@@ -55,8 +55,8 @@ pub fn parse(text: &str) -> Vec<Call> {
         .collect()
 }
 
-fn class(call: &Call) -> &str {
-    match single(call.backend.as_deref()) {
+fn class(backend: Option<&str>) -> &'static str {
+    match backend {
         Some("vk") => "VkDevice",
         Some("mtl") => "MtlDevice",
         Some("gl") => "GlDevice",
@@ -179,18 +179,6 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         } else {
             format!(" -> {ret}")
         };
-        s += "\n";
-        if let Some(c) = cfg(call.backend.as_deref()) {
-            writeln!(s, "#[cfg({c})]").unwrap();
-        }
-        writeln!(
-            s,
-            "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
-            class(call),
-            native(call),
-            params.join(", ")
-        )
-        .unwrap();
         let args: Vec<_> = call.params.iter().map(rust_arg).collect();
         let target = if statics(call) {
             format!("crate::Device::{}", call.target)
@@ -253,22 +241,35 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
                 "let r = {invoke};\n        crate::java::write(out, |o| r.write(o));\n        Ok(())"
             ),
         };
-        writeln!(
-            s,
-            "    crate::java::call(&mut env, |env| {{\n        let _ = &env;\n        {body}\n    }})\n}}"
-        )
-        .unwrap();
+        let backends: Vec<Option<&str>> = match call.backend.as_deref() {
+            Some(b) => b.split(' ').map(Some).collect(),
+            None => vec![None],
+        };
+        for b in backends {
+            s += "\n";
+            if let Some(b) = b {
+                writeln!(s, "#[cfg(feature = \"{b}\")]").unwrap();
+            }
+            writeln!(
+                s,
+                "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
+                class(b),
+                native(call),
+                params.join(", ")
+            )
+            .unwrap();
+            writeln!(
+                s,
+                "    crate::java::call(&mut env, |env| {{\n        let _ = &env;\n        {body}\n    }})\n}}"
+            )
+            .unwrap();
+        }
     }
     s
 }
 
 pub fn java(calls: &[Call], backend: Option<&str>) -> String {
-    let name = match backend {
-        Some("vk") => "VkDevice",
-        Some("mtl") => "MtlDevice",
-        Some("gl") => "GlDevice",
-        _ => "Device",
-    };
+    let name = class(backend);
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
@@ -282,7 +283,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     }
     for call in calls
         .iter()
-        .filter(|c| single(c.backend.as_deref()) == backend)
+        .filter(|c| member(c.backend.as_deref(), backend))
     {
         let mut params = Vec::new();
         if !statics(call) && backend.is_some() {

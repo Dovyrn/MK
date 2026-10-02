@@ -109,8 +109,12 @@ fn cfg(backend: Option<&str>) -> Option<String> {
     })
 }
 
-fn single(backend: Option<&str>) -> Option<&str> {
-    backend.filter(|b| !b.contains(' '))
+fn member(backend: Option<&str>, class: Option<&str>) -> bool {
+    match (backend, class) {
+        (None, None) => true,
+        (Some(b), Some(c)) => b.split(' ').any(|x| x == c),
+        _ => false,
+    }
 }
 
 fn pascal(name: &str) -> String {

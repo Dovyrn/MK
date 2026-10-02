@@ -1,4 +1,4 @@
-use crate::{camel, cfg, pascal, single};
+use crate::{camel, cfg, member, pascal};
 use std::fmt::Write;
 
 pub struct Field {
@@ -255,7 +255,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
     }
     let kinds: Vec<_> = ops
         .iter()
-        .filter(|o| single(o.backend.as_deref()) == backend)
+        .filter(|o| member(o.backend.as_deref(), backend))
         .flat_map(|o| &o.fields)
         .map(|f| f.kind.as_str())
         .collect();
@@ -297,7 +297,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
         write!(s, "public class {class} extends Commands {{").unwrap();
     }
     for (i, op) in ops.iter().enumerate() {
-        if single(op.backend.as_deref()) != backend {
+        if !member(op.backend.as_deref(), backend) {
             continue;
         }
         let params: Vec<_> = op

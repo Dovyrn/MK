@@ -8,6 +8,19 @@ public class VkCommands extends Commands {
         memPutFloat(p, width);
     }
 
+    public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
+        var p = head(50, 20);
+        memPutInt(p, accel);
+        memPutInt(p + 4, scratch);
+        memPutLong(p + 8, scratchOffset);
+        memPutInt(p + 16, update);
+    }
+
+    public void multiview(int views) {
+        var p = head(54, 4);
+        memPutInt(p, views);
+    }
+
     public void executeGenerated(int layout, int indirect, long offset, long size, int preprocess, long preprocessOffset, long preprocessSize, int sequences, int count, long countOffset, int draws) {
         var p = head(59, 64);
         memPutInt(p, layout);
@@ -65,6 +78,20 @@ public class VkCommands extends Commands {
         memPutInt(p + 4, layout);
         memPutInt(p + 8, texelWidth);
         memPutInt(p + 12, texelHeight);
+    }
+
+    public void writeCompactedSize(int accel, int heap, int index) {
+        var p = head(65, 12);
+        memPutInt(p, accel);
+        memPutInt(p + 4, heap);
+        memPutInt(p + 8, index);
+    }
+
+    public void copyAccel(int src, int dst, int compact) {
+        var p = head(66, 12);
+        memPutInt(p, src);
+        memPutInt(p + 4, dst);
+        memPutInt(p + 8, compact);
     }
 
     public void beginConditional(int buffer, long offset, int inverted) {

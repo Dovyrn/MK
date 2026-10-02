@@ -10,6 +10,14 @@ public class MtlCommands extends Commands {
         memPutInt(p + 8, z);
     }
 
+    public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
+        var p = head(50, 20);
+        memPutInt(p, accel);
+        memPutInt(p + 4, scratch);
+        memPutLong(p + 8, scratchOffset);
+        memPutInt(p + 16, update);
+    }
+
     public void tilePass(int width, int height, int imageblock, int memory) {
         var p = head(51, 16);
         memPutInt(p, width);
@@ -29,6 +37,11 @@ public class MtlCommands extends Commands {
         memPutInt(p, length);
         memPutInt(p + 4, offset);
         memPutInt(p + 8, index);
+    }
+
+    public void multiview(int views) {
+        var p = head(54, 4);
+        memPutInt(p, views);
     }
 
     public void executeIndirect(int indirect, int start, int count) {
@@ -55,5 +68,19 @@ public class MtlCommands extends Commands {
     public void rateMap(int map) {
         var p = head(62, 4);
         memPutInt(p, map);
+    }
+
+    public void writeCompactedSize(int accel, int heap, int index) {
+        var p = head(65, 12);
+        memPutInt(p, accel);
+        memPutInt(p + 4, heap);
+        memPutInt(p + 8, index);
+    }
+
+    public void copyAccel(int src, int dst, int compact) {
+        var p = head(66, 12);
+        memPutInt(p, src);
+        memPutInt(p + 4, dst);
+        memPutInt(p + 8, compact);
     }
 }
