@@ -1,26 +1,23 @@
 package dev.dov.mk;
 
-import lombok.experimental.UtilityClass;
-
-@UtilityClass
-public class Access {
-    public final int INDIRECT_READ = 1;
-    public final int INDEX_READ = 2;
-    public final int VERTEX_READ = 4;
-    public final int UNIFORM_READ = 8;
-    public final int INPUT_READ = 16;
-    public final int SHADER_READ = 32;
-    public final int SHADER_WRITE = 64;
-    public final int COLOR_READ = 128;
-    public final int COLOR_WRITE = 256;
-    public final int DEPTH_READ = 512;
-    public final int DEPTH_WRITE = 1024;
-    public final int COPY_READ = 2048;
-    public final int COPY_WRITE = 4096;
-    public final int HOST_READ = 8192;
-    public final int HOST_WRITE = 16384;
-    public final int MEMORY_READ = 32768;
-    public final int MEMORY_WRITE = 65536;
-    public final int ACCEL_READ = 2097152;
-    public final int ACCEL_WRITE = 4194304;
+public interface Access {
+    int INDIRECT_READ = 1;
+    int INDEX_READ = 2;
+    int VERTEX_READ = 4;
+    int UNIFORM_READ = 8;
+    int INPUT_READ = 16;
+    int SHADER_READ = 32;
+    int SHADER_WRITE = 64;
+    int COLOR_READ = 128;
+    int COLOR_WRITE = 256;
+    int DEPTH_READ = 512;
+    int DEPTH_WRITE = 1024;
+    int COPY_READ = 2048;
+    int COPY_WRITE = 4096;
+    int HOST_READ = 8192;
+    int HOST_WRITE = 16384;
+    int MEMORY_READ = 32768;
+    int MEMORY_WRITE = 65536;
+    int ACCEL_READ = 2097152;
+    int ACCEL_WRITE = 4194304;
 }

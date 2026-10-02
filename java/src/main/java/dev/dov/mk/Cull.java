@@ -1,10 +1,7 @@
 package dev.dov.mk;
 
-import lombok.experimental.UtilityClass;
-
-@UtilityClass
-public class Cull {
-    public final int NONE = 0;
-    public final int FRONT = 1;
-    public final int BACK = 2;
+public interface Cull {
+    int NONE = 0;
+    int FRONT = 1;
+    int BACK = 2;
 }

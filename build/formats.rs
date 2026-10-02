@@ -96,10 +96,9 @@ pub fn rust(table: &toml::Table) -> String {
 }
 
 pub fn java(table: &toml::Table) -> String {
-    let mut s = String::from("package dev.dov.mk;\n\nimport lombok.experimental.UtilityClass;\n\n");
-    s += "@UtilityClass\npublic class Format {\n    public final int NONE = 0;\n";
+    let mut s = String::from("package dev.dov.mk;\n\npublic interface Format {\n    int NONE = 0;\n");
     for (i, r) in rows(table).iter().enumerate() {
-        writeln!(s, "    public final int {} = {};", r.name, i + 1).unwrap();
+        writeln!(s, "    int {} = {};", r.name, i + 1).unwrap();
     }
     s += "}\n";
     s

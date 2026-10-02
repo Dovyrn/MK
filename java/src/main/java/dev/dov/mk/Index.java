@@ -1,9 +1,6 @@
 package dev.dov.mk;
 
-import lombok.experimental.UtilityClass;
-
-@UtilityClass
-public class Index {
-    public final int U16 = 0;
-    public final int U32 = 1;
+public interface Index {
+    int U16 = 0;
+    int U32 = 1;
 }

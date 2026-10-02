@@ -1,14 +1,11 @@
 package dev.dov.mk;
 
-import lombok.experimental.UtilityClass;
-
-@UtilityClass
-public class Slot {
-    public final int UNIFORMS = 4;
-    public final int STORAGES = 8;
-    public final int IMAGES = 4;
-    public final int TEXTURES = 8;
-    public final int SAMPLERS = 8;
-    public final int VERTICES = 16;
-    public final int COLORS = 8;
+public interface Slot {
+    int UNIFORMS = 4;
+    int STORAGES = 8;
+    int IMAGES = 4;
+    int TEXTURES = 8;
+    int SAMPLERS = 8;
+    int VERTICES = 16;
+    int COLORS = 8;
 }
