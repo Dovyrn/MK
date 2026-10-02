@@ -138,7 +138,8 @@ fn barriers(a: u32) -> u32 {
             access::COPY_READ | access::COPY_WRITE,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::TEXTURE_UPDATE_BARRIER_BIT
-                | glow::PIXEL_BUFFER_BARRIER_BIT,
+                | glow::PIXEL_BUFFER_BARRIER_BIT
+                | glow::FRAMEBUFFER_BARRIER_BIT,
         ),
         (
             access::HOST_READ | access::HOST_WRITE,
