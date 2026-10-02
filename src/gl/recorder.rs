@@ -120,6 +120,17 @@ fn equation(op: u32) -> u32 {
     ][op as usize]
 }
 
+fn aspect(f: u32) -> (u32, u32) {
+    match f {
+        format::D24_UNORM_S8 => (glow::DEPTH_COMPONENT, glow::UNSIGNED_INT),
+        format::D32_FLOAT_S8 => (glow::DEPTH_COMPONENT, glow::FLOAT),
+        f => {
+            let [_, f, ty] = format::gl(f);
+            (f, ty)
+        }
+    }
+}
+
 fn integer(f: u32) -> bool {
     format::uint(f) || format::sint(f)
 }
@@ -463,7 +474,8 @@ impl<'a> Recorder<'a> {
                     ..
                 } => {
                     let t = res.textures.get(texture);
-                    let [internal, f, ty] = format::gl(t.format);
+                    let internal = format::gl(t.format)[0];
+                    let (f, ty) = aspect(t.format);
                     gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(res.buffers.get(buffer).raw));
                     gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
@@ -553,74 +565,81 @@ impl<'a> Recorder<'a> {
                     layer,
                     x,
                     y,
+                    z,
                     width,
                     height,
+                    depth,
                     buffer,
                     offset,
                     row_length,
+                    row_count,
                     ..
                 } => {
                     let t = res.textures.get(texture);
-                    let [_, f, ty] = format::gl(t.format);
+                    let (f, ty) = aspect(t.format);
                     if f == 0 {
                         return Err("compressed readback is not supported on GL".into());
                     }
-                    gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.read));
                     let point = match f {
                         glow::DEPTH_COMPONENT => glow::DEPTH_ATTACHMENT,
-                        glow::DEPTH_STENCIL => glow::DEPTH_STENCIL_ATTACHMENT,
                         glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,
                         _ => glow::COLOR_ATTACHMENT0,
                     };
-                    match t.target {
-                        glow::TEXTURE_2D | glow::TEXTURE_2D_MULTISAMPLE => gl
-                            .framebuffer_texture_2d(
-                                glow::READ_FRAMEBUFFER,
-                                point,
-                                t.target,
-                                t.raw,
-                                mip as i32,
-                            ),
-                        glow::TEXTURE_CUBE_MAP => gl.framebuffer_texture_2d(
-                            glow::READ_FRAMEBUFFER,
-                            point,
-                            glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
-                            t.raw,
-                            mip as i32,
-                        ),
-                        _ => gl.framebuffer_texture_layer(
-                            glow::READ_FRAMEBUFFER,
-                            point,
-                            t.raw,
-                            mip as i32,
-                            layer as i32,
-                        ),
-                    }
-                    if point == glow::COLOR_ATTACHMENT0 {
-                        gl.read_buffer(glow::COLOR_ATTACHMENT0);
-                    }
+                    let target = glow::READ_FRAMEBUFFER;
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.read));
+                    gl.draw_buffers(&[glow::NONE]);
+                    gl.read_buffer(if point == glow::COLOR_ATTACHMENT0 {
+                        point
+                    } else {
+                        glow::NONE
+                    });
                     gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(res.buffers.get(buffer).raw));
                     gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
                     gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
-                    (self.extra.read)(
-                        x as i32,
-                        y as i32,
-                        width as i32,
-                        height as i32,
-                        f,
-                        ty,
-                        offset as usize as *mut std::ffi::c_void,
-                    );
+                    let texel = match f {
+                        glow::DEPTH_COMPONENT => 4.min(format::block(t.format)[0]),
+                        _ => format::block(t.format)[0],
+                    } as u64;
+                    let slice = (row_length.max(width) * row_count.max(height)) as u64 * texel;
+                    for s in 0..depth {
+                        let mip = mip as i32;
+                        match t.target {
+                            glow::TEXTURE_1D | glow::TEXTURE_2D | glow::TEXTURE_2D_MULTISAMPLE => {
+                                gl.framebuffer_texture(target, point, t.raw, mip)
+                            }
+                            glow::TEXTURE_CUBE_MAP => gl.framebuffer_texture_2d(
+                                target,
+                                point,
+                                glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+                                t.raw,
+                                mip,
+                            ),
+                            glow::TEXTURE_3D => {
+                                let z = (z + s) as i32;
+                                gl.framebuffer_texture_layer(target, point, t.raw, mip, z)
+                            }
+                            _ => gl.framebuffer_texture_layer(
+                                target,
+                                point,
+                                t.raw,
+                                mip,
+                                layer as i32,
+                            ),
+                        }
+                        (self.extra.read)(
+                            x as i32,
+                            y as i32,
+                            width as i32,
+                            height as i32,
+                            f,
+                            ty,
+                            (offset + s as u64 * slice) as usize as *mut std::ffi::c_void,
+                        );
+                    }
                     gl.pixel_store_i32(glow::PACK_ROW_LENGTH, 0);
                     gl.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
-                    gl.framebuffer_texture_2d(
-                        glow::READ_FRAMEBUFFER,
-                        point,
-                        glow::TEXTURE_2D,
-                        None,
-                        0,
-                    );
-                    gl.bind_framebuffer(glow::READ_FRAMEBUFFER, None);
+                    gl.framebuffer_texture(target, point, None, 0);
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                 }
                 Command::ColorAttachment {
                     index,
