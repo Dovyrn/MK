@@ -525,6 +525,7 @@ impl<'a> Recorder<'a> {
                     .ok_or("render encoder creation failed")?;
                 let all = MTLRenderStages::Vertex
                     | MTLRenderStages::Fragment
+                    | MTLRenderStages::Tile
                     | MTLRenderStages::Object
                     | MTLRenderStages::Mesh;
                 encoder.setArgumentTable_atStages(self.table, all);
