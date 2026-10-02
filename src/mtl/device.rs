@@ -3,6 +3,7 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
+use crate::mtl::residency::Residency;
 use crate::mtl::resources::Resources;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
@@ -36,15 +37,14 @@ use objc2_metal::{
     MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor,
     MTL4UpdateSparseBufferMappingOperation, MTL4UpdateSparseTextureMappingOperation,
     MTLAccelerationStructure, MTLAccelerationStructureInstanceDescriptorType,
-    MTLAccelerationStructureUsage, MTLAllocation, MTLAttributeFormat, MTLBlendFactor,
-    MTLBlendOperation, MTLBuffer, MTLColorWriteMask, MTLCompareFunction, MTLComputePipelineState,
-    MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLGPUFamily, MTLHeap,
-    MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer,
-    MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLIntersectionFunctionTable,
-    MTLIntersectionFunctionTableDescriptor, MTLLibrary, MTLMatrixLayout, MTLOrigin,
-    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRasterizationRateLayerDescriptor,
-    MTLRasterizationRateMap, MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLResource, MTLResourceID, MTLResourceOptions,
+    MTLAccelerationStructureUsage, MTLAttributeFormat, MTLBlendFactor, MTLBlendOperation,
+    MTLBuffer, MTLColorWriteMask, MTLCompareFunction, MTLComputePipelineState, MTLDepthClipMode,
+    MTLDepthStencilDescriptor, MTLDevice, MTLGPUFamily, MTLHeap, MTLHeapDescriptor, MTLHeapType,
+    MTLIndexType, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
+    MTLIndirectCommandType, MTLIntersectionFunctionTable, MTLIntersectionFunctionTableDescriptor,
+    MTLLibrary, MTLMatrixLayout, MTLOrigin, MTLPrimitiveTopologyClass, MTLPrimitiveType,
+    MTLRasterizationRateLayerDescriptor, MTLRasterizationRateMap,
+    MTLRasterizationRateMapDescriptor, MTLRegion, MTLResource, MTLResourceID, MTLResourceOptions,
     MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter,
     MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize,
     MTLSparseTextureMappingMode, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode,
@@ -289,8 +289,7 @@ pub struct Device {
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
     options: Retained<MTL4CompilerTaskOptions>,
     serializer: Option<Retained<ProtocolObject<dyn MTL4PipelineDataSetSerializer>>>,
-    residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
-    dirty: bool,
+    residency: Residency,
     res: Resources,
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
@@ -304,12 +303,10 @@ impl Device {
         let compiler = raw
             .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
             .map_err(|e| e.localizedDescription().to_string())?;
-        let residency = raw
-            .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
-            .map_err(|e| e.localizedDescription().to_string())?;
+        let residency = Residency::new(&raw)?;
         let lost = Arc::new(Mutex::new(None));
         let queues = (0..queues)
-            .map(|_| Queue::new(&raw, &residency, lost.clone()))
+            .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
             .collect::<Result<_, _>>()?;
         Ok(Self {
             raw,
@@ -317,7 +314,6 @@ impl Device {
             options: MTL4CompilerTaskOptions::new(),
             serializer: None,
             residency,
-            dirty: false,
             res: Resources::default(),
             queues,
             lost,
@@ -398,9 +394,7 @@ impl Device {
             .raw
             .newBufferWithLength_options(size as usize, self.storage(memory)?)
             .ok_or("buffer allocation failed")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*buffer));
         Ok(self.res.buffers.insert(buffer))
     }
 
@@ -415,9 +409,7 @@ impl Device {
                 )
                 .ok_or("host buffer")?
         };
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*buffer));
         Ok(self.res.buffers.insert(buffer))
     }
 
@@ -428,9 +420,7 @@ impl Device {
         desc.setSize(size as usize);
         desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
         let heap = self.raw.newHeapWithDescriptor(&desc).ok_or("heap")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*heap));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*heap));
         Ok(self.res.heaps.insert((heap, memory)))
     }
 
@@ -497,9 +487,7 @@ impl Device {
             .raw
             .newTextureWithDescriptor_iosurface_plane(&desc, surface, 0)
             .ok_or("IOSurface texture")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
@@ -517,9 +505,7 @@ impl Device {
                 )
                 .ok_or("sparse buffer allocation failed")?
         };
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*buffer));
         Ok(self.res.buffers.insert(buffer))
     }
 
@@ -531,9 +517,7 @@ impl Device {
             .raw
             .newTextureWithDescriptor(&desc)
             .ok_or("sparse texture allocation failed")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.textures.insert(Texture {
             raw,
             format: info.format,
@@ -656,9 +640,7 @@ impl Device {
 
     pub fn destroy_heap(&mut self, heap: u32) {
         let (heap, _) = self.res.heaps.remove(heap);
-        self.residency
-            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*heap));
-        self.dirty = true;
+        self.residency.remove(ProtocolObject::from_ref(&*heap));
     }
 
     pub fn buffer_size(&self, size: u64, memory: u32) -> (u64, u64) {
@@ -709,9 +691,7 @@ impl Device {
     }
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         self.res.buffers.insert(raw)
     }
 
@@ -720,9 +700,7 @@ impl Device {
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
         format: u32,
     ) -> Result<u32, String> {
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.textures.insert(Texture { raw, format }))
     }
 
@@ -748,9 +726,7 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         let buffer = self.res.buffers.remove(buffer);
-        self.residency
-            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-        self.dirty = true;
+        self.residency.remove(ProtocolObject::from_ref(&*buffer));
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
@@ -823,8 +799,7 @@ impl Device {
             for (i, h) in handles.iter().enumerate() {
                 table.setFunction_atIndex(Some(h), i);
             }
-            self.residency
-                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*table));
+            self.residency.add(ProtocolObject::from_ref(&*table));
             Table::Intersection(table)
         } else {
             let desc = MTLVisibleFunctionTableDescriptor::new();
@@ -835,24 +810,17 @@ impl Device {
             for (i, h) in handles.iter().enumerate() {
                 unsafe { table.setFunction_atIndex(Some(h), i) };
             }
-            self.residency
-                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*table));
+            self.residency.add(ProtocolObject::from_ref(&*table));
             Table::Visible(table)
         };
-        self.dirty = true;
         Ok(self.res.tables.insert(table))
     }
 
     pub fn destroy_function_table(&mut self, table: u32) {
         match self.res.tables.remove(table) {
-            Table::Visible(t) => self
-                .residency
-                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*t)),
-            Table::Intersection(t) => self
-                .residency
-                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*t)),
+            Table::Visible(t) => self.residency.remove(ProtocolObject::from_ref(&*t)),
+            Table::Intersection(t) => self.residency.remove(ProtocolObject::from_ref(&*t)),
         }
-        self.dirty = true;
     }
 
     pub fn function_table_handle(&self, table: u32) -> u64 {
@@ -1079,9 +1047,7 @@ impl Device {
             .newTextureWithDescriptor(&desc)
             .ok_or("texture allocation failed")?;
         if info.memory != memory::TRANSIENT {
-            self.residency
-                .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-            self.dirty = true;
+            self.residency.add(ProtocolObject::from_ref(&*raw));
         }
         Ok(self.res.textures.insert(Texture {
             raw,
@@ -1114,8 +1080,7 @@ impl Device {
     pub fn destroy_texture(&mut self, texture: u32) {
         let texture = self.res.textures.remove(texture);
         self.residency
-            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*texture.raw));
-        self.dirty = true;
+            .remove(ProtocolObject::from_ref(&*texture.raw));
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
@@ -1270,9 +1235,7 @@ impl Device {
             .raw
             .newAccelerationStructureWithSize(sizes.accelerationStructureSize)
             .ok_or("acceleration structure")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.accels.insert(Accel {
             raw,
             desc,
@@ -1286,9 +1249,7 @@ impl Device {
             .raw
             .newAccelerationStructureWithSize(size as usize)
             .ok_or("acceleration structure")?;
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         let desc = self.res.accels.get(accel).desc.clone();
         Ok(self.res.accels.insert(Accel {
             raw,
@@ -1300,9 +1261,7 @@ impl Device {
 
     pub fn destroy_accel(&mut self, accel: u32) {
         let a = self.res.accels.remove(accel);
-        self.residency
-            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*a.raw));
-        self.dirty = true;
+        self.residency.remove(ProtocolObject::from_ref(&*a.raw));
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
@@ -1351,17 +1310,13 @@ impl Device {
                 )
                 .ok_or("indirect command buffer")?
         };
-        self.residency
-            .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.add(ProtocolObject::from_ref(&*raw));
         Ok(self.res.indirects.insert(raw))
     }
 
     pub fn destroy_indirect(&mut self, indirect: u32) {
         let raw = self.res.indirects.remove(indirect);
-        self.residency
-            .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*raw));
-        self.dirty = true;
+        self.residency.remove(ProtocolObject::from_ref(&*raw));
     }
 
     pub fn indirect_handle(&self, indirect: u32) -> u64 {
@@ -1427,9 +1382,7 @@ impl Device {
                     .raw
                     .newBufferWithLength_options(count as usize * 8, options)
                     .ok_or("visibility buffer")?;
-                self.residency
-                    .addAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-                self.dirty = true;
+                self.residency.add(ProtocolObject::from_ref(&*buffer));
                 Query::Buffer(buffer)
             }
             k => panic!("unknown query kind {k}"),
@@ -1439,9 +1392,7 @@ impl Device {
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
         if let Query::Buffer(buffer) = self.res.queries.remove(heap) {
-            self.residency
-                .removeAllocation(ProtocolObject::<dyn MTLAllocation>::from_ref(&*buffer));
-            self.dirty = true;
+            self.residency.remove(ProtocolObject::from_ref(&*buffer));
         }
     }
 
@@ -1484,10 +1435,6 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands.bytes(), &self.caps())?;
-        if self.dirty {
-            self.residency.commit();
-            self.dirty = false;
-        }
         let commands = (commands.bytes(), commands.natives());
         self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
     }
@@ -1500,10 +1447,6 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands, &self.caps())?;
-        if self.dirty {
-            self.residency.commit();
-            self.dirty = false;
-        }
         self.queues[queue].submit(&self.raw, &self.res, (commands, &[]), waits, signals)
     }
 }
