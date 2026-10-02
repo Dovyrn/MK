@@ -74,7 +74,7 @@ unsafe fn drain(gl: &glow::Context) {
     ) {}
 }
 
-fn at(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bool {
+fn has(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bool {
     version >= minimum
         || extensions
             .binary_search_by(|e| e.as_str().cmp(extension))
@@ -112,7 +112,7 @@ impl Device {
                 .map(|i| gl.get_parameter_indexed_string(glow::EXTENSIONS, i))
                 .collect();
             extensions.sort();
-            let extra = Extra::load(proc, &|v, e| at(version, &extensions, v, e))?;
+            let extra = Extra::load(proc, &|v, e| has(version, &extensions, v, e))?;
             let push = gl.create_buffer()?;
             let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
@@ -137,49 +137,49 @@ impl Device {
         }
     }
 
-    fn at(&self, version: u32, extension: &str) -> bool {
-        at(self.version, &self.extensions, version, extension)
+    fn has(&self, version: u32, extension: &str) -> bool {
+        has(self.version, &self.extensions, version, extension)
     }
 
     pub fn caps(&self) -> Caps {
         let gl = &self.gl;
         let int = |p| unsafe { gl.get_parameter_i32(p) as u32 };
-        let storage = self.at(43, "GL_ARB_shader_storage_buffer_object");
-        let results = self.at(44, "GL_ARB_query_buffer_object");
+        let storage = self.has(43, "GL_ARB_shader_storage_buffer_object");
+        let results = self.has(44, "GL_ARB_query_buffer_object");
         Caps {
             push: 256,
             queues: 1,
             tick: 1.0,
             timestamps: results,
             precise: results,
-            viewports: if self.at(99, "GL_ARB_shader_viewport_layer_array") {
+            viewports: if self.has(99, "GL_ARB_shader_viewport_layer_array") {
                 int(glow::MAX_VIEWPORTS)
             } else {
                 1
             },
             graphics: 1,
-            labels: self.at(43, "GL_KHR_debug"),
-            anisotropy: self.at(46, "GL_ARB_texture_filter_anisotropic")
-                || self.at(99, "GL_EXT_texture_filter_anisotropic"),
+            labels: self.has(43, "GL_KHR_debug"),
+            anisotropy: self.has(46, "GL_ARB_texture_filter_anisotropic")
+                || self.has(99, "GL_EXT_texture_filter_anisotropic"),
             depth_clamp: true,
             line_fill: true,
-            multi_draw: self.at(43, "GL_ARB_multi_draw_indirect"),
+            multi_draw: self.has(43, "GL_ARB_multi_draw_indirect"),
             slots: true,
             storage,
-            persistent: self.at(44, "GL_ARB_buffer_storage"),
+            persistent: self.has(44, "GL_ARB_buffer_storage"),
             bind_alignment: if storage {
                 int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
                     .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
             } else {
                 int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
             },
-            compute: self.at(43, "GL_ARB_compute_shader"),
-            texture_views: self.at(43, "GL_ARB_texture_view"),
+            compute: self.has(43, "GL_ARB_compute_shader"),
+            texture_views: self.has(43, "GL_ARB_texture_view"),
             occlusion: results,
             cache: self.binaries(),
-            bias_clamp: self.at(46, "GL_ARB_polygon_offset_clamp"),
-            blends: self.at(40, "GL_ARB_draw_buffers_blend"),
-            indirect: self.at(42, "GL_ARB_draw_indirect") && self.at(42, "GL_ARB_base_instance"),
+            bias_clamp: self.has(46, "GL_ARB_polygon_offset_clamp"),
+            blends: self.has(40, "GL_ARB_draw_buffers_blend"),
+            indirect: self.has(42, "GL_ARB_draw_indirect") && self.has(42, "GL_ARB_base_instance"),
             indirect_ids: false,
             indirect_offset: false,
             wide_lines: false,
@@ -188,7 +188,7 @@ impl Device {
             max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE),
             max_volume: int(glow::MAX_3D_TEXTURE_SIZE),
             max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS),
-            mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
+            mesh: self.has(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }
     }
@@ -316,7 +316,7 @@ impl Device {
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
-        if !self.at(43, "GL_ARB_compute_shader") {
+        if !self.has(43, "GL_ARB_compute_shader") {
             return Err("compute shaders need GL 4.3".into());
         }
         let program = Program::new(
@@ -454,7 +454,7 @@ impl Device {
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
         let (mips, layers) = (info.mips as i32, info.layers as i32);
         let samples = info.samples as i32;
-        let storage = self.at(42, "GL_ARB_texture_storage");
+        let storage = self.has(42, "GL_ARB_texture_storage");
         unsafe {
             drain(gl);
             let raw = gl.create_texture()?;
@@ -585,30 +585,30 @@ impl Device {
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
-        let s3tc = self.at(99, "GL_EXT_texture_compression_s3tc");
+        let s3tc = self.has(99, "GL_EXT_texture_compression_s3tc");
         let present = match format {
             format::BC1_UNORM | format::BC2_UNORM | format::BC3_UNORM => s3tc,
             format::BC1_SRGB | format::BC2_SRGB | format::BC3_SRGB => {
-                s3tc && self.at(99, "GL_EXT_texture_sRGB")
+                s3tc && self.has(99, "GL_EXT_texture_sRGB")
             }
             format::BC6H_UFLOAT..=format::BC7_SRGB => {
-                self.at(42, "GL_ARB_texture_compression_bptc")
+                self.has(42, "GL_ARB_texture_compression_bptc")
             }
             format::ETC2_RGB8_UNORM..=format::EAC_RG11_SNORM => {
-                self.at(43, "GL_ARB_ES3_compatibility")
+                self.has(43, "GL_ARB_ES3_compatibility")
             }
             format::ASTC_4X4_UNORM..=format::ASTC_12X12_FLOAT => {
-                self.at(99, "GL_KHR_texture_compression_astc_ldr")
+                self.has(99, "GL_KHR_texture_compression_astc_ldr")
             }
-            format::B5G6R5_UNORM => self.at(41, "GL_ARB_ES2_compatibility"),
-            format::S8_UINT => self.at(44, "GL_ARB_texture_stencil8"),
+            format::B5G6R5_UNORM => self.has(41, "GL_ARB_ES2_compatibility"),
+            format::S8_UINT => self.has(44, "GL_ARB_texture_stencil8"),
             _ => true,
         };
         let [internal, kind, _] = format::gl(format);
         if !present || internal == 0 {
             return 0;
         }
-        let views = self.at(43, "GL_ARB_texture_view") && self.at(42, "GL_ARB_texture_storage");
+        let views = self.has(43, "GL_ARB_texture_view") && self.has(42, "GL_ARB_texture_storage");
         let base = usage::SAMPLED | if views { usage::VIEW } else { 0 };
         let copies = usage::COPY_SRC | usage::COPY_DST;
         match kind {
@@ -645,7 +645,7 @@ impl Device {
                 if !unrenderable {
                     u |= usage::COLOR | usage::COPY_SRC;
                 }
-                if !unstorable && self.at(43, "GL_ARB_shader_storage_buffer_object") {
+                if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
                     u |= usage::STORAGE;
                 }
                 u
@@ -943,7 +943,7 @@ impl Device {
             &self.gl,
             &self.extra,
             &caps,
-            &|v, e| self.at(v, e),
+            &|v, e| self.has(v, e),
             self.units.max(1),
         );
         state.clear(&self.gl);
@@ -952,7 +952,7 @@ impl Device {
                 &self.gl,
                 &self.extra,
                 &caps,
-                &|v, e| self.at(v, e),
+                &|v, e| self.has(v, e),
                 self.units.max(1),
             )
         };

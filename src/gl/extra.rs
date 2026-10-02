@@ -92,11 +92,11 @@ unsafe fn cast<F>(p: *const c_void) -> F {
 impl Extra {
     pub fn load(
         proc: &dyn Fn(&str) -> *const c_void,
-        at: &dyn Fn(u32, &str) -> bool,
+        has: &dyn Fn(u32, &str) -> bool,
     ) -> Result<Self, String> {
         let get = |name, version, extension| {
             let p = proc(name);
-            (at(version, extension) && !p.is_null()).then_some(p)
+            (has(version, extension) && !p.is_null()).then_some(p)
         };
         let need = |name: &str| {
             let p = proc(name);

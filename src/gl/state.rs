@@ -160,7 +160,7 @@ impl State {
         gl: &glow::Context,
         extra: &Extra,
         caps: &Caps,
-        at: &dyn Fn(u32, &str) -> bool,
+        has: &dyn Fn(u32, &str) -> bool,
         units: u32,
     ) -> Self {
         unsafe {
@@ -251,7 +251,7 @@ impl State {
             let targets: Vec<u32> = TARGETS
                 .into_iter()
                 .filter(|&t| {
-                    t != glow::TEXTURE_CUBE_MAP_ARRAY || at(40, "GL_ARB_texture_cube_map_array")
+                    t != glow::TEXTURE_CUBE_MAP_ARRAY || has(40, "GL_ARB_texture_cube_map_array")
                 })
                 .collect();
             let units = (0..units)
@@ -263,7 +263,7 @@ impl State {
                 .collect();
             gl.active_texture(active as u32);
             let mut pixels: Vec<u32> = PIXELS.to_vec();
-            if at(42, "GL_ARB_compressed_texture_pixel_storage") {
+            if has(42, "GL_ARB_compressed_texture_pixel_storage") {
                 pixels.extend(BLOCKS);
             }
             let pixels = pixels.into_iter().map(|p| (p, int(p))).collect();
