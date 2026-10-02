@@ -455,6 +455,10 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        assert!(
+            memory != memory::TRANSIENT,
+            "transient memory is for textures"
+        );
         let buffer = self.allocate(size, memory, self.usage())?;
         Ok(self.insert_buffer(buffer))
     }
@@ -581,6 +585,7 @@ impl Device {
                 address,
                 data: pointer,
                 own: true,
+                device: false,
             }))
         }
     }
@@ -614,6 +619,11 @@ impl Device {
         shared: bool,
         fd: Option<i32>,
     ) -> Result<u32, String> {
+        assert!(
+            memory != memory::TRANSIENT,
+            "transient memory is for textures"
+        );
+        let device = memory == memory::DEVICE;
         let index = self.memory_type(!0, memory)?;
         let kind = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         let mut flags =
@@ -651,6 +661,7 @@ impl Device {
                 memory,
                 data,
                 shared,
+                device,
             }))
         }
     }
@@ -716,6 +727,7 @@ impl Device {
                 address,
                 data: std::ptr::null_mut(),
                 own: true,
+                device: false,
             }))
         }
     }
@@ -954,6 +966,7 @@ impl Device {
                 address,
                 data,
                 own: true,
+                device: h.device,
             }))
         }
     }
@@ -992,6 +1005,7 @@ impl Device {
         memory: u32,
         usage: vk::BufferUsageFlags,
     ) -> Result<Buffer, String> {
+        let device = memory == memory::DEVICE;
         unsafe {
             let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
             let info = self.buffer_info(size, usage, &mut wide);
@@ -1028,6 +1042,7 @@ impl Device {
                 address: 0,
                 data: std::ptr::null_mut(),
                 own: true,
+                device,
             };
             if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
                 self.free_buffer(&buffer);
@@ -1288,6 +1303,7 @@ impl Device {
             address,
             data: std::ptr::null_mut(),
             own: false,
+            device: false,
         })
     }
 
@@ -1316,7 +1332,9 @@ impl Device {
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
-        self.res.buffers.get(buffer).data
+        let b = self.res.buffers.get(buffer);
+        assert!(!b.device, "map of a device buffer");
+        b.data
     }
 
     pub fn unmap(&self, _buffer: u32) {}

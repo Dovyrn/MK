@@ -6,4 +6,5 @@ pub struct Buffer {
     pub address: u64,
     pub data: *mut u8,
     pub own: bool,
+    pub device: bool,
 }
