@@ -14,8 +14,8 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{self, State, binding, buffer};
 use crate::gl::texture::Texture;
 use crate::{
-    Caps, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo,
-    ViewInfo, address, border, dimension, filter, format, memory, query, usage,
+    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo,
+    address, border, dimension, filter, format, memory, query, usage,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -909,32 +909,7 @@ impl Device {
         }
     }
 
-    pub fn submit(
-        &mut self,
-        queue: usize,
-        commands: &Commands,
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
-    ) -> Result<(), String> {
-        self.replay(
-            queue,
-            (commands.bytes(), commands.natives()),
-            waits,
-            signals,
-        )
-    }
-
-    pub fn submit_bytes(
-        &mut self,
-        queue: usize,
-        commands: &[u8],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
-    ) -> Result<(), String> {
-        self.replay(queue, (commands, &[]), waits, signals)
-    }
-
-    fn replay(
+    pub(crate) fn replay(
         &mut self,
         queue: usize,
         (commands, natives): (&[u8], &[Callback]),

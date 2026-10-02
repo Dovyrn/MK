@@ -20,6 +20,7 @@ mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod slots;
+mod submit;
 mod table;
 #[cfg(feature = "vk")]
 pub mod vk;

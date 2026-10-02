@@ -1,5 +1,6 @@
 use crate::caps;
 use crate::check::Check;
+use crate::mtl::Callback;
 use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
@@ -11,10 +12,9 @@ use crate::mtl::resources::Resources;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo,
-    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, ViewInfo, accel,
-    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
-    usage,
+    AccelInfo, Caps, ColorTarget, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo, RenderInfo,
+    SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, ViewInfo, accel, address,
+    blend, border, dimension, fill, filter, format, index, mask, memory, query, topology, usage,
 };
 use dispatch2::DispatchData;
 use objc2::AllocAnyThread;
@@ -1650,33 +1650,15 @@ impl Device {
         Ok(done)
     }
 
-    pub fn submit(
+    pub(crate) fn replay(
         &mut self,
         queue: usize,
-        commands: &Commands,
+        (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Check::run(
-            commands.bytes(),
-            commands.natives().len(),
-            &self.caps(),
-            &self.res.table,
-        )?;
+        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
         self.collect();
-        let commands = (commands.bytes(), commands.natives());
-        self.queues[queue].submit(&self.raw, &self.res, commands, waits, signals)
-    }
-
-    pub fn submit_bytes(
-        &mut self,
-        queue: usize,
-        commands: &[u8],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
-    ) -> Result<(), String> {
-        Check::run(commands, 0, &self.caps(), &self.res.table)?;
-        self.collect();
-        self.queues[queue].submit(&self.raw, &self.res, (commands, &[]), waits, signals)
+        self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)
     }
 }

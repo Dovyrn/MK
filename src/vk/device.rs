@@ -1,5 +1,6 @@
 use crate::caps;
 use crate::check::Check;
+use crate::vk::Callback;
 use crate::vk::accel::Accel;
 use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
@@ -12,7 +13,7 @@ use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, aspect, count};
 use crate::{
-    AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
+    AccelInfo, Caps, ColorTarget, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo, RayInfo,
     RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address, border,
     dimension, fill, filter, format, index, memory, query, token, topology, usage,
 };
@@ -2406,19 +2407,14 @@ impl Device {
         }
     }
 
-    pub fn submit(
+    pub(crate) fn replay(
         &mut self,
         queue: usize,
-        commands: &Commands,
+        (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Check::run(
-            commands.bytes(),
-            commands.natives().len(),
-            &self.caps(),
-            &self.res.table,
-        )?;
+        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
         self.collect();
         self.queues[queue].submit(
             &self.raw,
@@ -2426,28 +2422,7 @@ impl Device {
             self.layout,
             self.bindless.set,
             &self.res,
-            (commands.bytes(), commands.natives()),
-            waits,
-            signals,
-        )
-    }
-
-    pub fn submit_bytes(
-        &mut self,
-        queue: usize,
-        commands: &[u8],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
-    ) -> Result<(), String> {
-        Check::run(commands, 0, &self.caps(), &self.res.table)?;
-        self.collect();
-        self.queues[queue].submit(
-            &self.raw,
-            &self.ext,
-            self.layout,
-            self.bindless.set,
-            &self.res,
-            (commands, &[]),
+            (commands, natives),
             waits,
             signals,
         )
