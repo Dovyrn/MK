@@ -186,7 +186,7 @@ impl Device {
             memory::DEVICE => (0, glow::STATIC_DRAW),
             memory::UPLOAD => (glow::MAP_WRITE_BIT, glow::STREAM_DRAW),
             memory::READBACK => (glow::MAP_READ_BIT, glow::STREAM_READ),
-            memory::TRANSIENT => return Err("memoryless storage is not supported".into()),
+            memory::TRANSIENT => panic!("transient memory is for textures"),
             m => panic!("unknown memory {m}"),
         };
         let length =
@@ -258,7 +258,8 @@ impl Device {
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
         let b = self.res.buffers.get(buffer);
-        if b.persistent || b.memory == memory::DEVICE || !b.data.get().is_null() {
+        assert!(b.memory != memory::DEVICE, "map of a device buffer");
+        if b.persistent || !b.data.get().is_null() {
             return b.data.get();
         }
         let access = match b.memory {
