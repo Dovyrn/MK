@@ -11,7 +11,7 @@ use crate::gl::resources::Resources;
 use crate::gl::texture::Texture;
 use crate::{
     Caps, Command, Commands, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo,
-    TextureInfo, ViewInfo, address, border, dimension, filter, format, memory, query,
+    TextureInfo, ViewInfo, address, border, dimension, filter, format, memory, query, usage,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -409,16 +409,25 @@ impl Device {
         if !self.at(42, "GL_ARB_texture_storage") {
             return Err("textures need ARB_texture_storage".into());
         }
-        let [internal, _, _] = format::gl(info.format);
-        if internal == 0 {
+        let supported = self.format_usage(info.format);
+        if supported == 0 {
             return Err(format!("format {} is not supported on GL", info.format));
         }
+        if info.usage & !supported != 0 {
+            return Err(format!(
+                "usage {:#x} is not supported for format {}",
+                info.usage & !supported,
+                info.format
+            ));
+        }
+        let [internal, _, _] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
         let gl = &self.gl;
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
         let (mips, layers) = (info.mips as i32, info.layers as i32);
         let samples = info.samples as i32;
         unsafe {
+            drain(gl);
             let raw = gl.create_texture()?;
             gl.bind_texture(kind, Some(raw));
             match kind {
@@ -466,25 +475,100 @@ impl Device {
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
-        todo!("format_usage {format}")
+        let s3tc = self.at(99, "GL_EXT_texture_compression_s3tc");
+        let present = match format {
+            format::BC1_UNORM | format::BC2_UNORM | format::BC3_UNORM => s3tc,
+            format::BC1_SRGB | format::BC2_SRGB | format::BC3_SRGB => {
+                s3tc && self.at(99, "GL_EXT_texture_sRGB")
+            }
+            format::BC6H_UFLOAT..=format::BC7_SRGB => {
+                self.at(42, "GL_ARB_texture_compression_bptc")
+            }
+            format::ETC2_RGB8_UNORM..=format::EAC_RG11_SNORM => {
+                self.at(43, "GL_ARB_ES3_compatibility")
+            }
+            format::ASTC_4X4_UNORM..=format::ASTC_12X12_FLOAT => {
+                self.at(99, "GL_KHR_texture_compression_astc_ldr")
+            }
+            format::B5G6R5_UNORM => self.at(41, "GL_ARB_ES2_compatibility"),
+            format::S8_UINT => self.at(44, "GL_ARB_texture_stencil8"),
+            _ => true,
+        };
+        let [internal, kind, _] = format::gl(format);
+        if !present || internal == 0 || !self.at(42, "GL_ARB_texture_storage") {
+            return 0;
+        }
+        let base = usage::SAMPLED
+            | if self.at(43, "GL_ARB_texture_view") {
+                usage::VIEW
+            } else {
+                0
+            };
+        let copies = usage::COPY_SRC | usage::COPY_DST;
+        match kind {
+            0 => base | usage::COPY_DST,
+            glow::DEPTH_STENCIL if format == format::D24_UNORM_S8 => base | usage::DEPTH,
+            glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
+                base | usage::DEPTH | copies
+            }
+            _ => {
+                let unrenderable = matches!(
+                    format,
+                    format::R8_SNORM
+                        | format::RG8_SNORM
+                        | format::RGBA8_SNORM
+                        | format::R16_SNORM
+                        | format::RG16_SNORM
+                        | format::RGBA16_SNORM
+                        | format::RGB9E5_FLOAT
+                        | format::RGB32_UINT
+                        | format::RGB32_SINT
+                        | format::RGB32_FLOAT
+                );
+                let unstorable = matches!(
+                    format,
+                    format::RGBA8_SRGB
+                        | format::BGRA8_SRGB
+                        | format::B5G6R5_UNORM
+                        | format::RGB9E5_FLOAT
+                        | format::RGB32_UINT
+                        | format::RGB32_SINT
+                        | format::RGB32_FLOAT
+                );
+                let mut u = base | usage::COPY_DST;
+                if !unrenderable {
+                    u |= usage::COLOR | usage::COPY_SRC;
+                }
+                if !unstorable && self.at(43, "GL_ARB_shader_storage_buffer_object") {
+                    u |= usage::STORAGE;
+                }
+                u
+            }
+        }
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
         let view = self.extra.view.ok_or("texture views need GL 4.3")?;
         let parent = self.res.textures.get(texture);
+        let supported = self.format_usage(info.format);
+        if supported & usage::VIEW == 0 || info.usage & !supported != 0 {
+            return Err(format!(
+                "usage {:#x} is not supported for a view of format {}",
+                info.usage, info.format
+            ));
+        }
         let [internal, _, _] = format::gl(info.format);
-        let kind = target(
-            info.dimension,
-            if parent.target == glow::TEXTURE_2D_MULTISAMPLE {
-                2
-            } else {
-                1
-            },
+        let multisample = matches!(
+            parent.target,
+            glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
         );
+        let kind = target(info.dimension, if multisample { 2 } else { 1 });
+        let gl = &self.gl;
         unsafe {
-            let name = self.gl.create_texture()?.0.get();
+            drain(gl);
+            let raw = gl.create_texture()?;
             view(
-                name,
+                raw.0.get(),
                 kind,
                 parent.raw.map_or(0, |t| t.0.get()),
                 internal,
@@ -493,8 +577,13 @@ impl Device {
                 info.base_layer,
                 info.layers,
             );
+            let error = gl.get_error();
+            if error != glow::NO_ERROR {
+                gl.delete_texture(raw);
+                return Err(format!("texture view failed ({error:#x})"));
+            }
             Ok(self.res.textures.insert(Texture {
-                raw: std::num::NonZeroU32::new(name).map(glow::NativeTexture),
+                raw: Some(raw),
                 target: kind,
                 format: info.format,
                 own: true,
