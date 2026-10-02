@@ -1503,7 +1503,10 @@ impl Device {
                 .create_graphics_pipelines(self.cache, &[pipeline_info], None);
             self.raw.destroy_shader_module(module, None);
             let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
-            Ok(self.res.renders.insert(pipeline))
+            let topology = vertex.map_or(vk::PrimitiveTopology::TRIANGLE_LIST, |v| {
+                vk::PrimitiveTopology::from_raw(v.topology as i32)
+            });
+            Ok(self.res.renders.insert((pipeline, topology)))
         }
     }
 
@@ -1551,7 +1554,7 @@ impl Device {
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
         self.defer(move |d| {
-            let pipeline = d.res.renders.remove(pipeline);
+            let (pipeline, _) = d.res.renders.remove(pipeline);
             unsafe { d.raw.destroy_pipeline(pipeline, None) };
         });
     }
@@ -2128,7 +2131,7 @@ impl Device {
         let pipeline = if stages == vk::ShaderStageFlags::COMPUTE {
             *self.res.pipelines.get(pipeline)
         } else {
-            *self.res.renders.get(pipeline)
+            self.res.renders.get(pipeline).0
         };
         let mut bound = ffi::PipelineInfo {
             s_type: ffi::PIPELINE,
@@ -2342,7 +2345,7 @@ impl Drop for Device {
             for (pipeline, _) in self.res.rays.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for pipeline in self.res.renders.drain() {
+            for (pipeline, _) in self.res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
             for pipeline in self.res.pipelines.drain() {

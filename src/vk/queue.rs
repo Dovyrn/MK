@@ -92,6 +92,7 @@ impl Queue {
                 bound: (vk::Pipeline::null(), vk::Pipeline::null()),
                 rate: None,
                 scope: "outside",
+                seeded: false,
             }
             .run(heap, commands);
             let ended = unsafe { device.end_command_buffer(frame.buffer) };

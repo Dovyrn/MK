@@ -12,7 +12,7 @@ pub struct Resources {
     pub textures: Slots<Texture>,
     pub samplers: Slots<vk::Sampler>,
     pub pipelines: Slots<vk::Pipeline>,
-    pub renders: Slots<vk::Pipeline>,
+    pub renders: Slots<(vk::Pipeline, vk::PrimitiveTopology)>,
     pub depths: Slots<DepthInfo>,
     pub heaps: Slots<Heap>,
     pub accels: Slots<Accel>,

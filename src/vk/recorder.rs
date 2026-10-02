@@ -27,6 +27,7 @@ pub struct Recorder<'a> {
     pub bound: (vk::Pipeline, vk::Pipeline),
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub scope: &'static str,
+    pub seeded: bool,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -576,9 +577,13 @@ impl Recorder<'_> {
                     };
                     d.cmd_set_viewport_with_count(b, &[viewport]);
                     d.cmd_set_scissor_with_count(b, &[area]);
+                    d.cmd_set_line_width(b, 1.0);
+                    if self.seeded {
+                        return Ok(());
+                    }
+                    self.seeded = true;
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
                     d.cmd_set_front_face(b, vk::FrontFace::COUNTER_CLOCKWISE);
-                    d.cmd_set_primitive_topology(b, vk::PrimitiveTopology::TRIANGLE_LIST);
                     d.cmd_set_depth_bias_enable(b, false);
                     d.cmd_set_depth_bias(b, 0.0, 0.0, 0.0);
                     d.cmd_set_blend_constants(b, &[0.0; 4]);
@@ -597,8 +602,10 @@ impl Recorder<'_> {
                 }
                 Command::EndRender => d.cmd_end_rendering(b),
                 Command::BindRenderPipeline { pipeline } => {
-                    self.bound.1 = *self.res.renders.get(pipeline);
-                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, self.bound.1)
+                    let (raw, topology) = *self.res.renders.get(pipeline);
+                    self.bound.1 = raw;
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
+                    d.cmd_set_primitive_topology(b, topology);
                 }
                 Command::SetViewport {
                     x,
