@@ -1,6 +1,7 @@
 use mk::{
-    ColorTarget, Command, Commands, ComputeInfo, RenderInfo, SamplerInfo, TextureInfo, access,
-    address, filter, format, layout, load, memory, stage, store, usage,
+    ColorAttachment, ColorTarget, Command, Commands, ComputeInfo, RenderInfo, SamplerInfo,
+    TextureBarrier, TextureCopy, TextureInfo, access, address, filter, format, layout, memory,
+    stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -14,10 +15,16 @@ const CODE: &[u8] = include_bytes!("../shaders/out/slots.spv");
 const CODE: &[u8] = include_bytes!("../shaders/out/slots.gl");
 
 fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32, u32)) {
-    let all = !0;
-    c.texture_barrier(
-        texture, from.0, from.1, to.0, to.1, from.2, to.2, 0, all, 0, all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture,
+        src_stage: from.0,
+        src_access: from.1,
+        dst_stage: to.0,
+        dst_access: to.1,
+        before: from.2,
+        after: to.2,
+        ..Default::default()
+    });
 }
 
 fn main() {
@@ -87,22 +94,13 @@ fn main() {
         (0, 0, layout::UNDEFINED),
         (stage::COPY, access::COPY_WRITE, layout::COPY_DST),
     );
-    c.copy_buffer_to_texture(
-        upload,
-        0,
-        0,
-        0,
-        source,
-        layout::COPY_DST,
-        0,
-        0,
-        0,
-        0,
-        0,
-        4,
-        1,
-        1,
-    );
+    c.copy_buffer_to_texture(&TextureCopy {
+        buffer: upload,
+        texture: source,
+        layout: layout::COPY_DST,
+        width: 4,
+        ..Default::default()
+    });
     barrier(
         &mut c,
         source,
@@ -120,19 +118,10 @@ fn main() {
         (0, 0, layout::UNDEFINED),
         (stage::COLOR, access::COLOR_WRITE, layout::COLOR),
     );
-    c.color_attachment(
-        0,
-        target,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        !0,
-        0,
-    );
+    c.color_attachment(&ColorAttachment {
+        texture: target,
+        ..Default::default()
+    });
     c.begin_render(4, 4, 1);
     c.bind_render_pipeline(draw);
     c.bind_uniform(0, upload, at, 16);
@@ -147,22 +136,14 @@ fn main() {
         (stage::COLOR, access::COLOR_WRITE, layout::COLOR),
         (stage::COPY, access::COPY_READ, layout::COPY_SRC),
     );
-    c.copy_texture_to_buffer(
-        target,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        4,
-        4,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: target,
+        layout: layout::COPY_SRC,
+        width: 4,
+        height: 4,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,
@@ -229,22 +210,14 @@ fn main() {
         (stage::COPY, access::COPY_READ, layout::COPY_SRC),
     );
     c.copy_buffer(data, 0, out, 0, 64 * 4);
-    c.copy_texture_to_buffer(
-        image,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        4,
-        1,
-        1,
-        out,
-        256,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: image,
+        layout: layout::COPY_SRC,
+        width: 4,
+        buffer: out,
+        offset: 256,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

@@ -1,6 +1,6 @@
 use mk::{
-    ColorTarget, Commands, MeshInfo, TextureInfo, access, format, layout, load, memory, stage,
-    store, usage,
+    ColorAttachment, ColorTarget, Commands, MeshInfo, TextureBarrier, TextureCopy, TextureInfo,
+    access, format, layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -50,69 +50,44 @@ fn main() {
         }
     };
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
-    c.texture_barrier(
-        color,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.color_attachment(
-        0,
-        color,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-        !0,
-        0,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        b: 1.0,
+        a: 1.0,
+        ..Default::default()
+    });
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(pipeline);
     c.push_constants(0, &0.5f32.to_le_bytes());
     c.draw_mesh(1, 1, 1);
     c.end_render();
-    c.texture_barrier(
-        color,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COLOR,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_texture_to_buffer(
-        color,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: color,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

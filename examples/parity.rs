@@ -1,4 +1,4 @@
-use mk::{Command, Commands};
+use mk::{Command, Commands, TextureBarrier, Viewport};
 
 fn main() {
     let path = std::env::args()
@@ -17,9 +17,24 @@ fn main() {
     c.begin_label("frame");
     c.end_label();
     c.end_compute();
-    c.set_viewport(0.5, 1.5, 64.0, 32.0, 0.0, 1.0);
+    c.set_viewport(&Viewport {
+        x: 0.5,
+        y: 1.5,
+        width: 64.0,
+        height: 32.0,
+        ..Default::default()
+    });
     c.draw_indexed(3, 1, 0, -5, 2);
-    c.texture_barrier(1, 2, 3, 4, 5, 6, 7, 0, !0, 0, !0);
+    c.texture_barrier(&TextureBarrier {
+        texture: 1,
+        src_stage: 2,
+        src_access: 3,
+        dst_stage: 4,
+        dst_access: 5,
+        before: 6,
+        after: 7,
+        ..Default::default()
+    });
     assert_eq!(
         c.bytes(),
         &java[..],

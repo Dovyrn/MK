@@ -1,7 +1,7 @@
 #[cfg(feature = "mtl")]
 use mk::{
-    ColorTarget, Commands, RenderInfo, TextureInfo, access, format, layout, load, memory, stage,
-    store, usage,
+    ColorAttachment, ColorTarget, Commands, RenderInfo, TextureBarrier, TextureCopy, TextureInfo,
+    Viewport, access, format, layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -46,70 +46,49 @@ fn main() {
         })
         .unwrap();
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
-    c.texture_barrier(
-        color,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.color_attachment(
-        0,
-        color,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-        !0,
-        0,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        b: 1.0,
+        a: 1.0,
+        ..Default::default()
+    });
     c.rate_map(map);
     c.begin_render(screen, screen, 1);
-    c.set_viewport(0.0, 0.0, screen as f32, screen as f32, 0.0, 1.0);
+    c.set_viewport(&Viewport {
+        width: screen as f32,
+        height: screen as f32,
+        ..Default::default()
+    });
     c.bind_render_pipeline(pipeline);
     c.draw(3, 1, 0, 0);
     c.end_render();
-    c.texture_barrier(
-        color,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COLOR,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_texture_to_buffer(
-        color,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        w,
-        h,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: color,
+        layout: layout::COPY_SRC,
+        width: w,
+        height: h,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

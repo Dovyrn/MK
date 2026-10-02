@@ -1,6 +1,40 @@
-use crate::{Caps, slot};
+use crate::{Caps, Scissor, Viewport, slot};
 
 include!(concat!(env!("OUT_DIR"), "/command.rs"));
+
+fn word(c: &[u8], i: usize) -> [u8; 4] {
+    c[i * 4..i * 4 + 4].try_into().unwrap()
+}
+
+pub fn viewports(data: &[u8]) -> Vec<Viewport> {
+    data.chunks(24)
+        .map(|c| {
+            let f = |i| f32::from_le_bytes(word(c, i));
+            Viewport {
+                x: f(0),
+                y: f(1),
+                width: f(2),
+                height: f(3),
+                near: f(4),
+                far: f(5),
+            }
+        })
+        .collect()
+}
+
+pub fn scissors(data: &[u8]) -> Vec<Scissor> {
+    data.chunks(16)
+        .map(|c| {
+            let u = |i| u32::from_le_bytes(word(c, i));
+            Scissor {
+                x: u(0),
+                y: u(1),
+                width: u(2),
+                height: u(3),
+            }
+        })
+        .collect()
+}
 
 fn rects(data: &[u8], size: usize, count: u32) {
     assert!(
@@ -76,8 +110,8 @@ impl Command<'_> {
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
                 );
             }
-            Command::SetViewports { data } => rects(data, 24, caps.viewports),
-            Command::SetScissors { data } => rects(data, 16, caps.viewports),
+            Command::SetViewports { viewports } => rects(viewports, 24, caps.viewports),
+            Command::SetScissors { scissors } => rects(scissors, 16, caps.viewports),
             Command::WriteTimestamp { stage, .. } => {
                 assert!(
                     stage.count_ones() == 1,

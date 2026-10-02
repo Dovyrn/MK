@@ -64,88 +64,25 @@ fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["d
 [[command]]
 name = "texture_barrier"
 scope = "compute outside"
-fields = [
-    ["texture", "u32"],
-    ["src_stage", "u32"],
-    ["src_access", "u32"],
-    ["dst_stage", "u32"],
-    ["dst_access", "u32"],
-    ["before", "u32"],
-    ["after", "u32"],
-    ["base_mip", "u32"],
-    ["mips", "u32"],
-    ["base_layer", "u32"],
-    ["layers", "u32"],
-]
+info = "TextureBarrier"
 
 [[command]]
 name = "copy_buffer_to_texture"
 scope = "compute"
-fields = [
-    ["buffer", "u32"],
-    ["offset", "u64"],
-    ["row_length", "u32"],
-    ["row_count", "u32"],
-    ["texture", "u32"],
-    ["layout", "u32"],
-    ["mip", "u32"],
-    ["layer", "u32"],
-    ["x", "u32"],
-    ["y", "u32"],
-    ["z", "u32"],
-    ["width", "u32"],
-    ["height", "u32"],
-    ["depth", "u32"],
-]
+info = "TextureCopy"
 
 [[command]]
 name = "copy_texture_to_buffer"
 scope = "compute"
-fields = [
-    ["texture", "u32"],
-    ["layout", "u32"],
-    ["mip", "u32"],
-    ["layer", "u32"],
-    ["x", "u32"],
-    ["y", "u32"],
-    ["z", "u32"],
-    ["width", "u32"],
-    ["height", "u32"],
-    ["depth", "u32"],
-    ["buffer", "u32"],
-    ["offset", "u64"],
-    ["row_length", "u32"],
-    ["row_count", "u32"],
-]
+info = "TextureCopy"
 
 [[command]]
 name = "color_attachment"
-fields = [
-    ["index", "u32"],
-    ["texture", "u32"],
-    ["layout", "u32"],
-    ["load", "u32"],
-    ["store", "u32"],
-    ["r", "f32"],
-    ["g", "f32"],
-    ["b", "f32"],
-    ["a", "f32"],
-    ["resolve", "u32"],
-    ["resolve_layout", "u32"],
-]
+info = "ColorAttachment"
 
 [[command]]
 name = "depth_attachment"
-fields = [
-    ["texture", "u32"],
-    ["layout", "u32"],
-    ["load", "u32"],
-    ["store", "u32"],
-    ["depth", "f32"],
-    ["stencil_load", "u32"],
-    ["stencil_store", "u32"],
-    ["stencil", "u32"],
-]
+info = "DepthAttachment"
 
 [[command]]
 name = "begin_render"
@@ -162,7 +99,7 @@ fields = [["pipeline", "u32"]]
 [[command]]
 name = "set_viewport"
 scope = "render"
-fields = [["x", "f32"], ["y", "f32"], ["width", "f32"], ["height", "f32"], ["near", "f32"], ["far", "f32"]]
+info = "Viewport"
 
 [[command]]
 name = "set_scissor"
@@ -342,19 +279,7 @@ fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
 [[command]]
 name = "execute_generated"
 backend = "vk"
-fields = [
-    ["layout", "u32"],
-    ["indirect", "u32"],
-    ["offset", "u64"],
-    ["size", "u64"],
-    ["preprocess", "u32"],
-    ["preprocess_offset", "u64"],
-    ["preprocess_size", "u64"],
-    ["sequences", "u32"],
-    ["count", "u32"],
-    ["count_offset", "u64"],
-    ["draws", "u32"],
-]
+info = "GeneratedInfo"
 
 [[command]]
 name = "bind_ray_pipeline"
@@ -364,27 +289,7 @@ fields = [["pipeline", "u32"]]
 [[command]]
 name = "trace_rays"
 backend = "vk"
-fields = [
-    ["raygen", "u32"],
-    ["raygen_offset", "u64"],
-    ["raygen_stride", "u64"],
-    ["raygen_size", "u64"],
-    ["miss", "u32"],
-    ["miss_offset", "u64"],
-    ["miss_stride", "u64"],
-    ["miss_size", "u64"],
-    ["hit", "u32"],
-    ["hit_offset", "u64"],
-    ["hit_stride", "u64"],
-    ["hit_size", "u64"],
-    ["callable", "u32"],
-    ["callable_offset", "u64"],
-    ["callable_stride", "u64"],
-    ["callable_size", "u64"],
-    ["width", "u32"],
-    ["height", "u32"],
-    ["depth", "u32"],
-]
+info = "TraceInfo"
 
 [[command]]
 name = "rate_map"
@@ -416,12 +321,12 @@ fields = [["src", "u32"], ["dst", "u32"], ["compact", "u32"]]
 [[command]]
 name = "set_viewports"
 scope = "render"
-fields = [["data", "bytes"]]
+fields = [["viewports", "[Viewport]"]]
 
 [[command]]
 name = "set_scissors"
 scope = "render"
-fields = [["data", "bytes"]]
+fields = [["scissors", "[Scissor]"]]
 
 [[command]]
 name = "set_depth_bounds"

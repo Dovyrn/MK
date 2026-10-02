@@ -1,5 +1,5 @@
 #[cfg(feature = "vk")]
-use mk::{AccelInfo, Commands, RayInfo, Triangles, access, memory, stage};
+use mk::{AccelInfo, Commands, RayInfo, TraceInfo, Triangles, access, memory, stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -111,27 +111,23 @@ fn main() {
     c.end_compute();
     c.bind_ray_pipeline(pipeline);
     c.push_constants(0, &push);
-    c.trace_rays(
-        table,
-        0,
-        region,
-        region,
-        table,
-        region,
-        stride,
-        stride,
-        table,
-        region * 2,
-        stride,
-        stride,
-        !0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-    );
+    c.trace_rays(&TraceInfo {
+        raygen: table,
+        raygen_stride: region,
+        raygen_size: region,
+        miss: table,
+        miss_offset: region,
+        miss_stride: stride,
+        miss_size: stride,
+        hit: table,
+        hit_offset: region * 2,
+        hit_stride: stride,
+        hit_size: stride,
+        callable: !0,
+        width: n,
+        height: n,
+        ..Default::default()
+    });
     c.barrier(
         stage::COMPUTE,
         access::SHADER_WRITE,

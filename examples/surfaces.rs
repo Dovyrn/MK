@@ -1,5 +1,8 @@
 #[cfg(feature = "mtl")]
-use mk::{Commands, TextureInfo, access, format, layout, memory, stage, usage};
+use mk::{
+    Commands, TextureBarrier, TextureCopy, TextureInfo, access, format, layout, memory, stage,
+    usage,
+};
 
 #[path = "support/host.rs"]
 mod host;
@@ -36,60 +39,37 @@ fn main() {
         }
     }
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
-    c.texture_barrier(
-        source,
-        0,
-        0,
-        stage::COPY,
-        access::COPY_WRITE,
-        layout::UNDEFINED,
-        layout::COPY_DST,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: source,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_WRITE,
+        after: layout::COPY_DST,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_buffer_to_texture(
-        upload,
-        0,
-        0,
-        0,
-        source,
-        layout::COPY_DST,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-    );
+    c.copy_buffer_to_texture(&TextureCopy {
+        buffer: upload,
+        texture: source,
+        layout: layout::COPY_DST,
+        width: n,
+        height: n,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,
         stage::COPY,
         access::COPY_READ,
     );
-    c.copy_texture_to_buffer(
-        alias,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: alias,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

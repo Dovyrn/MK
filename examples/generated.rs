@@ -1,7 +1,8 @@
 #[cfg(feature = "vk")]
 use mk::{
-    ColorTarget, Commands, LayoutInfo, RenderInfo, TextureInfo, TokenInfo, VertexAttribute,
-    VertexBuffer, access, format, layout, load, memory, stage, store, token, usage,
+    ColorAttachment, ColorTarget, Commands, GeneratedInfo, LayoutInfo, RenderInfo, TextureBarrier,
+    TextureCopy, TextureInfo, TokenInfo, VertexAttribute, VertexBuffer, access, format, layout,
+    memory, stage, token, usage,
 };
 
 #[path = "support/host.rs"]
@@ -112,81 +113,52 @@ fn main() {
     let size = device.generated_size(commands, pipeline, 2, 0).max(4);
     let preprocess = device.create_buffer(size, memory::DEVICE).unwrap();
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
-    c.texture_barrier(
-        color,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.color_attachment(
-        0,
-        color,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-        !0,
-        0,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        b: 1.0,
+        a: 1.0,
+        ..Default::default()
+    });
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(pipeline);
     c.bind_vertex_buffer(0, vbuf, 0);
-    c.execute_generated(
-        commands,
-        ibuf,
-        0,
-        size_of_val(&sequences) as u64,
+    c.execute_generated(&GeneratedInfo {
+        layout: commands,
+        indirect: ibuf,
+        size: size_of_val(&sequences) as u64,
         preprocess,
-        0,
-        size,
-        2,
-        !0,
-        0,
-        0,
-    );
+        preprocess_size: size,
+        sequences: 2,
+        ..Default::default()
+    });
     c.end_render();
-    c.texture_barrier(
-        color,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COLOR,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_texture_to_buffer(
-        color,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: color,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

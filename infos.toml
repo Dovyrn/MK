@@ -300,3 +300,127 @@ fields = [
     ["functions", "[str]", ""],
     ["indirect", "bool", "false"],
 ]
+
+[[info]]
+name = "TextureBarrier"
+fields = [
+    ["texture", "u32", "0"],
+    ["src_stage", "u32", "0"],
+    ["src_access", "u32", "0"],
+    ["dst_stage", "u32", "0"],
+    ["dst_access", "u32", "0"],
+    ["before", "u32", "layout::UNDEFINED"],
+    ["after", "u32", "layout::UNDEFINED"],
+    ["base_mip", "u32", "0"],
+    ["mips", "u32", "!0"],
+    ["base_layer", "u32", "0"],
+    ["layers", "u32", "!0"],
+]
+
+[[info]]
+name = "TextureCopy"
+fields = [
+    ["buffer", "u32", "0"],
+    ["offset", "u64", "0"],
+    ["row_length", "u32", "0"],
+    ["row_count", "u32", "0"],
+    ["texture", "u32", "0"],
+    ["layout", "u32", "layout::UNDEFINED"],
+    ["mip", "u32", "0"],
+    ["layer", "u32", "0"],
+    ["x", "u32", "0"],
+    ["y", "u32", "0"],
+    ["z", "u32", "0"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+]
+
+[[info]]
+name = "ColorAttachment"
+fields = [
+    ["index", "u32", "0"],
+    ["texture", "u32", "0"],
+    ["layout", "u32", "layout::COLOR"],
+    ["load", "u32", "load::CLEAR"],
+    ["store", "u32", "store::STORE"],
+    ["r", "f32", "0.0"],
+    ["g", "f32", "0.0"],
+    ["b", "f32", "0.0"],
+    ["a", "f32", "0.0"],
+    ["resolve", "u32", "!0"],
+    ["resolve_layout", "u32", "layout::COLOR"],
+]
+
+[[info]]
+name = "DepthAttachment"
+fields = [
+    ["texture", "u32", "0"],
+    ["layout", "u32", "layout::DEPTH"],
+    ["load", "u32", "load::CLEAR"],
+    ["store", "u32", "store::STORE"],
+    ["depth", "f32", "1.0"],
+    ["stencil_load", "u32", "load::DONT_CARE"],
+    ["stencil_store", "u32", "store::DONT_CARE"],
+    ["stencil", "u32", "0"],
+]
+
+[[info]]
+name = "Viewport"
+fields = [
+    ["x", "f32", "0.0"],
+    ["y", "f32", "0.0"],
+    ["width", "f32", "0.0"],
+    ["height", "f32", "0.0"],
+    ["near", "f32", "0.0"],
+    ["far", "f32", "1.0"],
+]
+
+[[info]]
+name = "Scissor"
+fields = [
+    ["x", "u32", "0"],
+    ["y", "u32", "0"],
+    ["width", "u32", "0"],
+    ["height", "u32", "0"],
+]
+
+[[info]]
+name = "GeneratedInfo"
+fields = [
+    ["layout", "u32", "0"],
+    ["indirect", "u32", "0"],
+    ["offset", "u64", "0"],
+    ["size", "u64", "0"],
+    ["preprocess", "u32", "!0"],
+    ["preprocess_offset", "u64", "0"],
+    ["preprocess_size", "u64", "0"],
+    ["sequences", "u32", "0"],
+    ["count", "u32", "!0"],
+    ["count_offset", "u64", "0"],
+    ["draws", "u32", "0"],
+]
+
+[[info]]
+name = "TraceInfo"
+fields = [
+    ["raygen", "u32", "0"],
+    ["raygen_offset", "u64", "0"],
+    ["raygen_stride", "u64", "0"],
+    ["raygen_size", "u64", "0"],
+    ["miss", "u32", "0"],
+    ["miss_offset", "u64", "0"],
+    ["miss_stride", "u64", "0"],
+    ["miss_size", "u64", "0"],
+    ["hit", "u32", "0"],
+    ["hit_offset", "u64", "0"],
+    ["hit_stride", "u64", "0"],
+    ["hit_size", "u64", "0"],
+    ["callable", "u32", "0"],
+    ["callable_offset", "u64", "0"],
+    ["callable_stride", "u64", "0"],
+    ["callable_size", "u64", "0"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+]

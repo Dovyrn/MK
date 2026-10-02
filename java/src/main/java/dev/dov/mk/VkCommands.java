@@ -3,6 +3,7 @@ package dev.dov.mk;
 import static org.lwjgl.system.MemoryUtil.*;
 
 public class VkCommands extends Commands {
+
     public void setLineWidth(float width) {
         var p = head(12, 4);
         memPutFloat(p, width);
@@ -21,19 +22,19 @@ public class VkCommands extends Commands {
         memPutInt(p, views);
     }
 
-    public void executeGenerated(int layout, int indirect, long offset, long size, int preprocess, long preprocessOffset, long preprocessSize, int sequences, int count, long countOffset, int draws) {
+    public void executeGenerated(GeneratedInfo info) {
         var p = head(59, 64);
-        memPutInt(p, layout);
-        memPutInt(p + 4, indirect);
-        memPutLong(p + 8, offset);
-        memPutLong(p + 16, size);
-        memPutInt(p + 24, preprocess);
-        memPutLong(p + 28, preprocessOffset);
-        memPutLong(p + 36, preprocessSize);
-        memPutInt(p + 44, sequences);
-        memPutInt(p + 48, count);
-        memPutLong(p + 52, countOffset);
-        memPutInt(p + 60, draws);
+        memPutInt(p, info.layout);
+        memPutInt(p + 4, info.indirect);
+        memPutLong(p + 8, info.offset);
+        memPutLong(p + 16, info.size);
+        memPutInt(p + 24, info.preprocess);
+        memPutLong(p + 28, info.preprocessOffset);
+        memPutLong(p + 36, info.preprocessSize);
+        memPutInt(p + 44, info.sequences);
+        memPutInt(p + 48, info.count);
+        memPutLong(p + 52, info.countOffset);
+        memPutInt(p + 60, info.draws);
     }
 
     public void bindRayPipeline(int pipeline) {
@@ -41,27 +42,27 @@ public class VkCommands extends Commands {
         memPutInt(p, pipeline);
     }
 
-    public void traceRays(int raygen, long raygenOffset, long raygenStride, long raygenSize, int miss, long missOffset, long missStride, long missSize, int hit, long hitOffset, long hitStride, long hitSize, int callable, long callableOffset, long callableStride, long callableSize, int width, int height, int depth) {
+    public void traceRays(TraceInfo info) {
         var p = head(61, 124);
-        memPutInt(p, raygen);
-        memPutLong(p + 4, raygenOffset);
-        memPutLong(p + 12, raygenStride);
-        memPutLong(p + 20, raygenSize);
-        memPutInt(p + 28, miss);
-        memPutLong(p + 32, missOffset);
-        memPutLong(p + 40, missStride);
-        memPutLong(p + 48, missSize);
-        memPutInt(p + 56, hit);
-        memPutLong(p + 60, hitOffset);
-        memPutLong(p + 68, hitStride);
-        memPutLong(p + 76, hitSize);
-        memPutInt(p + 84, callable);
-        memPutLong(p + 88, callableOffset);
-        memPutLong(p + 96, callableStride);
-        memPutLong(p + 104, callableSize);
-        memPutInt(p + 112, width);
-        memPutInt(p + 116, height);
-        memPutInt(p + 120, depth);
+        memPutInt(p, info.raygen);
+        memPutLong(p + 4, info.raygenOffset);
+        memPutLong(p + 12, info.raygenStride);
+        memPutLong(p + 20, info.raygenSize);
+        memPutInt(p + 28, info.miss);
+        memPutLong(p + 32, info.missOffset);
+        memPutLong(p + 40, info.missStride);
+        memPutLong(p + 48, info.missSize);
+        memPutInt(p + 56, info.hit);
+        memPutLong(p + 60, info.hitOffset);
+        memPutLong(p + 68, info.hitStride);
+        memPutLong(p + 76, info.hitSize);
+        memPutInt(p + 84, info.callable);
+        memPutLong(p + 88, info.callableOffset);
+        memPutLong(p + 96, info.callableStride);
+        memPutLong(p + 104, info.callableSize);
+        memPutInt(p + 112, info.width);
+        memPutInt(p + 116, info.height);
+        memPutInt(p + 120, info.depth);
     }
 
     public void setShadingRate(int width, int height, int primitive, int attachment) {

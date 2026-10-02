@@ -1,6 +1,6 @@
 use mk::{
-    ColorTarget, Commands, RenderInfo, TextureInfo, VertexAttribute, VertexBuffer, access, format,
-    layout, load, memory, query, stage, store, usage,
+    ColorAttachment, ColorTarget, Commands, RenderInfo, TextureBarrier, TextureInfo,
+    VertexAttribute, VertexBuffer, access, format, layout, memory, query, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -106,7 +106,6 @@ fn main() {
     let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
     if let Some(times) = times {
         c.reset_queries(times, 0, 2);
@@ -124,32 +123,18 @@ fn main() {
         c.write_timestamp(times, 1, stage::COMPUTE);
     }
     c.end_compute();
-    c.texture_barrier(
-        color,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.color_attachment(
-        0,
-        color,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        !0,
-        0,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        a: 1.0,
+        ..Default::default()
+    });
     c.occlusion_heap(samples);
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(triangle);

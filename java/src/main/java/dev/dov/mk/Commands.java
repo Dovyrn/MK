@@ -2,11 +2,10 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import lombok.Getter;
-
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import lombok.Getter;
 
 @Getter
 public class Commands {
@@ -117,82 +116,82 @@ public class Commands {
         memPutInt(p + 12, dstAccess);
     }
 
-    public void textureBarrier(int texture, int srcStage, int srcAccess, int dstStage, int dstAccess, int before, int after, int baseMip, int mips, int baseLayer, int layers) {
+    public void textureBarrier(TextureBarrier info) {
         var p = head(14, 44);
-        memPutInt(p, texture);
-        memPutInt(p + 4, srcStage);
-        memPutInt(p + 8, srcAccess);
-        memPutInt(p + 12, dstStage);
-        memPutInt(p + 16, dstAccess);
-        memPutInt(p + 20, before);
-        memPutInt(p + 24, after);
-        memPutInt(p + 28, baseMip);
-        memPutInt(p + 32, mips);
-        memPutInt(p + 36, baseLayer);
-        memPutInt(p + 40, layers);
+        memPutInt(p, info.texture);
+        memPutInt(p + 4, info.srcStage);
+        memPutInt(p + 8, info.srcAccess);
+        memPutInt(p + 12, info.dstStage);
+        memPutInt(p + 16, info.dstAccess);
+        memPutInt(p + 20, info.before);
+        memPutInt(p + 24, info.after);
+        memPutInt(p + 28, info.baseMip);
+        memPutInt(p + 32, info.mips);
+        memPutInt(p + 36, info.baseLayer);
+        memPutInt(p + 40, info.layers);
     }
 
-    public void copyBufferToTexture(int buffer, long offset, int rowLength, int rowCount, int texture, int layout, int mip, int layer, int x, int y, int z, int width, int height, int depth) {
+    public void copyBufferToTexture(TextureCopy info) {
         var p = head(15, 60);
-        memPutInt(p, buffer);
-        memPutLong(p + 4, offset);
-        memPutInt(p + 12, rowLength);
-        memPutInt(p + 16, rowCount);
-        memPutInt(p + 20, texture);
-        memPutInt(p + 24, layout);
-        memPutInt(p + 28, mip);
-        memPutInt(p + 32, layer);
-        memPutInt(p + 36, x);
-        memPutInt(p + 40, y);
-        memPutInt(p + 44, z);
-        memPutInt(p + 48, width);
-        memPutInt(p + 52, height);
-        memPutInt(p + 56, depth);
+        memPutInt(p, info.buffer);
+        memPutLong(p + 4, info.offset);
+        memPutInt(p + 12, info.rowLength);
+        memPutInt(p + 16, info.rowCount);
+        memPutInt(p + 20, info.texture);
+        memPutInt(p + 24, info.layout);
+        memPutInt(p + 28, info.mip);
+        memPutInt(p + 32, info.layer);
+        memPutInt(p + 36, info.x);
+        memPutInt(p + 40, info.y);
+        memPutInt(p + 44, info.z);
+        memPutInt(p + 48, info.width);
+        memPutInt(p + 52, info.height);
+        memPutInt(p + 56, info.depth);
     }
 
-    public void copyTextureToBuffer(int texture, int layout, int mip, int layer, int x, int y, int z, int width, int height, int depth, int buffer, long offset, int rowLength, int rowCount) {
+    public void copyTextureToBuffer(TextureCopy info) {
         var p = head(16, 60);
-        memPutInt(p, texture);
-        memPutInt(p + 4, layout);
-        memPutInt(p + 8, mip);
-        memPutInt(p + 12, layer);
-        memPutInt(p + 16, x);
-        memPutInt(p + 20, y);
-        memPutInt(p + 24, z);
-        memPutInt(p + 28, width);
-        memPutInt(p + 32, height);
-        memPutInt(p + 36, depth);
-        memPutInt(p + 40, buffer);
-        memPutLong(p + 44, offset);
-        memPutInt(p + 52, rowLength);
-        memPutInt(p + 56, rowCount);
+        memPutInt(p, info.buffer);
+        memPutLong(p + 4, info.offset);
+        memPutInt(p + 12, info.rowLength);
+        memPutInt(p + 16, info.rowCount);
+        memPutInt(p + 20, info.texture);
+        memPutInt(p + 24, info.layout);
+        memPutInt(p + 28, info.mip);
+        memPutInt(p + 32, info.layer);
+        memPutInt(p + 36, info.x);
+        memPutInt(p + 40, info.y);
+        memPutInt(p + 44, info.z);
+        memPutInt(p + 48, info.width);
+        memPutInt(p + 52, info.height);
+        memPutInt(p + 56, info.depth);
     }
 
-    public void colorAttachment(int index, int texture, int layout, int load, int store, float r, float g, float b, float a, int resolve, int resolveLayout) {
+    public void colorAttachment(ColorAttachment info) {
         var p = head(17, 44);
-        memPutInt(p, index);
-        memPutInt(p + 4, texture);
-        memPutInt(p + 8, layout);
-        memPutInt(p + 12, load);
-        memPutInt(p + 16, store);
-        memPutFloat(p + 20, r);
-        memPutFloat(p + 24, g);
-        memPutFloat(p + 28, b);
-        memPutFloat(p + 32, a);
-        memPutInt(p + 36, resolve);
-        memPutInt(p + 40, resolveLayout);
+        memPutInt(p, info.index);
+        memPutInt(p + 4, info.texture);
+        memPutInt(p + 8, info.layout);
+        memPutInt(p + 12, info.load);
+        memPutInt(p + 16, info.store);
+        memPutFloat(p + 20, info.r);
+        memPutFloat(p + 24, info.g);
+        memPutFloat(p + 28, info.b);
+        memPutFloat(p + 32, info.a);
+        memPutInt(p + 36, info.resolve);
+        memPutInt(p + 40, info.resolveLayout);
     }
 
-    public void depthAttachment(int texture, int layout, int load, int store, float depth, int stencilLoad, int stencilStore, int stencil) {
+    public void depthAttachment(DepthAttachment info) {
         var p = head(18, 32);
-        memPutInt(p, texture);
-        memPutInt(p + 4, layout);
-        memPutInt(p + 8, load);
-        memPutInt(p + 12, store);
-        memPutFloat(p + 16, depth);
-        memPutInt(p + 20, stencilLoad);
-        memPutInt(p + 24, stencilStore);
-        memPutInt(p + 28, stencil);
+        memPutInt(p, info.texture);
+        memPutInt(p + 4, info.layout);
+        memPutInt(p + 8, info.load);
+        memPutInt(p + 12, info.store);
+        memPutFloat(p + 16, info.depth);
+        memPutInt(p + 20, info.stencilLoad);
+        memPutInt(p + 24, info.stencilStore);
+        memPutInt(p + 28, info.stencil);
     }
 
     public void beginRender(int width, int height, int layers) {
@@ -211,14 +210,14 @@ public class Commands {
         memPutInt(p, pipeline);
     }
 
-    public void setViewport(float x, float y, float width, float height, float near, float far) {
+    public void setViewport(Viewport info) {
         var p = head(22, 24);
-        memPutFloat(p, x);
-        memPutFloat(p + 4, y);
-        memPutFloat(p + 8, width);
-        memPutFloat(p + 12, height);
-        memPutFloat(p + 16, near);
-        memPutFloat(p + 20, far);
+        memPutFloat(p, info.x);
+        memPutFloat(p + 4, info.y);
+        memPutFloat(p + 8, info.width);
+        memPutFloat(p + 12, info.height);
+        memPutFloat(p + 16, info.near);
+        memPutFloat(p + 20, info.far);
     }
 
     public void setScissor(int x, int y, int width, int height) {
@@ -406,16 +405,28 @@ public class Commands {
         memPutLong(p + 16, offset);
     }
 
-    public void setViewports(ByteBuffer data) {
-        var p = head(67, data.remaining());
-        memCopy(memAddress(data), p, data.remaining());
-        Reference.reachabilityFence(data);
+    public void setViewports(Viewport[] viewports) {
+        var p = head(67, viewports.length * 24);
+        for (var i = 0; i < viewports.length; i++) {
+            var q = p + i * 24;
+            memPutFloat(q, viewports[i].x);
+            memPutFloat(q + 4, viewports[i].y);
+            memPutFloat(q + 8, viewports[i].width);
+            memPutFloat(q + 12, viewports[i].height);
+            memPutFloat(q + 16, viewports[i].near);
+            memPutFloat(q + 20, viewports[i].far);
+        }
     }
 
-    public void setScissors(ByteBuffer data) {
-        var p = head(68, data.remaining());
-        memCopy(memAddress(data), p, data.remaining());
-        Reference.reachabilityFence(data);
+    public void setScissors(Scissor[] scissors) {
+        var p = head(68, scissors.length * 16);
+        for (var i = 0; i < scissors.length; i++) {
+            var q = p + i * 16;
+            memPutInt(q, scissors[i].x);
+            memPutInt(q + 4, scissors[i].y);
+            memPutInt(q + 8, scissors[i].width);
+            memPutInt(q + 12, scissors[i].height);
+        }
     }
 
     public void setDepthBounds(float min, float max) {

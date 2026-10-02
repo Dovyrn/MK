@@ -1,3 +1,4 @@
+use crate::command;
 use crate::mtl::frame::Frame;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
@@ -1087,21 +1088,16 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
-            Command::SetViewports { data } => {
-                let mut viewports: Vec<MTLViewport> = data
-                    .chunks(24)
-                    .map(|c| {
-                        let f = |i: usize| {
-                            f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as f64
-                        };
-                        MTLViewport {
-                            originX: f(0),
-                            originY: f(1),
-                            width: f(2),
-                            height: f(3),
-                            znear: f(4),
-                            zfar: f(5),
-                        }
+            Command::SetViewports { viewports } => {
+                let mut viewports: Vec<MTLViewport> = command::viewports(viewports)
+                    .iter()
+                    .map(|v| MTLViewport {
+                        originX: v.x as f64,
+                        originY: v.y as f64,
+                        width: v.width as f64,
+                        height: v.height as f64,
+                        znear: v.near as f64,
+                        zfar: v.far as f64,
                     })
                     .collect();
                 unsafe {
@@ -1111,14 +1107,10 @@ impl<'a> Recorder<'a> {
                     )
                 }
             }
-            Command::SetScissors { data } => {
-                let mut rects: Vec<MTLScissorRect> = data
-                    .chunks(16)
-                    .map(|c| {
-                        let u =
-                            |i: usize| u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap());
-                        self.scissor(u(0), u(1), u(2), u(3))
-                    })
+            Command::SetScissors { scissors } => {
+                let mut rects: Vec<MTLScissorRect> = command::scissors(scissors)
+                    .iter()
+                    .map(|r| self.scissor(r.x, r.y, r.width, r.height))
                     .collect();
                 unsafe {
                     self.render().setScissorRects_count(

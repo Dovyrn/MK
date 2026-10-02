@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    Command, Commands, SamplerInfo, TextureInfo, access, address, filter, format, layout, memory,
-    stage, usage,
+    Command, Commands, SamplerInfo, TextureBarrier, TextureCopy, TextureInfo, access, address,
+    filter, format, layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -83,81 +83,61 @@ fn main() {
     push.extend(device.sampler_handle(sampler).to_le_bytes());
     push.extend(device.image_handle(dst).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let all = !0;
     let mut c = Commands::default();
     c.begin_compute();
-    c.texture_barrier(
-        src,
-        0,
-        0,
-        stage::COPY,
-        access::COPY_WRITE,
-        layout::UNDEFINED,
-        layout::COPY_DST,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.copy_buffer_to_texture(
-        upload,
-        0,
-        0,
-        0,
-        src,
-        layout::COPY_DST,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-    );
-    c.texture_barrier(
-        src,
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::COMPUTE,
-        access::SHADER_READ,
-        layout::COPY_DST,
-        layout::READ,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.texture_barrier(
-        dst,
-        0,
-        0,
-        stage::COMPUTE,
-        access::SHADER_WRITE,
-        layout::UNDEFINED,
-        layout::GENERAL,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: src,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_WRITE,
+        after: layout::COPY_DST,
+        ..Default::default()
+    });
+    c.copy_buffer_to_texture(&TextureCopy {
+        buffer: upload,
+        texture: src,
+        layout: layout::COPY_DST,
+        width: n,
+        height: n,
+        ..Default::default()
+    });
+    c.texture_barrier(&TextureBarrier {
+        texture: src,
+        src_stage: stage::COPY,
+        src_access: access::COPY_WRITE,
+        dst_stage: stage::COMPUTE,
+        dst_access: access::SHADER_READ,
+        before: layout::COPY_DST,
+        after: layout::READ,
+        ..Default::default()
+    });
+    c.texture_barrier(&TextureBarrier {
+        texture: dst,
+        dst_stage: stage::COMPUTE,
+        dst_access: access::SHADER_WRITE,
+        after: layout::GENERAL,
+        ..Default::default()
+    });
     c.bind_pipeline(pipeline);
     c.push_constants(0, &push);
     c.dispatch(n / 8, n / 8, 1);
-    c.texture_barrier(
-        dst,
-        stage::COMPUTE,
-        access::SHADER_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::GENERAL,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.copy_texture_to_buffer(dst, layout::COPY_SRC, 0, 0, 0, 0, 0, n, n, 1, back, 0, 0, 0);
+    c.texture_barrier(&TextureBarrier {
+        texture: dst,
+        src_stage: stage::COMPUTE,
+        src_access: access::SHADER_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::GENERAL,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: dst,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COMPUTE | stage::COPY,
         access::SHADER_WRITE | access::COPY_WRITE,

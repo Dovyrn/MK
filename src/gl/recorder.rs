@@ -1,3 +1,4 @@
+use crate::command;
 use crate::gl::device::compare;
 use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
@@ -1331,45 +1332,32 @@ impl<'a> Recorder<'a> {
                     }
                     gl.bind_buffer(QUERY_BUFFER, None);
                 }
-                Command::SetViewports { data } => {
-                    let views: Vec<[f32; 6]> = data
-                        .chunks(24)
-                        .map(|c| {
-                            std::array::from_fn(|i| {
-                                f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
-                            })
-                        })
-                        .collect();
-                    if views.len() as u32 > self.caps.viewports {
-                        return Err("multiple viewports need GL 4.1".into());
-                    }
-                    let rects: Vec<[f32; 4]> =
-                        views.iter().map(|v| [v[0], v[1], v[2], v[3]]).collect();
-                    let ranges: Vec<[f64; 2]> =
-                        views.iter().map(|v| [v[4] as f64, v[5] as f64]).collect();
+                Command::SetViewports { viewports } => {
+                    let views = command::viewports(viewports);
                     match views.as_slice() {
                         [v] if self.caps.viewports == 1 => {
-                            gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
-                            gl.depth_range(v[4] as f64, v[5] as f64);
+                            gl.viewport(v.x as i32, v.y as i32, v.width as i32, v.height as i32);
+                            gl.depth_range(v.near as f64, v.far as f64);
                         }
                         _ => {
+                            let rects: Vec<[f32; 4]> = views
+                                .iter()
+                                .map(|v| [v.x, v.y, v.width, v.height])
+                                .collect();
+                            let ranges: Vec<[f64; 2]> = views
+                                .iter()
+                                .map(|v| [v.near as f64, v.far as f64])
+                                .collect();
                             gl.viewport_f32_slice(0, rects.len() as i32, &rects);
                             gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
                         }
                     }
                 }
-                Command::SetScissors { data } => {
-                    let rects: Vec<[i32; 4]> = data
-                        .chunks(16)
-                        .map(|c| {
-                            std::array::from_fn(|i| {
-                                u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as i32
-                            })
-                        })
+                Command::SetScissors { scissors } => {
+                    let rects: Vec<[i32; 4]> = command::scissors(scissors)
+                        .iter()
+                        .map(|r| [r.x as i32, r.y as i32, r.width as i32, r.height as i32])
                         .collect();
-                    if rects.len() as u32 > self.caps.viewports {
-                        return Err("multiple scissors need GL 4.1".into());
-                    }
                     gl.enable(glow::SCISSOR_TEST);
                     match rects.as_slice() {
                         [r] if self.caps.viewports == 1 => gl.scissor(r[0], r[1], r[2], r[3]),

@@ -1,6 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    Commands, SparseRange, SparseRegion, TextureInfo, access, format, layout, memory, stage, usage,
+    Commands, SparseRange, SparseRegion, TextureBarrier, TextureCopy, TextureInfo, access, format,
+    layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -95,67 +96,41 @@ fn main() {
             *v = i as u32;
         }
     }
-    let all = !0;
     let mut c = Commands::default();
-    c.texture_barrier(
+    c.texture_barrier(&TextureBarrier {
         texture,
-        0,
-        0,
-        stage::COPY,
-        access::COPY_WRITE,
-        layout::UNDEFINED,
-        layout::COPY_DST,
-        0,
-        all,
-        0,
-        all,
-    );
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_WRITE,
+        after: layout::COPY_DST,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_buffer_to_texture(
-        upload,
-        0,
-        0,
-        0,
+    c.copy_buffer_to_texture(&TextureCopy {
+        buffer: upload,
         texture,
-        layout::COPY_DST,
-        0,
-        0,
-        0,
-        0,
-        0,
-        w,
-        h,
-        1,
-    );
-    c.texture_barrier(
+        layout: layout::COPY_DST,
+        width: w,
+        height: h,
+        ..Default::default()
+    });
+    c.texture_barrier(&TextureBarrier {
         texture,
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COPY_DST,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.copy_texture_to_buffer(
+        src_stage: stage::COPY,
+        src_access: access::COPY_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COPY_DST,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
+    c.copy_texture_to_buffer(&TextureCopy {
         texture,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        w,
-        h,
-        1,
-        readback,
-        0,
-        0,
-        0,
-    );
+        layout: layout::COPY_SRC,
+        width: w,
+        height: h,
+        buffer: readback,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

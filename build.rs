@@ -29,25 +29,20 @@ fn main() {
     let out = Path::new(&out);
     let dir = Path::new(JAVA);
     fs::create_dir_all(dir).unwrap();
-    let list = ops::parse(&fs::read_to_string("commands.toml").unwrap());
+    let infos = infos::parse(&fs::read_to_string("infos.toml").unwrap());
+    let list = ops::parse(&fs::read_to_string("commands.toml").unwrap(), &infos);
     fs::write(out.join("command.rs"), ops::command(&list)).unwrap();
     fs::write(out.join("commands.rs"), ops::commands(&list)).unwrap();
-    save(
-        &dir.join("Commands.java"),
-        &ops::java(&list, None, "Commands"),
-    );
-    save(
-        &dir.join("VkCommands.java"),
-        &ops::java(&list, Some("vk"), "VkCommands"),
-    );
-    save(
-        &dir.join("MtlCommands.java"),
-        &ops::java(&list, Some("mtl"), "MtlCommands"),
-    );
-    save(
-        &dir.join("GlCommands.java"),
-        &ops::java(&list, Some("gl"), "GlCommands"),
-    );
+    for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
+        let class = format!("{}Commands", backend.map_or(String::new(), pascal));
+        let path = dir.join(format!("{class}.java"));
+        match ops::java(&list, backend, &class) {
+            Some(text) => save(&path, &text),
+            None => {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
     let table = fs::read_to_string("constants.toml")
         .unwrap()
         .parse()
@@ -60,7 +55,7 @@ fn main() {
     let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
-    let list = infos::parse(&fs::read_to_string("infos.toml").unwrap());
+    let list = infos;
     let borrowing: Vec<String> = list
         .iter()
         .filter(|i| infos::borrows(i))

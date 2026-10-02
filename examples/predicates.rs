@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    ColorTarget, Commands, Device, RenderInfo, TextureInfo, access, format, layout, load, memory,
-    stage, store, usage,
+    ColorAttachment, ColorTarget, Commands, DepthAttachment, Device, RenderInfo, TextureBarrier,
+    TextureCopy, TextureInfo, access, format, layout, memory, stage, store, usage,
 };
 
 #[path = "support/host.rs"]
@@ -102,60 +102,35 @@ fn draw(
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let event = device.create_event().unwrap();
-    let all = !0;
     let mut c = Commands::default();
     if let Some(heap) = statistics {
         c.reset_queries(heap, 0, 1);
     }
-    c.texture_barrier(
-        color,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.texture_barrier(
-        depth,
-        0,
-        0,
-        stage::DEPTH,
-        access::DEPTH_WRITE,
-        layout::UNDEFINED,
-        layout::DEPTH,
-        0,
-        all,
-        0,
-        all,
-    );
-    c.color_attachment(
-        0,
-        color,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-        !0,
-        0,
-    );
-    c.depth_attachment(
-        depth,
-        layout::DEPTH,
-        load::CLEAR,
-        store::DONT_CARE,
-        1.0,
-        load::DONT_CARE,
-        store::DONT_CARE,
-        0,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.texture_barrier(&TextureBarrier {
+        texture: depth,
+        dst_stage: stage::DEPTH,
+        dst_access: access::DEPTH_WRITE,
+        after: layout::DEPTH,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        b: 1.0,
+        a: 1.0,
+        ..Default::default()
+    });
+    c.depth_attachment(&DepthAttachment {
+        texture: depth,
+        store: store::DONT_CARE,
+        ..Default::default()
+    });
     #[cfg(feature = "vk")]
     if let Some((buffer, inverted)) = predicate {
         c.begin_conditional(buffer, 0, inverted);
@@ -181,36 +156,25 @@ fn draw(
     if predicate.is_some() {
         c.end_conditional();
     }
-    c.texture_barrier(
-        color,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COLOR,
-        layout::COPY_SRC,
-        0,
-        all,
-        0,
-        all,
-    );
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_texture_to_buffer(
-        color,
-        layout::COPY_SRC,
-        0,
-        0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: color,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

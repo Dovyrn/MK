@@ -1,3 +1,4 @@
+use crate::command;
 use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
 use crate::vk::ffi;
@@ -1086,43 +1087,33 @@ impl Recorder<'_> {
                         .ok_or("VK_KHR_acceleration_structure is not enabled")?
                         .cmd_copy_acceleration_structure(b, &info)
                 }
-                Command::SetViewports { data } => {
-                    let viewports: Vec<_> = data
-                        .chunks(24)
-                        .map(|c| {
-                            let f = |i: usize| {
-                                f32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
-                            };
-                            vk::Viewport {
-                                x: f(0),
-                                y: f(1),
-                                width: f(2),
-                                height: f(3),
-                                min_depth: f(4),
-                                max_depth: f(5),
-                            }
+                Command::SetViewports { viewports } => {
+                    let viewports: Vec<_> = command::viewports(viewports)
+                        .iter()
+                        .map(|v| vk::Viewport {
+                            x: v.x,
+                            y: v.y,
+                            width: v.width,
+                            height: v.height,
+                            min_depth: v.near,
+                            max_depth: v.far,
                         })
                         .collect();
                     d.cmd_set_viewport_with_count(b, &viewports);
                     d.cmd_set_scissor_with_count(b, &vec![self.area; viewports.len()])
                 }
-                Command::SetScissors { data } => {
-                    let rects: Vec<_> = data
-                        .chunks(16)
-                        .map(|c| {
-                            let u = |i: usize| {
-                                u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap())
-                            };
-                            vk::Rect2D {
-                                offset: vk::Offset2D {
-                                    x: u(0) as i32,
-                                    y: u(1) as i32,
-                                },
-                                extent: vk::Extent2D {
-                                    width: u(2),
-                                    height: u(3),
-                                },
-                            }
+                Command::SetScissors { scissors } => {
+                    let rects: Vec<_> = command::scissors(scissors)
+                        .iter()
+                        .map(|r| vk::Rect2D {
+                            offset: vk::Offset2D {
+                                x: r.x as i32,
+                                y: r.y as i32,
+                            },
+                            extent: vk::Extent2D {
+                                width: r.width,
+                                height: r.height,
+                            },
                         })
                         .collect();
                     d.cmd_set_scissor_with_count(b, &rects)

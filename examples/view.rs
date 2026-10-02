@@ -1,5 +1,6 @@
 use mk::{
-    Commands, TextureInfo, ViewInfo, access, format, layout, load, memory, stage, store, usage,
+    ColorAttachment, Commands, TextureBarrier, TextureCopy, TextureInfo, ViewInfo, access, format,
+    layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -35,64 +36,49 @@ fn main() {
     let back = device.create_buffer(16 * 4, memory::READBACK).unwrap();
     let event = device.create_event().unwrap();
     let mut c = Commands::default();
-    c.texture_barrier(
+    c.texture_barrier(&TextureBarrier {
         texture,
-        0,
-        0,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        layout::UNDEFINED,
-        layout::COLOR,
-        1,
-        1,
-        0,
-        1,
-    );
-    c.color_attachment(
-        0,
-        mip,
-        layout::COLOR,
-        load::CLEAR,
-        store::STORE,
-        1.0,
-        0.2,
-        0.6,
-        1.0,
-        !0,
-        0,
-    );
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        after: layout::COLOR,
+        base_mip: 1,
+        mips: 1,
+        layers: 1,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: mip,
+        r: 1.0,
+        g: 0.2,
+        b: 0.6,
+        a: 1.0,
+        ..Default::default()
+    });
     c.begin_render(4, 4, 1);
     c.end_render();
-    c.texture_barrier(
+    c.texture_barrier(&TextureBarrier {
         texture,
-        stage::COLOR,
-        access::COLOR_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-        layout::COLOR,
-        layout::COPY_SRC,
-        1,
-        1,
-        0,
-        1,
-    );
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        base_mip: 1,
+        mips: 1,
+        layers: 1,
+        ..Default::default()
+    });
     c.begin_compute();
-    c.copy_texture_to_buffer(
+    c.copy_texture_to_buffer(&TextureCopy {
         texture,
-        layout::COPY_SRC,
-        1,
-        0,
-        0,
-        0,
-        0,
-        4,
-        4,
-        1,
-        back,
-        0,
-        0,
-        0,
-    );
+        layout: layout::COPY_SRC,
+        mip: 1,
+        width: 4,
+        height: 4,
+        buffer: back,
+        ..Default::default()
+    });
     c.barrier(
         stage::COPY,
         access::COPY_WRITE,

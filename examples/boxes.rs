@@ -130,27 +130,23 @@ fn trace(device: &mut Device, c: &mut Commands, tlas: u32, out: u32, n: u32) {
     push.extend(n.to_le_bytes());
     c.bind_ray_pipeline(pipeline);
     c.push_constants(0, &push);
-    c.trace_rays(
-        table,
-        0,
-        region,
-        region,
-        table,
-        region,
-        stride,
-        stride,
-        table,
-        region * 2,
-        stride,
-        stride,
-        !0,
-        0,
-        0,
-        0,
-        n,
-        n,
-        1,
-    );
+    c.trace_rays(&mk::TraceInfo {
+        raygen: table,
+        raygen_stride: region,
+        raygen_size: region,
+        miss: table,
+        miss_offset: region,
+        miss_stride: stride,
+        miss_size: stride,
+        hit: table,
+        hit_offset: region * 2,
+        hit_stride: stride,
+        hit_size: stride,
+        callable: !0,
+        width: n,
+        height: n,
+        ..Default::default()
+    });
 }
 
 #[cfg(not(feature = "gl"))]
