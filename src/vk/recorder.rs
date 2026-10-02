@@ -211,12 +211,17 @@ impl Recorder<'_> {
         row_count: u32,
     ) -> (&Texture, vk::BufferImageCopy) {
         let t = self.res.textures.get(texture);
+        let aspect = if t.aspect.contains(vk::ImageAspectFlags::DEPTH) {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            t.aspect
+        };
         let region = vk::BufferImageCopy {
             buffer_offset,
             buffer_row_length: row_length,
             buffer_image_height: row_count,
             image_subresource: vk::ImageSubresourceLayers {
-                aspect_mask: t.aspect,
+                aspect_mask: aspect,
                 mip_level: t.base_mip + mip,
                 base_array_layer: t.base_layer + layer,
                 layer_count: 1,
