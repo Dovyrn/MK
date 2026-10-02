@@ -708,6 +708,26 @@ impl Device {
     }
 
     pub fn sparse_tile(&self, info: &TextureInfo) -> Result<[u32; 3], String> {
+        if !self.caps().sparse_textures {
+            return Err("sparse textures are not supported".into());
+        }
+        let f = &self.ext.features;
+        let sparse = match (info.dimension, info.samples) {
+            (dimension::D1 | dimension::D1_ARRAY, _) => 0,
+            (dimension::D3, _) => f.sparse_residency_image3_d,
+            (_, 1) => f.sparse_residency_image2_d,
+            (_, 2) => f.sparse_residency2_samples,
+            (_, 4) => f.sparse_residency4_samples,
+            (_, 8) => f.sparse_residency8_samples,
+            (_, 16) => f.sparse_residency16_samples,
+            _ => 0,
+        };
+        if sparse == 0 {
+            return Err(
+                "sparse residency is not supported for this dimension and sample count".into(),
+            );
+        }
+        self.supports(info.format, info.usage, info.samples)?;
         let create = image_info(info);
         let formats = unsafe {
             self.instance
@@ -758,54 +778,24 @@ impl Device {
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        if !self.caps().sparse_textures {
-            return Err("sparse textures are not supported".into());
-        }
-        let f = &self.ext.features;
-        let sparse = match (info.dimension, info.samples) {
-            (dimension::D1 | dimension::D1_ARRAY, _) => 0,
-            (dimension::D3, _) => f.sparse_residency_image3_d,
-            (_, 1) => f.sparse_residency_image2_d,
-            (_, 2) => f.sparse_residency2_samples,
-            (_, 4) => f.sparse_residency4_samples,
-            (_, 8) => f.sparse_residency8_samples,
-            (_, 16) => f.sparse_residency16_samples,
-            _ => 0,
-        };
-        if sparse == 0 {
-            return Err(
-                "sparse residency is not supported for this dimension and sample count".into(),
-            );
-        }
-        self.supports(info.format, info.usage, info.samples)?;
+        let [width, height, depth] = self.sparse_tile(info)?;
         let create = image_info(info);
         let create = create.flags(
             create.flags
                 | vk::ImageCreateFlags::SPARSE_BINDING
                 | vk::ImageCreateFlags::SPARSE_RESIDENCY,
         );
-        let formats = unsafe {
-            self.instance
-                .get_physical_device_sparse_image_format_properties(
-                    self.physical,
-                    create.format,
-                    create.image_type,
-                    create.samples,
-                    create.usage,
-                    vk::ImageTiling::OPTIMAL,
-                )
-        };
-        let tile = formats
-            .first()
-            .ok_or(format!("format {} has no sparse layout", info.format))?
-            .image_granularity;
         let image = unsafe {
             self.raw
                 .create_image(&self.share_image(create), None)
                 .map_err(|e| e.to_string())?
         };
         let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
-        self.res.textures.get_mut(slot).tile = tile;
+        self.res.textures.get_mut(slot).tile = vk::Extent3D {
+            width,
+            height,
+            depth,
+        };
         Ok(slot)
     }
 
