@@ -153,13 +153,13 @@ impl Device {
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
         let library = self.library(info.code)?;
         let desc = MTL4ComputePipelineDescriptor::new();
-        desc.setComputeFunctionDescriptor(Some(&function(&library, info.entry)));
+        desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
         if !info.functions.is_empty() {
             let linked: Vec<_> = info
                 .functions
                 .iter()
                 .map(|f| function(&library, f))
-                .collect();
+                .collect::<Result<_, _>>()?;
             let linking = MTL4StaticLinkingDescriptor::new();
             linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
             desc.setStaticLinkingDescriptor(Some(&linking));
@@ -188,9 +188,9 @@ impl Device {
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
         let library = self.library(info.code)?;
         let desc = MTL4RenderPipelineDescriptor::new();
-        desc.setVertexFunctionDescriptor(Some(&function(&library, info.vertex)));
+        desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
         if !info.fragment.is_empty() {
-            desc.setFragmentFunctionDescriptor(Some(&function(&library, info.fragment)));
+            desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
         }
         if !info.attributes.is_empty() {
             let layout = MTLVertexDescriptor::new();
@@ -245,11 +245,11 @@ impl Device {
         let library = self.library(info.code)?;
         let desc = MTL4MeshRenderPipelineDescriptor::new();
         if !info.task.is_empty() {
-            desc.setObjectFunctionDescriptor(Some(&function(&library, info.task)));
+            desc.setObjectFunctionDescriptor(Some(&*function(&library, info.task)?));
         }
-        desc.setMeshFunctionDescriptor(Some(&function(&library, info.mesh)));
+        desc.setMeshFunctionDescriptor(Some(&*function(&library, info.mesh)?));
         if !info.fragment.is_empty() {
-            desc.setFragmentFunctionDescriptor(Some(&function(&library, info.fragment)));
+            desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
         }
         colors(&desc.colorAttachments(), info.colors);
         unsafe { desc.setRasterSampleCount(info.samples as usize) };
@@ -282,7 +282,7 @@ impl Device {
     ) -> Result<u32, String> {
         let library = self.library(code)?;
         let desc = MTL4TileRenderPipelineDescriptor::new();
-        desc.setTileFunctionDescriptor(Some(&function(&library, entry)));
+        desc.setTileFunctionDescriptor(Some(&*function(&library, entry)?));
         let array = desc.colorAttachments();
         for (i, f) in colors.iter().enumerate() {
             unsafe { array.objectAtIndexedSubscript(i) }.setPixelFormat(format::mtl(*f));

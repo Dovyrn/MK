@@ -92,11 +92,22 @@ fn vertex_format(f: u32) -> MTLVertexFormat {
 fn function(
     library: &ProtocolObject<dyn MTLLibrary>,
     name: &str,
-) -> Retained<MTL4FunctionDescriptor> {
+) -> Result<Retained<MTL4FunctionDescriptor>, String> {
+    let names: Vec<String> = library
+        .functionNames()
+        .iter()
+        .map(|n| n.to_string())
+        .collect();
+    if !names.iter().any(|n| n == name) {
+        return Err(format!(
+            "no entry {name} in the code; it has {}",
+            names.join(", ")
+        ));
+    }
     let f = MTL4LibraryFunctionDescriptor::new();
     f.setName(Some(&NSString::from_str(name)));
     f.setLibrary(Some(library));
-    Retained::into_super(f)
+    Ok(Retained::into_super(f))
 }
 
 fn size(s: [u32; 3]) -> MTLSize {
