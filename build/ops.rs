@@ -371,6 +371,9 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
         .enumerate()
         .filter(|(_, o)| member(o.backend.as_deref(), backend))
         .collect();
+    if mine.is_empty() && backend.is_some() {
+        return None;
+    }
     let kinds: Vec<_> = mine
         .iter()
         .flat_map(|(_, o)| &o.fields)
