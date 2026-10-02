@@ -789,8 +789,11 @@ impl<'a> Recorder<'a> {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
-            Command::ResetQueries { .. } => {}
+            Command::ResetQueries { heap, first, count } => {
+                self.res.queries.get(heap).check(first, count)
+            }
             Command::WriteTimestamp { heap, index, stage } => {
+                self.res.queries.get(heap).check(index, 1);
                 let Query::Timestamp(heap) = self.res.queries.get(heap) else {
                     panic!("write_timestamp needs a timestamp heap");
                 };
@@ -813,18 +816,24 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
-            Command::BeginQuery { index, .. } => unsafe {
-                self.render().setVisibilityResultMode_offset(
-                    MTLVisibilityResultMode::Counting,
-                    index as usize * 8,
-                )
-            },
-            Command::EndQuery { index, .. } => unsafe {
-                self.render().setVisibilityResultMode_offset(
-                    MTLVisibilityResultMode::Disabled,
-                    index as usize * 8,
-                )
-            },
+            Command::BeginQuery { heap, index } => {
+                self.res.queries.get(heap).check(index, 1);
+                unsafe {
+                    self.render().setVisibilityResultMode_offset(
+                        MTLVisibilityResultMode::Counting,
+                        index as usize * 8,
+                    )
+                }
+            }
+            Command::EndQuery { heap, index } => {
+                self.res.queries.get(heap).check(index, 1);
+                unsafe {
+                    self.render().setVisibilityResultMode_offset(
+                        MTLVisibilityResultMode::Disabled,
+                        index as usize * 8,
+                    )
+                }
+            }
             Command::ResolveQueries {
                 heap,
                 first,
@@ -833,6 +842,7 @@ impl<'a> Recorder<'a> {
                 offset,
             } => {
                 let dst = self.res.buffers.get(buffer);
+                self.res.queries.get(heap).check(first, count);
                 match self.res.queries.get(heap) {
                     Query::Timestamp(heap) => unsafe {
                         self.buffer
@@ -976,6 +986,7 @@ impl<'a> Recorder<'a> {
                 .pass
                 .setRasterizationRateMap(Some(self.res.maps.get(map))),
             Command::WriteCompactedSize { accel, heap, index } => {
+                self.res.queries.get(heap).check(index, 1);
                 let Query::Buffer(buffer) = self.res.queries.get(heap) else {
                     panic!("write_compacted_size needs a compacted heap");
                 };
