@@ -5,4 +5,5 @@ pub struct Heap {
     pub data: *mut u8,
     pub shared: bool,
     pub device: bool,
+    pub index: u32,
 }

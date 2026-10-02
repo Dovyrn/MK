@@ -665,6 +665,7 @@ impl Device {
                 data,
                 shared,
                 device,
+                index,
             }))
         }
     }
@@ -955,6 +956,14 @@ impl Device {
                 .raw
                 .create_buffer(&info, None)
                 .map_err(|e| e.to_string())?;
+            let bits = self
+                .raw
+                .get_buffer_memory_requirements(raw)
+                .memory_type_bits;
+            if bits & (1 << h.index) == 0 {
+                self.raw.destroy_buffer(raw, None);
+                return Err("the heap's memory type does not fit this buffer".into());
+            }
             if let Err(e) = self.raw.bind_buffer_memory(raw, h.memory, offset) {
                 self.raw.destroy_buffer(raw, None);
                 return Err(e.to_string());
@@ -988,7 +997,7 @@ impl Device {
     ) -> Result<u32, String> {
         self.supports(info.format, info.usage)?;
         let h = self.res.heaps.get(heap);
-        let memory = h.memory;
+        let (memory, index) = (h.memory, h.index);
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
             .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
         let mut create = self.share_image(image_info(info));
@@ -1000,6 +1009,14 @@ impl Device {
                 .raw
                 .create_image(&create, None)
                 .map_err(|e| e.to_string())?;
+            let bits = self
+                .raw
+                .get_image_memory_requirements(image)
+                .memory_type_bits;
+            if bits & (1 << index) == 0 {
+                self.raw.destroy_image(image, None);
+                return Err("the heap's memory type does not fit this texture".into());
+            }
             if let Err(e) = self.raw.bind_image_memory(image, memory, offset) {
                 self.raw.destroy_image(image, None);
                 return Err(e.to_string());
