@@ -34,6 +34,9 @@ pub struct Device {
     resolve: Resolve,
     cache: Option<Cache>,
     units: u32,
+    caps: Caps,
+    anisotropy: f32,
+    samples: [i32; 4],
 }
 
 const MAX_ANISOTROPY: u32 = 0x84FE;
@@ -112,7 +115,72 @@ impl Device {
                 .map(|i| gl.get_parameter_indexed_string(glow::EXTENSIONS, i))
                 .collect();
             extensions.sort();
-            let extra = Extra::load(proc, &|v, e| has(version, &extensions, v, e))?;
+            let has = |v, e: &str| has(version, &extensions, v, e);
+            let extra = Extra::load(proc, &has)?;
+            let int = |p| gl.get_parameter_i32(p);
+            let storage = has(43, "GL_ARB_shader_storage_buffer_object");
+            let results = has(44, "GL_ARB_query_buffer_object");
+            let caps = Caps {
+                push: 256,
+                queues: 1,
+                tick: 1.0,
+                timestamps: results,
+                precise: results,
+                viewports: if has(99, "GL_ARB_shader_viewport_layer_array") {
+                    int(glow::MAX_VIEWPORTS) as u32
+                } else {
+                    1
+                },
+                graphics: 1,
+                labels: has(43, "GL_KHR_debug"),
+                anisotropy: has(46, "GL_ARB_texture_filter_anisotropic")
+                    || has(99, "GL_EXT_texture_filter_anisotropic"),
+                depth_clamp: true,
+                line_fill: true,
+                multi_draw: has(43, "GL_ARB_multi_draw_indirect"),
+                slots: true,
+                storage,
+                persistent: has(44, "GL_ARB_buffer_storage"),
+                bind_alignment: if storage {
+                    int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
+                        .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
+                        as u32
+                } else {
+                    int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT) as u32
+                },
+                compute: has(43, "GL_ARB_compute_shader"),
+                texture_views: has(43, "GL_ARB_texture_view"),
+                occlusion: results,
+                cache: int(glow::NUM_PROGRAM_BINARY_FORMATS) > 0,
+                bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
+                blends: has(40, "GL_ARB_draw_buffers_blend"),
+                indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
+                indirect_ids: false,
+                indirect_offset: false,
+                wide_lines: false,
+                max_buffer: isize::MAX as u64,
+                max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
+                max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
+                max_volume: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
+                max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
+                mesh: extra.mesh.is_some(),
+                ..Default::default()
+            };
+            let anisotropy = if caps.anisotropy {
+                gl.get_parameter_f32(MAX_ANISOTROPY_LIMIT)
+            } else {
+                1.0
+            };
+            let samples = [
+                int(glow::MAX_DEPTH_TEXTURE_SAMPLES),
+                int(glow::MAX_INTEGER_SAMPLES),
+                int(glow::MAX_COLOR_TEXTURE_SAMPLES),
+                if storage {
+                    int(glow::MAX_IMAGE_SAMPLES)
+                } else {
+                    0
+                },
+            ];
             let push = gl.create_buffer()?;
             let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
@@ -126,6 +194,9 @@ impl Device {
                 extra,
                 version,
                 extensions,
+                caps,
+                anisotropy,
+                samples,
                 res: Resources::default(),
                 push,
                 fbo,
@@ -142,55 +213,7 @@ impl Device {
     }
 
     pub fn caps(&self) -> Caps {
-        let gl = &self.gl;
-        let int = |p| unsafe { gl.get_parameter_i32(p) as u32 };
-        let storage = self.has(43, "GL_ARB_shader_storage_buffer_object");
-        let results = self.has(44, "GL_ARB_query_buffer_object");
-        Caps {
-            push: 256,
-            queues: 1,
-            tick: 1.0,
-            timestamps: results,
-            precise: results,
-            viewports: if self.has(99, "GL_ARB_shader_viewport_layer_array") {
-                int(glow::MAX_VIEWPORTS)
-            } else {
-                1
-            },
-            graphics: 1,
-            labels: self.has(43, "GL_KHR_debug"),
-            anisotropy: self.has(46, "GL_ARB_texture_filter_anisotropic")
-                || self.has(99, "GL_EXT_texture_filter_anisotropic"),
-            depth_clamp: true,
-            line_fill: true,
-            multi_draw: self.has(43, "GL_ARB_multi_draw_indirect"),
-            slots: true,
-            storage,
-            persistent: self.has(44, "GL_ARB_buffer_storage"),
-            bind_alignment: if storage {
-                int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
-                    .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
-            } else {
-                int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
-            },
-            compute: self.has(43, "GL_ARB_compute_shader"),
-            texture_views: self.has(43, "GL_ARB_texture_view"),
-            occlusion: results,
-            cache: self.binaries(),
-            bias_clamp: self.has(46, "GL_ARB_polygon_offset_clamp"),
-            blends: self.has(40, "GL_ARB_draw_buffers_blend"),
-            indirect: self.has(42, "GL_ARB_draw_indirect") && self.has(42, "GL_ARB_base_instance"),
-            indirect_ids: false,
-            indirect_offset: false,
-            wide_lines: false,
-            max_buffer: isize::MAX as u64,
-            max_texture: int(glow::MAX_TEXTURE_SIZE),
-            max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE),
-            max_volume: int(glow::MAX_3D_TEXTURE_SIZE),
-            max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS),
-            mesh: self.has(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
-            ..Default::default()
-        }
+        self.caps
     }
 
     pub fn name(&self) -> String {
@@ -198,7 +221,7 @@ impl Device {
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps().buffer(size, memory)?;
+        self.caps.buffer(size, memory)?;
         let persistent = self.extra.storage.is_some();
         let gl = &self.gl;
         let (flags, usage) = match memory {
@@ -339,7 +362,7 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
-        if !uniform(info.colors) && !self.caps().blends {
+        if !uniform(info.colors) && !self.caps.blends {
             return Err("different blend states per color target need GL 4.0".into());
         }
         if info.views > 1 {
@@ -379,10 +402,10 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
-        if !uniform(info.colors) && !self.caps().blends {
+        if !uniform(info.colors) && !self.caps.blends {
             return Err("different blend states per color target need GL 4.0".into());
         }
-        if !self.caps().mesh {
+        if !self.caps.mesh {
             return Err("GL_EXT_mesh_shader is not supported".into());
         }
         if info.views > 1 {
@@ -447,7 +470,7 @@ impl Device {
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        self.caps().texture(info, usable, counts)?;
+        self.caps.texture(info, usable, counts)?;
         let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
         let gl = &self.gl;
@@ -657,17 +680,15 @@ impl Device {
         if self.format_usage(format) & usage != usage {
             return 0;
         }
-        let limit = |p| unsafe { self.gl.get_parameter_i32(p) };
+        let [depth, integer, color, image] = self.samples;
         let mut max = match format::gl(format)[1] {
             0 => 1,
-            glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
-                limit(glow::MAX_DEPTH_TEXTURE_SAMPLES)
-            }
-            _ if format::uint(format) || format::sint(format) => limit(glow::MAX_INTEGER_SAMPLES),
-            _ => limit(glow::MAX_COLOR_TEXTURE_SAMPLES),
+            glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => depth,
+            _ if format::uint(format) || format::sint(format) => integer,
+            _ => color,
         };
         if usage & usage::STORAGE != 0 {
-            max = max.min(limit(glow::MAX_IMAGE_SAMPLES));
+            max = max.min(image);
         }
         (0..7)
             .map(|i| 1 << i)
@@ -729,9 +750,8 @@ impl Device {
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
         let gl = &self.gl;
-        let anisotropy = if info.anisotropy > 1 && self.caps().anisotropy {
-            let max = unsafe { gl.get_parameter_f32(MAX_ANISOTROPY_LIMIT) };
-            (info.anisotropy as f32).min(max)
+        let anisotropy = if info.anisotropy > 1 {
+            (info.anisotropy as f32).min(self.anisotropy)
         } else {
             1.0
         };
@@ -795,12 +815,8 @@ impl Device {
         unsafe { self.gl.delete_sampler(s) };
     }
 
-    fn binaries(&self) -> bool {
-        unsafe { self.gl.get_parameter_i32(glow::NUM_PROGRAM_BINARY_FORMATS) > 0 }
-    }
-
     pub fn record_cache(&mut self) -> Result<(), String> {
-        if !self.binaries() {
+        if !self.caps.cache {
             return Err("program binaries are not supported".into());
         }
         self.cache.get_or_insert_default();
@@ -813,7 +829,7 @@ impl Device {
     }
 
     pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
-        if !self.binaries() {
+        if !self.caps.cache {
             return Err("program binaries are not supported".into());
         }
         let data = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -917,7 +933,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
-        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
+        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         if let Some(i) = self
             .res
             .buffers
@@ -938,11 +954,10 @@ impl Device {
                 .expect("wait on an event value no submit signals");
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
-        let caps = self.caps();
         let state = State::save(
             &self.gl,
             &self.extra,
-            &caps,
+            &self.caps,
             &|v, e| self.has(v, e),
             self.units.max(1),
         );
@@ -951,7 +966,7 @@ impl Device {
             State::save(
                 &self.gl,
                 &self.extra,
-                &caps,
+                &self.caps,
                 &|v, e| self.has(v, e),
                 self.units.max(1),
             )
@@ -960,7 +975,7 @@ impl Device {
             &self.gl,
             &self.extra,
             &self.res,
-            &caps,
+            &self.caps,
             (self.push, self.fbo, self.read),
             (&self.resolve, &snapshot),
             natives,
