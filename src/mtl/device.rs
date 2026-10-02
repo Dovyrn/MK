@@ -1179,6 +1179,24 @@ impl Device {
         usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW
     }
 
+    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
+        if self.format_usage(format) & usage != usage {
+            return 0;
+        }
+        let msaa = usage & usage::STORAGE == 0
+            && match format {
+                format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
+                format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
+                    self.raw.supports32BitMSAA()
+                }
+                _ => true,
+            };
+        [2, 4, 8]
+            .into_iter()
+            .filter(|&n| msaa && self.raw.supportsTextureSampleCount(n))
+            .fold(1, |m, n| m | n as u32)
+    }
+
     fn supports(&self, info: &TextureInfo) -> Result<(), String> {
         let usage = self.format_usage(info.format);
         if usage == 0 {
@@ -1191,15 +1209,7 @@ impl Device {
                 info.usage & !usage
             ));
         }
-        let msaa = match info.format {
-            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
-            format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
-                self.raw.supports32BitMSAA()
-            }
-            _ => true,
-        };
-        if info.samples > 1 && !(msaa && self.raw.supportsTextureSampleCount(info.samples as usize))
-        {
+        if self.format_samples(info.format, info.usage) & info.samples == 0 {
             return Err(format!(
                 "format {} does not support {} samples",
                 info.format, info.samples

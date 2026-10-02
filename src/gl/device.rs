@@ -448,6 +448,12 @@ impl Device {
                 info.format
             ));
         }
+        if self.format_samples(info.format, info.usage) & info.samples == 0 {
+            return Err(format!(
+                "format {} does not support {} samples",
+                info.format, info.samples
+            ));
+        }
         let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
         let gl = &self.gl;
@@ -647,6 +653,28 @@ impl Device {
                 u
             }
         }
+    }
+
+    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
+        if self.format_usage(format) & usage != usage {
+            return 0;
+        }
+        let limit = |p| unsafe { self.gl.get_parameter_i32(p) };
+        let mut max = match format::gl(format)[1] {
+            0 => 1,
+            glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
+                limit(glow::MAX_DEPTH_TEXTURE_SAMPLES)
+            }
+            _ if format::uint(format) || format::sint(format) => limit(glow::MAX_INTEGER_SAMPLES),
+            _ => limit(glow::MAX_COLOR_TEXTURE_SAMPLES),
+        };
+        if usage & usage::STORAGE != 0 {
+            max = max.min(limit(glow::MAX_IMAGE_SAMPLES));
+        }
+        (0..7)
+            .map(|i| 1 << i)
+            .filter(|&n| n <= max.max(1))
+            .fold(0, |m, n| m | n as u32)
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {

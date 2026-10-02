@@ -777,7 +777,7 @@ impl Device {
                 "sparse residency is not supported for this dimension and sample count".into(),
             );
         }
-        self.supports(info.format, info.usage)?;
+        self.supports(info.format, info.usage, info.samples)?;
         let create = image_info(info);
         let create = create.flags(
             create.flags
@@ -1013,7 +1013,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
-        self.supports(info.format, info.usage)?;
+        self.supports(info.format, info.usage, info.samples)?;
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory, h.index);
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
@@ -1639,7 +1639,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        self.supports(info.format, info.usage)?;
+        self.supports(info.format, info.usage, info.samples)?;
         unsafe {
             let image = self
                 .raw
@@ -1707,7 +1707,28 @@ impl Device {
         .fold(usage::VIEW, |u, (_, b)| u | b)
     }
 
-    fn supports(&self, format: u32, usage: u32) -> Result<(), String> {
+    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
+        if self.format_usage(format) & usage != usage {
+            return 0;
+        }
+        let flags = image_usage(usage);
+        if flags.is_empty() {
+            return 1;
+        }
+        unsafe {
+            self.instance.get_physical_device_image_format_properties(
+                self.physical,
+                format::vk(format),
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                flags,
+                vk::ImageCreateFlags::empty(),
+            )
+        }
+        .map_or(0, |p| p.sample_counts.as_raw())
+    }
+
+    fn supports(&self, format: u32, usage: u32, samples: u32) -> Result<(), String> {
         let supported = self.format_usage(format);
         if supported == 0 {
             return Err(format!("format {format} is not supported"));
@@ -1718,11 +1739,16 @@ impl Device {
                 "format {format} does not support usage {missing:#x}"
             ));
         }
+        if self.format_samples(format, usage) & samples == 0 {
+            return Err(format!(
+                "format {format} does not support {samples} samples with usage {usage:#x}"
+            ));
+        }
         Ok(())
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
-        self.supports(info.format, info.usage)?;
+        self.supports(info.format, info.usage, 1)?;
         let t = self.res.textures.get(texture);
         let view = ViewInfo {
             base_mip: t.base_mip + info.base_mip,

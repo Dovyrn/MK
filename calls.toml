@@ -123,6 +123,11 @@ params = [["format", "u32"]]
 result = "u32"
 
 [[call]]
+name = "format_samples"
+params = [["format", "u32"], ["usage", "u32"]]
+result = "u32"
+
+[[call]]
 name = "create_view"
 params = [["texture", "u32"], ["info", "ViewInfo"]]
 result = "u32"

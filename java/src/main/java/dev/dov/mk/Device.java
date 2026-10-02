@@ -174,6 +174,14 @@ public class Device {
 
     private static native int nFormatUsage(long device, int format);
 
+    public int formatSamples(int format, int usage) {
+        try (var stack = MemoryStack.stackPush()) {
+            return nFormatSamples(handle, format, usage);
+        }
+    }
+
+    private static native int nFormatSamples(long device, int format, int usage);
+
     public int createView(int texture, ViewInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = stack.nmalloc(8, info.size());
