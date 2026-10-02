@@ -1025,11 +1025,6 @@ impl Device {
             fill: fill(info.fill),
             clip: clip(info.clamp),
             primitive: MTLPrimitiveType(info.topology as usize),
-            buffers: info
-                .buffers
-                .iter()
-                .map(|b| (b.stride as u64, b.instance))
-                .collect(),
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))
@@ -1073,7 +1068,6 @@ impl Device {
             fill: fill(info.fill),
             clip: clip(info.clamp),
             primitive: MTLPrimitiveType::Triangle,
-            buffers: Vec::new(),
             task: size(info.task_group),
             mesh: size(info.mesh_group),
         }))
@@ -1108,7 +1102,6 @@ impl Device {
             fill: MTLTriangleFillMode::Fill,
             clip: MTLDepthClipMode::Clip,
             primitive: MTLPrimitiveType::Triangle,
-            buffers: Vec::new(),
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))

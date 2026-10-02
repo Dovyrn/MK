@@ -9,7 +9,6 @@ pub struct Render {
     pub fill: MTLTriangleFillMode,
     pub clip: MTLDepthClipMode,
     pub primitive: MTLPrimitiveType,
-    pub buffers: Vec<(u64, bool)>,
     pub task: MTLSize,
     pub mesh: MTLSize,
 }

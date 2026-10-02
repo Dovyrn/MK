@@ -46,7 +46,6 @@ pub struct Recorder<'a> {
     height: u32,
     primitive: MTLPrimitiveType,
     index: Option<(u64, usize, MTLIndexType, u64)>,
-    vertices: [u64; slot::VERTICES as usize],
     push: [u8; 256],
     size: usize,
     dirty: bool,
@@ -222,7 +221,6 @@ impl<'a> Recorder<'a> {
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
             index: None,
-            vertices: [0; slot::VERTICES as usize],
             push: [0; 256],
             size: 0,
             dirty: false,
@@ -294,17 +292,6 @@ impl<'a> Recorder<'a> {
         );
         encoder.endEncoding();
         Ok(())
-    }
-
-    fn shift(&self, vertex: i64, instance: u32) {
-        let Some(p) = self.render_pipeline else {
-            return;
-        };
-        for (i, &(stride, per)) in p.buffers.iter().enumerate() {
-            let first = if per { instance as i64 } else { vertex };
-            let address = self.vertices[i].wrapping_add_signed(first * stride as i64);
-            unsafe { self.table.setAddress_atIndex(address, VERTICES + i) };
-        }
     }
 
     fn flush(&mut self) -> Result<(), &'static str> {
@@ -747,7 +734,6 @@ impl<'a> Recorder<'a> {
                 offset,
             } => {
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                self.vertices[slot as usize] = address;
                 unsafe {
                     self.table
                         .setAddress_atIndex(address, VERTICES + slot as usize)
@@ -781,15 +767,14 @@ impl<'a> Recorder<'a> {
                     return Ok(());
                 }
                 self.flush()?;
-                self.shift(first_vertex as i64, first_instance);
                 unsafe {
                     self.render()
                         .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(
                             self.primitive,
-                            0,
+                            first_vertex as usize,
                             vertices as usize,
                             instances as usize,
-                            0,
+                            first_instance as usize,
                         )
                 };
             }
@@ -806,7 +791,6 @@ impl<'a> Recorder<'a> {
                     return Ok(());
                 };
                 self.flush()?;
-                self.shift(base_vertex as i64, first_instance);
                 let skip = first_index as u64 * size;
                 unsafe {
                     self.render()
@@ -817,8 +801,8 @@ impl<'a> Recorder<'a> {
                             address + skip,
                             length.saturating_sub(skip as usize),
                             instances as usize,
-                            0,
-                            0,
+                            base_vertex as isize,
+                            first_instance as usize,
                         )
                 };
             }

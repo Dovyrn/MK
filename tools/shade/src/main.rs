@@ -75,6 +75,7 @@ fn main() {
                 .arg("-o")
                 .arg(&msl));
             pin(&msl, &json);
+            bases(&msl);
             fs::remove_file(&json).unwrap();
             let air = out.join(format!("{name}.{entry}.air"));
             run(Command::new("xcrun")
@@ -154,6 +155,29 @@ fn entries(text: &str) -> Vec<String> {
         }
     }
     list
+}
+
+fn bases(msl: &Path) {
+    let mut text = fs::read_to_string(msl).unwrap();
+    for (id, base) in [
+        ("vertex_id", "base_vertex"),
+        ("instance_id", "base_instance"),
+    ] {
+        let tag = format!(" [[{id}]]");
+        let Some(i) = text.find(&tag) else {
+            continue;
+        };
+        let start = text[..i].rfind(' ').unwrap() + 1;
+        let name = text[start..i].to_string();
+        let params = format!("{name}_id [[{id}]], uint {name}_base [[{base}]]");
+        text.replace_range(start..i + tag.len(), &params);
+        let open = i + text[i..].find('{').unwrap() + 1;
+        text.insert_str(
+            open,
+            &format!("\n    uint {name} = {name}_id - {name}_base;"),
+        );
+    }
+    fs::write(msl, text).unwrap();
 }
 
 fn pin(msl: &Path, json: &Path) {
