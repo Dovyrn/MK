@@ -108,11 +108,11 @@ impl Queue {
             };
             let waits: Vec<_> = waits
                 .iter()
-                .map(|&(e, v)| info(res.events.get(e).0, v))
+                .map(|&(e, v)| info(res.events.get(e).raw, v))
                 .collect();
             let mut signals: Vec<_> = signals
                 .iter()
-                .map(|&(e, v)| info(res.events.get(e).0, v))
+                .map(|&(e, v)| info(res.events.get(e).raw, v))
                 .collect();
             signals.push(info(self.semaphore, value));
             let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.buffer)];

@@ -10,17 +10,6 @@ impl Device {
         Ok(self.insert_buffer(buffer, size))
     }
 
-    pub(super) fn free_buffer(&self, buffer: &Buffer) {
-        unsafe {
-            if buffer.own {
-                self.raw.destroy_buffer(buffer.raw, None);
-            }
-            if buffer.memory != vk::DeviceMemory::null() {
-                self.raw.free_memory(buffer.memory, None);
-            }
-        }
-    }
-
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
         self.caps().buffer(size, memory::UPLOAD)?;
         let host = self
@@ -142,7 +131,7 @@ impl Device {
                 device,
             };
             if let Err(e) = self.raw.bind_buffer_memory(raw, memory, 0) {
-                self.free_buffer(&buffer);
+                buffer.free(&self.raw);
                 return Err(e.to_string());
             }
             let visible = self.memory.memory_types[index as usize]
@@ -155,7 +144,7 @@ impl Device {
                 {
                     Ok(data) => buffer.data = data.cast(),
                     Err(e) => {
-                        self.free_buffer(&buffer);
+                        buffer.free(&self.raw);
                         return Err(e.to_string());
                     }
                 }
@@ -183,7 +172,7 @@ impl Device {
         self.res.table.buffers.clear(buffer);
         self.defer(move |d| {
             let buffer = d.res.buffers.remove(buffer);
-            d.free_buffer(&buffer);
+            buffer.free(&d.raw);
         });
     }
 

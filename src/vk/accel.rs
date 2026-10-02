@@ -1,4 +1,5 @@
 use crate::vk::buffer::Buffer;
+use ash::khr::acceleration_structure;
 use ash::vk;
 
 pub struct Accel {
@@ -11,4 +12,11 @@ pub struct Accel {
     pub ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR>,
     pub build: u64,
     pub update: u64,
+}
+
+impl Accel {
+    pub fn free(&self, device: &ash::Device, loader: &acceleration_structure::Device) {
+        unsafe { loader.destroy_acceleration_structure(self.raw, None) };
+        self.buffer.free(device);
+    }
 }

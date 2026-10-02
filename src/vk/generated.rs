@@ -29,4 +29,8 @@ impl Generated {
             })
         }
     }
+
+    pub fn free(&self, device: &ash::Device, layout: u64) {
+        unsafe { (self.destroy)(device.handle(), layout, std::ptr::null()) };
+    }
 }

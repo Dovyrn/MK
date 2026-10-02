@@ -146,7 +146,7 @@ impl Device {
             Ok(())
         };
         if let Err(e) = views() {
-            self.free_texture(&t);
+            t.free(&self.raw);
             return Err(e.to_string());
         }
         let view = t.view;
@@ -154,7 +154,7 @@ impl Device {
         let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
         if bound && slot * 2 + 1 >= self.bindless.images {
             let t = self.res.textures.remove(slot);
-            self.free_texture(&t);
+            t.free(&self.raw);
             return Err("the bindless heap has no texture slot left".into());
         }
         if info.usage & usage::SAMPLED != 0 {
@@ -188,21 +188,8 @@ impl Device {
         self.res.table.textures.clear(texture);
         self.defer(move |d| {
             let texture = d.res.textures.remove(texture);
-            d.free_texture(&texture);
+            texture.free(&d.raw);
         });
-    }
-
-    pub(super) fn free_texture(&self, texture: &Texture) {
-        unsafe {
-            self.raw.destroy_image_view(texture.view, None);
-            self.raw.destroy_image_view(texture.target, None);
-            if texture.own {
-                self.raw.destroy_image(texture.image, None);
-            }
-            if texture.memory != vk::DeviceMemory::null() {
-                self.raw.free_memory(texture.memory, None);
-            }
-        }
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {

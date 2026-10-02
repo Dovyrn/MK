@@ -2,6 +2,7 @@ use crate::DepthInfo;
 use crate::slots::Slots;
 use crate::vk::accel::Accel;
 use crate::vk::buffer::Buffer;
+use crate::vk::event::Event;
 use crate::vk::heap::Heap;
 use crate::vk::query::Query;
 use crate::vk::texture::Texture;
@@ -20,6 +21,6 @@ pub struct Resources {
     pub layouts: Slots<(u64, vk::ShaderStageFlags)>,
     pub rays: Slots<(vk::Pipeline, u32)>,
     pub queries: Slots<Query>,
-    pub events: Slots<(vk::Semaphore, bool)>,
+    pub events: Slots<Event>,
     pub table: crate::table::Table,
 }

@@ -126,7 +126,7 @@ impl Device {
         let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
             Ok(r) => r,
             Err(e) => {
-                self.free_buffer(&buffer);
+                buffer.free(&self.raw);
                 return Err(e.to_string());
             }
         };
@@ -171,7 +171,7 @@ impl Device {
         let raw = match unsafe { ray.create_acceleration_structure(&create, None) } {
             Ok(r) => r,
             Err(e) => {
-                self.free_buffer(&buffer);
+                buffer.free(&self.raw);
                 return Err(e.to_string());
             }
         };
@@ -196,16 +196,8 @@ impl Device {
 
     pub fn destroy_accel(&mut self, accel: u32) {
         self.defer(move |d| {
-            let a = d.res.accels.remove(accel);
-            unsafe {
-                d.ext
-                    .accel
-                    .as_ref()
-                    .unwrap()
-                    .destroy_acceleration_structure(a.raw, None);
-                d.raw.destroy_buffer(a.buffer.raw, None);
-                d.raw.free_memory(a.buffer.memory, None);
-            }
+            let accel = d.res.accels.remove(accel);
+            accel.free(&d.raw, d.ext.accel.as_ref().unwrap());
         });
     }
 

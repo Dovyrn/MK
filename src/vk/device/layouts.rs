@@ -69,9 +69,8 @@ impl Device {
 
     pub fn destroy_commands_layout(&mut self, layout: u32) {
         self.defer(move |d| {
-            let (handle, _) = d.res.layouts.remove(layout);
-            let generated = d.ext.generated.as_ref().unwrap();
-            unsafe { (generated.destroy)(d.raw.handle(), handle, std::ptr::null()) };
+            let (layout, _) = d.res.layouts.remove(layout);
+            d.ext.generated.as_ref().unwrap().free(&d.raw, layout);
         });
     }
 

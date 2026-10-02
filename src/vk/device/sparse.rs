@@ -127,9 +127,12 @@ impl Device {
     ) -> Result<(), String> {
         let q = &self.queues[queue];
         let value = q.count + 1;
-        let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).0).collect();
+        let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).raw).collect();
         let wait_values: Vec<_> = waits.iter().map(|w| w.1).collect();
-        let mut signal: Vec<_> = signals.iter().map(|s| self.res.events.get(s.0).0).collect();
+        let mut signal: Vec<_> = signals
+            .iter()
+            .map(|s| self.res.events.get(s.0).raw)
+            .collect();
         let mut signal_values: Vec<_> = signals.iter().map(|s| s.1).collect();
         signal.push(q.semaphore);
         signal_values.push(value);

@@ -3,6 +3,7 @@ mod bindings;
 mod bindless;
 mod buffer;
 mod device;
+mod event;
 mod extensions;
 mod ffi;
 mod frame;

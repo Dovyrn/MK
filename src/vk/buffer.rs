@@ -8,3 +8,16 @@ pub struct Buffer {
     pub own: bool,
     pub device: bool,
 }
+
+impl Buffer {
+    pub fn free(&self, device: &ash::Device) {
+        unsafe {
+            if self.own {
+                device.destroy_buffer(self.raw, None);
+            }
+            if self.memory != vk::DeviceMemory::null() {
+                device.free_memory(self.memory, None);
+            }
+        }
+    }
+}

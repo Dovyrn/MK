@@ -353,31 +353,20 @@ impl Drop for Device {
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);
             }
-            let buffers: Vec<_> = self.res.buffers.drain().collect();
-            for buffer in buffers {
-                self.free_buffer(&buffer);
+            for buffer in self.res.buffers.drain() {
+                buffer.free(&self.raw);
             }
-            let textures: Vec<_> = self.res.textures.drain().collect();
-            for texture in textures {
-                self.free_texture(&texture);
+            for texture in self.res.textures.drain() {
+                texture.free(&self.raw);
             }
             for sampler in self.res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
             }
-            let accels: Vec<_> = self.res.accels.drain().collect();
-            for a in accels {
-                self.ext
-                    .accel
-                    .as_ref()
-                    .unwrap()
-                    .destroy_acceleration_structure(a.raw, None);
-                self.raw.destroy_buffer(a.buffer.raw, None);
-                self.raw.free_memory(a.buffer.memory, None);
+            for accel in self.res.accels.drain() {
+                accel.free(&self.raw, self.ext.accel.as_ref().unwrap());
             }
-            let layouts: Vec<_> = self.res.layouts.drain().collect();
-            for (handle, _) in layouts {
-                let generated = self.ext.generated.as_ref().unwrap();
-                (generated.destroy)(self.raw.handle(), handle, std::ptr::null());
+            for (layout, _) in self.res.layouts.drain() {
+                self.ext.generated.as_ref().unwrap().free(&self.raw, layout);
             }
             for query in self.res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
@@ -391,10 +380,8 @@ impl Drop for Device {
             for pipeline in self.res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for (event, owned) in self.res.events.drain() {
-                if owned {
-                    self.raw.destroy_semaphore(event, None);
-                }
+            for event in self.res.events.drain() {
+                event.free(&self.raw);
             }
             for heap in self.res.heaps.drain() {
                 self.raw.free_memory(heap.memory, None);

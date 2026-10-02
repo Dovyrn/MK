@@ -17,6 +17,21 @@ pub struct Texture {
     pub tile: vk::Extent3D,
 }
 
+impl Texture {
+    pub fn free(&self, device: &ash::Device) {
+        unsafe {
+            device.destroy_image_view(self.view, None);
+            device.destroy_image_view(self.target, None);
+            if self.own {
+                device.destroy_image(self.image, None);
+            }
+            if self.memory != vk::DeviceMemory::null() {
+                device.free_memory(self.memory, None);
+            }
+        }
+    }
+}
+
 pub fn aspect(f: u32) -> vk::ImageAspectFlags {
     match f {
         format::D16_UNORM | format::D32_FLOAT => vk::ImageAspectFlags::DEPTH,
