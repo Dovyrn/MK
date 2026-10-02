@@ -11,10 +11,17 @@ pub struct Program {
 
 fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     let marker = format!("//@ entry {entry}\n");
-    let start = text
-        .find(&marker)
-        .ok_or(format!("the GL code has no entry {entry}"))?
-        + marker.len();
+    let Some(start) = text.find(&marker) else {
+        let list: Vec<&str> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("//@ entry "))
+            .collect();
+        return Err(format!(
+            "no entry {entry} in the code; it has {}",
+            list.join(", ")
+        ));
+    };
+    let start = start + marker.len();
     let end = text[start..]
         .find("//@ entry ")
         .map_or(text.len(), |i| start + i);
