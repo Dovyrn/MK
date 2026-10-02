@@ -325,8 +325,12 @@ fn glsl(out: &Path, name: &str) {
                     .find(|(n, s)| *s == slot && pair.starts_with(n.as_str()))
                     .unwrap();
                 let rest = &pair[texture.len()..];
-                let sampler = separate.iter().find(|(n, _)| n == rest).unwrap().1;
-                format!("texture {name} {} {}", slot - TEXTURES, sampler - SAMPLERS)
+                match separate.iter().find(|(n, _)| n == rest) {
+                    Some((_, sampler)) => {
+                        format!("texture {name} {} {}", slot - TEXTURES, sampler - SAMPLERS)
+                    }
+                    None => format!("texture {name} {}", slot - TEXTURES),
+                }
             } else {
                 format!("{kind} {name} {slot}")
             };

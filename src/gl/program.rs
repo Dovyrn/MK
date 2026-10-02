@@ -5,7 +5,7 @@ use glow::HasContext;
 
 pub struct Program {
     pub raw: glow::Program,
-    pub pairs: Vec<(u32, u32)>,
+    pub pairs: Vec<(u32, Option<u32>)>,
 }
 
 const STORAGE_BLOCK: u32 = 0x92E6;
@@ -135,7 +135,7 @@ impl Program {
                     "texture" => {
                         if let Some(l) = gl.get_uniform_location(raw, words[1]) {
                             gl.uniform_1_i32(Some(&l), pairs.len() as i32);
-                            pairs.push((number(2), number(3)));
+                            pairs.push((number(2), words.get(3).map(|_| number(3))));
                         }
                     }
                     _ => {}

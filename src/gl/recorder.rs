@@ -224,15 +224,14 @@ impl<'a> Recorder<'a> {
             }
             if let Some(p) = self.program {
                 for (unit, &(t, s)) in p.pairs.iter().enumerate() {
-                    let texture = self.res.textures.get(
-                        self.textures[t as usize]
-                            .unwrap_or_else(|| panic!("texture slot {t} is empty")),
-                    );
-                    gl.active_texture(glow::TEXTURE0 + unit as u32);
-                    gl.bind_texture(texture.target, texture.raw);
-                    let sampler = self.samplers[s as usize]
-                        .unwrap_or_else(|| panic!("sampler slot {s} is empty"));
-                    gl.bind_sampler(unit as u32, Some(*self.res.samplers.get(sampler)));
+                    if let Some(texture) = self.textures[t as usize] {
+                        let texture = self.res.textures.get(texture);
+                        gl.active_texture(glow::TEXTURE0 + unit as u32);
+                        gl.bind_texture(texture.target, texture.raw);
+                    }
+                    let sampler = s.and_then(|s| self.samplers[s as usize]);
+                    let sampler = sampler.map(|s| *self.res.samplers.get(s));
+                    gl.bind_sampler(unit as u32, sampler);
                 }
             }
             let Some(p) = self.render else {
