@@ -175,6 +175,22 @@ impl Recorder<'_> {
         }
     }
 
+    fn queries(
+        &self,
+        heap: u32,
+        first: u32,
+        count: u32,
+    ) -> (vk::QueryPool, vk::QueryControlFlags, u64) {
+        let (pool, flags, stride, total) = *self.res.queries.get(heap);
+        let end = first as u64 + count as u64;
+        let bad = first.max(total);
+        assert!(
+            count == 0 || end <= total as u64,
+            "query {bad} is outside 0..{total}"
+        );
+        (pool, flags, stride)
+    }
+
     fn multi(&self, count: u32) -> Result<(), &'static str> {
         if count > 1 && self.ext.features.multi_draw_indirect == 0 {
             return Err("multi draw indirect is not supported");
@@ -817,20 +833,20 @@ impl Recorder<'_> {
                 }
                 Command::OcclusionHeap { .. } => {}
                 Command::ResetQueries { heap, first, count } => {
-                    d.cmd_reset_query_pool(b, self.res.queries.get(heap).0, first, count)
+                    let (pool, _, _) = self.queries(heap, first, count);
+                    d.cmd_reset_query_pool(b, pool, first, count)
                 }
-                Command::WriteTimestamp { heap, index, stage } => d.cmd_write_timestamp2(
-                    b,
-                    self.stamp(stage),
-                    self.res.queries.get(heap).0,
-                    index,
-                ),
+                Command::WriteTimestamp { heap, index, stage } => {
+                    let (pool, _, _) = self.queries(heap, index, 1);
+                    d.cmd_write_timestamp2(b, self.stamp(stage), pool, index)
+                }
                 Command::BeginQuery { heap, index } => {
-                    let (pool, flags, _) = *self.res.queries.get(heap);
+                    let (pool, flags, _) = self.queries(heap, index, 1);
                     d.cmd_begin_query(b, pool, index, flags)
                 }
                 Command::EndQuery { heap, index } => {
-                    d.cmd_end_query(b, self.res.queries.get(heap).0, index)
+                    let (pool, _, _) = self.queries(heap, index, 1);
+                    d.cmd_end_query(b, pool, index)
                 }
                 Command::ResolveQueries {
                     heap,
@@ -838,16 +854,19 @@ impl Recorder<'_> {
                     count,
                     buffer,
                     offset,
-                } => d.cmd_copy_query_pool_results(
-                    b,
-                    self.res.queries.get(heap).0,
-                    first,
-                    count,
-                    self.res.buffers.get(buffer).raw,
-                    offset,
-                    self.res.queries.get(heap).2,
-                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
-                ),
+                } => {
+                    let (pool, _, stride) = self.queries(heap, first, count);
+                    d.cmd_copy_query_pool_results(
+                        b,
+                        pool,
+                        first,
+                        count,
+                        self.res.buffers.get(buffer).raw,
+                        offset,
+                        stride,
+                        vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                    )
+                }
                 Command::BuildAccel {
                     accel,
                     scratch,
@@ -1043,7 +1062,7 @@ impl Recorder<'_> {
                         b,
                         &[self.res.accels.get(accel).raw],
                         vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                        self.res.queries.get(heap).0,
+                        self.queries(heap, index, 1).0,
                         index,
                     )
                 }

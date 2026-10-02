@@ -2202,12 +2202,12 @@ impl Device {
         } else {
             8
         };
-        Ok(self.res.queries.insert((pool, flags, stride)))
+        Ok(self.res.queries.insert((pool, flags, stride, count)))
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
         self.defer(move |d| {
-            let (pool, _, _) = d.res.queries.remove(heap);
+            let (pool, _, _, _) = d.res.queries.remove(heap);
             unsafe { d.raw.destroy_query_pool(pool, None) };
         });
     }
@@ -2339,7 +2339,7 @@ impl Drop for Device {
                 let generated = self.ext.generated.as_ref().unwrap();
                 (generated.destroy)(self.raw.handle(), handle, std::ptr::null());
             }
-            for (pool, _, _) in self.res.queries.drain() {
+            for (pool, _, _, _) in self.res.queries.drain() {
                 self.raw.destroy_query_pool(pool, None);
             }
             for (pipeline, _) in self.res.rays.drain() {
