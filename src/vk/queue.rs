@@ -9,8 +9,8 @@ use std::collections::VecDeque;
 pub struct Queue {
     pub raw: vk::Queue,
     pub family: u32,
-    semaphore: vk::Semaphore,
-    count: u64,
+    pub semaphore: vk::Semaphore,
+    pub count: u64,
     free: Vec<Frame>,
     busy: VecDeque<(Frame, u64)>,
 }

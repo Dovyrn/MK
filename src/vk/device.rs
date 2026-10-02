@@ -37,7 +37,10 @@ pub struct Device {
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
+    garbage: Vec<(Vec<u64>, Free)>,
 }
+
+type Free = Box<dyn FnOnce(&mut Device)>;
 
 const FDS: &str = "VK_KHR_external_memory_fd is not enabled";
 
@@ -233,7 +236,31 @@ impl Device {
                 layout,
                 res: Resources::default(),
                 queues,
+                garbage: Vec::new(),
             })
+        }
+    }
+
+    fn defer(&mut self, free: impl FnOnce(&mut Self) + 'static) {
+        let ticket = self.queues.iter().map(|q| q.count).collect();
+        self.garbage.push((ticket, Box::new(free)));
+    }
+
+    fn collect(&mut self) {
+        if self.garbage.is_empty() {
+            return;
+        }
+        let done: Vec<u64> = self
+            .queues
+            .iter()
+            .map(|q| unsafe { self.raw.get_semaphore_counter_value(q.semaphore) }.unwrap_or(0))
+            .collect();
+        let (ready, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.garbage)
+            .into_iter()
+            .partition(|(ticket, _)| ticket.iter().zip(&done).all(|(t, d)| t <= d));
+        self.garbage = waiting;
+        for (_, free) in ready {
+            free(self);
         }
     }
 
@@ -709,17 +736,21 @@ impl Device {
     }
 
     fn bind_sparse(
-        &self,
+        &mut self,
         queue: usize,
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
         buffers: &[vk::SparseBufferMemoryBindInfo],
         images: &[vk::SparseImageMemoryBindInfo],
     ) -> Result<(), String> {
+        let q = &self.queues[queue];
+        let value = q.count + 1;
         let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).0).collect();
         let wait_values: Vec<_> = waits.iter().map(|w| w.1).collect();
-        let signal: Vec<_> = signals.iter().map(|s| self.res.events.get(s.0).0).collect();
-        let signal_values: Vec<_> = signals.iter().map(|s| s.1).collect();
+        let mut signal: Vec<_> = signals.iter().map(|s| self.res.events.get(s.0).0).collect();
+        let mut signal_values: Vec<_> = signals.iter().map(|s| s.1).collect();
+        signal.push(q.semaphore);
+        signal_values.push(value);
         let mut timeline = vk::TimelineSemaphoreSubmitInfo::default()
             .wait_semaphore_values(&wait_values)
             .signal_semaphore_values(&signal_values);
@@ -731,9 +762,11 @@ impl Device {
             .push_next(&mut timeline);
         unsafe {
             self.raw
-                .queue_bind_sparse(self.queues[queue].raw, &[info], vk::Fence::null())
-                .map_err(|e| e.to_string())
-        }
+                .queue_bind_sparse(q.raw, &[info], vk::Fence::null())
+                .map_err(|e| e.to_string())?
+        };
+        self.queues[queue].count = value;
+        Ok(())
     }
 
     pub fn map_sparse_buffer(
@@ -813,8 +846,10 @@ impl Device {
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
-        let heap = self.res.heaps.remove(heap);
-        unsafe { self.raw.free_memory(heap.memory, None) };
+        self.defer(move |d| {
+            let heap = d.res.heaps.remove(heap);
+            unsafe { d.raw.free_memory(heap.memory, None) };
+        });
     }
 
     pub fn buffer_size(&self, size: u64, _memory: u32) -> (u64, u64) {
@@ -1166,16 +1201,18 @@ impl Device {
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {
-        let a = self.res.accels.remove(accel);
-        unsafe {
-            self.ext
-                .ray
-                .as_ref()
-                .unwrap()
-                .destroy_acceleration_structure(a.raw, None);
-            self.raw.destroy_buffer(a.buffer.raw, None);
-            self.raw.free_memory(a.buffer.memory, None);
-        }
+        self.defer(move |d| {
+            let a = d.res.accels.remove(accel);
+            unsafe {
+                d.ext
+                    .ray
+                    .as_ref()
+                    .unwrap()
+                    .destroy_acceleration_structure(a.raw, None);
+                d.raw.destroy_buffer(a.buffer.raw, None);
+                d.raw.free_memory(a.buffer.memory, None);
+            }
+        });
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
@@ -1217,8 +1254,10 @@ impl Device {
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
-        let buffer = self.res.buffers.remove(buffer);
-        self.free_buffer(&buffer);
+        self.defer(move |d| {
+            let buffer = d.res.buffers.remove(buffer);
+            d.free_buffer(&buffer);
+        });
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> vk::Buffer {
@@ -1473,8 +1512,10 @@ impl Device {
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
-        let pipeline = self.res.renders.remove(pipeline);
-        unsafe { self.raw.destroy_pipeline(pipeline, None) };
+        self.defer(move |d| {
+            let pipeline = d.res.renders.remove(pipeline);
+            unsafe { d.raw.destroy_pipeline(pipeline, None) };
+        });
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
@@ -1647,8 +1688,10 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
-        let texture = self.res.textures.remove(texture);
-        self.free_texture(&texture);
+        self.defer(move |d| {
+            let texture = d.res.textures.remove(texture);
+            d.free_texture(&texture);
+        });
     }
 
     fn free_texture(&self, texture: &Texture) {
@@ -1731,8 +1774,10 @@ impl Device {
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
-        let sampler = self.res.samplers.remove(sampler);
-        unsafe { self.raw.destroy_sampler(sampler, None) };
+        self.defer(move |d| {
+            let sampler = d.res.samplers.remove(sampler);
+            unsafe { d.raw.destroy_sampler(sampler, None) };
+        });
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {
@@ -1800,8 +1845,10 @@ impl Device {
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
-        let pipeline = self.res.pipelines.remove(pipeline);
-        unsafe { self.raw.destroy_pipeline(pipeline, None) };
+        self.defer(move |d| {
+            let pipeline = d.res.pipelines.remove(pipeline);
+            unsafe { d.raw.destroy_pipeline(pipeline, None) };
+        });
     }
 
     pub fn create_ray_pipeline(&mut self, info: &RayInfo) -> Result<u32, String> {
@@ -1912,8 +1959,10 @@ impl Device {
     }
 
     pub fn destroy_ray_pipeline(&mut self, pipeline: u32) {
-        let (raw, _) = self.res.rays.remove(pipeline);
-        unsafe { self.raw.destroy_pipeline(raw, None) };
+        self.defer(move |d| {
+            let (raw, _) = d.res.rays.remove(pipeline);
+            unsafe { d.raw.destroy_pipeline(raw, None) };
+        });
     }
 
     pub fn create_commands_layout(&mut self, info: &LayoutInfo) -> Result<u32, String> {
@@ -1980,9 +2029,11 @@ impl Device {
     }
 
     pub fn destroy_commands_layout(&mut self, layout: u32) {
-        let (handle, _) = self.res.layouts.remove(layout);
-        let generated = self.ext.generated.as_ref().unwrap();
-        unsafe { (generated.destroy)(self.raw.handle(), handle, std::ptr::null()) };
+        self.defer(move |d| {
+            let (handle, _) = d.res.layouts.remove(layout);
+            let generated = d.ext.generated.as_ref().unwrap();
+            unsafe { (generated.destroy)(d.raw.handle(), handle, std::ptr::null()) };
+        });
     }
 
     pub fn generated_size(&self, layout: u32, pipeline: u32, sequences: u32, draws: u32) -> u64 {
@@ -2065,8 +2116,10 @@ impl Device {
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        let (pool, _, _) = self.res.queries.remove(heap);
-        unsafe { self.raw.destroy_query_pool(pool, None) };
+        self.defer(move |d| {
+            let (pool, _, _) = d.res.queries.remove(heap);
+            unsafe { d.raw.destroy_query_pool(pool, None) };
+        });
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
@@ -2079,13 +2132,16 @@ impl Device {
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        let (event, owned) = self.res.events.remove(event);
-        if owned {
-            unsafe { self.raw.destroy_semaphore(event, None) };
-        }
+        self.defer(move |d| {
+            let (event, owned) = d.res.events.remove(event);
+            if owned {
+                unsafe { d.raw.destroy_semaphore(event, None) };
+            }
+        });
     }
 
-    pub fn event_value(&self, event: u32) -> Result<u64, String> {
+    pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
+        self.collect();
         unsafe {
             self.raw
                 .get_semaphore_counter_value(self.res.events.get(event).0)
@@ -2093,7 +2149,8 @@ impl Device {
         }
     }
 
-    pub fn wait(&self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+        self.collect();
         let semaphores = [self.res.events.get(event).0];
         let values = [value];
         let info = vk::SemaphoreWaitInfo::default()
@@ -2119,6 +2176,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands.bytes(), &self.caps())?;
+        self.collect();
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
@@ -2139,6 +2197,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Command::check(commands, &self.caps())?;
+        self.collect();
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
@@ -2155,6 +2214,12 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
+            for queue in &self.queues {
+                self.raw.queue_wait_idle(queue.raw).ok();
+            }
+            for (_, free) in std::mem::take(&mut self.garbage) {
+                free(self);
+            }
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);
             }
