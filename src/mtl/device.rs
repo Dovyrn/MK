@@ -42,14 +42,15 @@ use objc2_metal::{
     MTLHeapDescriptor, MTLHeapType, MTLIndexType, MTLIndirectCommandBuffer,
     MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLIntersectionFunctionTable,
     MTLIntersectionFunctionTableDescriptor, MTLLibrary, MTLMatrixLayout, MTLOrigin,
-    MTLPrimitiveTopologyClass, MTLRasterizationRateLayerDescriptor, MTLRasterizationRateMap,
-    MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLResource, MTLResourceID, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerBorderColor,
-    MTLSamplerDescriptor, MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
-    MTLSharedEvent, MTLSize, MTLSparsePageSize, MTLSparseTextureMappingMode, MTLStencilDescriptor,
-    MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
-    MTLVertexStepFunction, MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
+    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRasterizationRateLayerDescriptor,
+    MTLRasterizationRateMap, MTLRasterizationRateMapDescriptor, MTLRegion, MTLResidencySet,
+    MTLResidencySetDescriptor, MTLResource, MTLResourceID, MTLResourceOptions,
+    MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor, MTLSamplerMinMagFilter,
+    MTLSamplerMipFilter, MTLSamplerState, MTLSharedEvent, MTLSize, MTLSparsePageSize,
+    MTLSparseTextureMappingMode, MTLStencilDescriptor, MTLStencilOperation, MTLStorageMode,
+    MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLTriangleFillMode,
+    MTLVertexDescriptor, MTLVertexFormat, MTLVertexStepFunction, MTLVisibleFunctionTable,
+    MTLVisibleFunctionTableDescriptor,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
@@ -968,6 +969,7 @@ impl Device {
             state,
             fill: fill(info.fill),
             clip: clip(info.clamp),
+            primitive: MTLPrimitiveType(info.topology as usize),
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))
@@ -1006,6 +1008,7 @@ impl Device {
             state,
             fill: fill(info.fill),
             clip: clip(info.clamp),
+            primitive: MTLPrimitiveType::Triangle,
             task: size(info.task_group),
             mesh: size(info.mesh_group),
         }))
@@ -1039,6 +1042,7 @@ impl Device {
             state,
             fill: MTLTriangleFillMode::Fill,
             clip: MTLDepthClipMode::Clip,
+            primitive: MTLPrimitiveType::Triangle,
             task: size([1, 1, 1]),
             mesh: size([1, 1, 1]),
         }))

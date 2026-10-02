@@ -1,6 +1,8 @@
 use crate::mtl::frame::Frame;
+use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
+use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 use crate::mtl::{Callback, Native};
 use crate::register;
@@ -32,11 +34,13 @@ pub struct Recorder<'a> {
     pass: Retained<MTL4RenderPassDescriptor>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     views: u32,
-    group: MTLSize,
-    task: MTLSize,
-    mesh: MTLSize,
+    compute_pipeline: Option<&'a Pipeline>,
+    render_pipeline: Option<&'a Render>,
+    state: Vec<&'a [u8]>,
+    width: u32,
+    height: u32,
     primitive: MTLPrimitiveType,
-    index: (u64, usize, MTLIndexType, u64),
+    index: Option<(u64, usize, MTLIndexType, u64)>,
     push: [u8; 256],
     size: usize,
     dirty: bool,
@@ -149,11 +153,13 @@ impl<'a> Recorder<'a> {
             pass: MTL4RenderPassDescriptor::new(),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             views: 0,
-            group: size(1, 1, 1),
-            task: size(1, 1, 1),
-            mesh: size(1, 1, 1),
+            compute_pipeline: None,
+            render_pipeline: None,
+            state: Vec::new(),
+            width: 0,
+            height: 0,
             primitive: MTLPrimitiveType::Triangle,
-            index: (0, 0, MTLIndexType::UInt16, 2),
+            index: None,
             push: [0; 256],
             size: 0,
             dirty: false,
@@ -237,11 +243,44 @@ impl<'a> Recorder<'a> {
         Ok(())
     }
 
-    pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+    pub fn run(&mut self, mut bytes: &'a [u8]) -> Result<(), &'static str> {
         while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?)?;
+            let at = bytes;
+            let command = Command::read(&mut bytes)?;
+            if matches!(
+                command,
+                Command::BindRenderPipeline { .. }
+                    | Command::SetViewport { .. }
+                    | Command::SetScissor { .. }
+                    | Command::SetCull { .. }
+                    | Command::SetFace { .. }
+                    | Command::SetTopology { .. }
+                    | Command::SetDepthState { .. }
+                    | Command::SetStencilReference { .. }
+                    | Command::SetDepthBias { .. }
+                    | Command::SetBlendColor { .. }
+                    | Command::SetViewports { .. }
+                    | Command::SetScissors { .. }
+                    | Command::SetDepthBounds { .. }
+            ) {
+                let kept = &at[..at.len() - bytes.len()];
+                self.state.retain(|s| s[..2] != kept[..2]);
+                self.state.push(kept);
+            }
+            self.step(command)?;
         }
         Ok(())
+    }
+
+    fn scissor(&self, x: u32, y: u32, width: u32, height: u32) -> MTLScissorRect {
+        let x = x.min(self.width);
+        let y = y.min(self.height);
+        MTLScissorRect {
+            x: x as usize,
+            y: y as usize,
+            width: width.min(self.width - x) as usize,
+            height: height.min(self.height - y) as usize,
+        }
     }
 
     fn step(&mut self, command: Command) -> Result<(), &'static str> {
@@ -253,6 +292,9 @@ impl<'a> Recorder<'a> {
                     .ok_or("compute encoder creation failed")?;
                 encoder.setArgumentTable(Some(self.table));
                 self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
+                if let Some(p) = self.compute_pipeline {
+                    encoder.setComputePipelineState(&p.state);
+                }
                 self.compute = Some(encoder);
             }
             Command::EndCompute => {
@@ -262,7 +304,7 @@ impl<'a> Recorder<'a> {
             Command::BindPipeline { pipeline } => {
                 let p = self.res.pipelines.get(pipeline);
                 self.compute().setComputePipelineState(&p.state);
-                self.group = p.group;
+                self.compute_pipeline = Some(p);
             }
             Command::PushConstants { offset, data } => {
                 let at = offset as usize;
@@ -271,24 +313,33 @@ impl<'a> Recorder<'a> {
                 self.dirty = true;
             }
             Command::Dispatch { x, y, z } => {
+                let Some(p) = self.compute_pipeline else {
+                    return Ok(());
+                };
                 self.flush()?;
                 self.compute()
-                    .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), self.group);
+                    .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), p.group);
             }
             Command::DispatchIndirect { buffer, offset } => {
+                let Some(p) = self.compute_pipeline else {
+                    return Ok(());
+                };
                 self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.compute()
                         .dispatchThreadgroupsWithIndirectBuffer_threadsPerThreadgroup(
-                            address, self.group,
+                            address, p.group,
                         )
                 };
             }
             Command::DispatchThreads { x, y, z } => {
+                let Some(p) = self.compute_pipeline else {
+                    return Ok(());
+                };
                 self.flush()?;
                 self.compute()
-                    .dispatchThreads_threadsPerThreadgroup(size(x, y, z), self.group);
+                    .dispatchThreads_threadsPerThreadgroup(size(x, y, z), p.group);
             }
             Command::CopyBuffer {
                 src,
@@ -496,7 +547,12 @@ impl<'a> Recorder<'a> {
                 self.opened(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
                 self.pass = MTL4RenderPassDescriptor::new();
-                self.primitive = MTLPrimitiveType::Triangle;
+                self.width = width;
+                self.height = height;
+                for i in 0..self.state.len() {
+                    let mut bytes = self.state[i];
+                    self.step(Command::read(&mut bytes)?)?;
+                }
             }
             Command::EndRender => {
                 let encoder = self.render.take().unwrap();
@@ -507,8 +563,8 @@ impl<'a> Recorder<'a> {
                 self.render().setRenderPipelineState(&p.state);
                 self.render().setTriangleFillMode(p.fill);
                 self.render().setDepthClipMode(p.clip);
-                self.task = p.task;
-                self.mesh = p.mesh;
+                self.primitive = p.primitive;
+                self.render_pipeline = Some(p);
             }
             Command::SetViewport {
                 x,
@@ -530,12 +586,9 @@ impl<'a> Recorder<'a> {
                 y,
                 width,
                 height,
-            } => self.render().setScissorRect(MTLScissorRect {
-                x: x as usize,
-                y: y as usize,
-                width: width as usize,
-                height: height as usize,
-            }),
+            } => self
+                .render()
+                .setScissorRect(self.scissor(x, y, width, height)),
             Command::SetCull { cull } => self.render().setCullMode(MTLCullMode(cull as usize)),
             Command::SetFace { face: f } => self.render().setFrontFacingWinding(match f {
                 face::CCW => MTLWinding::CounterClockwise,
@@ -613,12 +666,12 @@ impl<'a> Recorder<'a> {
                     index::U32 => (MTLIndexType::UInt32, 4),
                     k => panic!("unknown index {k}"),
                 };
-                self.index = (
+                self.index = Some((
                     b.gpuAddress() + offset,
-                    b.length() - offset as usize,
+                    b.length().saturating_sub(offset as usize),
                     kind,
                     size,
-                );
+                ));
             }
             Command::Draw {
                 vertices,
@@ -626,6 +679,9 @@ impl<'a> Recorder<'a> {
                 first_vertex,
                 first_instance,
             } => {
+                if self.render_pipeline.is_none() {
+                    return Ok(());
+                }
                 self.flush()?;
                 unsafe {
                     self.render()
@@ -645,8 +701,12 @@ impl<'a> Recorder<'a> {
                 base_vertex,
                 first_instance,
             } => {
+                let (Some(_), Some((address, length, kind, size))) =
+                    (self.render_pipeline, self.index)
+                else {
+                    return Ok(());
+                };
                 self.flush()?;
-                let (address, length, kind, size) = self.index;
                 let skip = first_index as u64 * size;
                 unsafe {
                     self.render()
@@ -655,7 +715,7 @@ impl<'a> Recorder<'a> {
                             indices as usize,
                             kind,
                             address + skip,
-                            length - skip as usize,
+                            length.saturating_sub(skip as usize),
                             instances as usize,
                             base_vertex as isize,
                             first_instance as usize,
@@ -668,6 +728,9 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
+                if self.render_pipeline.is_none() {
+                    return Ok(());
+                }
                 self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
@@ -681,8 +744,11 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
+                let (Some(_), Some((index, length, kind, _))) = (self.render_pipeline, self.index)
+                else {
+                    return Ok(());
+                };
                 self.flush()?;
-                let (index, length, kind, _) = self.index;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     unsafe {
@@ -698,12 +764,15 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::DrawMesh { x, y, z } => {
+                let Some(p) = self.render_pipeline else {
+                    return Ok(());
+                };
                 self.flush()?;
                 self.render()
                     .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                         size(x, y, z),
-                        self.task,
-                        self.mesh,
+                        p.task,
+                        p.mesh,
                     );
             }
             Command::DrawMeshIndirect {
@@ -712,14 +781,17 @@ impl<'a> Recorder<'a> {
                 count,
                 stride,
             } => {
+                let Some(p) = self.render_pipeline else {
+                    return Ok(());
+                };
                 self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     self.render()
                         .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                             address + i * stride as u64,
-                            self.task,
-                            self.mesh,
+                            p.task,
+                            p.mesh,
                         );
                 }
             }
@@ -845,6 +917,9 @@ impl<'a> Recorder<'a> {
                 self.pass.setThreadgroupMemoryLength(memory as usize);
             }
             Command::DispatchTile { width, height } => {
+                if self.render_pipeline.is_none() {
+                    return Ok(());
+                }
                 self.flush()?;
                 self.render().dispatchThreadsPerTile(size(width, height, 1));
             }
@@ -966,15 +1041,9 @@ impl<'a> Recorder<'a> {
                 let mut rects: Vec<MTLScissorRect> = data
                     .chunks(16)
                     .map(|c| {
-                        let u = |i: usize| {
-                            u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap()) as usize
-                        };
-                        MTLScissorRect {
-                            x: u(0),
-                            y: u(1),
-                            width: u(2),
-                            height: u(3),
-                        }
+                        let u =
+                            |i: usize| u32::from_le_bytes(c[i * 4..i * 4 + 4].try_into().unwrap());
+                        self.scissor(u(0), u(1), u(2), u(3))
                     })
                     .collect();
                 unsafe {
