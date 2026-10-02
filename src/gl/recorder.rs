@@ -6,7 +6,7 @@ use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
 use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
-use crate::gl::state::State;
+use crate::gl::state::{State, toggle};
 use crate::register;
 use crate::{
     Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
@@ -1053,16 +1053,8 @@ impl<'a> Recorder<'a> {
                         glow::FILL
                     };
                     gl.polygon_mode(glow::FRONT_AND_BACK, fill);
-                    if p.clamp {
-                        gl.enable(glow::DEPTH_CLAMP);
-                    } else {
-                        gl.disable(glow::DEPTH_CLAMP);
-                    }
-                    if p.coverage {
-                        gl.enable(glow::SAMPLE_ALPHA_TO_COVERAGE);
-                    } else {
-                        gl.disable(glow::SAMPLE_ALPHA_TO_COVERAGE);
-                    }
+                    toggle(gl, glow::DEPTH_CLAMP, p.clamp);
+                    toggle(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
                     self.colors(p);
                 }
                 Command::SetViewport {
@@ -1105,21 +1097,16 @@ impl<'a> Recorder<'a> {
                 Command::SetTopology { topology } => self.mode = mode(topology),
                 Command::SetDepthState { state } => {
                     let d = *res.depths.get(state);
-                    if d.compare != crate::compare::NONE || d.write {
-                        gl.enable(glow::DEPTH_TEST);
-                    } else {
-                        gl.disable(glow::DEPTH_TEST);
-                    }
+                    toggle(
+                        gl,
+                        glow::DEPTH_TEST,
+                        d.compare != crate::compare::NONE || d.write,
+                    );
                     gl.depth_func(compare(d.compare));
                     gl.depth_mask(d.write);
-                    if d.stencil {
-                        gl.enable(glow::STENCIL_TEST);
-                        self.state = Some(d);
-                        self.stencil();
-                    } else {
-                        gl.disable(glow::STENCIL_TEST);
-                        self.state = Some(d);
-                    }
+                    toggle(gl, glow::STENCIL_TEST, d.stencil);
+                    self.state = Some(d);
+                    self.stencil();
                 }
                 Command::SetStencilReference { front, back } => {
                     self.references = (front, back);
@@ -1132,11 +1119,7 @@ impl<'a> Recorder<'a> {
                 } => {
                     let on = constant != 0.0 || slope != 0.0;
                     for mode in OFFSETS {
-                        if on {
-                            gl.enable(mode);
-                        } else {
-                            gl.disable(mode);
-                        }
+                        toggle(gl, mode, on);
                     }
                     match self.extra.offset_clamp {
                         Some(offset) => offset(slope, constant, clamp),

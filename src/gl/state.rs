@@ -122,6 +122,16 @@ pub fn buffer(name: i32) -> Option<glow::Buffer> {
     NonZeroU32::new(name as u32).map(glow::NativeBuffer)
 }
 
+pub fn toggle(gl: &glow::Context, cap: u32, on: bool) {
+    unsafe {
+        if on {
+            gl.enable(cap);
+        } else {
+            gl.disable(cap);
+        }
+    }
+}
+
 fn texture(name: i32) -> Option<glow::Texture> {
     NonZeroU32::new(name as u32).map(glow::NativeTexture)
 }
@@ -406,11 +416,7 @@ impl State {
                 gl.pixel_store_i32(p, v);
             }
             for &(e, on) in &self.enables {
-                if on {
-                    gl.enable(e);
-                } else {
-                    gl.disable(e);
-                }
+                toggle(gl, e, on);
             }
             for (i, &on) in self.blends.iter().enumerate() {
                 if on {
