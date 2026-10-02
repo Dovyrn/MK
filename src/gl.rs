@@ -10,6 +10,7 @@ mod query;
 mod recorder;
 mod resolve;
 mod resources;
+mod sampler;
 mod state;
 mod texture;
 

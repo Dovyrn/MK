@@ -9,7 +9,7 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{State, toggle};
 use crate::register;
 use crate::{
-    Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
+    Caps, Command, DepthInfo, access, cull, face, format, index, load, slot, store, topology,
 };
 use glow::HasContext;
 
@@ -1225,21 +1225,12 @@ impl<'a> Recorder<'a> {
                 }
                 Command::BeginQuery { heap, index } => {
                     let q = res.queries.get(heap);
-                    let target = if q.kind == query::PRECISE {
-                        glow::SAMPLES_PASSED
-                    } else {
-                        glow::ANY_SAMPLES_PASSED
-                    };
+                    let target = q.target();
                     gl.begin_query(target, q.ids[index as usize]);
                     self.query = Some(target);
                 }
                 Command::EndQuery { heap, .. } => {
-                    let q = res.queries.get(heap);
-                    let target = if q.kind == query::PRECISE {
-                        glow::SAMPLES_PASSED
-                    } else {
-                        glow::ANY_SAMPLES_PASSED
-                    };
+                    let target = res.queries.get(heap).target();
                     if self.query.take() == Some(target) {
                         gl.end_query(target);
                     }

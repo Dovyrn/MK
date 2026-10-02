@@ -5,17 +5,18 @@ use crate::gl::cache::Cache;
 use crate::gl::event::Event;
 use crate::gl::extra::Extra;
 use crate::gl::native::Callback;
-use crate::gl::pipeline::{Pipeline, uniform};
+use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
 use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
-use crate::gl::state::{self, State, binding, buffer};
-use crate::gl::texture::Texture;
+use crate::gl::sampler;
+use crate::gl::state::{self, State, buffer};
+use crate::gl::texture::{Texture, target};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo,
-    address, border, dimension, filter, format, memory, query, usage,
+    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo, format,
+    memory, query, topology, usage,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -53,22 +54,7 @@ pub fn compare(c: u32) -> u32 {
     }
 }
 
-pub fn target(dimension: u32, samples: u32) -> u32 {
-    match (dimension, samples > 1) {
-        (dimension::D1, _) => glow::TEXTURE_1D,
-        (dimension::D1_ARRAY, _) => glow::TEXTURE_1D_ARRAY,
-        (dimension::D2, false) => glow::TEXTURE_2D,
-        (dimension::D2, true) => glow::TEXTURE_2D_MULTISAMPLE,
-        (dimension::D2_ARRAY, false) => glow::TEXTURE_2D_ARRAY,
-        (dimension::D2_ARRAY, true) => glow::TEXTURE_2D_MULTISAMPLE_ARRAY,
-        (dimension::D3, _) => glow::TEXTURE_3D,
-        (dimension::CUBE, _) => glow::TEXTURE_CUBE_MAP,
-        (dimension::CUBE_ARRAY, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
-        (d, _) => panic!("unknown dimension {d}"),
-    }
-}
-
-unsafe fn drain(gl: &glow::Context) {
+pub unsafe fn drain(gl: &glow::Context) {
     while !matches!(
         unsafe { gl.get_error() },
         glow::NO_ERROR | glow::CONTEXT_LOST
@@ -220,56 +206,12 @@ impl Device {
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         self.caps.buffer(size, memory)?;
-        let persistent = self.extra.storage.is_some();
-        let gl = &self.gl;
-        let (flags, usage) = match memory {
-            memory::DEVICE => (0, glow::STATIC_DRAW),
-            memory::UPLOAD => (glow::MAP_WRITE_BIT, glow::STREAM_DRAW),
-            memory::READBACK => (glow::MAP_READ_BIT, glow::STREAM_READ),
-            m => panic!("unknown memory {m}"),
-        };
-        let length =
-            isize::try_from(size).map_err(|_| format!("buffer size {size} is too large"))?;
-        let target = glow::COPY_WRITE_BUFFER;
-        unsafe {
-            drain(gl);
-            let raw = gl.create_buffer()?;
-            let old = buffer(gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
-            gl.bind_buffer(target, Some(raw));
-            let mut data: *mut u8 = std::ptr::null_mut();
-            if let Some(storage) = self.extra.storage {
-                let access = if flags == 0 {
-                    0
-                } else {
-                    flags | glow::MAP_PERSISTENT_BIT | glow::MAP_COHERENT_BIT
-                };
-                let bits = access | glow::DYNAMIC_STORAGE_BIT;
-                storage(target, length, std::ptr::null(), bits);
-                if flags != 0 {
-                    data = (self.extra.map)(target, 0, length, access).cast();
-                }
-            } else {
-                (self.extra.data)(target, length, std::ptr::null(), usage);
-            }
-            gl.bind_buffer(target, old);
-            let error = gl.get_error();
-            if error != glow::NO_ERROR || (flags != 0 && persistent && data.is_null()) {
-                gl.delete_buffer(raw);
-                return Err(format!(
-                    "buffer allocation of {size} bytes failed ({error:#x})"
-                ));
-            }
-            let id = self.res.buffers.insert(Buffer {
-                raw,
-                size,
-                memory,
-                data: Cell::new(data),
-                persistent,
-                own: true,
-            });
-            self.res.table.buffers.set(id, size);
-            Ok(id)
-        }
+        let id = self
+            .res
+            .buffers
+            .insert(Buffer::new(&self.gl, &self.extra, size, memory)?);
+        self.res.table.buffers.set(id, size);
+        Ok(id)
     }
 
     pub fn import_buffer(&mut self, raw: u32, size: u64) -> u32 {
@@ -292,10 +234,7 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.res.table.buffers.clear(buffer);
-        let b = self.res.buffers.remove(buffer);
-        if b.own {
-            unsafe { self.gl.delete_buffer(b.raw) };
-        }
+        self.res.buffers.remove(buffer).delete(&self.gl);
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
@@ -354,58 +293,20 @@ impl Device {
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
         self.res.table.pipelines.clear(pipeline);
-        let p = self.res.pipelines.remove(pipeline);
-        unsafe { self.gl.delete_program(p.raw) };
+        self.res.pipelines.remove(pipeline).delete(&self.gl);
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
-        if !uniform(info.colors) && !self.caps.blends {
-            return Err("different blend states per color target need GL 4.0".into());
-        }
-        if info.views > 1 {
-            return Err("multiview is not supported on GL".into());
-        }
-        let program = Program::new(
-            &self.gl,
-            info.code,
-            &[
-                (glow::VERTEX_SHADER, info.vertex),
-                (glow::FRAGMENT_SHADER, info.fragment),
-            ],
-            self.cache.as_mut(),
-        )?;
-        self.units = self.units.max(program.pairs.len() as u32);
-        let vao = match unsafe { self.gl.create_vertex_array() } {
-            Ok(v) => v,
-            Err(e) => {
-                unsafe { self.gl.delete_program(program.raw) };
-                return Err(e);
-            }
-        };
-        let id = self.res.renders.insert(Pipeline {
-            program,
-            vao,
-            buffers: info.buffers.to_vec(),
-            attributes: info.attributes.to_vec(),
-            colors: info.colors.to_vec(),
-            topology: info.topology,
-            fill: info.fill,
-            clamp: info.clamp,
-            coverage: info.coverage,
-        });
-        self.res.table.renders.set(id, ());
-        Ok(id)
+        let stages = [
+            (glow::VERTEX_SHADER, info.vertex),
+            (glow::FRAGMENT_SHADER, info.fragment),
+        ];
+        self.render(info, &stages)
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
-        if !uniform(info.colors) && !self.caps.blends {
-            return Err("different blend states per color target need GL 4.0".into());
-        }
         if !self.caps.mesh {
             return Err("GL_EXT_mesh_shader is not supported".into());
-        }
-        if info.views > 1 {
-            return Err("multiview is not supported on GL".into());
         }
         let mut stages = Vec::new();
         if !info.task.is_empty() {
@@ -413,37 +314,31 @@ impl Device {
         }
         stages.push((MESH_SHADER, info.mesh));
         stages.push((glow::FRAGMENT_SHADER, info.fragment));
-        let program = Program::new(&self.gl, info.code, &stages, self.cache.as_mut())?;
-        self.units = self.units.max(program.pairs.len() as u32);
-        let vao = match unsafe { self.gl.create_vertex_array() } {
-            Ok(v) => v,
-            Err(e) => {
-                unsafe { self.gl.delete_program(program.raw) };
-                return Err(e);
-            }
-        };
-        let id = self.res.renders.insert(Pipeline {
-            program,
-            vao,
-            buffers: Vec::new(),
-            attributes: Vec::new(),
-            colors: info.colors.to_vec(),
-            topology: crate::topology::TRIANGLE,
+        let render = RenderInfo {
+            code: info.code,
+            colors: info.colors,
+            topology: topology::TRIANGLE,
             fill: info.fill,
-            clamp: info.clamp,
             coverage: info.coverage,
-        });
+            views: info.views,
+            clamp: info.clamp,
+            ..Default::default()
+        };
+        self.render(&render, &stages)
+    }
+
+    fn render(&mut self, info: &RenderInfo, stages: &[(u32, &str)]) -> Result<u32, String> {
+        let cache = self.cache.as_mut();
+        let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
+        self.units = self.units.max(p.program.pairs.len() as u32);
+        let id = self.res.renders.insert(p);
         self.res.table.renders.set(id, ());
         Ok(id)
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
         self.res.table.renders.clear(pipeline);
-        let p = self.res.renders.remove(pipeline);
-        unsafe {
-            self.gl.delete_program(p.program.raw);
-            self.gl.delete_vertex_array(p.vao);
-        }
+        self.res.renders.remove(pipeline).delete(&self.gl);
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
@@ -461,125 +356,11 @@ impl Device {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
-        let [internal, layout, kind_of] = format::gl(info.format);
-        let kind = target(info.dimension, info.samples);
-        let gl = &self.gl;
-        let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
-        let (mips, layers) = (info.mips as i32, info.layers as i32);
-        let samples = info.samples as i32;
         let storage = self.has(42, "GL_ARB_texture_storage");
-        unsafe {
-            drain(gl);
-            let raw = gl.create_texture()?;
-            let old = gl.get_parameter_i32(binding(kind)) as u32;
-            let unpack = buffer(gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING));
-            gl.bind_texture(kind, Some(raw));
-            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
-            let multisample = matches!(
-                kind,
-                glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
-            );
-            if !storage && !multisample {
-                let [bytes, bw, bh] = format::block(info.format);
-                let internal = internal as i32;
-                for m in 0..mips {
-                    let (w, h, d) = ((w >> m).max(1), (h >> m).max(1), (d >> m).max(1));
-                    let size = (w as u32).div_ceil(bw) * (h as u32).div_ceil(bh) * bytes;
-                    let size = size as i32;
-                    let data = vec![0; (size * d.max(layers)) as usize];
-                    let none = glow::PixelUnpackData::Slice(None);
-                    match kind {
-                        glow::TEXTURE_1D if layout == 0 => {
-                            gl.compressed_tex_image_1d(kind, m, internal, w, 0, size, &data)
-                        }
-                        glow::TEXTURE_1D => {
-                            gl.tex_image_1d(kind, m, internal, w, 0, layout, kind_of, none)
-                        }
-                        glow::TEXTURE_2D | glow::TEXTURE_1D_ARRAY | glow::TEXTURE_CUBE_MAP => {
-                            let h = if kind == glow::TEXTURE_1D_ARRAY {
-                                layers
-                            } else {
-                                h
-                            };
-                            let faces = if kind == glow::TEXTURE_CUBE_MAP { 6 } else { 1 };
-                            for f in 0..faces {
-                                let face = if faces == 6 {
-                                    glow::TEXTURE_CUBE_MAP_POSITIVE_X + f
-                                } else {
-                                    kind
-                                };
-                                if layout == 0 {
-                                    gl.compressed_tex_image_2d(
-                                        face, m, internal, w, h, 0, size, &data,
-                                    );
-                                } else {
-                                    let none = glow::PixelUnpackData::Slice(None);
-                                    gl.tex_image_2d(
-                                        face, m, internal, w, h, 0, layout, kind_of, none,
-                                    );
-                                }
-                            }
-                        }
-                        _ => {
-                            let d = if kind == glow::TEXTURE_3D { d } else { layers };
-                            if layout == 0 {
-                                gl.compressed_tex_image_3d(
-                                    kind,
-                                    m,
-                                    internal,
-                                    w,
-                                    h,
-                                    d,
-                                    0,
-                                    size * d,
-                                    &data,
-                                );
-                            } else {
-                                gl.tex_image_3d(
-                                    kind, m, internal, w, h, d, 0, layout, kind_of, none,
-                                );
-                            }
-                        }
-                    }
-                }
-                gl.tex_parameter_i32(kind, glow::TEXTURE_MAX_LEVEL, mips - 1);
-            } else {
-                match kind {
-                    glow::TEXTURE_1D => gl.tex_storage_1d(kind, mips, internal, w),
-                    glow::TEXTURE_1D_ARRAY => gl.tex_storage_2d(kind, mips, internal, w, layers),
-                    glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
-                        gl.tex_storage_2d(kind, mips, internal, w, h)
-                    }
-                    glow::TEXTURE_2D_MULTISAMPLE => {
-                        let f = self.extra.storage2.unwrap_or(self.extra.samples2);
-                        f(kind, samples, internal, w, h, 1)
-                    }
-                    glow::TEXTURE_2D_MULTISAMPLE_ARRAY => {
-                        let f = self.extra.storage3.unwrap_or(self.extra.samples3);
-                        f(kind, samples, internal, w, h, layers, 1)
-                    }
-                    glow::TEXTURE_3D => gl.tex_storage_3d(kind, mips, internal, w, h, d),
-                    _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
-                }
-            }
-            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, unpack);
-            gl.bind_texture(
-                kind,
-                std::num::NonZeroU32::new(old).map(glow::NativeTexture),
-            );
-            if gl.get_error() != glow::NO_ERROR {
-                gl.delete_texture(raw);
-                return Err("texture allocation failed".into());
-            }
-            let id = self.res.textures.insert(Texture {
-                raw: Some(raw),
-                target: kind,
-                format: info.format,
-                own: true,
-            });
-            self.res.table.textures.set(id, *info);
-            Ok(id)
-        }
+        let texture = Texture::new(&self.gl, &self.extra, info, storage)?;
+        let id = self.res.textures.insert(texture);
+        self.res.table.textures.set(id, *info);
+        Ok(id)
     }
 
     pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<u32, String> {
@@ -692,117 +473,27 @@ impl Device {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         caps::supports(info.format, info.usage | usage::VIEW, 1, usable, counts)?;
-        let [internal, _, _] = format::gl(info.format);
-        let multisample = matches!(
-            parent.target,
-            glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
-        );
-        let kind = target(info.dimension, if multisample { 2 } else { 1 });
-        let gl = &self.gl;
-        unsafe {
-            drain(gl);
-            let raw = gl.create_texture()?;
-            view(
-                raw.0.get(),
-                kind,
-                parent.raw.map_or(0, |t| t.0.get()),
-                internal,
-                info.base_mip,
-                info.mips,
-                info.base_layer,
-                info.layers,
-            );
-            let error = gl.get_error();
-            if error != glow::NO_ERROR {
-                gl.delete_texture(raw);
-                return Err(format!("texture view failed ({error:#x})"));
-            }
-            let id = self.res.textures.insert(Texture {
-                raw: Some(raw),
-                target: kind,
-                format: info.format,
-                own: true,
-            });
-            self.res.table.view(id, texture, info);
-            Ok(id)
-        }
+        let view = Texture::view(&self.gl, view, parent, info)?;
+        let id = self.res.textures.insert(view);
+        self.res.table.view(id, texture, info);
+        Ok(id)
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
         self.res.table.textures.clear(texture);
-        let t = self.res.textures.remove(texture);
-        if t.own
-            && let Some(raw) = t.raw
-        {
-            unsafe { self.gl.delete_texture(raw) };
-        }
+        self.res.textures.remove(texture).delete(&self.gl);
     }
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
-        let gl = &self.gl;
-        let anisotropy = if info.anisotropy > 1 {
-            (info.anisotropy as f32).min(self.anisotropy)
-        } else {
-            1.0
-        };
-        let filter = |f| match f {
-            filter::NEAREST => glow::NEAREST,
-            filter::LINEAR => glow::LINEAR,
-            f => panic!("unknown filter {f}"),
-        };
-        let min = match (info.min, info.mip) {
-            (filter::NEAREST, filter::NEAREST) => glow::NEAREST_MIPMAP_NEAREST,
-            (filter::NEAREST, filter::LINEAR) => glow::NEAREST_MIPMAP_LINEAR,
-            (filter::LINEAR, filter::NEAREST) => glow::LINEAR_MIPMAP_NEAREST,
-            (filter::LINEAR, filter::LINEAR) => glow::LINEAR_MIPMAP_LINEAR,
-            (m, p) => panic!("unknown filter {m} {p}"),
-        };
-        let address = |a| match a {
-            address::REPEAT => glow::REPEAT,
-            address::MIRROR => glow::MIRRORED_REPEAT,
-            address::CLAMP => glow::CLAMP_TO_EDGE,
-            address::BORDER => glow::CLAMP_TO_BORDER,
-            address::MIRROR_CLAMP => glow::MIRROR_CLAMP_TO_EDGE,
-            a => panic!("unknown address {a}"),
-        } as i32;
-        let color = match info.border {
-            border::TRANSPARENT_BLACK => [0.0, 0.0, 0.0, 0.0],
-            border::OPAQUE_BLACK => [0.0, 0.0, 0.0, 1.0],
-            border::OPAQUE_WHITE => [1.0, 1.0, 1.0, 1.0],
-            b => panic!("unknown border {b}"),
-        };
-        unsafe {
-            let raw = gl.create_sampler()?;
-            gl.sampler_parameter_i32(raw, glow::TEXTURE_MIN_FILTER, min as i32);
-            gl.sampler_parameter_i32(raw, glow::TEXTURE_MAG_FILTER, filter(info.mag) as i32);
-            gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_S, address(info.u));
-            gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_T, address(info.v));
-            gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_R, address(info.w));
-            gl.sampler_parameter_f32(raw, glow::TEXTURE_MIN_LOD, info.min_lod);
-            gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_LOD, info.max_lod);
-            gl.sampler_parameter_f32_slice(raw, glow::TEXTURE_BORDER_COLOR, &color);
-            if anisotropy > 1.0 {
-                gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_ANISOTROPY, anisotropy);
-            }
-            if info.compare != crate::compare::NONE {
-                let mode = glow::COMPARE_REF_TO_TEXTURE as i32;
-                gl.sampler_parameter_i32(raw, glow::TEXTURE_COMPARE_MODE, mode);
-                gl.sampler_parameter_i32(
-                    raw,
-                    glow::TEXTURE_COMPARE_FUNC,
-                    compare(info.compare) as i32,
-                );
-            }
-            let id = self.res.samplers.insert(raw);
-            self.res.table.samplers.set(id, ());
-            Ok(id)
-        }
+        let raw = sampler::create(&self.gl, info, self.anisotropy)?;
+        let id = self.res.samplers.insert(raw);
+        self.res.table.samplers.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
         self.res.table.samplers.clear(sampler);
-        let s = self.res.samplers.remove(sampler);
-        unsafe { self.gl.delete_sampler(s) };
+        sampler::delete(&self.gl, self.res.samplers.remove(sampler));
     }
 
     pub fn record_cache(&mut self) -> Result<(), String> {
@@ -840,20 +531,14 @@ impl Device {
             }
             k => panic!("unknown query kind {k}"),
         }
-        let ids = (0..count)
-            .map(|_| unsafe { self.gl.create_query() })
-            .collect::<Result<_, _>>()?;
-        let id = self.res.queries.insert(Query { kind, ids });
+        let id = self.res.queries.insert(Query::new(&self.gl, kind, count)?);
         self.res.table.heaps.set(id, (kind, count));
         Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
         self.res.table.heaps.clear(heap);
-        let q = self.res.queries.remove(heap);
-        for id in q.ids {
-            unsafe { self.gl.delete_query(id) };
-        }
+        self.res.queries.remove(heap).delete(&self.gl);
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
@@ -864,10 +549,7 @@ impl Device {
     }
 
     pub fn destroy_event(&mut self, event: u32) {
-        let e = self.res.events.remove(event);
-        for (_, f) in e.fences {
-            unsafe { self.gl.delete_sync(f) };
-        }
+        self.res.events.remove(event).delete(&self.gl);
     }
 
     fn healthy(&self) -> Result<(), String> {
@@ -879,40 +561,12 @@ impl Device {
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
         self.healthy()?;
-        let e = self.res.events.get(event);
-        let mut value = e.value;
-        for &(v, f) in &e.fences {
-            if unsafe { self.gl.get_sync_status(f) } != glow::SIGNALED {
-                break;
-            }
-            value = v;
-        }
-        Ok(value)
+        Ok(self.res.events.get(event).value(&self.gl))
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
         self.healthy()?;
-        let e = self.res.events.get(event);
-        if e.value >= value {
-            return Ok(true);
-        }
-        let Some(&(_, fence)) = e.fences.iter().find(|(v, _)| *v >= value) else {
-            return Ok(false);
-        };
-        let mut left = ms.saturating_mul(1_000_000);
-        loop {
-            let step = left.min(1_000_000_000);
-            let status = unsafe {
-                self.gl
-                    .client_wait_sync(fence, glow::SYNC_FLUSH_COMMANDS_BIT, step as i32)
-            };
-            match status {
-                glow::ALREADY_SIGNALED | glow::CONDITION_SATISFIED => return Ok(true),
-                glow::WAIT_FAILED => return Err("glClientWaitSync failed".into()),
-                _ if left <= step => return Ok(false),
-                _ => left -= step,
-            }
-        }
+        self.res.events.get(event).wait(&self.gl, value, ms)
     }
 
     pub(crate) fn replay(
@@ -969,22 +623,7 @@ impl Device {
         state.restore(&self.gl, &self.extra);
         result.unwrap_or_else(|p| resume_unwind(p))?;
         for &(event, value) in signals {
-            let fence = unsafe { self.gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)? };
-            let e = self.res.events.get_mut(event);
-            let gl = &self.gl;
-            let done: Vec<usize> = e
-                .fences
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, f))| unsafe { gl.get_sync_status(*f) } == glow::SIGNALED)
-                .map(|(i, _)| i)
-                .collect();
-            for i in done.into_iter().rev() {
-                let (v, f) = e.fences.remove(i);
-                e.value = e.value.max(v);
-                unsafe { gl.delete_sync(f) };
-            }
-            e.fences.push((value, fence));
+            self.res.events.get_mut(event).signal(&self.gl, value)?;
         }
         unsafe { self.gl.flush() };
         Ok(())
@@ -997,34 +636,25 @@ impl Drop for Device {
         unsafe {
             gl.finish();
             for b in self.res.buffers.drain() {
-                if b.own {
-                    gl.delete_buffer(b.raw);
-                }
+                b.delete(gl);
             }
             for t in self.res.textures.drain() {
-                if let (true, Some(raw)) = (t.own, t.raw) {
-                    gl.delete_texture(raw);
-                }
+                t.delete(gl);
             }
             for s in self.res.samplers.drain() {
-                gl.delete_sampler(s);
+                sampler::delete(gl, s);
             }
             for p in self.res.pipelines.drain() {
-                gl.delete_program(p.raw);
+                p.delete(gl);
             }
             for p in self.res.renders.drain() {
-                gl.delete_program(p.program.raw);
-                gl.delete_vertex_array(p.vao);
+                p.delete(gl);
             }
             for q in self.res.queries.drain() {
-                for id in q.ids {
-                    gl.delete_query(id);
-                }
+                q.delete(gl);
             }
             for e in self.res.events.drain() {
-                for (_, f) in e.fences {
-                    gl.delete_sync(f);
-                }
+                e.delete(gl);
             }
             gl.delete_buffer(self.push);
             gl.delete_framebuffer(self.fbo);

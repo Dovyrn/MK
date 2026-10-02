@@ -149,4 +149,8 @@ impl Program {
             })
         }
     }
+
+    pub fn delete(&self, gl: &glow::Context) {
+        unsafe { gl.delete_program(self.raw) };
+    }
 }

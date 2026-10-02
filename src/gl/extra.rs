@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
+pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
 type Multi = unsafe extern "system" fn(u32, *const c_void, i32, i32);
 type MultiIndexed = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
 type Reset = unsafe extern "system" fn() -> u32;
