@@ -37,7 +37,19 @@ impl Pipeline {
             return Err("multiview is not supported on GL".into());
         }
         let program = Program::new(gl, info.code, stages, cache)?;
-        let vao = unsafe { gl.create_vertex_array() }.inspect_err(|_| program.delete(gl))?;
+        let raw = program.raw;
+        let missing = unsafe {
+            (0..gl.get_active_attributes(raw))
+                .filter_map(|i| gl.get_active_attribute(raw, i))
+                .filter(|a| !a.name.starts_with("gl_"))
+                .filter_map(|a| gl.get_attrib_location(raw, &a.name))
+                .find(|&l| !info.attributes.iter().any(|a| a.location == l))
+        };
+        let vao = match missing {
+            Some(l) => Err(format!("vertex input {l} has no attribute")),
+            None => unsafe { gl.create_vertex_array() },
+        };
+        let vao = vao.inspect_err(|_| program.delete(gl))?;
         Ok(Self {
             program,
             vao,
