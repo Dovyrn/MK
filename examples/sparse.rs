@@ -47,7 +47,7 @@ fn main() {
         stage::COPY,
         access::COPY_WRITE,
         stage::COPY,
-        access::COPY_READ,
+        access::COPY_READ | access::COPY_WRITE,
     );
     c.copy_buffer(sparse, 0, back, 0, page);
     c.copy_buffer(sparse, page * 2, back, page * 2, page);
