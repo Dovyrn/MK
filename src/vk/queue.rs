@@ -77,7 +77,7 @@ impl Queue {
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             unsafe { device.begin_command_buffer(frame.buffer, &begin) }
                 .map_err(|e| e.to_string())?;
-            let result = Recorder {
+            Recorder {
                 device,
                 ext,
                 buffer: frame.buffer,
@@ -92,14 +92,11 @@ impl Queue {
                 compute: vk::Pipeline::null(),
                 graphics: vk::Pipeline::null(),
                 rate: None,
-                scope: "outside",
                 defaults: false,
                 area: vk::Rect2D::default(),
             }
-            .run(heap, commands);
-            let ended = unsafe { device.end_command_buffer(frame.buffer) };
-            result?;
-            ended.map_err(|e| e.to_string())?;
+            .run(heap, commands)?;
+            unsafe { device.end_command_buffer(frame.buffer) }.map_err(|e| e.to_string())?;
             let info = |semaphore, value| {
                 vk::SemaphoreSubmitInfo::default()
                     .semaphore(semaphore)

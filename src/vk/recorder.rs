@@ -11,8 +11,6 @@ use std::ffi::CString;
 
 const NONE: u32 = !0;
 
-const DEBUG: &str = "VK_EXT_debug_utils is not enabled";
-
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
     pub ext: &'a Extensions,
@@ -28,7 +26,6 @@ pub struct Recorder<'a> {
     pub compute: vk::Pipeline,
     pub graphics: vk::Pipeline,
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
-    pub scope: &'static str,
     pub defaults: bool,
     pub area: vk::Rect2D,
 }
@@ -178,30 +175,6 @@ impl Recorder<'_> {
         }
     }
 
-    fn queries(
-        &self,
-        heap: u32,
-        first: u32,
-        count: u32,
-    ) -> (vk::QueryPool, vk::QueryControlFlags, u64) {
-        let q = self.res.queries.get(heap);
-        let (pool, flags, stride, total) = (q.pool, q.flags, q.stride, q.count);
-        let end = first as u64 + count as u64;
-        let bad = first.max(total);
-        assert!(
-            count == 0 || end <= total as u64,
-            "query {bad} is outside 0..{total}"
-        );
-        (pool, flags, stride)
-    }
-
-    fn multi(&self, count: u32) -> Result<(), &'static str> {
-        if count > 1 && self.ext.features.multi_draw_indirect == 0 {
-            return Err("multi draw indirect is not supported");
-        }
-        Ok(())
-    }
-
     fn depth_state(&self, d: &DepthInfo) {
         let (dev, b) = (self.device, self.buffer);
         unsafe {
@@ -298,23 +271,12 @@ impl Recorder<'_> {
                 )
             };
         }
-        let result = self.stream(bytes);
-        if self.scope == "render" {
-            unsafe { self.device.cmd_end_rendering(self.buffer) };
-        }
-        result
+        self.stream(bytes)
     }
 
     fn stream(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
         while !bytes.is_empty() {
-            let command = Command::read(&mut bytes)?;
-            self.scope = match command {
-                Command::BeginCompute => "compute",
-                Command::BeginRender { .. } => "render",
-                Command::EndCompute | Command::EndRender => "outside",
-                _ => self.scope,
-            };
-            self.step(command)?;
+            self.step(Command::read(&mut bytes)?)?;
         }
         Ok(())
     }
@@ -691,9 +653,6 @@ impl Recorder<'_> {
                     slope,
                     clamp,
                 } => {
-                    if clamp != 0.0 && self.ext.features.depth_bias_clamp == 0 {
-                        return Err("depth bias clamp is not supported");
-                    }
                     d.cmd_set_depth_bias_enable(b, constant != 0.0 || slope != 0.0);
                     d.cmd_set_depth_bias(b, constant, clamp, slope);
                 }
@@ -795,7 +754,6 @@ impl Recorder<'_> {
                     count,
                     stride,
                 } => {
-                    self.multi(count)?;
                     d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, count, stride)
                 }
                 Command::DrawIndexedIndirect {
@@ -803,21 +761,18 @@ impl Recorder<'_> {
                     offset,
                     count,
                     stride,
-                } => {
-                    self.multi(count)?;
-                    d.cmd_draw_indexed_indirect(
-                        b,
-                        self.res.buffers.get(buffer).raw,
-                        offset,
-                        count,
-                        stride,
-                    )
-                }
+                } => d.cmd_draw_indexed_indirect(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    count,
+                    stride,
+                ),
                 Command::DrawMesh { x, y, z } => self
                     .ext
                     .mesh
                     .as_ref()
-                    .ok_or("VK_EXT_mesh_shader is not enabled")?
+                    .unwrap()
                     .cmd_draw_mesh_tasks(b, x, y, z),
                 Command::DrawMeshIndirect {
                     buffer,
@@ -825,36 +780,35 @@ impl Recorder<'_> {
                     count,
                     stride,
                 } => {
-                    self.multi(count)?;
-                    let mesh = self
-                        .ext
+                    if count > 1 && self.ext.features.multi_draw_indirect == 0 {
+                        return Err("multi draw indirect is not supported");
+                    }
+                    self.ext
                         .mesh
                         .as_ref()
-                        .ok_or("VK_EXT_mesh_shader is not enabled")?;
-                    mesh.cmd_draw_mesh_tasks_indirect(
-                        b,
-                        self.res.buffers.get(buffer).raw,
-                        offset,
-                        count,
-                        stride,
-                    )
+                        .unwrap()
+                        .cmd_draw_mesh_tasks_indirect(
+                            b,
+                            self.res.buffers.get(buffer).raw,
+                            offset,
+                            count,
+                            stride,
+                        )
                 }
                 Command::OcclusionHeap { .. } => {}
                 Command::ResetQueries { heap, first, count } => {
-                    let (pool, _, _) = self.queries(heap, first, count);
-                    d.cmd_reset_query_pool(b, pool, first, count)
+                    d.cmd_reset_query_pool(b, self.res.queries.get(heap).pool, first, count)
                 }
                 Command::WriteTimestamp { heap, index, stage } => {
-                    let (pool, _, _) = self.queries(heap, index, 1);
+                    let pool = self.res.queries.get(heap).pool;
                     d.cmd_write_timestamp2(b, self.stamp(stage), pool, index)
                 }
                 Command::BeginQuery { heap, index } => {
-                    let (pool, flags, _) = self.queries(heap, index, 1);
-                    d.cmd_begin_query(b, pool, index, flags)
+                    let q = self.res.queries.get(heap);
+                    d.cmd_begin_query(b, q.pool, index, q.flags)
                 }
                 Command::EndQuery { heap, index } => {
-                    let (pool, _, _) = self.queries(heap, index, 1);
-                    d.cmd_end_query(b, pool, index)
+                    d.cmd_end_query(b, self.res.queries.get(heap).pool, index)
                 }
                 Command::ResolveQueries {
                     heap,
@@ -863,15 +817,15 @@ impl Recorder<'_> {
                     buffer,
                     offset,
                 } => {
-                    let (pool, _, stride) = self.queries(heap, first, count);
+                    let q = self.res.queries.get(heap);
                     d.cmd_copy_query_pool_results(
                         b,
-                        pool,
+                        q.pool,
                         first,
                         count,
                         self.res.buffers.get(buffer).raw,
                         offset,
-                        stride,
+                        q.stride,
                         vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                     )
                 }
@@ -899,19 +853,14 @@ impl Recorder<'_> {
                     self.ext
                         .accel
                         .as_ref()
-                        .ok_or("VK_KHR_acceleration_structure is not enabled")?
+                        .unwrap()
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
                 Command::Multiview { views } => self.views = views,
-                Command::Callback { index } => (self
-                    .natives
-                    .get(index as usize)
-                    .expect("callback recorded without its closure"))(
-                    &Native {
-                        device: d,
-                        buffer: b,
-                    },
-                ),
+                Command::Callback { index } => self.natives[index as usize](&Native {
+                    device: d,
+                    buffer: b,
+                }),
                 Command::ExecuteGenerated {
                     layout,
                     indirect,
@@ -956,24 +905,13 @@ impl Recorder<'_> {
                         count: address(count, count_offset),
                         draws,
                     };
-                    let generated = self
-                        .ext
-                        .generated
-                        .as_ref()
-                        .ok_or("VK_EXT_device_generated_commands is not enabled")?;
-                    (generated.execute)(b, vk::FALSE, &info);
+                    (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
                 }
-                Command::BindRayPipeline { pipeline } => {
-                    self.ext
-                        .rays
-                        .as_ref()
-                        .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
-                    d.cmd_bind_pipeline(
-                        b,
-                        vk::PipelineBindPoint::RAY_TRACING_KHR,
-                        self.res.rays.get(pipeline).0,
-                    )
-                }
+                Command::BindRayPipeline { pipeline } => d.cmd_bind_pipeline(
+                    b,
+                    vk::PipelineBindPoint::RAY_TRACING_KHR,
+                    self.res.rays.get(pipeline).0,
+                ),
                 Command::TraceRays {
                     raygen,
                     raygen_offset,
@@ -1006,12 +944,7 @@ impl Recorder<'_> {
                             size,
                         }
                     };
-                    let rays = self
-                        .ext
-                        .rays
-                        .as_ref()
-                        .ok_or("VK_KHR_ray_tracing_pipeline is not enabled")?;
-                    rays.cmd_trace_rays(
+                    self.ext.rays.as_ref().unwrap().cmd_trace_rays(
                         b,
                         &region(raygen, raygen_offset, raygen_stride, raygen_size),
                         &region(miss, miss_offset, miss_stride, miss_size),
@@ -1033,11 +966,7 @@ impl Recorder<'_> {
                         vk::FragmentShadingRateCombinerOpKHR::from_raw(primitive as i32),
                         vk::FragmentShadingRateCombinerOpKHR::from_raw(attachment as i32),
                     ];
-                    let rates = self
-                        .ext
-                        .rates
-                        .as_ref()
-                        .ok_or("VK_KHR_fragment_shading_rate is not enabled")?;
+                    let rates = self.ext.rates.as_ref().unwrap();
                     (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &ops);
                 }
                 Command::RateAttachment {
@@ -1046,10 +975,6 @@ impl Recorder<'_> {
                     texel_width,
                     texel_height,
                 } => {
-                    self.ext
-                        .rates
-                        .as_ref()
-                        .ok_or("VK_KHR_fragment_shading_rate is not enabled")?;
                     self.rate = Some(
                         vk::RenderingFragmentShadingRateAttachmentInfoKHR::default()
                             .image_view(self.res.textures.get(texture).view)
@@ -1060,20 +985,18 @@ impl Recorder<'_> {
                             }),
                     )
                 }
-                Command::WriteCompactedSize { accel, heap, index } => {
-                    let ray = self
-                        .ext
-                        .accel
-                        .as_ref()
-                        .ok_or("VK_KHR_acceleration_structure is not enabled")?;
-                    ray.cmd_write_acceleration_structures_properties(
+                Command::WriteCompactedSize { accel, heap, index } => self
+                    .ext
+                    .accel
+                    .as_ref()
+                    .unwrap()
+                    .cmd_write_acceleration_structures_properties(
                         b,
                         &[self.res.accels.get(accel).raw],
                         vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                        self.queries(heap, index, 1).0,
+                        self.res.queries.get(heap).pool,
                         index,
-                    )
-                }
+                    ),
                 Command::CopyAccel { src, dst, compact } => {
                     let info = vk::CopyAccelerationStructureInfoKHR::default()
                         .src(self.res.accels.get(src).raw)
@@ -1086,7 +1009,7 @@ impl Recorder<'_> {
                     self.ext
                         .accel
                         .as_ref()
-                        .ok_or("VK_KHR_acceleration_structure is not enabled")?
+                        .unwrap()
                         .cmd_copy_acceleration_structure(b, &info)
                 }
                 Command::SetViewports { viewports } => {
@@ -1121,9 +1044,6 @@ impl Recorder<'_> {
                     d.cmd_set_scissor_with_count(b, &rects)
                 }
                 Command::SetDepthBounds { min, max } => {
-                    if self.ext.features.depth_bounds == 0 {
-                        return Err("depth bounds are not supported");
-                    }
                     d.cmd_set_depth_bounds_test_enable(b, min > 0.0 || max < 1.0);
                     d.cmd_set_depth_bounds(b, min, max);
                 }
@@ -1140,11 +1060,7 @@ impl Recorder<'_> {
                         } else {
                             vk::ConditionalRenderingFlagsEXT::empty()
                         });
-                    let c = self
-                        .ext
-                        .conditional
-                        .as_ref()
-                        .ok_or("VK_EXT_conditional_rendering is not enabled")?;
+                    let c = self.ext.conditional.as_ref().unwrap();
                     (c.fp().cmd_begin_conditional_rendering_ext)(b, &info)
                 }
                 Command::EndConditional => {
@@ -1156,21 +1072,20 @@ impl Recorder<'_> {
                     (c.fp().cmd_end_conditional_rendering_ext)(b)
                 }
                 Command::BeginLabel { text } => {
-                    let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
                     let name = CString::new(text).unwrap();
                     let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
+                    let debug = self.ext.debug.as_ref().unwrap();
                     debug.cmd_begin_debug_utils_label(b, &label);
                 }
                 Command::EndLabel => {
-                    let debug = self.ext.debug.as_ref().ok_or(DEBUG)?;
+                    let debug = self
+                        .ext
+                        .debug
+                        .as_ref()
+                        .ok_or("VK_EXT_debug_utils is not enabled")?;
                     debug.cmd_end_debug_utils_label(b);
                 }
-                Command::SetLineWidth { width } => {
-                    if width != 1.0 && self.ext.features.wide_lines == 0 {
-                        return Err("wide lines are not enabled");
-                    }
-                    d.cmd_set_line_width(b, width)
-                }
+                Command::SetLineWidth { width } => d.cmd_set_line_width(b, width),
             }
         }
         Ok(())

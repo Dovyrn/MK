@@ -56,7 +56,6 @@ impl Device {
             pool,
             flags,
             stride,
-            count,
         });
         self.res.table.heaps.set(id, (wanted, count));
         Ok(id)
