@@ -12,6 +12,12 @@ use glow::HasContext;
 
 const QUERY_BUFFER: u32 = 0x9192;
 
+const OFFSETS: [u32; 3] = [
+    glow::POLYGON_OFFSET_FILL,
+    glow::POLYGON_OFFSET_LINE,
+    glow::POLYGON_OFFSET_POINT,
+];
+
 struct Color {
     index: u32,
     texture: u32,
@@ -297,7 +303,9 @@ impl<'a> Recorder<'a> {
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::CULL_FACE);
             gl.front_face(glow::CW);
-            gl.disable(glow::POLYGON_OFFSET_FILL);
+            for mode in OFFSETS {
+                gl.disable(mode);
+            }
             gl.blend_color(0.0, 0.0, 0.0, 0.0);
             gl.disable(glow::DEPTH_TEST);
             gl.depth_mask(false);
@@ -902,15 +910,21 @@ impl<'a> Recorder<'a> {
                     slope,
                     clamp,
                 } => {
-                    if clamp != 0.0 {
-                        return Err("depth bias clamp is not supported on GL".into());
+                    let on = constant != 0.0 || slope != 0.0;
+                    for mode in OFFSETS {
+                        if on {
+                            gl.enable(mode);
+                        } else {
+                            gl.disable(mode);
+                        }
                     }
-                    if constant != 0.0 || slope != 0.0 {
-                        gl.enable(glow::POLYGON_OFFSET_FILL);
-                    } else {
-                        gl.disable(glow::POLYGON_OFFSET_FILL);
+                    match self.extra.offset_clamp {
+                        Some(offset) => offset(slope, constant, clamp),
+                        None if clamp != 0.0 => {
+                            return Err("depth bias clamp is not supported on GL".into());
+                        }
+                        None => gl.polygon_offset(slope, constant),
                     }
-                    gl.polygon_offset(slope, constant);
                 }
                 Command::SetBlendColor { r, g, b, a } => gl.blend_color(r, g, b, a),
                 Command::BindVertexBuffer {
