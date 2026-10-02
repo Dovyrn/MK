@@ -25,10 +25,11 @@ pub struct Recorder<'a> {
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub views: u32,
     pub natives: &'a [Callback],
-    pub bound: (vk::Pipeline, vk::Pipeline),
+    pub compute: vk::Pipeline,
+    pub graphics: vk::Pipeline,
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub scope: &'static str,
-    pub seeded: bool,
+    pub defaults: bool,
     pub area: vk::Rect2D,
 }
 
@@ -166,7 +167,7 @@ impl Recorder<'_> {
             stage::COPY | stage::RESOURCE => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             stage::ACCEL => (
                 vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
-                self.ext.ray.is_some(),
+                self.ext.accel.is_some(),
             ),
             _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
         };
@@ -183,7 +184,8 @@ impl Recorder<'_> {
         first: u32,
         count: u32,
     ) -> (vk::QueryPool, vk::QueryControlFlags, u64) {
-        let (pool, flags, stride, total) = *self.res.queries.get(heap);
+        let q = self.res.queries.get(heap);
+        let (pool, flags, stride, total) = (q.pool, q.flags, q.stride, q.count);
         let end = first as u64 + count as u64;
         let bad = first.max(total);
         assert!(
@@ -334,8 +336,8 @@ impl Recorder<'_> {
             match command {
                 Command::BeginCompute | Command::EndCompute => {}
                 Command::BindPipeline { pipeline } => {
-                    self.bound.0 = *self.res.pipelines.get(pipeline);
-                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, self.bound.0)
+                    self.compute = *self.res.pipelines.get(pipeline);
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, self.compute)
                 }
                 Command::PushConstants { offset, data } => {
                     d.cmd_push_constants(b, self.layout, vk::ShaderStageFlags::ALL, offset, data)
@@ -602,10 +604,10 @@ impl Recorder<'_> {
                     d.cmd_set_scissor_with_count(b, &[area]);
                     d.cmd_set_line_width(b, 1.0);
                     self.area = area;
-                    if self.seeded {
+                    if self.defaults {
                         return Ok(());
                     }
-                    self.seeded = true;
+                    self.defaults = true;
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
                     d.cmd_set_front_face(b, vk::FrontFace::COUNTER_CLOCKWISE);
                     d.cmd_set_depth_bias_enable(b, false);
@@ -627,7 +629,7 @@ impl Recorder<'_> {
                 Command::EndRender => d.cmd_end_rendering(b),
                 Command::BindRenderPipeline { pipeline } => {
                     let (raw, topology) = *self.res.renders.get(pipeline);
-                    self.bound.1 = raw;
+                    self.graphics = raw;
                     d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
                     d.cmd_set_primitive_topology(b, topology);
                 }
@@ -895,7 +897,7 @@ impl Recorder<'_> {
                             .src_acceleration_structure(a.raw);
                     }
                     self.ext
-                        .ray
+                        .accel
                         .as_ref()
                         .ok_or("VK_KHR_acceleration_structure is not enabled")?
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
@@ -928,9 +930,9 @@ impl Recorder<'_> {
                         s_type: ffi::PIPELINE,
                         next: std::ptr::null_mut(),
                         pipeline: if stages == vk::ShaderStageFlags::COMPUTE {
-                            self.bound.0
+                            self.compute
                         } else {
-                            self.bound.1
+                            self.graphics
                         },
                     };
                     let address = |buffer: u32, offset: u64| {
@@ -1061,7 +1063,7 @@ impl Recorder<'_> {
                 Command::WriteCompactedSize { accel, heap, index } => {
                     let ray = self
                         .ext
-                        .ray
+                        .accel
                         .as_ref()
                         .ok_or("VK_KHR_acceleration_structure is not enabled")?;
                     ray.cmd_write_acceleration_structures_properties(
@@ -1082,7 +1084,7 @@ impl Recorder<'_> {
                             vk::CopyAccelerationStructureModeKHR::CLONE
                         });
                     self.ext
-                        .ray
+                        .accel
                         .as_ref()
                         .ok_or("VK_KHR_acceleration_structure is not enabled")?
                         .cmd_copy_acceleration_structure(b, &info)

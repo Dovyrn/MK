@@ -89,10 +89,11 @@ impl Queue {
                 stencil: vk::RenderingAttachmentInfo::default(),
                 views: 0,
                 natives,
-                bound: (vk::Pipeline::null(), vk::Pipeline::null()),
+                compute: vk::Pipeline::null(),
+                graphics: vk::Pipeline::null(),
                 rate: None,
                 scope: "outside",
-                seeded: false,
+                defaults: false,
                 area: vk::Rect2D::default(),
             }
             .run(heap, commands);

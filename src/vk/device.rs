@@ -303,7 +303,7 @@ impl Device {
             | vk::BufferUsageFlags::VERTEX_BUFFER
             | vk::BufferUsageFlags::INDIRECT_BUFFER
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
-        if self.ext.ray.is_some() {
+        if self.ext.accel.is_some() {
             usage |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
         }
         if self.ext.rays.is_some() {
@@ -367,7 +367,7 @@ impl Drop for Device {
             let accels: Vec<_> = self.res.accels.drain().collect();
             for a in accels {
                 self.ext
-                    .ray
+                    .accel
                     .as_ref()
                     .unwrap()
                     .destroy_acceleration_structure(a.raw, None);
@@ -379,8 +379,8 @@ impl Drop for Device {
                 let generated = self.ext.generated.as_ref().unwrap();
                 (generated.destroy)(self.raw.handle(), handle, std::ptr::null());
             }
-            for (pool, _, _, _) in self.res.queries.drain() {
-                self.raw.destroy_query_pool(pool, None);
+            for query in self.res.queries.drain() {
+                self.raw.destroy_query_pool(query.pool, None);
             }
             for (pipeline, _) in self.res.rays.drain() {
                 self.raw.destroy_pipeline(pipeline, None);

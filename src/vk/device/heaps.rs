@@ -4,7 +4,7 @@ use crate::vk::heap::Heap;
 use crate::{TextureInfo, format, memory, usage};
 use ash::vk;
 
-const FDS: &str = "VK_KHR_external_memory_fd is not enabled";
+const FD: &str = "VK_KHR_external_memory_fd is not enabled";
 
 impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
@@ -12,21 +12,21 @@ impl Device {
     }
 
     pub fn create_shared_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.ext.fds.as_ref().ok_or(FDS)?;
+        self.ext.fd.as_ref().ok_or(FD)?;
         self.heap(size, memory, true, None)
     }
 
     pub fn import_heap(&mut self, fd: i32, size: u64, memory: u32) -> Result<u32, String> {
-        self.ext.fds.as_ref().ok_or(FDS)?;
+        self.ext.fd.as_ref().ok_or(FD)?;
         self.heap(size, memory, true, Some(fd))
     }
 
     pub fn export_heap(&self, heap: u32) -> Result<i32, String> {
-        let fds = self.ext.fds.as_ref().ok_or(FDS)?;
+        let fd = self.ext.fd.as_ref().ok_or(FD)?;
         let info = vk::MemoryGetFdInfoKHR::default()
             .memory(self.res.heaps.get(heap).memory)
             .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
-        unsafe { fds.get_memory_fd(&info).map_err(|e| e.to_string()) }
+        unsafe { fd.get_memory_fd(&info).map_err(|e| e.to_string()) }
     }
 
     fn heap(

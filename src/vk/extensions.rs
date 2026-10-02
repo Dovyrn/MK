@@ -10,11 +10,11 @@ use ash::vk;
 pub struct Extensions {
     pub debug: Option<debug_utils::Device>,
     pub mesh: Option<mesh_shader::Device>,
-    pub ray: Option<acceleration_structure::Device>,
+    pub accel: Option<acceleration_structure::Device>,
     pub rays: Option<ray_tracing_pipeline::Device>,
     pub rates: Option<fragment_shading_rate::Device>,
     pub host: Option<external_memory_host::Device>,
-    pub fds: Option<external_memory_fd::Device>,
+    pub fd: Option<external_memory_fd::Device>,
     pub conditional: Option<conditional_rendering::Device>,
     pub generated: Option<Generated>,
     pub features: vk::PhysicalDeviceFeatures,
@@ -52,10 +52,10 @@ impl Extensions {
                 .is_some_and(|f| f.mesh_shader != 0)
                 && has(c"vkCmdDrawMeshTasksEXT");
             let mesh = mesh.then(|| mesh_shader::Device::new(instance, raw));
-            let ray = chained::<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>(features)
+            let accel = chained::<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>(features)
                 .is_some_and(|f| f.acceleration_structure != 0)
                 && has(c"vkCmdBuildAccelerationStructuresKHR");
-            let ray = ray.then(|| acceleration_structure::Device::new(instance, raw));
+            let accel = accel.then(|| acceleration_structure::Device::new(instance, raw));
             let generated = chained::<ffi::Features>(features).is_some_and(|f| f.generated != 0);
             let generated = generated.then(|| Generated::load(instance, raw)).flatten();
             let rays = chained::<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>(features)
@@ -70,7 +70,7 @@ impl Extensions {
                     && has(c"vkCmdBeginConditionalRenderingEXT");
             let conditional =
                 conditional.then(|| conditional_rendering::Device::new(instance, raw));
-            let fds =
+            let fd =
                 has(c"vkGetMemoryFdKHR").then(|| external_memory_fd::Device::new(instance, raw));
             let rates = chained::<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>(features)
                 .is_some_and(|f| f.pipeline_fragment_shading_rate != 0)
@@ -87,11 +87,11 @@ impl Extensions {
             Self {
                 debug,
                 mesh,
-                ray,
+                accel,
                 rays,
                 rates,
                 host,
-                fds,
+                fd,
                 conditional,
                 generated,
                 features: features.features,

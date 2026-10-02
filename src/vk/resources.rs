@@ -3,6 +3,7 @@ use crate::slots::Slots;
 use crate::vk::accel::Accel;
 use crate::vk::buffer::Buffer;
 use crate::vk::heap::Heap;
+use crate::vk::query::Query;
 use crate::vk::texture::Texture;
 use ash::vk;
 
@@ -18,7 +19,7 @@ pub struct Resources {
     pub accels: Slots<Accel>,
     pub layouts: Slots<(u64, vk::ShaderStageFlags)>,
     pub rays: Slots<(vk::Pipeline, u32)>,
-    pub queries: Slots<(vk::QueryPool, vk::QueryControlFlags, u64, u32)>,
+    pub queries: Slots<Query>,
     pub events: Slots<(vk::Semaphore, bool)>,
     pub table: crate::table::Table,
 }

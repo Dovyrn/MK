@@ -7,7 +7,7 @@ impl Device {
     pub fn create_accel(&mut self, info: &AccelInfo) -> Result<u32, String> {
         let ray = self
             .ext
-            .ray
+            .accel
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
         let (kind, geometry, ranges) = if !info.boxes.is_empty() {
@@ -152,7 +152,7 @@ impl Device {
     pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
         let ray = self
             .ext
-            .ray
+            .accel
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
         let source = self.res.accels.get(accel);
@@ -199,7 +199,7 @@ impl Device {
             let a = d.res.accels.remove(accel);
             unsafe {
                 d.ext
-                    .ray
+                    .accel
                     .as_ref()
                     .unwrap()
                     .destroy_acceleration_structure(a.raw, None);

@@ -1,5 +1,6 @@
 use super::Device;
 use crate::query;
+use crate::vk::query::Query;
 use ash::vk;
 
 impl Device {
@@ -54,7 +55,12 @@ impl Device {
         } else {
             8
         };
-        let id = self.res.queries.insert((pool, flags, stride, count));
+        let id = self.res.queries.insert(Query {
+            pool,
+            flags,
+            stride,
+            count,
+        });
         self.res.table.heaps.set(id, (wanted, count));
         Ok(id)
     }
@@ -62,8 +68,8 @@ impl Device {
     pub fn destroy_query_heap(&mut self, heap: u32) {
         self.res.table.heaps.clear(heap);
         self.defer(move |d| {
-            let (pool, _, _, _) = d.res.queries.remove(heap);
-            unsafe { d.raw.destroy_query_pool(pool, None) };
+            let query = d.res.queries.remove(heap);
+            unsafe { d.raw.destroy_query_pool(query.pool, None) };
         });
     }
 }

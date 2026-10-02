@@ -9,6 +9,7 @@ mod frame;
 mod generated;
 mod heap;
 mod native;
+mod query;
 mod queue;
 mod recorder;
 mod resources;
