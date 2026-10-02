@@ -944,14 +944,6 @@ impl Device {
                 .expect("wait on an event value no submit signals");
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
-        let state = State::save(
-            &self.gl,
-            &self.extra,
-            &self.caps,
-            &|v, e| self.has(v, e),
-            self.units.max(1),
-        );
-        state.clear(&self.gl);
         let snapshot = || {
             State::save(
                 &self.gl,
@@ -961,6 +953,8 @@ impl Device {
                 self.units.max(1),
             )
         };
+        let state = snapshot();
+        state.clear(&self.gl);
         let mut recorder = Recorder::new(
             &self.gl,
             &self.extra,
