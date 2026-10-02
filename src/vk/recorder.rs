@@ -686,6 +686,9 @@ impl Recorder<'_> {
                     slope,
                     clamp,
                 } => {
+                    if clamp != 0.0 && self.ext.features.depth_bias_clamp == 0 {
+                        return Err("depth bias clamp is not supported");
+                    }
                     d.cmd_set_depth_bias_enable(b, constant != 0.0 || slope != 0.0);
                     d.cmd_set_depth_bias(b, constant, clamp, slope);
                 }
