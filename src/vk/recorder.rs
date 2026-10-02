@@ -28,6 +28,7 @@ pub struct Recorder<'a> {
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub scope: &'static str,
     pub seeded: bool,
+    pub area: vk::Rect2D,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -599,6 +600,7 @@ impl Recorder<'_> {
                     d.cmd_set_viewport_with_count(b, &[viewport]);
                     d.cmd_set_scissor_with_count(b, &[area]);
                     d.cmd_set_line_width(b, 1.0);
+                    self.area = area;
                     if self.seeded {
                         return Ok(());
                     }
@@ -1101,7 +1103,8 @@ impl Recorder<'_> {
                             }
                         })
                         .collect();
-                    d.cmd_set_viewport_with_count(b, &viewports)
+                    d.cmd_set_viewport_with_count(b, &viewports);
+                    d.cmd_set_scissor_with_count(b, &vec![self.area; viewports.len()])
                 }
                 Command::SetScissors { data } => {
                     let rects: Vec<_> = data

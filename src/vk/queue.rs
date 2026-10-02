@@ -93,6 +93,7 @@ impl Queue {
                 rate: None,
                 scope: "outside",
                 seeded: false,
+                area: vk::Rect2D::default(),
             }
             .run(heap, commands);
             let ended = unsafe { device.end_command_buffer(frame.buffer) };
