@@ -56,9 +56,10 @@ pub struct Recorder<'a> {
     vertices: [Option<(u32, u64)>; 16],
     index: Option<(u32, u64, u32)>,
     mode: u32,
-    stencil: Option<DepthInfo>,
+    state: Option<DepthInfo>,
     references: (u32, u32),
     extent: (i32, i32),
+    rendering: bool,
     natives: &'a [Callback],
 }
 
@@ -204,9 +205,10 @@ impl<'a> Recorder<'a> {
             vertices: [None; 16],
             index: None,
             mode: glow::TRIANGLES,
-            stencil: None,
+            state: None,
             references: (0, 0),
             extent: (0, 0),
+            rendering: false,
             natives,
         }
     }
@@ -216,12 +218,7 @@ impl<'a> Recorder<'a> {
             self.gl
                 .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
         };
-        unsafe {
-            (self.extra.provoking)(glow::FIRST_VERTEX_CONVENTION);
-            self.gl.enable(glow::FRAMEBUFFER_SRGB);
-            self.gl.enable(glow::TEXTURE_CUBE_MAP_SEAMLESS);
-            self.gl.enable(glow::PROGRAM_POINT_SIZE);
-        }
+        self.reset();
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?)?;
         }
@@ -237,33 +234,43 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn prepare(&mut self) {
+    fn prepare(&mut self, render: bool) -> bool {
         let gl = self.gl;
+        let program = if render {
+            self.render.map(|p| &p.program)
+        } else {
+            self.program
+        };
+        let Some(program) = program else {
+            return false;
+        };
         unsafe {
+            gl.use_program(Some(program.raw));
             if self.dirty {
                 gl.bind_buffer(glow::UNIFORM_BUFFER, Some(self.push));
                 gl.buffer_sub_data_u8_slice(glow::UNIFORM_BUFFER, 0, &self.data[..self.size]);
                 gl.bind_buffer(glow::UNIFORM_BUFFER, None);
                 self.dirty = false;
             }
-            if let Some(p) = self.program {
-                for (unit, &(t, s)) in p.pairs.iter().enumerate() {
-                    if let Some(texture) = self.textures[t as usize] {
-                        let texture = self.res.textures.get(texture);
-                        gl.active_texture(glow::TEXTURE0 + unit as u32);
-                        gl.bind_texture(texture.target, texture.raw);
-                    }
-                    let sampler = s.and_then(|s| self.samplers[s as usize]);
-                    let sampler = sampler.map(|s| *self.res.samplers.get(s));
-                    gl.bind_sampler(unit as u32, sampler);
+            for (unit, &(t, s)) in program.pairs.iter().enumerate() {
+                if let Some(texture) = self.textures[t as usize] {
+                    let texture = self.res.textures.get(texture);
+                    gl.active_texture(glow::TEXTURE0 + unit as u32);
+                    gl.bind_texture(texture.target, texture.raw);
                 }
+                let sampler = s.and_then(|s| self.samplers[s as usize]);
+                let sampler = sampler.map(|s| *self.res.samplers.get(s));
+                gl.bind_sampler(unit as u32, sampler);
             }
-            let Some(p) = self.render else {
-                return;
+            let Some(p) = self.render.filter(|_| render) else {
+                return true;
             };
+            gl.bind_vertex_array(Some(p.vao));
             for a in &p.attributes {
-                let (buffer, offset) = self.vertices[a.buffer as usize]
-                    .unwrap_or_else(|| panic!("vertex buffer {} is empty", a.buffer));
+                let Some((buffer, offset)) = self.vertices[a.buffer as usize] else {
+                    gl.disable_vertex_attrib_array(a.location);
+                    continue;
+                };
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.res.buffers.get(buffer).raw));
                 let layout = p.buffers[a.buffer as usize];
                 let [_, f, ty] = format::gl(a.format);
@@ -292,6 +299,7 @@ impl<'a> Recorder<'a> {
                 );
             }
         }
+        true
     }
 
     fn range(&self, target: u32, index: u32, buffer: u32, offset: u64, size: u64) {
@@ -348,29 +356,29 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn defaults(&mut self, width: u32, height: u32) {
+    fn reset(&mut self) {
         let gl = self.gl;
         unsafe {
-            gl.viewport(0, 0, width as i32, height as i32);
-            gl.depth_range(0.0, 1.0);
-            gl.disable(glow::SCISSOR_TEST);
+            (self.extra.provoking)(glow::FIRST_VERTEX_CONVENTION);
+            gl.enable(glow::FRAMEBUFFER_SRGB);
+            gl.enable(glow::TEXTURE_CUBE_MAP_SEAMLESS);
+            gl.enable(glow::PROGRAM_POINT_SIZE);
             gl.disable(glow::CULL_FACE);
             gl.front_face(glow::CW);
             for mode in OFFSETS {
                 gl.disable(mode);
             }
+            gl.polygon_offset(0.0, 0.0);
             gl.blend_color(0.0, 0.0, 0.0, 0.0);
             gl.disable(glow::DEPTH_TEST);
             gl.depth_mask(false);
             gl.disable(glow::STENCIL_TEST);
+            gl.line_width(1.0);
         }
-        self.mode = glow::TRIANGLES;
-        self.stencil = None;
-        self.references = (0, 0);
     }
 
     fn stencil(&self) {
-        let Some(d) = self.stencil else {
+        let Some(d) = self.state.filter(|d| d.stencil) else {
             return;
         };
         let gl = self.gl;
@@ -399,9 +407,7 @@ impl<'a> Recorder<'a> {
                 Command::BeginCompute | Command::EndCompute => {}
                 Command::BindPipeline { pipeline } => {
                     let p = res.pipelines.get(pipeline);
-                    gl.use_program(Some(p.raw));
                     self.program = Some(p);
-                    self.render = None;
                 }
                 Command::PushConstants { offset, data } => {
                     let at = offset as usize;
@@ -410,17 +416,19 @@ impl<'a> Recorder<'a> {
                     self.dirty = true;
                 }
                 Command::Dispatch { x, y, z } => {
-                    self.prepare();
-                    gl.dispatch_compute(x, y, z);
+                    if self.prepare(false) {
+                        gl.dispatch_compute(x, y, z);
+                    }
                 }
                 Command::DispatchIndirect { buffer, offset } => {
                     let dispatch = self.extra.dispatch.ok_or("compute shaders need GL 4.3")?;
-                    self.prepare();
-                    gl.bind_buffer(
-                        glow::DISPATCH_INDIRECT_BUFFER,
-                        Some(res.buffers.get(buffer).raw),
-                    );
-                    dispatch(offset as isize);
+                    if self.prepare(false) {
+                        gl.bind_buffer(
+                            glow::DISPATCH_INDIRECT_BUFFER,
+                            Some(res.buffers.get(buffer).raw),
+                        );
+                        dispatch(offset as isize);
+                    }
                 }
                 Command::CopyBuffer {
                     src,
@@ -810,7 +818,15 @@ impl<'a> Recorder<'a> {
                             gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.stencil as i32]);
                         }
                     }
-                    self.defaults(width, height);
+                    if let Some(p) = self.render {
+                        self.colors(p);
+                    }
+                    gl.depth_mask(self.state.is_some_and(|d| d.write));
+                    self.stencil();
+                    gl.viewport(0, 0, width as i32, height as i32);
+                    gl.depth_range(0.0, 1.0);
+                    gl.disable(glow::SCISSOR_TEST);
+                    self.rendering = true;
                     self.extent = (width as i32, height as i32);
                 }
                 Command::EndRender => {
@@ -867,13 +883,10 @@ impl<'a> Recorder<'a> {
                     gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                     self.colors.clear();
                     self.depth = None;
-                    self.render = None;
+                    self.rendering = false;
                 }
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
-                    gl.use_program(Some(p.program.raw));
-                    gl.bind_vertex_array(Some(p.vao));
-                    self.program = Some(&p.program);
                     self.render = Some(p);
                     self.mode = mode(p.topology);
                     let fill = if p.fill == crate::fill::LINE {
@@ -943,11 +956,11 @@ impl<'a> Recorder<'a> {
                     gl.depth_mask(d.write);
                     if d.stencil {
                         gl.enable(glow::STENCIL_TEST);
-                        self.stencil = Some(d);
+                        self.state = Some(d);
                         self.stencil();
                     } else {
                         gl.disable(glow::STENCIL_TEST);
-                        self.stencil = None;
+                        self.state = Some(d);
                     }
                 }
                 Command::SetStencilReference { front, back } => {
@@ -999,7 +1012,9 @@ impl<'a> Recorder<'a> {
                     first_vertex,
                     first_instance,
                 } => {
-                    self.prepare();
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
                     if first_instance == 0 {
                         gl.draw_arrays_instanced(
                             self.mode,
@@ -1026,9 +1041,12 @@ impl<'a> Recorder<'a> {
                     base_vertex,
                     first_instance,
                 } => {
-                    self.prepare();
-                    let (_, offset, kind) =
-                        self.index.expect("draw_indexed without an index buffer");
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
+                    let Some((_, offset, kind)) = self.index else {
+                        return Ok(());
+                    };
                     let size = if kind == glow::UNSIGNED_SHORT { 2 } else { 4 };
                     let at = (offset + first_index as u64 * size) as usize as *const _;
                     if first_instance == 0 {
@@ -1060,7 +1078,9 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    self.prepare();
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
                     gl.bind_buffer(
                         glow::DRAW_INDIRECT_BUFFER,
                         Some(res.buffers.get(buffer).raw),
@@ -1087,10 +1107,12 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    self.prepare();
-                    let (_, _, kind) = self
-                        .index
-                        .expect("draw_indexed_indirect without an index buffer");
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
+                    let Some((_, _, kind)) = self.index else {
+                        return Ok(());
+                    };
                     gl.bind_buffer(
                         glow::DRAW_INDIRECT_BUFFER,
                         Some(res.buffers.get(buffer).raw),
@@ -1120,7 +1142,9 @@ impl<'a> Recorder<'a> {
                         .extra
                         .mesh
                         .ok_or("GL_EXT_mesh_shader is not supported")?;
-                    self.prepare();
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
                     mesh(x, y, z);
                 }
                 Command::DrawMeshIndirect {
@@ -1129,7 +1153,9 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    self.prepare();
+                    if !self.prepare(true) {
+                        return Ok(());
+                    }
                     gl.bind_buffer(
                         glow::DRAW_INDIRECT_BUFFER,
                         Some(res.buffers.get(buffer).raw),
@@ -1282,7 +1308,7 @@ impl<'a> Recorder<'a> {
                     self.samplers[slot as usize] = Some(sampler)
                 }
                 Command::Callback { index } => {
-                    self.prepare();
+                    self.prepare(self.rendering);
                     let f = self
                         .natives
                         .get(index as usize)
