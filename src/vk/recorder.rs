@@ -500,8 +500,13 @@ impl Recorder<'_> {
                     };
                     let mut info = self.attachment(texture, l, load, store, clear);
                     if resolve != NONE {
+                        let mode = if format::sint(f) || format::uint(f) {
+                            vk::ResolveModeFlags::SAMPLE_ZERO
+                        } else {
+                            vk::ResolveModeFlags::AVERAGE
+                        };
                         info = info
-                            .resolve_mode(vk::ResolveModeFlags::AVERAGE)
+                            .resolve_mode(mode)
                             .resolve_image_view(self.res.textures.get(resolve).target)
                             .resolve_image_layout(layout(resolve_layout));
                     }
