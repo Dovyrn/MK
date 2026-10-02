@@ -694,7 +694,8 @@ impl<'a> Recorder<'a> {
                     if default {
                         gl.bind_framebuffer(target, None);
                     } else {
-                        gl.bind_framebuffer(target, Some(self.fbo));
+                        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo));
+                        gl.read_buffer(glow::NONE);
                         for i in 0..8 {
                             gl.framebuffer_texture_2d(
                                 target,
@@ -817,7 +818,7 @@ impl<'a> Recorder<'a> {
                     if !discard.is_empty() && self.caps.storage {
                         gl.invalidate_framebuffer(target, &discard);
                     }
-                    gl.bind_framebuffer(target, None);
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                     self.colors.clear();
                     self.depth = None;
                     self.render = None;
