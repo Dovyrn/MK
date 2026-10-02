@@ -5,8 +5,8 @@ use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 use crate::mtl::{Callback, Native};
-use crate::register;
 use crate::{Command, access, face, format, index, load, stage, store};
+use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
@@ -58,6 +58,8 @@ const RENDER: MTLStages = MTLStages(
 );
 
 const NONE: u32 = !0;
+
+pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
 fn stages(bits: u32) -> MTLStages {
     let mut s = bits & 0x7c00_001f;
@@ -637,7 +639,10 @@ impl<'a> Recorder<'a> {
                 offset,
             } => {
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                unsafe { self.table.setAddress_atIndex(address, 16 + slot as usize) };
+                unsafe {
+                    self.table
+                        .setAddress_atIndex(address, VERTICES + slot as usize)
+                };
             }
             Command::BindIndexBuffer {
                 buffer,

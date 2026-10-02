@@ -2,6 +2,7 @@ use crate::mtl::accel::Accel;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
+use crate::mtl::recorder::VERTICES;
 use crate::mtl::render::Render;
 use crate::mtl::residency::Residency;
 use crate::mtl::resources::Resources;
@@ -962,7 +963,7 @@ impl Device {
         if !info.attributes.is_empty() {
             let layout = MTLVertexDescriptor::new();
             for (i, b) in info.buffers.iter().enumerate() {
-                let l = unsafe { layout.layouts().objectAtIndexedSubscript(16 + i) };
+                let l = unsafe { layout.layouts().objectAtIndexedSubscript(VERTICES + i) };
                 unsafe { l.setStride(b.stride as usize) };
                 l.setStepFunction(if b.instance {
                     MTLVertexStepFunction::PerInstance
@@ -979,7 +980,7 @@ impl Device {
                 at.setFormat(vertex_format(a.format));
                 unsafe {
                     at.setOffset(a.offset as usize);
-                    at.setBufferIndex(16 + a.buffer as usize);
+                    at.setBufferIndex(VERTICES + a.buffer as usize);
                 }
             }
             desc.setVertexDescriptor(Some(&layout));
