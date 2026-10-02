@@ -319,6 +319,7 @@ pub struct Device {
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
     trash: Vec<(Vec<u64>, Free)>,
+    caps: Caps,
 }
 
 impl Drop for Device {
@@ -341,7 +342,8 @@ impl Device {
         let lost = Arc::new(Mutex::new(None));
         let queues = (0..queues)
             .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
+        let caps = Self::detect(&raw, queues.len());
         Ok(Self {
             raw,
             compiler,
@@ -352,6 +354,7 @@ impl Device {
             queues,
             lost,
             trash: Vec::new(),
+            caps,
         })
     }
 
@@ -377,45 +380,45 @@ impl Device {
         Self::adopt(raw.ok_or("null Metal device")?, queues)
     }
 
-    pub fn caps(&self) -> Caps {
+    fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize) -> Caps {
         Caps {
-            mesh: self.raw.supportsFamily(MTLGPUFamily::Apple7)
-                || self.raw.supportsFamily(MTLGPUFamily::Mac2),
+            mesh: raw.supportsFamily(MTLGPUFamily::Apple7)
+                || raw.supportsFamily(MTLGPUFamily::Mac2),
             push: 256,
-            queues: self.queues.len() as u32,
+            queues: queues as u32,
             samplers: 2048,
             textures: 500_000,
-            tick: 1e9 / self.raw.queryTimestampFrequency() as f32,
+            tick: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,
-            ray: self.raw.supportsRaytracing(),
+            ray: raw.supportsRaytracing(),
             generated: false,
             handle_size: 0,
             handle_alignment: 0,
             table_alignment: 0,
-            sparse: self.raw.supportsFamily(MTLGPUFamily::Apple6),
+            sparse: raw.supportsFamily(MTLGPUFamily::Apple6),
             shading_rate: false,
             host_memory: true,
             host_alignment: 16384,
             shared_memory: false,
             viewports: 16,
-            depth_bounds: self.raw.supportsFamily(MTLGPUFamily::Apple10),
+            depth_bounds: raw.supportsFamily(MTLGPUFamily::Apple10),
             conditional: false,
             statistics: false,
             instance: 72,
-            memoryless: self.raw.supportsFamily(MTLGPUFamily::Apple2),
+            memoryless: raw.supportsFamily(MTLGPUFamily::Apple2),
             views: (1..=8)
                 .rev()
-                .find(|&n| self.raw.supportsVertexAmplificationCount(n))
+                .find(|&n| raw.supportsVertexAmplificationCount(n))
                 .unwrap_or(1) as u32,
-            graphics: (1 << self.queues.len()) - 1,
+            graphics: (1 << queues) - 1,
             labels: true,
             rays: false,
             anisotropy: true,
             depth_clamp: true,
             line_fill: true,
             multi_draw: true,
-            sparse_textures: self.raw.supportsFamily(MTLGPUFamily::Apple6),
+            sparse_textures: raw.supportsFamily(MTLGPUFamily::Apple6),
             slots: true,
             storage: true,
             persistent: true,
@@ -431,7 +434,7 @@ impl Device {
             indirect_ids: true,
             indirect_offset: true,
             wide_lines: false,
-            max_buffer: self.raw.maxBufferLength() as u64,
+            max_buffer: raw.maxBufferLength() as u64,
             max_texture: 16384,
             max_cube: 16384,
             max_volume: 2048,
@@ -439,12 +442,16 @@ impl Device {
         }
     }
 
+    pub fn caps(&self) -> Caps {
+        self.caps
+    }
+
     pub fn name(&self) -> String {
         self.raw.name().to_string()
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps().buffer(size, memory)?;
+        self.caps.buffer(size, memory)?;
         let buffer = self
             .raw
             .newBufferWithLength_options(size as usize, options(memory))
@@ -456,7 +463,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size, memory::UPLOAD)?;
+        self.caps.buffer(size, memory::UPLOAD)?;
         let buffer = unsafe {
             self.raw
                 .newBufferWithBytesNoCopy_length_options_deallocator(
@@ -489,7 +496,7 @@ impl Device {
     }
 
     fn sparse_check(&self) -> Result<(), String> {
-        if self.caps().sparse {
+        if self.caps.sparse {
             Ok(())
         } else {
             Err("sparse residency is not supported".into())
@@ -588,7 +595,7 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
-        self.caps().buffer(size, memory::DEVICE)?;
+        self.caps.buffer(size, memory::DEVICE)?;
         self.sparse_check()?;
         let buffer = unsafe {
             self.raw
@@ -765,7 +772,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
-        self.caps().buffer(size, memory::DEVICE)?;
+        self.caps.buffer(size, memory::DEVICE)?;
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
             h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
@@ -1247,7 +1254,7 @@ impl Device {
     fn supports(&self, info: &TextureInfo) -> Result<(), String> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        self.caps().texture(info, usable, counts)
+        self.caps.texture(info, usable, counts)
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
@@ -1657,7 +1664,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Check::run(commands, natives.len(), &self.caps(), &self.res.table)?;
+        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         self.collect();
         self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)
     }
