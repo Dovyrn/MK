@@ -41,8 +41,53 @@ impl Extensions {
         instance: &ash::Instance,
         raw: &ash::Device,
         features: &vk::PhysicalDeviceFeatures2,
-    ) -> Self {
+    ) -> Result<Self, String> {
         unsafe {
+            let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
+            let v13 = chained::<vk::PhysicalDeviceVulkan13Features>(features);
+            let mutable = chained::<vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT>(features);
+            let needs = [
+                (
+                    "VkPhysicalDeviceVulkan12Features.bufferDeviceAddress",
+                    v12.map(|f| f.buffer_device_address),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan12Features.timelineSemaphore",
+                    v12.map(|f| f.timeline_semaphore),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan12Features.descriptorBindingPartiallyBound",
+                    v12.map(|f| f.descriptor_binding_partially_bound),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan12Features.descriptorBindingSampledImageUpdateAfterBind",
+                    v12.map(|f| f.descriptor_binding_sampled_image_update_after_bind),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan12Features.descriptorBindingStorageImageUpdateAfterBind",
+                    v12.map(|f| f.descriptor_binding_storage_image_update_after_bind),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan13Features.synchronization2",
+                    v13.map(|f| f.synchronization2),
+                ),
+                (
+                    "VkPhysicalDeviceVulkan13Features.dynamicRendering",
+                    v13.map(|f| f.dynamic_rendering),
+                ),
+                (
+                    "VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT.mutableDescriptorType",
+                    mutable.map(|f| f.mutable_descriptor_type),
+                ),
+            ];
+            let missing: Vec<_> = needs
+                .iter()
+                .filter(|(_, on)| on.unwrap_or(0) == 0)
+                .map(|(name, _)| *name)
+                .collect();
+            if !missing.is_empty() {
+                return Err(format!("adopt needs {}", missing.join(", ")));
+            }
             let has = |name: &std::ffi::CStr| {
                 (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr()).is_some()
             };
@@ -82,9 +127,9 @@ impl Extensions {
                 .is_some_and(|f| f.multiview != 0)
                 || chained::<vk::PhysicalDeviceMultiviewFeatures>(features)
                     .is_some_and(|f| f.multiview != 0);
-            let buffers = chained::<vk::PhysicalDeviceVulkan12Features>(features)
-                .is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
-            Self {
+            let buffers =
+                v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
+            Ok(Self {
                 debug,
                 mesh,
                 accel,
@@ -98,7 +143,7 @@ impl Extensions {
                 multiview,
                 buffers,
                 push,
-            }
+            })
         }
     }
 }

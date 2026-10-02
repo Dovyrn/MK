@@ -118,7 +118,7 @@ impl Device {
         queues: &[(u32, u32)],
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
-        let ext = unsafe { Extensions::new(&instance, &raw, features) };
+        let ext = unsafe { Extensions::new(&instance, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
         let range = vk::PushConstantRange::default()

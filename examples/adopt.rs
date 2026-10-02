@@ -109,12 +109,27 @@ fn native(
         host.raw.bind_image_memory(image, memory, 0).unwrap();
         (image, memory)
     };
+    let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
+        .buffer_device_address(true)
+        .timeline_semaphore(true)
+        .descriptor_binding_partially_bound(true)
+        .descriptor_binding_sampled_image_update_after_bind(true)
+        .descriptor_binding_storage_image_update_after_bind(true);
+    let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
+        .synchronization2(true)
+        .dynamic_rendering(true);
+    let mut mutable =
+        vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default().mutable_descriptor_type(true);
+    let features = vk::PhysicalDeviceFeatures2::default()
+        .push_next(&mut v12)
+        .push_next(&mut v13)
+        .push_next(&mut mutable);
     let mut device = Device::adopt(
         host.instance.clone(),
         host.physical,
         host.raw.clone(),
         &[(family, 0)],
-        &vk::PhysicalDeviceFeatures2::default(),
+        &features,
     )
     .unwrap();
     let slot = device
