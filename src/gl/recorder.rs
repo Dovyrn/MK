@@ -294,6 +294,12 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn range(&self, target: u32, index: u32, buffer: u32, offset: u64, size: u64) {
+        let b = self.res.buffers.get(buffer);
+        let size = if size == !0 { b.size - offset } else { size };
+        unsafe { (self.extra.range)(target, index, b.raw.0.get(), offset as isize, size as isize) };
+    }
+
     fn attach(&self, target: u32, point: u32, texture: u32, layers: u32) {
         let t = self.res.textures.get(texture);
         let gl = self.gl;
@@ -1223,12 +1229,12 @@ impl<'a> Recorder<'a> {
                     buffer,
                     offset,
                     size,
-                } => (self.extra.range)(
+                } => self.range(
                     glow::UNIFORM_BUFFER,
                     register::UNIFORM + slot,
-                    res.buffers.get(buffer).raw.0.get(),
-                    offset as isize,
-                    size as isize,
+                    buffer,
+                    offset,
+                    size,
                 ),
                 Command::BindStorage {
                     slot,
@@ -1239,13 +1245,7 @@ impl<'a> Recorder<'a> {
                     if !self.caps.storage {
                         return Err("storage slots need GL 4.3".into());
                     }
-                    (self.extra.range)(
-                        glow::SHADER_STORAGE_BUFFER,
-                        slot,
-                        res.buffers.get(buffer).raw.0.get(),
-                        offset as isize,
-                        size as isize,
-                    );
+                    self.range(glow::SHADER_STORAGE_BUFFER, slot, buffer, offset, size);
                 }
                 Command::BindImage { slot, texture } => {
                     if !self.caps.storage {
