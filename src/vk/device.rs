@@ -8,7 +8,7 @@ use crate::vk::generated::Generated;
 use crate::vk::heap::Heap;
 use crate::vk::queue::{Queue, timeline};
 use crate::vk::resources::Resources;
-use crate::vk::texture::{Texture, aspect};
+use crate::vk::texture::{Texture, aspect, count};
 use crate::{
     AccelInfo, Caps, ColorTarget, Command, Commands, ComputeInfo, DepthInfo, LayoutInfo, MeshInfo,
     RayInfo, RenderInfo, SamplerInfo, SparseRange, SparseRegion, TextureInfo, ViewInfo, address,
@@ -116,9 +116,9 @@ fn whole(info: &TextureInfo) -> ViewInfo {
         dimension: info.dimension,
         format: info.format,
         base_mip: 0,
-        mips: vk::REMAINING_MIP_LEVELS,
+        mips: info.mips,
         base_layer: 0,
-        layers: vk::REMAINING_ARRAY_LAYERS,
+        layers: info.layers,
         usage: info.usage,
     }
 }
@@ -1613,8 +1613,16 @@ impl Device {
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
         self.supports(info.format, info.usage)?;
-        let image = self.res.textures.get(texture).image;
-        self.register(image, vk::DeviceMemory::null(), false, info)
+        let t = self.res.textures.get(texture);
+        let view = ViewInfo {
+            base_mip: t.base_mip + info.base_mip,
+            mips: count(info.mips, info.base_mip, t.mips),
+            base_layer: t.base_layer + info.base_layer,
+            layers: count(info.layers, info.base_layer, t.layers),
+            usage: info.usage & t.usage,
+            ..*info
+        };
+        self.register(t.image, vk::DeviceMemory::null(), false, &view)
     }
 
     fn register(
@@ -1624,7 +1632,7 @@ impl Device {
         own: bool,
         info: &ViewInfo,
     ) -> Result<u32, String> {
-        let view = match info.dimension {
+        let kind = match info.dimension {
             dimension::D1 => vk::ImageViewType::TYPE_1D,
             dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
             dimension::D2 => vk::ImageViewType::TYPE_2D,
@@ -1634,78 +1642,99 @@ impl Device {
             dimension::CUBE_ARRAY => vk::ImageViewType::CUBE_ARRAY,
             d => panic!("unknown dimension {d}"),
         };
-        let native = format::vk(info.format);
-        unsafe {
-            let aspect = aspect(info.format);
-            let range = vk::ImageSubresourceRange {
-                aspect_mask: if aspect.contains(vk::ImageAspectFlags::DEPTH) {
-                    vk::ImageAspectFlags::DEPTH
-                } else {
-                    aspect
-                },
-                base_mip_level: info.base_mip,
-                level_count: info.mips,
-                base_array_layer: info.base_layer,
-                layer_count: info.layers,
-            };
-            let view_info = vk::ImageViewCreateInfo::default()
+        let target = match kind {
+            vk::ImageViewType::CUBE | vk::ImageViewType::CUBE_ARRAY => {
+                vk::ImageViewType::TYPE_2D_ARRAY
+            }
+            k => k,
+        };
+        let aspect = aspect(info.format);
+        let sampled = if aspect.contains(vk::ImageAspectFlags::DEPTH) {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            aspect
+        };
+        let attach =
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+        let bits = image_usage(info.usage)
+            & (vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE | attach);
+        let make = |kind, aspect, mips, usage| {
+            let mut usage = vk::ImageViewUsageCreateInfo::default().usage(usage);
+            let create = vk::ImageViewCreateInfo::default()
                 .image(image)
-                .view_type(view)
-                .format(native)
-                .subresource_range(range);
-            let view = match self.raw.create_image_view(&view_info, None) {
-                Ok(v) => v,
-                Err(e) => {
-                    if own {
-                        self.raw.destroy_image(image, None);
-                    }
-                    if memory != vk::DeviceMemory::null() {
-                        self.raw.free_memory(memory, None);
-                    }
-                    return Err(e.to_string());
-                }
-            };
-            let slot = self.res.textures.insert(Texture {
-                image,
-                memory,
-                view,
-                aspect,
-                format: info.format,
-                own,
-                tile: vk::Extent3D::default(),
-            });
-            let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
-            if bound && slot * 2 + 1 >= self.bindless.images {
-                let t = self.res.textures.remove(slot);
-                self.free_texture(&t);
-                return Err("the bindless heap has no texture slot left".into());
+                .view_type(kind)
+                .format(format::vk(info.format))
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: aspect,
+                    base_mip_level: info.base_mip,
+                    level_count: mips,
+                    base_array_layer: info.base_layer,
+                    layer_count: info.layers,
+                })
+                .push_next(&mut usage);
+            unsafe { self.raw.create_image_view(&create, None) }
+        };
+        let mut t = Texture {
+            image,
+            memory,
+            view: vk::ImageView::null(),
+            target: vk::ImageView::null(),
+            aspect,
+            format: info.format,
+            usage: info.usage,
+            base_mip: info.base_mip,
+            mips: info.mips,
+            base_layer: info.base_layer,
+            layers: info.layers,
+            own,
+            tile: vk::Extent3D::default(),
+        };
+        let mut views = || -> Result<(), vk::Result> {
+            if !bits.is_empty() {
+                t.view = make(kind, sampled, info.mips, bits)?;
             }
-            if info.usage & usage::SAMPLED != 0 {
-                let image = vk::DescriptorImageInfo::default()
-                    .image_view(view)
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-                self.bindless.write(
-                    &self.raw,
-                    2,
-                    slot * 2,
-                    vk::DescriptorType::SAMPLED_IMAGE,
-                    image,
-                );
+            if bits.intersects(attach) {
+                t.target = make(target, aspect, 1, bits & attach)?;
             }
-            if info.usage & usage::STORAGE != 0 {
-                let image = vk::DescriptorImageInfo::default()
-                    .image_view(view)
-                    .image_layout(vk::ImageLayout::GENERAL);
-                self.bindless.write(
-                    &self.raw,
-                    2,
-                    slot * 2 + 1,
-                    vk::DescriptorType::STORAGE_IMAGE,
-                    image,
-                );
-            }
-            Ok(slot)
+            Ok(())
+        };
+        if let Err(e) = views() {
+            self.free_texture(&t);
+            return Err(e.to_string());
         }
+        let view = t.view;
+        let slot = self.res.textures.insert(t);
+        let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
+        if bound && slot * 2 + 1 >= self.bindless.images {
+            let t = self.res.textures.remove(slot);
+            self.free_texture(&t);
+            return Err("the bindless heap has no texture slot left".into());
+        }
+        if info.usage & usage::SAMPLED != 0 {
+            let image = vk::DescriptorImageInfo::default()
+                .image_view(view)
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+            self.bindless.write(
+                &self.raw,
+                2,
+                slot * 2,
+                vk::DescriptorType::SAMPLED_IMAGE,
+                image,
+            );
+        }
+        if info.usage & usage::STORAGE != 0 {
+            let image = vk::DescriptorImageInfo::default()
+                .image_view(view)
+                .image_layout(vk::ImageLayout::GENERAL);
+            self.bindless.write(
+                &self.raw,
+                2,
+                slot * 2 + 1,
+                vk::DescriptorType::STORAGE_IMAGE,
+                image,
+            );
+        }
+        Ok(slot)
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
@@ -1718,6 +1747,7 @@ impl Device {
     fn free_texture(&self, texture: &Texture) {
         unsafe {
             self.raw.destroy_image_view(texture.view, None);
+            self.raw.destroy_image_view(texture.target, None);
             if texture.own {
                 self.raw.destroy_image(texture.image, None);
             }

@@ -5,8 +5,14 @@ pub struct Texture {
     pub image: vk::Image,
     pub memory: vk::DeviceMemory,
     pub view: vk::ImageView,
+    pub target: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
     pub format: u32,
+    pub usage: u32,
+    pub base_mip: u32,
+    pub mips: u32,
+    pub base_layer: u32,
+    pub layers: u32,
     pub own: bool,
     pub tile: vk::Extent3D,
 }
@@ -20,4 +26,8 @@ pub fn aspect(f: u32) -> vk::ImageAspectFlags {
         format::S8_UINT => vk::ImageAspectFlags::STENCIL,
         _ => vk::ImageAspectFlags::COLOR,
     }
+}
+
+pub fn count(n: u32, base: u32, total: u32) -> u32 {
+    if n == !0 { total - base } else { n }
 }

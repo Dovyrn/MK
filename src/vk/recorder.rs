@@ -2,7 +2,7 @@ use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
 use crate::vk::ffi;
 use crate::vk::resources::Resources;
-use crate::vk::texture::Texture;
+use crate::vk::texture::{Texture, count};
 use crate::vk::{Callback, Native};
 use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
 use ash::vk;
@@ -191,7 +191,7 @@ impl Recorder<'_> {
         clear: vk::ClearValue,
     ) -> vk::RenderingAttachmentInfo<'static> {
         vk::RenderingAttachmentInfo::default()
-            .image_view(self.res.textures.get(texture).view)
+            .image_view(self.res.textures.get(texture).target)
             .image_layout(self::layout(layout))
             .load_op(self::load(load))
             .store_op(self::store(store))
@@ -217,8 +217,8 @@ impl Recorder<'_> {
             buffer_image_height: row_count,
             image_subresource: vk::ImageSubresourceLayers {
                 aspect_mask: t.aspect,
-                mip_level: mip,
-                base_array_layer: layer,
+                mip_level: t.base_mip + mip,
+                base_array_layer: t.base_layer + layer,
                 layer_count: 1,
             },
             image_offset: vk::Offset3D {
@@ -370,10 +370,10 @@ impl Recorder<'_> {
                         .image(t.image)
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: t.aspect,
-                            base_mip_level: base_mip,
-                            level_count: mips,
-                            base_array_layer: base_layer,
-                            layer_count: layers,
+                            base_mip_level: t.base_mip + base_mip,
+                            level_count: count(mips, base_mip, t.mips),
+                            base_array_layer: t.base_layer + base_layer,
+                            layer_count: count(layers, base_layer, t.layers),
                         });
                     let barriers = [barrier];
                     let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
@@ -479,7 +479,7 @@ impl Recorder<'_> {
                     if resolve != NONE {
                         info = info
                             .resolve_mode(vk::ResolveModeFlags::AVERAGE)
-                            .resolve_image_view(self.res.textures.get(resolve).view)
+                            .resolve_image_view(self.res.textures.get(resolve).target)
                             .resolve_image_layout(layout(resolve_layout));
                     }
                     let i = index as usize;
