@@ -118,84 +118,75 @@ impl Device {
         queues: &[(u32, u32)],
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
-        unsafe {
-            let ext = Extensions::new(&instance, &raw, features);
-            let basic = instance.get_physical_device_properties(physical);
-            let limits = basic.limits;
-            let range = vk::PushConstantRange::default()
-                .stage_flags(vk::ShaderStageFlags::ALL)
-                .size(limits.max_push_constants_size.min(256));
-            let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
-            let mut properties =
-                vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
-            instance.get_physical_device_properties2(physical, &mut properties);
-            let slots = bindings::layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
-            let bindless = match Bindless::new(&raw, &properties12, ext.buffers) {
-                Ok(b) => b,
+        let ext = unsafe { Extensions::new(&instance, &raw, features) };
+        let basic = unsafe { instance.get_physical_device_properties(physical) };
+        let limits = basic.limits;
+        let range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::ALL)
+            .size(limits.max_push_constants_size.min(256));
+        let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
+        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
+        unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
+        let slots = bindings::layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
+        let bindless = Bindless::new(&raw, &properties12, ext.buffers).map_err(|e| {
+            unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+            e.to_string()
+        })?;
+        let ranges = [range];
+        let sets = [slots, bindless.layout];
+        let info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(&sets)
+            .push_constant_ranges(&ranges);
+        let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
+            bindless.destroy(&raw);
+            unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+            e.to_string()
+        })?;
+        let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
+        families.sort();
+        families.dedup();
+        let flags = unsafe { instance.get_physical_device_queue_family_properties(physical) };
+        let mut list = Vec::new();
+        for &(f, i) in queues {
+            let graphics = flags[f as usize]
+                .queue_flags
+                .contains(vk::QueueFlags::GRAPHICS);
+            match Queue::new(&raw, f, i, graphics) {
+                Ok(q) => list.push(q),
                 Err(e) => {
-                    raw.destroy_descriptor_set_layout(slots, None);
-                    return Err(e.to_string());
-                }
-            };
-            let ranges = [range];
-            let sets = [slots, bindless.layout];
-            let info = vk::PipelineLayoutCreateInfo::default()
-                .set_layouts(&sets)
-                .push_constant_ranges(&ranges);
-            let layout = match raw.create_pipeline_layout(&info, None) {
-                Ok(l) => l,
-                Err(e) => {
-                    bindless.destroy(&raw);
-                    raw.destroy_descriptor_set_layout(slots, None);
-                    return Err(e.to_string());
-                }
-            };
-            let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
-            families.sort();
-            families.dedup();
-            let flags = instance.get_physical_device_queue_family_properties(physical);
-            let mut list = Vec::new();
-            for &(f, i) in queues {
-                let graphics = flags[f as usize]
-                    .queue_flags
-                    .contains(vk::QueueFlags::GRAPHICS);
-                match Queue::new(&raw, f, i, graphics) {
-                    Ok(q) => list.push(q),
-                    Err(e) => {
-                        for mut q in list {
-                            q.destroy(&raw);
-                        }
-                        raw.destroy_pipeline_layout(layout, None);
-                        bindless.destroy(&raw);
-                        raw.destroy_descriptor_set_layout(slots, None);
-                        return Err(e);
+                    for mut q in list {
+                        q.destroy(&raw);
                     }
+                    unsafe { raw.destroy_pipeline_layout(layout, None) };
+                    bindless.destroy(&raw);
+                    unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+                    return Err(e);
                 }
             }
-            let memory = instance.get_physical_device_memory_properties(physical);
-            Ok(Self {
-                caps: probe(
-                    &instance, physical, &ext, &list, &bindless, &memory, &limits,
-                ),
-                name: basic
-                    .device_name_as_c_str()
-                    .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
-                limits,
-                memory,
-                families,
-                cache: vk::PipelineCache::null(),
-                instance,
-                physical,
-                raw,
-                ext,
-                slots,
-                bindless,
-                layout,
-                res: Resources::default(),
-                queues: list,
-                garbage: Vec::new(),
-            })
         }
+        let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
+        Ok(Self {
+            caps: probe(
+                &instance, physical, &ext, &list, &bindless, &memory, &limits,
+            ),
+            name: basic
+                .device_name_as_c_str()
+                .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+            limits,
+            memory,
+            families,
+            cache: vk::PipelineCache::null(),
+            instance,
+            physical,
+            raw,
+            ext,
+            slots,
+            bindless,
+            layout,
+            res: Resources::default(),
+            queues: list,
+            garbage: Vec::new(),
+        })
     }
 
     fn defer(&mut self, free: impl FnOnce(&mut Self) + 'static) {
