@@ -3,9 +3,7 @@ use std::ffi::c_void;
 type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
 type Multi = unsafe extern "system" fn(u32, *const c_void, i32, i32);
 type MultiIndexed = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
-type Resource = unsafe extern "system" fn(u32, u32, *const i8) -> u32;
 type Reset = unsafe extern "system" fn() -> u32;
-type Results = unsafe extern "system" fn(u32, u32, u32, isize);
 type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const c_void);
 type Mesh = unsafe extern "system" fn(u32, u32, u32);
 type MeshIndirect = unsafe extern "system" fn(isize);
@@ -45,9 +43,7 @@ pub struct Extra {
     pub view: Option<View>,
     pub multi: Option<Multi>,
     pub multi_indexed: Option<MultiIndexed>,
-    pub resource: Option<Resource>,
     pub reset: Option<Reset>,
-    pub results: Option<Results>,
     pub clear: Option<Clear>,
     pub mesh: Option<Mesh>,
     pub mesh_indirect: Option<MeshIndirect>,
@@ -124,19 +120,7 @@ impl Extra {
                     "GL_ARB_multi_draw_indirect",
                 )
                 .map(|p| cast(p)),
-                resource: get(
-                    "glGetProgramResourceIndex",
-                    43,
-                    "GL_ARB_program_interface_query",
-                )
-                .map(|p| cast(p)),
                 reset: get("glGetGraphicsResetStatus", 45, "GL_KHR_robustness").map(|p| cast(p)),
-                results: get(
-                    "glGetQueryBufferObjectui64v",
-                    44,
-                    "GL_ARB_query_buffer_object",
-                )
-                .map(|p| cast(p)),
                 clear: get("glClearBufferSubData", 43, "GL_ARB_clear_buffer_object")
                     .map(|p| cast(p)),
                 mesh: mesh("glDrawMeshTasksEXT").map(|p| cast(p)),

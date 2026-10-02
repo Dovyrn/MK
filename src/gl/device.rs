@@ -39,10 +39,6 @@ pub struct Device {
     samples: [i32; 4],
 }
 
-const MAX_ANISOTROPY: u32 = 0x84FE;
-
-const MAX_ANISOTROPY_LIMIT: u32 = 0x84FF;
-
 const TASK_SHADER: u32 = 0x955A;
 
 const MESH_SHADER: u32 = 0x9559;
@@ -167,7 +163,7 @@ impl Device {
                 ..Default::default()
             };
             let anisotropy = if caps.anisotropy {
-                gl.get_parameter_f32(MAX_ANISOTROPY_LIMIT)
+                gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY)
             } else {
                 1.0
             };
@@ -344,7 +340,6 @@ impl Device {
         }
         let program = Program::new(
             &self.gl,
-            &self.extra,
             info.code,
             &[(glow::COMPUTE_SHADER, info.entry)],
             self.cache.as_mut(),
@@ -370,7 +365,6 @@ impl Device {
         }
         let program = Program::new(
             &self.gl,
-            &self.extra,
             info.code,
             &[
                 (glow::VERTEX_SHADER, info.vertex),
@@ -417,13 +411,7 @@ impl Device {
         }
         stages.push((MESH_SHADER, info.mesh));
         stages.push((glow::FRAGMENT_SHADER, info.fragment));
-        let program = Program::new(
-            &self.gl,
-            &self.extra,
-            info.code,
-            &stages,
-            self.cache.as_mut(),
-        )?;
+        let program = Program::new(&self.gl, info.code, &stages, self.cache.as_mut())?;
         self.units = self.units.max(program.pairs.len() as u32);
         let vao = match unsafe { self.gl.create_vertex_array() } {
             Ok(v) => v,
@@ -792,7 +780,7 @@ impl Device {
             gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_LOD, info.max_lod);
             gl.sampler_parameter_f32_slice(raw, glow::TEXTURE_BORDER_COLOR, &color);
             if anisotropy > 1.0 {
-                gl.sampler_parameter_f32(raw, MAX_ANISOTROPY, anisotropy);
+                gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_ANISOTROPY, anisotropy);
             }
             if info.compare != crate::compare::NONE {
                 let mode = glow::COMPARE_REF_TO_TEXTURE as i32;
@@ -838,7 +826,7 @@ impl Device {
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
-        let results = self.extra.results.is_some();
+        let results = self.has(44, "GL_ARB_query_buffer_object");
         match kind {
             query::TIMESTAMP | query::OCCLUSION | query::PRECISE if !results => {
                 return Err("query results need GL 4.4".into());

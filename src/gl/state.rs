@@ -194,7 +194,7 @@ impl State {
                     glow::SHADER_STORAGE_BUFFER_BINDING,
                 ));
             }
-            if extra.results.is_some() {
+            if has(44, "GL_ARB_query_buffer_object") {
                 targets.push((glow::QUERY_BUFFER, glow::QUERY_BUFFER_BINDING));
             }
             let buffers = targets.iter().map(|&(t, b)| (t, int(b))).collect();

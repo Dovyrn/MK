@@ -13,8 +13,6 @@ use crate::{
 };
 use glow::HasContext;
 
-const QUERY_BUFFER: u32 = 0x9192;
-
 const UNUSED: [u32; 19] = [
     glow::RASTERIZER_DISCARD,
     glow::COLOR_LOGIC_OP,
@@ -1270,20 +1268,15 @@ impl<'a> Recorder<'a> {
                     buffer,
                     offset,
                 } => {
-                    let results = self.extra.results.unwrap();
                     let q = res.queries.get(heap);
                     let raw = res.buffers.get(buffer).raw;
-                    gl.bind_buffer(QUERY_BUFFER, Some(raw));
+                    gl.bind_buffer(glow::QUERY_BUFFER, Some(raw));
                     for i in 0..count {
                         let id = q.ids[(first + i) as usize];
-                        results(
-                            id.0.get(),
-                            raw.0.get(),
-                            glow::QUERY_RESULT,
-                            (offset + i as u64 * 8) as isize,
-                        );
+                        let at = (offset + i as u64 * 8) as usize;
+                        gl.get_query_parameter_u64_with_offset(id, glow::QUERY_RESULT, at);
                     }
-                    gl.bind_buffer(QUERY_BUFFER, None);
+                    gl.bind_buffer(glow::QUERY_BUFFER, None);
                 }
                 Command::SetViewports { viewports } => {
                     let views = command::viewports(viewports);

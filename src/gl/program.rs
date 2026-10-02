@@ -1,5 +1,4 @@
 use crate::gl::cache::{Cache, key};
-use crate::gl::extra::Extra;
 use crate::register;
 use glow::HasContext;
 
@@ -9,10 +8,6 @@ pub struct Program {
     pub base: Option<glow::UniformLocation>,
     pub instance: Option<glow::UniformLocation>,
 }
-
-const STORAGE_BLOCK: u32 = 0x92E6;
-
-const INVALID: u32 = u32::MAX;
 
 fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     let marker = format!("//@ entry {entry}\n");
@@ -68,7 +63,6 @@ pub unsafe fn link(
 impl Program {
     pub fn new(
         gl: &glow::Context,
-        extra: &Extra,
         code: &[u8],
         stages: &[(u32, &str)],
         cache: Option<&mut Cache>,
@@ -121,12 +115,7 @@ impl Program {
                         }
                     }
                     "storage" => {
-                        let Some(find) = extra.resource else {
-                            continue;
-                        };
-                        let name = std::ffi::CString::new(words[1]).unwrap();
-                        let i = find(raw.0.get(), STORAGE_BLOCK, name.as_ptr());
-                        if i != INVALID {
+                        if let Some(i) = gl.get_shader_storage_block_index(raw, words[1]) {
                             gl.shader_storage_block_binding(raw, i, number(2) - register::STORAGE);
                         }
                     }
