@@ -704,6 +704,7 @@ impl Device {
         if !self.caps().sparse_textures {
             return Err("sparse textures are not supported".into());
         }
+        self.supports(info.format, info.usage)?;
         let create = image_info(info);
         let create = create.flags(
             create.flags
@@ -927,6 +928,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.supports(info.format, info.usage)?;
         let h = self.res.heaps.get(heap);
         let memory = h.memory;
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
@@ -1527,6 +1529,7 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.supports(info.format, info.usage)?;
         unsafe {
             let image = self
                 .raw
@@ -1575,6 +1578,9 @@ impl Device {
                 .get_physical_device_format_properties(self.physical, raw)
         }
         .optimal_tiling_features;
+        if features.is_empty() {
+            return 0;
+        }
         [
             (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),
             (vk::FormatFeatureFlags::STORAGE_IMAGE, usage::STORAGE),
@@ -1591,7 +1597,22 @@ impl Device {
         .fold(usage::VIEW, |u, (_, b)| u | b)
     }
 
+    fn supports(&self, format: u32, usage: u32) -> Result<(), String> {
+        let supported = self.format_usage(format);
+        if supported == 0 {
+            return Err(format!("format {format} is not supported"));
+        }
+        let missing = usage & !supported;
+        if missing != 0 {
+            return Err(format!(
+                "format {format} does not support usage {missing:#x}"
+            ));
+        }
+        Ok(())
+    }
+
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+        self.supports(info.format, info.usage)?;
         let image = self.res.textures.get(texture).image;
         self.register(image, vk::DeviceMemory::null(), false, info)
     }
