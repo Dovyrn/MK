@@ -251,6 +251,9 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        if !self.caps.mesh {
+            return Err("create_mesh_pipeline needs caps.mesh".into());
+        }
         let library = self.library(info.code)?;
         let desc = MTL4MeshRenderPipelineDescriptor::new();
         if !info.task.is_empty() {
