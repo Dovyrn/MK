@@ -204,7 +204,6 @@ fn glsl(out: &Path, name: &str) {
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
     let mut container = String::new();
-    let mut table = Vec::new();
     let entries = reflection["entryPoints"].as_array().unwrap();
     let meshy = entries
         .iter()
@@ -304,6 +303,7 @@ fn glsl(out: &Path, name: &str) {
         };
         container += &format!("//@ entry {entry}\n{plain}");
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
+        let mut table = Vec::new();
         for line in packed.lines() {
             let Some((name, slot)) = binding(line) else {
                 continue;
@@ -334,9 +334,9 @@ fn glsl(out: &Path, name: &str) {
                 table.push(b);
             }
         }
-    }
-    for b in &table {
-        container += &format!("//@ {b}\n");
+        for b in &table {
+            container += &format!("//@ {b}\n");
+        }
     }
     fs::write(out.join(format!("{name}.gl")), container).unwrap();
 }

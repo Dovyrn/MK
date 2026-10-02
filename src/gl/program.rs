@@ -12,13 +12,15 @@ const STORAGE_BLOCK: u32 = 0x92E6;
 
 const INVALID: u32 = u32::MAX;
 
-fn source<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
+fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     let marker = format!("//@ entry {entry}\n");
     let start = text
         .find(&marker)
         .ok_or(format!("the GL code has no entry {entry}"))?
         + marker.len();
-    let end = text[start..].find("//@ ").map_or(text.len(), |i| start + i);
+    let end = text[start..]
+        .find("//@ entry ")
+        .map_or(text.len(), |i| start + i);
     Ok(&text[start..end])
 }
 
@@ -34,8 +36,8 @@ unsafe fn link(
         for &(kind, entry) in stages {
             let shader = gl.create_shader(kind)?;
             shaders.push(shader);
-            match source(text, entry) {
-                Ok(s) => gl.shader_source(shader, s),
+            match section(text, entry) {
+                Ok(s) => gl.shader_source(shader, &s[..s.find("//@ ").unwrap_or(s.len())]),
                 Err(e) => {
                     failure = Some(e);
                     break;
@@ -96,7 +98,17 @@ impl Program {
             }
             let mut pairs = Vec::new();
             gl.use_program(Some(raw));
-            for line in text.lines().filter_map(|l| l.strip_prefix("//@ ")) {
+            let lines = stages
+                .iter()
+                .filter_map(|&(_, entry)| section(text, entry).ok())
+                .flat_map(str::lines)
+                .filter_map(|l| l.strip_prefix("//@ "));
+            let mut seen = Vec::new();
+            for line in lines {
+                if seen.contains(&line) {
+                    continue;
+                }
+                seen.push(line);
                 let words: Vec<&str> = line.split_whitespace().collect();
                 let number = |i: usize| words[i].parse::<u32>().unwrap();
                 match words[0] {
