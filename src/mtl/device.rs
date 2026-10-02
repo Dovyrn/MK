@@ -1614,12 +1614,12 @@ impl Device {
         Ok(self.res.events.get(event).signaledValue())
     }
 
-    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
         let done = self
             .res
             .events
             .get(event)
-            .waitUntilSignaledValue_timeoutMS(value, timeout);
+            .waitUntilSignaledValue_timeoutMS(value, ms);
         self.collect();
         self.healthy()?;
         Ok(done)

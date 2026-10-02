@@ -889,7 +889,7 @@ impl Device {
         Ok(value)
     }
 
-    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
         self.healthy()?;
         let e = self.res.events.get(event);
         if e.value >= value {
@@ -898,7 +898,7 @@ impl Device {
         let Some(&(_, fence)) = e.fences.iter().find(|(v, _)| *v >= value) else {
             return Ok(false);
         };
-        let mut left = timeout.saturating_mul(1_000_000);
+        let mut left = ms.saturating_mul(1_000_000);
         loop {
             let step = left.min(1_000_000_000);
             let status = unsafe {

@@ -2378,7 +2378,7 @@ impl Device {
         }
     }
 
-    pub fn wait(&mut self, event: u32, value: u64, timeout: u64) -> Result<bool, String> {
+    pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
         self.collect();
         let semaphores = [self.res.events.get(event).0];
         let values = [value];
@@ -2388,7 +2388,7 @@ impl Device {
         unsafe {
             match self
                 .raw
-                .wait_semaphores(&info, timeout.saturating_mul(1_000_000))
+                .wait_semaphores(&info, ms.saturating_mul(1_000_000))
             {
                 Ok(()) => Ok(true),
                 Err(vk::Result::TIMEOUT) => Ok(false),

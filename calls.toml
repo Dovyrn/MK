@@ -235,7 +235,7 @@ fails = true
 
 [[call]]
 name = "wait"
-params = [["event", "u32"], ["value", "u64"], ["timeout", "u64"]]
+params = [["event", "u32"], ["value", "u64"], ["ms", "u64"]]
 result = "bool"
 fails = true
 

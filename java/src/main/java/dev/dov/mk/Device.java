@@ -250,11 +250,11 @@ public class Device implements AutoCloseable {
 
     private static native long nEventValue(long device, int event);
 
-    public boolean wait(int event, long value, long timeout) {
-        return nWait(handle, event, value, timeout);
+    public boolean wait(int event, long value, long ms) {
+        return nWait(handle, event, value, ms);
     }
 
-    private static native boolean nWait(long device, int event, long value, long timeout);
+    private static native boolean nWait(long device, int event, long value, long ms);
 
     public void submit(int queue, Commands commands, long[] waits, long[] signals) {
         try (var stack = MemoryStack.stackPush()) {
