@@ -8,12 +8,9 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
     let slang = dir.join(format!("{name}.slang"));
     let metal = dir.join(format!("{name}.metal"));
     if metal.exists() {
-        run(Command::new("xcrun")
-            .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
-            .arg(&metal)
-            .arg("-o")
-            .arg(out.join(format!("{name}.air"))));
-        library(out, name, &[out.join(format!("{name}.air"))]);
+        let air = out.join(format!("{name}.air"));
+        compile(&metal, &air);
+        library(out, name, &[air]);
         return;
     }
     let text = fs::read_to_string(&slang).unwrap();
@@ -35,14 +32,18 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         bases(&msl);
         fs::remove_file(&json).unwrap();
         let air = out.join(format!("{name}.{entry}.air"));
-        run(Command::new("xcrun")
-            .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
-            .arg(&msl)
-            .arg("-o")
-            .arg(&air));
+        compile(&msl, &air);
         airs.push(air);
     }
     library(out, name, &airs);
+}
+
+fn compile(source: &Path, air: &Path) {
+    run(Command::new("xcrun")
+        .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
+        .arg(source)
+        .arg("-o")
+        .arg(air));
 }
 
 fn library(out: &Path, name: &str, airs: &[PathBuf]) {
