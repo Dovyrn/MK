@@ -32,6 +32,15 @@ impl Device {
             .filter(|name| !name.is_empty())
             .collect();
         let words = spirv::read(code, &used)?;
+        if let Some(v) = vertex {
+            let inputs = spirv::inputs(&words, v.vertex);
+            let missing = inputs
+                .iter()
+                .find(|&&l| !v.attributes.iter().any(|a| a.location == l));
+            if let Some(location) = missing {
+                return Err(format!("vertex input {location} has no attribute"));
+            }
+        }
         let module = self.module(&words)?;
         let names: Vec<_> = entries
             .iter()

@@ -1,6 +1,11 @@
 use std::io::Cursor;
 
 const ENTRY: u32 = 15;
+const VARIABLE: u32 = 59;
+const DECORATE: u32 = 71;
+const VERTEX: u32 = 0;
+const INPUT: u32 = 1;
+const LOCATION: u32 = 30;
 
 fn instructions(words: &[u32]) -> impl Iterator<Item = (u32, &[u32])> {
     let mut rest = words.get(5..).unwrap_or_default();
@@ -40,4 +45,29 @@ pub fn read(code: &[u8], names: &[&str]) -> Result<Vec<u32>, String> {
         ));
     }
     Ok(words)
+}
+
+pub fn inputs(words: &[u32], entry: &str) -> Vec<u32> {
+    let Some((_, _, interface)) =
+        entries(words).find(|(model, name, _)| *model == VERTEX && name == entry)
+    else {
+        return Vec::new();
+    };
+    let mut inputs = Vec::new();
+    let mut locations = Vec::new();
+    for (op, args) in instructions(words) {
+        if op == VARIABLE && args.len() > 2 && args[2] == INPUT && interface.contains(&args[1]) {
+            inputs.push(args[1]);
+        }
+        if op == DECORATE && args.len() > 2 && args[1] == LOCATION {
+            locations.push((args[0], args[2]));
+        }
+    }
+    let mut list: Vec<u32> = locations
+        .into_iter()
+        .filter(|(id, _)| inputs.contains(id))
+        .map(|(_, location)| location)
+        .collect();
+    list.sort();
+    list
 }
