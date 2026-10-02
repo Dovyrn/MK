@@ -7,6 +7,7 @@ use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
+use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
 use crate::gl::state::{self, State, binding, buffer};
 use crate::gl::texture::Texture;
@@ -28,6 +29,7 @@ pub struct Device {
     push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
+    resolve: Resolve,
     mapped: Cell<u32>,
     cache: Option<Cache>,
     units: u32,
@@ -117,6 +119,7 @@ impl Device {
             gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;
+            let resolve = Resolve::new(&gl)?;
             Ok(Self {
                 gl,
                 extra,
@@ -126,6 +129,7 @@ impl Device {
                 push,
                 fbo,
                 read,
+                resolve,
                 mapped: Cell::new(0),
                 cache: None,
                 units: 0,
@@ -868,13 +872,22 @@ impl Device {
             self.units.max(1),
         );
         state.clear(&self.gl);
+        let snapshot = || {
+            State::save(
+                &self.gl,
+                &self.extra,
+                &caps,
+                &|v, e| self.at(v, e),
+                self.units.max(1),
+            )
+        };
         let mut recorder = Recorder::new(
             &self.gl,
             &self.extra,
             &self.res,
             &caps,
-            self.push,
-            (self.fbo, self.read),
+            (self.push, self.fbo, self.read),
+            (&self.resolve, &snapshot),
             natives,
         );
         let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
@@ -942,6 +955,7 @@ impl Drop for Device {
             gl.delete_buffer(self.push);
             gl.delete_framebuffer(self.fbo);
             gl.delete_framebuffer(self.read);
+            self.resolve.delete(gl);
         }
     }
 }

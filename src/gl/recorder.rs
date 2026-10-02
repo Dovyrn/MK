@@ -3,7 +3,9 @@ use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
+use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
+use crate::gl::state::State;
 use crate::register;
 use crate::{
     Caps, Command, DepthInfo, access, cull, face, format, index, load, query, slot, store, topology,
@@ -66,6 +68,8 @@ pub struct Recorder<'a> {
     push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
+    resolve: &'a Resolve,
+    snapshot: &'a dyn Fn() -> State,
     program: Option<&'a Program>,
     render: Option<&'a Pipeline>,
     colors: Vec<Color>,
@@ -208,8 +212,8 @@ impl<'a> Recorder<'a> {
         extra: &'a Extra,
         res: &'a Resources,
         caps: &'a Caps,
-        push: glow::Buffer,
-        (fbo, read): (glow::Framebuffer, glow::Framebuffer),
+        (push, fbo, read): (glow::Buffer, glow::Framebuffer, glow::Framebuffer),
+        (resolve, snapshot): (&'a Resolve, &'a dyn Fn() -> State),
         natives: &'a [Callback],
     ) -> Self {
         Self {
@@ -220,6 +224,8 @@ impl<'a> Recorder<'a> {
             push,
             fbo,
             read,
+            resolve,
+            snapshot,
             program: None,
             render: None,
             colors: Vec::new(),
@@ -1026,18 +1032,27 @@ impl<'a> Recorder<'a> {
                         gl.bind_framebuffer(target, Some(self.read));
                         self.attach(target, glow::COLOR_ATTACHMENT0, c.resolve, 1);
                         gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
-                        gl.blit_framebuffer(
-                            0,
-                            0,
-                            w,
-                            h,
-                            0,
-                            0,
-                            w,
-                            h,
-                            glow::COLOR_BUFFER_BIT,
-                            glow::NEAREST,
-                        );
+                        let source = res.textures.get(c.texture);
+                        if integer(source.format) {
+                            let state = (self.snapshot)();
+                            let raw = source.raw.expect("a resolve source has a texture");
+                            self.resolve
+                                .draw(gl, raw, format::sint(source.format), (w, h));
+                            state.restore(gl, self.extra);
+                        } else {
+                            gl.blit_framebuffer(
+                                0,
+                                0,
+                                w,
+                                h,
+                                0,
+                                0,
+                                w,
+                                h,
+                                glow::COLOR_BUFFER_BIT,
+                                glow::NEAREST,
+                            );
+                        }
                         gl.framebuffer_texture_2d(
                             target,
                             glow::COLOR_ATTACHMENT0,

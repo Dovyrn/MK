@@ -26,7 +26,7 @@ fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     Ok(&text[start..end])
 }
 
-unsafe fn link(
+pub unsafe fn link(
     gl: &glow::Context,
     raw: glow::Program,
     text: &str,

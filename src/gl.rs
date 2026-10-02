@@ -8,6 +8,7 @@ mod pipeline;
 mod program;
 mod query;
 mod recorder;
+mod resolve;
 mod resources;
 mod state;
 mod texture;
