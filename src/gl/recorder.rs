@@ -418,48 +418,28 @@ impl<'a> Recorder<'a> {
         let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
             return Ok(());
         };
-        let draw = self
-            .extra
-            .indirect
-            .filter(|_| self.extra.elements_base.is_some())
-            .ok_or("indirect draws need GL 4.2 or GL_ARB_draw_indirect and GL_ARB_base_instance")?;
         if p.program.base.is_some() {
             return Err(
                 "indirect draws of a shader that reads SV_VertexID are not supported on GL".into(),
             );
         }
-        if indexed && self.index.is_some_and(|(_, offset, _)| offset != 0) {
-            return Err(
-                "indexed indirect draws need the index buffer bound at offset 0 on GL".into(),
-            );
-        }
         let size = if indexed { 20 } else { 16 };
-        let stride = if stride == 0 { size } else { stride as u64 };
+        let stride = if stride == 0 { size } else { stride };
         let kind = self.index.map_or(0, |(_, _, k)| k);
-        let (n, step) = (count as i32, stride as i32);
+        let extra = self.extra;
         unsafe {
             gl.bind_buffer(
                 glow::DRAW_INDIRECT_BUFFER,
                 Some(self.res.buffers.get(buffer).raw),
             );
             let pointer = offset as usize as *const std::ffi::c_void;
-            match (indexed, self.extra.multi_indexed, self.extra.multi) {
-                (true, Some(multi), _) if count > 1 => {
-                    multi(self.mode, kind, pointer, n, step);
-                    return Ok(());
-                }
-                (false, _, Some(multi)) if count > 1 => {
-                    multi(self.mode, pointer, n, step);
-                    return Ok(());
-                }
-                _ => {}
-            }
-            for i in 0..count as u64 {
-                let pointer = (offset + i * stride) as usize as *const std::ffi::c_void;
-                match (indexed, self.extra.indexed_indirect) {
-                    (true, Some(indexed)) => indexed(self.mode, kind, pointer),
-                    _ => draw(self.mode, pointer),
-                }
+            let (n, step) = (count as i32, stride as i32);
+            match (indexed, count) {
+                (_, 0) => {}
+                (true, 1) => extra.indexed_indirect.unwrap()(self.mode, kind, pointer),
+                (false, 1) => extra.indirect.unwrap()(self.mode, pointer),
+                (true, _) => extra.multi_indexed.unwrap()(self.mode, kind, pointer, n, step),
+                (false, _) => extra.multi.unwrap()(self.mode, pointer, n, step),
             }
         }
         Ok(())
@@ -577,7 +557,11 @@ impl<'a> Recorder<'a> {
         let res = self.res;
         unsafe {
             match command {
-                Command::BeginCompute | Command::EndCompute => {}
+                Command::BeginCompute
+                | Command::EndCompute
+                | Command::OcclusionHeap { .. }
+                | Command::ResetQueries { .. }
+                | Command::SetDepthBounds { .. } => {}
                 Command::BindPipeline { pipeline } => {
                     let p = res.pipelines.get(pipeline);
                     self.program = Some(p);
@@ -594,13 +578,12 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::DispatchIndirect { buffer, offset } => {
-                    let dispatch = self.extra.dispatch.ok_or("compute shaders need GL 4.3")?;
                     if self.prepare(false) {
                         gl.bind_buffer(
                             glow::DISPATCH_INDIRECT_BUFFER,
                             Some(res.buffers.get(buffer).raw),
                         );
-                        dispatch(offset as isize);
+                        self.extra.dispatch.unwrap()(offset as isize);
                     }
                 }
                 Command::CopyBuffer {
@@ -669,16 +652,10 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::BeginLabel { text } => {
-                    if !self.caps.labels {
-                        return Err("debug labels need GL 4.3".into());
-                    }
                     gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
                     self.labels += 1;
                 }
                 Command::EndLabel => {
-                    if !self.caps.labels {
-                        return Err("debug labels need GL 4.3".into());
-                    }
                     if self.labels > 0 {
                         gl.pop_debug_group();
                         self.labels -= 1;
@@ -1165,9 +1142,6 @@ impl<'a> Recorder<'a> {
                     }
                     match self.extra.offset_clamp {
                         Some(offset) => offset(slope, constant, clamp),
-                        None if clamp != 0.0 => {
-                            return Err("depth bias clamp is not supported on GL".into());
-                        }
                         None => gl.polygon_offset(slope, constant),
                     }
                 }
@@ -1238,14 +1212,9 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::DrawMesh { x, y, z } => {
-                    let mesh = self
-                        .extra
-                        .mesh
-                        .ok_or("GL_EXT_mesh_shader is not supported")?;
-                    if !self.prepare(true) {
-                        return Ok(());
+                    if self.prepare(true) {
+                        self.extra.mesh.unwrap()(x, y, z);
                     }
-                    mesh(x, y, z);
                 }
                 Command::DrawMeshIndirect {
                     buffer,
@@ -1261,28 +1230,17 @@ impl<'a> Recorder<'a> {
                         Some(res.buffers.get(buffer).raw),
                     );
                     if count == 1 {
-                        let draw = self
-                            .extra
-                            .mesh_indirect
-                            .ok_or("GL_EXT_mesh_shader is not supported")?;
-                        draw(offset as isize);
+                        self.extra.mesh_indirect.unwrap()(offset as isize);
                     } else {
-                        let multi = self
-                            .extra
-                            .mesh_multi
-                            .ok_or("multi draw indirect is not supported")?;
-                        multi(offset as isize, count as i32, stride as i32);
-                    }
-                }
-                Command::OcclusionHeap { .. } => {}
-                Command::ResetQueries { heap, first, count } => {
-                    let q = res.queries.get(heap);
-                    for i in first..first + count {
-                        q.id(i);
+                        self.extra.mesh_multi.unwrap()(
+                            offset as isize,
+                            count as i32,
+                            stride as i32,
+                        );
                     }
                 }
                 Command::WriteTimestamp { heap, index, .. } => {
-                    gl.query_counter(res.queries.get(heap).id(index), glow::TIMESTAMP);
+                    gl.query_counter(res.queries.get(heap).ids[index as usize], glow::TIMESTAMP);
                 }
                 Command::BeginQuery { heap, index } => {
                     let q = res.queries.get(heap);
@@ -1291,12 +1249,11 @@ impl<'a> Recorder<'a> {
                     } else {
                         glow::ANY_SAMPLES_PASSED
                     };
-                    gl.begin_query(target, q.id(index));
+                    gl.begin_query(target, q.ids[index as usize]);
                     self.query = Some(target);
                 }
-                Command::EndQuery { heap, index } => {
+                Command::EndQuery { heap, .. } => {
                     let q = res.queries.get(heap);
-                    q.id(index);
                     let target = if q.kind == query::PRECISE {
                         glow::SAMPLES_PASSED
                     } else {
@@ -1313,12 +1270,12 @@ impl<'a> Recorder<'a> {
                     buffer,
                     offset,
                 } => {
-                    let results = self.extra.results.ok_or("query results need GL 4.4")?;
+                    let results = self.extra.results.unwrap();
                     let q = res.queries.get(heap);
                     let raw = res.buffers.get(buffer).raw;
                     gl.bind_buffer(QUERY_BUFFER, Some(raw));
                     for i in 0..count {
-                        let id = q.id(first + i);
+                        let id = q.ids[(first + i) as usize];
                         results(
                             id.0.get(),
                             raw.0.get(),
@@ -1331,7 +1288,7 @@ impl<'a> Recorder<'a> {
                 Command::SetViewports { viewports } => {
                     let views = command::viewports(viewports);
                     match views.as_slice() {
-                        [v] if self.caps.viewports == 1 => {
+                        [v] => {
                             gl.viewport(v.x as i32, v.y as i32, v.width as i32, v.height as i32);
                             gl.depth_range(v.near as f64, v.far as f64);
                         }
@@ -1356,12 +1313,9 @@ impl<'a> Recorder<'a> {
                         .collect();
                     gl.enable(glow::SCISSOR_TEST);
                     match rects.as_slice() {
-                        [r] if self.caps.viewports == 1 => gl.scissor(r[0], r[1], r[2], r[3]),
+                        [r] => gl.scissor(r[0], r[1], r[2], r[3]),
                         _ => gl.scissor_slice(0, rects.len() as i32, &rects),
                     }
-                }
-                Command::SetDepthBounds { .. } => {
-                    return Err("depth bounds are not supported on GL".into());
                 }
                 Command::BindUniform {
                     slot,
@@ -1381,15 +1335,9 @@ impl<'a> Recorder<'a> {
                     offset,
                     size,
                 } => {
-                    if !self.caps.storage {
-                        return Err("storage slots need GL 4.3".into());
-                    }
                     self.range(glow::SHADER_STORAGE_BUFFER, slot, buffer, offset, size);
                 }
                 Command::BindImage { slot, texture } => {
-                    if !self.caps.storage {
-                        return Err("image slots need GL 4.3".into());
-                    }
                     let t = res.textures.get(texture);
                     let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
                     gl.bind_image_texture(
@@ -1410,11 +1358,7 @@ impl<'a> Recorder<'a> {
                 }
                 Command::Callback { index } => {
                     self.prepare(self.rendering);
-                    let f = self
-                        .natives
-                        .get(index as usize)
-                        .expect("callback recorded without its closure");
-                    f(&Native { gl });
+                    self.natives[index as usize](&Native { gl });
                 }
             }
         }
