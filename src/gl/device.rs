@@ -32,6 +32,8 @@ pub struct Device {
 
 const MAX_ANISOTROPY: u32 = 0x84FE;
 
+const MAX_ANISOTROPY_LIMIT: u32 = 0x84FF;
+
 const TASK_SHADER: u32 = 0x955A;
 
 const MESH_SHADER: u32 = 0x9559;
@@ -601,10 +603,13 @@ impl Device {
     }
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
-        if info.anisotropy > 1 && !self.caps().anisotropy {
-            return Err("anisotropic filtering is not supported".into());
-        }
         let gl = &self.gl;
+        let anisotropy = if info.anisotropy > 1 && self.caps().anisotropy {
+            let max = unsafe { gl.get_parameter_f32(MAX_ANISOTROPY_LIMIT) };
+            (info.anisotropy as f32).min(max)
+        } else {
+            1.0
+        };
         let filter = |f| match f {
             filter::NEAREST => glow::NEAREST,
             filter::LINEAR => glow::LINEAR,
@@ -641,8 +646,8 @@ impl Device {
             gl.sampler_parameter_f32(raw, glow::TEXTURE_MIN_LOD, info.min_lod);
             gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_LOD, info.max_lod);
             gl.sampler_parameter_f32_slice(raw, glow::TEXTURE_BORDER_COLOR, &color);
-            if info.anisotropy > 1 {
-                gl.sampler_parameter_f32(raw, MAX_ANISOTROPY, info.anisotropy as f32);
+            if anisotropy > 1.0 {
+                gl.sampler_parameter_f32(raw, MAX_ANISOTROPY, anisotropy);
             }
             if info.compare != crate::compare::NONE {
                 let mode = glow::COMPARE_REF_TO_TEXTURE as i32;
