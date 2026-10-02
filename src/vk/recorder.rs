@@ -258,7 +258,7 @@ impl Recorder<'_> {
         (t, region)
     }
 
-    pub fn run(&mut self, heap: vk::DescriptorSet, bytes: &[u8]) -> Result<(), &'static str> {
+    pub fn run(&mut self, heap: vk::DescriptorSet, mut bytes: &[u8]) -> Result<(), &'static str> {
         for point in self.points {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
@@ -271,25 +271,10 @@ impl Recorder<'_> {
                 )
             };
         }
-        self.stream(bytes)
-    }
-
-    fn stream(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?)?;
         }
         Ok(())
-    }
-
-    fn barrier(&self, src_stage: u32, src_access: u32, dst_stage: u32, dst_access: u32) {
-        let barrier = vk::MemoryBarrier2::default()
-            .src_stage_mask(stages(src_stage))
-            .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
-            .dst_stage_mask(stages(dst_stage))
-            .dst_access_mask(vk::AccessFlags2::from_raw(dst_access as u64));
-        let barriers = [barrier];
-        let info = vk::DependencyInfo::default().memory_barriers(&barriers);
-        unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
     }
 
     fn step(&mut self, command: Command) -> Result<(), &'static str> {
@@ -350,7 +335,16 @@ impl Recorder<'_> {
                     src_access,
                     dst_stage,
                     dst_access,
-                } => self.barrier(src_stage, src_access, dst_stage, dst_access),
+                } => {
+                    let barrier = vk::MemoryBarrier2::default()
+                        .src_stage_mask(stages(src_stage))
+                        .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
+                        .dst_stage_mask(stages(dst_stage))
+                        .dst_access_mask(vk::AccessFlags2::from_raw(dst_access as u64));
+                    let barriers = [barrier];
+                    let info = vk::DependencyInfo::default().memory_barriers(&barriers);
+                    d.cmd_pipeline_barrier2(b, &info)
+                }
                 Command::TextureBarrier {
                     texture,
                     src_stage,

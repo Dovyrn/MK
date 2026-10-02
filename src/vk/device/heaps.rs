@@ -41,8 +41,25 @@ impl Device {
             "transient memory is for textures"
         );
         let device = memory == memory::DEVICE;
+        let color = TextureInfo {
+            format: format::RGBA8_UNORM,
+            usage: usage::SAMPLED
+                | usage::STORAGE
+                | usage::COLOR
+                | usage::COPY_SRC
+                | usage::COPY_DST,
+            ..Default::default()
+        };
+        let depth = TextureInfo {
+            format: format::D32_FLOAT,
+            usage: usage::SAMPLED | usage::DEPTH | usage::COPY_SRC | usage::COPY_DST,
+            ..Default::default()
+        };
+        let bits = self.buffer_needs(4096).memory_type_bits
+            & self.texture_needs(&color).memory_type_bits
+            & self.texture_needs(&depth).memory_type_bits;
         let index = self
-            .memory_type(self.placeable(), memory)
+            .memory_type(bits, memory)
             .or_else(|_| self.memory_type(!0, memory))?;
         let kind = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         let mut flags =
@@ -101,26 +118,6 @@ impl Device {
                 .get_device_image_memory_requirements(&query, &mut needs)
         };
         needs.memory_requirements
-    }
-
-    fn placeable(&self) -> u32 {
-        let color = TextureInfo {
-            format: format::RGBA8_UNORM,
-            usage: usage::SAMPLED
-                | usage::STORAGE
-                | usage::COLOR
-                | usage::COPY_SRC
-                | usage::COPY_DST,
-            ..Default::default()
-        };
-        let depth = TextureInfo {
-            format: format::D32_FLOAT,
-            usage: usage::SAMPLED | usage::DEPTH | usage::COPY_SRC | usage::COPY_DST,
-            ..Default::default()
-        };
-        self.buffer_needs(4096).memory_type_bits
-            & self.texture_needs(&color).memory_type_bits
-            & self.texture_needs(&depth).memory_type_bits
     }
 
     pub fn buffer_size(&self, size: u64, _memory: u32) -> (u64, u64) {
