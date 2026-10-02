@@ -290,7 +290,7 @@ impl<'a> Recorder<'a> {
             gl.depth_range(0.0, 1.0);
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::CULL_FACE);
-            gl.front_face(glow::CCW);
+            gl.front_face(glow::CW);
             gl.disable(glow::POLYGON_OFFSET_FILL);
             gl.blend_color(0.0, 0.0, 0.0, 0.0);
             gl.disable(glow::DEPTH_TEST);
@@ -864,8 +864,8 @@ impl<'a> Recorder<'a> {
                     c => panic!("unknown cull {c}"),
                 },
                 Command::SetFace { face: f } => gl.front_face(match f {
-                    face::CCW => glow::CCW,
-                    face::CW => glow::CW,
+                    face::CCW => glow::CW,
+                    face::CW => glow::CCW,
                     f => panic!("unknown face {f}"),
                 }),
                 Command::SetTopology { topology } => self.mode = mode(topology),
