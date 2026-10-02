@@ -1133,6 +1133,10 @@ impl Device {
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        assert!(
+            info.memory != memory::TRANSIENT || info.usage & !(usage::COLOR | usage::DEPTH) == 0,
+            "transient textures are attachments only"
+        );
         if info.memory == memory::TRANSIENT && !self.caps().memoryless {
             return Err("memoryless storage is not supported".into());
         }
