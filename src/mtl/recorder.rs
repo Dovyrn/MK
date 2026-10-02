@@ -91,12 +91,11 @@ fn order(
 
 fn render_stage(bits: u32) -> MTLRenderStages {
     match bits {
-        stage::VERTEX => MTLRenderStages::Vertex,
+        stage::VERTEX | stage::INDIRECT => MTLRenderStages::Vertex,
         stage::TILE => MTLRenderStages::Tile,
         stage::TASK => MTLRenderStages::Object,
         stage::MESH => MTLRenderStages::Mesh,
-        stage::FRAGMENT => MTLRenderStages::Fragment,
-        s => panic!("timestamp stage {s} is not one render stage"),
+        _ => MTLRenderStages::Fragment,
     }
 }
 
