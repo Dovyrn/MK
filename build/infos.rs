@@ -1,44 +1,12 @@
-use crate::{camel, pascal};
+use crate::field::Field;
+use crate::{camel, list, pascal};
+use serde::Deserialize;
 use std::fmt::Write;
 
-pub struct Field {
-    pub name: String,
-    pub kind: String,
-    pub value: String,
-}
-
+#[derive(Deserialize)]
 pub struct Info {
     pub name: String,
     pub fields: Vec<Field>,
-}
-
-pub fn parse(text: &str) -> Vec<Info> {
-    let table: toml::Table = text.parse().unwrap();
-    table["info"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|i| Info {
-            name: i["name"].as_str().unwrap().to_string(),
-            fields: i["fields"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|f| {
-                    let f = f.as_array().unwrap();
-                    Field {
-                        name: f[0].as_str().unwrap().to_string(),
-                        kind: f[1].as_str().unwrap().to_string(),
-                        value: f[2].as_str().unwrap().to_string(),
-                    }
-                })
-                .collect(),
-        })
-        .collect()
-}
-
-fn list(kind: &str) -> Option<&str> {
-    kind.strip_prefix('[')?.strip_suffix(']')
 }
 
 fn scalar(kind: &str) -> bool {

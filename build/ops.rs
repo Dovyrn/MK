@@ -1,84 +1,46 @@
+use crate::field::Field;
 use crate::infos::Info;
-use crate::{camel, cfg, member, pascal};
+use crate::{camel, cfg, list, member, pascal};
+use serde::Deserialize;
 use std::fmt::Write;
 
-pub struct Field {
-    name: String,
-    kind: String,
-    items: Vec<Field>,
-}
-
+#[derive(Deserialize)]
 pub struct Op {
     name: String,
     backend: Option<String>,
     scope: Option<String>,
     info: Option<String>,
+    #[serde(default)]
     fields: Vec<Field>,
+    #[serde(skip)]
+    items: Vec<Field>,
 }
 
-fn list(kind: &str) -> Option<&str> {
-    kind.strip_prefix('[')?.strip_suffix(']')
-}
-
-fn fields(info: &Info) -> Vec<Field> {
-    info.fields
-        .iter()
-        .map(|f| Field {
-            name: f.name.clone(),
-            kind: f.kind.clone(),
-            items: Vec::new(),
-        })
-        .collect()
-}
-
-fn find<'a>(infos: &'a [Info], name: &str) -> &'a Info {
-    infos
+fn find<'a>(infos: &'a [Info], name: &str) -> &'a [Field] {
+    &infos
         .iter()
         .find(|i| i.name == name)
         .unwrap_or_else(|| panic!("no info {name}"))
+        .fields
 }
 
-pub fn parse(text: &str, infos: &[Info]) -> Vec<Op> {
-    let table: toml::Table = text.parse().unwrap();
-    let mut ops = Vec::new();
-    for c in table["command"].as_array().unwrap() {
-        let name = c["name"].as_str().unwrap().to_string();
-        let info = c.get("info").map(|i| i.as_str().unwrap().to_string());
-        let fields = match &info {
-            Some(i) => fields(find(infos, i)),
-            None => c.get("fields").map_or(Vec::new(), |all| {
-                all.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|f| {
-                        let pair = f.as_array().unwrap();
-                        let kind = pair[1].as_str().unwrap().to_string();
-                        let items = list(&kind).map_or(Vec::new(), |i| fields(find(infos, i)));
-                        Field {
-                            name: pair[0].as_str().unwrap().to_string(),
-                            kind,
-                            items,
-                        }
-                    })
-                    .collect()
-            }),
-        };
-        for (i, f) in fields.iter().enumerate() {
+pub fn resolve(ops: &mut [Op], infos: &[Info]) {
+    for op in ops {
+        if let Some(i) = &op.info {
+            op.fields = find(infos, i).to_vec();
+        }
+        if let Some(i) = op.fields.last().and_then(|f| list(&f.kind)) {
+            op.items = find(infos, i).to_vec();
+        }
+        for (i, f) in op.fields.iter().enumerate() {
             assert!(
-                !tailing(&f.kind) || i == fields.len() - 1,
-                "{name}: {} must be last",
+                !tailing(&f.kind) || i == op.fields.len() - 1,
+                "{}: {} must be last",
+                op.name,
                 f.name
             );
         }
-        ops.push(Op {
-            name,
-            backend: c.get("backend").map(|b| b.as_str().unwrap().to_string()),
-            scope: c.get("scope").map(|b| b.as_str().unwrap().to_string()),
-            info,
-            fields,
-        });
     }
-    ops
 }
 
 fn tailing(kind: &str) -> bool {
@@ -271,11 +233,11 @@ pub fn commands(ops: &[Op]) -> String {
         )
         .unwrap();
         let size = match tail(op) {
-            Some(f) if !f.items.is_empty() => format!(
+            Some(f) if list(&f.kind).is_some() => format!(
                 "{} + {}.len() * {}",
                 fixed(&op.fields),
                 f.name,
-                fixed(&f.items)
+                fixed(&op.items)
             ),
             Some(f) => format!("{} + {}.len()", fixed(&op.fields), f.name),
             None => fixed(&op.fields).to_string(),
@@ -284,12 +246,12 @@ pub fn commands(ops: &[Op]) -> String {
         writeln!(s, "        self.head({i}, {size});").unwrap();
         let owner = if op.info.is_some() { "info." } else { "" };
         for f in &op.fields {
-            if f.items.is_empty() {
+            if list(&f.kind).is_none() {
                 s += &rust_put("        ", &f.kind, &format!("{owner}{}", f.name));
                 continue;
             }
             writeln!(s, "        for x in {} {{", f.name).unwrap();
-            for item in &f.items {
+            for item in &op.items {
                 s += &rust_put("            ", &item.kind, &format!("x.{}", item.name));
             }
             s += "        }\n";
@@ -428,7 +390,7 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
             Some(f) => format!(
                 "{fixed} + {}.length * {}",
                 camel(&f.name),
-                self::fixed(&f.items)
+                self::fixed(&op.items)
             ),
             None => fixed.to_string(),
         };
@@ -451,9 +413,9 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> Option<String> {
                 "str" => writeln!(s, "        memByteBuffer({p}, b.length).put(b);"),
                 k if list(k).is_some() => {
                     writeln!(s, "        for (var i = 0; i < {n}.length; i++) {{").unwrap();
-                    writeln!(s, "            var q = {p} + i * {};", self::fixed(&f.items)).unwrap();
+                    writeln!(s, "            var q = {p} + i * {};", self::fixed(&op.items)).unwrap();
                     let mut step = 0;
-                    for item in &f.items {
+                    for item in &op.items {
                         let value = format!("{n}[i].{}", camel(&item.name));
                         let put = java_put(&item.kind, &offset("q", step), &value);
                         writeln!(s, "            {put}").unwrap();

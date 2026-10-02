@@ -2,6 +2,8 @@
 mod calls;
 #[path = "build/constants.rs"]
 mod constants;
+#[path = "build/field.rs"]
+mod field;
 #[path = "build/formats.rs"]
 mod formats;
 #[path = "build/infos.rs"]
@@ -9,6 +11,7 @@ mod infos;
 #[path = "build/ops.rs"]
 mod ops;
 
+use serde::de::DeserializeOwned;
 use std::{env, fs, path::Path};
 
 const JAVA: &str = "java/src/main/java/dev/dov/mk";
@@ -29,8 +32,9 @@ fn main() {
     let out = Path::new(&out);
     let dir = Path::new(JAVA);
     fs::create_dir_all(dir).unwrap();
-    let infos = infos::parse(&fs::read_to_string("infos.toml").unwrap());
-    let list = ops::parse(&fs::read_to_string("commands.toml").unwrap(), &infos);
+    let infos: Vec<infos::Info> = load("infos.toml", "info");
+    let mut list = load("commands.toml", "command");
+    ops::resolve(&mut list, &infos);
     fs::write(out.join("command.rs"), ops::command(&list)).unwrap();
     fs::write(out.join("commands.rs"), ops::commands(&list)).unwrap();
     for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
@@ -65,7 +69,7 @@ fn main() {
     for info in &list {
         save(&dir.join(format!("{}.java", info.name)), &infos::java(info));
     }
-    let list = calls::parse(&fs::read_to_string("calls.toml").unwrap());
+    let list: Vec<calls::Call> = load("calls.toml", "call");
     fs::write(out.join("java.rs"), calls::rust(&list, &borrowing)).unwrap();
     save(&dir.join("Device.java"), &calls::java(&list, None));
     save(&dir.join("VkDevice.java"), &calls::java(&list, Some("vk")));
@@ -74,6 +78,11 @@ fn main() {
         &calls::java(&list, Some("mtl")),
     );
     save(&dir.join("GlDevice.java"), &calls::java(&list, Some("gl")));
+}
+
+fn load<T: DeserializeOwned>(file: &str, key: &str) -> Vec<T> {
+    let mut table: toml::Table = fs::read_to_string(file).unwrap().parse().unwrap();
+    table.remove(key).unwrap().try_into().unwrap()
 }
 
 static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
@@ -110,6 +119,10 @@ fn member(backend: Option<&str>, class: Option<&str>) -> bool {
         (Some(b), Some(c)) => b.split(' ').any(|x| x == c),
         _ => false,
     }
+}
+
+fn list(kind: &str) -> Option<&str> {
+    kind.strip_prefix('[')?.strip_suffix(']')
 }
 
 fn pascal(name: &str) -> String {

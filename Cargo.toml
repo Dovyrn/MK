@@ -37,4 +37,5 @@ jni = { version = "0.21", optional = true }
 khronos-egl = { version = "6", features = ["dynamic"] }
 
 [build-dependencies]
+serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", features = ["preserve_order"] }

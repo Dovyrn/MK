@@ -1,58 +1,19 @@
+use crate::field::Field;
 use crate::{camel, member, pascal};
+use serde::Deserialize;
 use std::fmt::Write;
 
-pub struct Param {
-    pub name: String,
-    pub kind: String,
-}
-
+#[derive(Deserialize)]
 pub struct Call {
-    pub name: String,
-    pub target: String,
-    pub backend: Option<String>,
-    pub params: Vec<Param>,
-    pub result: String,
-    pub fails: bool,
-}
-
-pub fn parse(text: &str) -> Vec<Call> {
-    let table: toml::Table = text.parse().unwrap();
-    table["call"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| Call {
-            name: c["name"].as_str().unwrap().to_string(),
-            target: c
-                .get("target")
-                .unwrap_or(&c["name"])
-                .as_str()
-                .unwrap()
-                .to_string(),
-            backend: c.get("backend").map(|b| b.as_str().unwrap().to_string()),
-            params: c
-                .get("params")
-                .map(|p| {
-                    p.as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|p| {
-                            let p = p.as_array().unwrap();
-                            Param {
-                                name: p[0].as_str().unwrap().to_string(),
-                                kind: p[1].as_str().unwrap().to_string(),
-                            }
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            result: c
-                .get("result")
-                .map_or("", |r| r.as_str().unwrap())
-                .to_string(),
-            fails: c.get("fails").is_some_and(|f| f.as_bool().unwrap()),
-        })
-        .collect()
+    name: String,
+    target: Option<String>,
+    backend: Option<String>,
+    #[serde(default)]
+    params: Vec<Field>,
+    #[serde(default)]
+    result: String,
+    #[serde(default)]
+    fails: bool,
 }
 
 fn class(backend: Option<&str>) -> &'static str {
@@ -84,7 +45,7 @@ fn statics(call: &Call) -> bool {
     call.result == "device"
 }
 
-fn natives(p: &Param) -> Vec<(String, String, &'static str, &'static str)> {
+fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
     let n = camel(&p.name);
     let r = p.name.clone();
     let one = |t: &'static str, j: &'static str| vec![(n.clone(), r.clone(), t, j)];
@@ -122,7 +83,7 @@ fn result_types(call: &Call) -> (&'static str, &'static str) {
     }
 }
 
-fn rust_arg(p: &Param) -> String {
+fn rust_arg(p: &Field) -> String {
     let n = p.name.clone();
     let j = "crate::java";
     match p.kind.as_str() {
@@ -180,10 +141,11 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             format!(" -> {ret}")
         };
         let args: Vec<_> = call.params.iter().map(rust_arg).collect();
+        let target = call.target.as_ref().unwrap_or(&call.name);
         let target = if statics(call) {
-            format!("crate::Device::{}", call.target)
+            format!("crate::Device::{target}")
         } else {
-            format!("crate::java::device(device).{}", call.target)
+            format!("crate::java::device(device).{target}")
         };
         let borrowed = call.params.iter().find(|p| borrowing.contains(&p.kind));
         let invoke = match borrowed {
