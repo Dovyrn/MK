@@ -407,6 +407,11 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "waits" => {
                     writeln!(
                         s,
+                        "            if ({n}.length % 2 != 0) {{\n                throw new IllegalArgumentException(\"{n} holds event and value pairs\");\n            }}"
+                    )
+                    .unwrap();
+                    writeln!(
+                        s,
                         "            var {n}Address = stack.nmalloc(8, {n}.length * 8);\n            for (var i = 0; i < {n}.length / 2; i++) {{\n                memPutInt({n}Address + i * 16, (int) {n}[i * 2]);\n                memPutLong({n}Address + i * 16 + 8, {n}[i * 2 + 1]);\n            }}"
                     )
                     .unwrap();

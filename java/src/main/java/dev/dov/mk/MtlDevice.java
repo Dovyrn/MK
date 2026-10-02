@@ -261,10 +261,16 @@ public class MtlDevice extends Device {
             for (var x : ranges) {
                 rangesAt = x.encode(rangesAt);
             }
+            if (waits.length % 2 != 0) {
+                throw new IllegalArgumentException("waits holds event and value pairs");
+            }
             var waitsAddress = stack.nmalloc(8, waits.length * 8);
             for (var i = 0; i < waits.length / 2; i++) {
                 memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
                 memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            if (signals.length % 2 != 0) {
+                throw new IllegalArgumentException("signals holds event and value pairs");
             }
             var signalsAddress = stack.nmalloc(8, signals.length * 8);
             for (var i = 0; i < signals.length / 2; i++) {
@@ -289,10 +295,16 @@ public class MtlDevice extends Device {
             for (var x : regions) {
                 regionsAt = x.encode(regionsAt);
             }
+            if (waits.length % 2 != 0) {
+                throw new IllegalArgumentException("waits holds event and value pairs");
+            }
             var waitsAddress = stack.nmalloc(8, waits.length * 8);
             for (var i = 0; i < waits.length / 2; i++) {
                 memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
                 memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            if (signals.length % 2 != 0) {
+                throw new IllegalArgumentException("signals holds event and value pairs");
             }
             var signalsAddress = stack.nmalloc(8, signals.length * 8);
             for (var i = 0; i < signals.length / 2; i++) {
