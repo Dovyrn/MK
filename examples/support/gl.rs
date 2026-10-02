@@ -68,10 +68,30 @@ pub fn mesa(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
 
 pub type Proc = Box<dyn Fn(&str) -> *const c_void>;
 
+const NEWER: &str = "GL_ARB_buffer_storage GL_ARB_compute_shader GL_ARB_base_instance \
+    GL_ARB_draw_buffers_blend GL_AMD_draw_buffers_blend GL_ARB_draw_indirect \
+    GL_ARB_multi_draw_indirect GL_AMD_multi_draw_indirect GL_ARB_ES2_compatibility \
+    GL_ARB_ES3_compatibility GL_ARB_polygon_offset_clamp GL_EXT_polygon_offset_clamp \
+    GL_ARB_query_buffer_object GL_AMD_query_buffer_object GL_ARB_shader_draw_parameters \
+    GL_ARB_shader_image_load_store GL_ARB_shader_storage_buffer_object \
+    GL_ARB_shader_viewport_layer_array GL_ARB_texture_compression_bptc \
+    GL_ARB_texture_cube_map_array GL_ARB_texture_filter_anisotropic GL_ARB_texture_stencil8 \
+    GL_ARB_texture_view GL_ARB_viewport_array \
+    GL_ARB_texture_mirror_clamp_to_edge GL_ARB_sample_shading GL_ARB_stencil_texturing \
+    GL_KHR_texture_compression_astc_ldr GL_ARB_gpu_shader5 GL_ARB_tessellation_shader";
+
 pub fn proc() -> Proc {
     match std::env::var("MK_HOST").as_deref() {
         Ok("apple") => Box::new(apple()),
-        Ok("legacy") => Box::new(mesa(3, 3)),
+        Ok("legacy") => {
+            let strip: Vec<String> = NEWER.split_whitespace().map(|e| format!("-{e}")).collect();
+            unsafe {
+                std::env::set_var("MESA_GL_VERSION_OVERRIDE", "3.3");
+                std::env::set_var("MESA_GLSL_VERSION_OVERRIDE", "330");
+                std::env::set_var("MESA_EXTENSION_OVERRIDE", strip.join(" "));
+            }
+            Box::new(mesa(3, 3))
+        }
         _ => Box::new(mesa(4, 6)),
     }
 }
