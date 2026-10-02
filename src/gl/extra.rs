@@ -26,6 +26,9 @@ type Image2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, u32, 
 type Image3 =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
 type Read = unsafe extern "system" fn(i32, i32, i32, i32, u32, u32, *mut c_void);
+type Compressed2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
+type Compressed3 =
+    unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
@@ -56,6 +59,8 @@ pub struct Extra {
     pub image2: Image2,
     pub image3: Image3,
     pub read: Read,
+    pub compressed2: Compressed2,
+    pub compressed3: Compressed3,
     pub samples2: Samples2,
     pub samples3: Samples3,
     pub storage2: Option<Samples2>,
@@ -141,6 +146,8 @@ impl Extra {
                 image2: cast(need("glTexSubImage2D")?),
                 image3: cast(need("glTexSubImage3D")?),
                 read: cast(need("glReadPixels")?),
+                compressed2: cast(need("glCompressedTexSubImage2D")?),
+                compressed3: cast(need("glCompressedTexSubImage3D")?),
                 samples2: cast(need("glTexImage2DMultisample")?),
                 samples3: cast(need("glTexImage3DMultisample")?),
                 storage2: multisample("glTexStorage2DMultisample").map(|p| cast(p)),

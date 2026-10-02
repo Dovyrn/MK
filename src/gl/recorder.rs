@@ -439,7 +439,7 @@ impl<'a> Recorder<'a> {
                     ..
                 } => {
                     let t = res.textures.get(texture);
-                    let [_, f, ty] = format::gl(t.format);
+                    let [internal, f, ty] = format::gl(t.format);
                     gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(res.buffers.get(buffer).raw));
                     gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
@@ -449,27 +449,74 @@ impl<'a> Recorder<'a> {
                     let (w, h, d) = (width as i32, height as i32, depth as i32);
                     let (mip, x, y) = (mip as i32, x as i32, y as i32);
                     let e = self.extra;
-                    match t.target {
-                        glow::TEXTURE_1D => (e.image1)(t.target, mip, x, w, f, ty, data),
-                        glow::TEXTURE_2D => (e.image2)(t.target, mip, x, y, w, h, f, ty, data),
-                        glow::TEXTURE_1D_ARRAY => {
-                            (e.image2)(t.target, mip, x, layer as i32, w, 1, f, ty, data)
+                    if f == 0 {
+                        let [bytes, bw, bh] = format::block(t.format);
+                        let wide = width.div_ceil(bw);
+                        let pitch = row_length.max(width).div_ceil(bw) as usize * bytes as usize;
+                        let rows = row_count.max(height).div_ceil(bh) as usize;
+                        let tall = height.div_ceil(bh) as usize;
+                        let step = if pitch == wide as usize * bytes as usize {
+                            tall
+                        } else {
+                            1
+                        };
+                        for s in 0..depth as usize {
+                            for r in (0..tall).step_by(step) {
+                                let n = step.min(tall - r);
+                                let top = y + (r as u32 * bh) as i32;
+                                let h = (n as i32 * bh as i32).min(h - (r as u32 * bh) as i32);
+                                let at = offset as usize + s * rows * pitch + r * pitch;
+                                let at = at as *const std::ffi::c_void;
+                                let size = (n * wide as usize * bytes as usize) as i32;
+                                match t.target {
+                                    glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
+                                        let target = if t.target == glow::TEXTURE_2D {
+                                            t.target
+                                        } else {
+                                            glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer
+                                        };
+                                        (e.compressed2)(
+                                            target, mip, x, top, w, h, internal, size, at,
+                                        )
+                                    }
+                                    _ => {
+                                        let z = if t.target == glow::TEXTURE_3D {
+                                            (z as usize + s) as i32
+                                        } else {
+                                            layer as i32
+                                        };
+                                        (e.compressed3)(
+                                            t.target, mip, x, top, z, w, h, 1, internal, size, at,
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        glow::TEXTURE_CUBE_MAP => (e.image2)(
-                            glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
-                            mip,
-                            x,
-                            y,
-                            w,
-                            h,
-                            f,
-                            ty,
-                            data,
-                        ),
-                        glow::TEXTURE_3D => {
-                            (e.image3)(t.target, mip, x, y, z as i32, w, h, d, f, ty, data)
+                    } else {
+                        match t.target {
+                            glow::TEXTURE_1D => (e.image1)(t.target, mip, x, w, f, ty, data),
+                            glow::TEXTURE_2D => (e.image2)(t.target, mip, x, y, w, h, f, ty, data),
+                            glow::TEXTURE_1D_ARRAY => {
+                                (e.image2)(t.target, mip, x, layer as i32, w, 1, f, ty, data)
+                            }
+                            glow::TEXTURE_CUBE_MAP => (e.image2)(
+                                glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+                                mip,
+                                x,
+                                y,
+                                w,
+                                h,
+                                f,
+                                ty,
+                                data,
+                            ),
+                            glow::TEXTURE_3D => {
+                                (e.image3)(t.target, mip, x, y, z as i32, w, h, d, f, ty, data)
+                            }
+                            _ => {
+                                (e.image3)(t.target, mip, x, y, layer as i32, w, h, 1, f, ty, data)
+                            }
                         }
-                        _ => (e.image3)(t.target, mip, x, y, layer as i32, w, h, 1, f, ty, data),
                     }
                     gl.bind_texture(t.target, None);
                     gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
@@ -491,6 +538,9 @@ impl<'a> Recorder<'a> {
                 } => {
                     let t = res.textures.get(texture);
                     let [_, f, ty] = format::gl(t.format);
+                    if f == 0 {
+                        return Err("compressed readback is not supported on GL".into());
+                    }
                     gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.read));
                     let point = match f {
                         glow::DEPTH_COMPONENT => glow::DEPTH_ATTACHMENT,
