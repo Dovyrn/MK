@@ -8,16 +8,18 @@ pub fn call<'local, T: Default>(
     env: &mut JNIEnv<'local>,
     f: impl FnOnce(&mut JNIEnv<'local>) -> Result<T, String>,
 ) -> T {
-    let message = match catch_unwind(AssertUnwindSafe(|| f(env))) {
+    let (class, message) = match catch_unwind(AssertUnwindSafe(|| f(env))) {
         Ok(Ok(v)) => return v,
-        Ok(Err(e)) => e,
-        Err(p) => p
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_else(|| "panic".into()),
+        Ok(Err(e)) => ("java/lang/RuntimeException", e),
+        Err(p) => (
+            "java/lang/AssertionError",
+            p.downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "panic".into()),
+        ),
     };
-    let _ = env.throw_new("java/lang/RuntimeException", message);
+    let _ = env.throw_new(class, message);
     T::default()
 }
 
