@@ -758,6 +758,7 @@ impl<'a> Recorder<'a> {
                         if c.resolve == !0 {
                             continue;
                         }
+                        gl.disable(glow::SCISSOR_TEST);
                         gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.fbo));
                         gl.read_buffer(glow::COLOR_ATTACHMENT0 + c.index);
                         gl.bind_framebuffer(target, Some(self.read));
