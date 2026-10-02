@@ -71,7 +71,17 @@ pub fn integer(f: u32) -> Option<bool> {
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
 fn stages(bits: u32) -> MTLStages {
-    let mut s = bits & 0x7c00_001f;
+    let same = stage::VERTEX
+        | stage::FRAGMENT
+        | stage::TILE
+        | stage::TASK
+        | stage::MESH
+        | stage::RESOURCE
+        | stage::COMPUTE
+        | stage::COPY
+        | stage::ACCEL
+        | stage::ML;
+    let mut s = bits & same;
     if bits & stage::INDIRECT != 0 {
         s |= stage::VERTEX | stage::TASK | stage::MESH | stage::COMPUTE;
     }

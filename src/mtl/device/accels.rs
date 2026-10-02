@@ -47,9 +47,9 @@ impl Device {
                 d.setInstanceDescriptorBuffer(self.range(
                     info.instances,
                     info.instance_offset,
-                    info.instance_count as u64 * 72,
+                    info.instance_count as u64 * self.caps.instance as u64,
                 ));
-                d.setInstanceDescriptorStride(72);
+                d.setInstanceDescriptorStride(self.caps.instance as usize);
                 d.setInstanceCount(info.instance_count as usize);
             }
             d.setInstanceDescriptorType(MTLAccelerationStructureInstanceDescriptorType::Indirect);

@@ -1,6 +1,6 @@
 use crate::mtl::Callback;
 use crate::mtl::frame::Frame;
-use crate::mtl::recorder::Recorder;
+use crate::mtl::recorder::{Recorder, VERTICES};
 use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
 use crate::register;
@@ -47,7 +47,7 @@ impl Queue {
         raw.addResidencySet(shared);
         raw.addResidencySet(&residency);
         let desc = MTL4ArgumentTableDescriptor::new();
-        desc.setMaxBufferBindCount(31);
+        desc.setMaxBufferBindCount(VERTICES + slot::VERTICES as usize);
         desc.setMaxTextureBindCount((register::IMAGE + slot::IMAGES) as usize);
         desc.setMaxSamplerStateBindCount(slot::SAMPLERS as usize);
         let table = device
