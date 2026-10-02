@@ -425,17 +425,17 @@ public class Commands {
     }
 
     public void setViewports(ByteBuffer data) {
-        var p = head(68, data.remaining());
+        var p = head(67, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
     }
 
     public void setScissors(ByteBuffer data) {
-        var p = head(69, data.remaining());
+        var p = head(68, data.remaining());
         memCopy(memAddress(data), p, data.remaining());
     }
 
     public void setDepthBounds(float min, float max) {
-        var p = head(70, 8);
+        var p = head(69, 8);
         memPutFloat(p, min);
         memPutFloat(p + 4, max);
     }

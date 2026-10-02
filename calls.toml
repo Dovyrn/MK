@@ -522,18 +522,6 @@ result = "u32"
 fails = true
 
 [[call]]
-name = "create_upscaler"
-backend = "mtl"
-params = [["info", "UpscaleInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_upscaler"
-backend = "mtl"
-params = [["upscaler", "u32"]]
-
-[[call]]
 name = "adopt_raw"
 backend = "gl"
 params = [["proc", "u64"]]

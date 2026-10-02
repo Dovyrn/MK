@@ -9,7 +9,7 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTLDevice, MTLEvent, MTLFence, MTLResidencySet, MTLResidencySetDescriptor,
+    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
     MTLSharedEvent,
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
@@ -23,7 +23,6 @@ pub struct Queue {
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
-    pub fence: Retained<ProtocolObject<dyn MTLFence>>,
     count: u64,
     free: Vec<Frame>,
     busy: VecDeque<(Frame, u64)>,
@@ -57,7 +56,6 @@ impl Queue {
             table,
             residency,
             event: device.newSharedEvent().ok_or("no shared event")?,
-            fence: device.newFence().ok_or("no fence")?,
             count: 0,
             free: Vec::new(),
             busy: VecDeque::new(),

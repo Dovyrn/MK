@@ -289,17 +289,3 @@ fields = [
     ["functions", "[str]", ""],
     ["indirect", "bool", "false"],
 ]
-
-[[info]]
-name = "UpscaleInfo"
-fields = [
-    ["temporal", "bool", "false"],
-    ["input_width", "u32", "1"],
-    ["input_height", "u32", "1"],
-    ["output_width", "u32", "1"],
-    ["output_height", "u32", "1"],
-    ["color", "u32", "format::RGBA16_FLOAT"],
-    ["output", "u32", "format::RGBA16_FLOAT"],
-    ["depth", "u32", "format::D32_FLOAT"],
-    ["motion", "u32", "format::RG16_FLOAT"],
-]

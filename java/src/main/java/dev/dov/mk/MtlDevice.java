@@ -194,22 +194,4 @@ public class MtlDevice {
     }
 
     private static native int nImportSharedTexture(long device, int id, long info, int infoLength);
-
-    public static int createUpscaler(Device device, UpscaleInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.size());
-            info.write(infoAddress);
-            return nCreateUpscaler(device.handle, infoAddress, info.size());
-        }
-    }
-
-    private static native int nCreateUpscaler(long device, long info, int infoLength);
-
-    public static void destroyUpscaler(Device device, int upscaler) {
-        try (var stack = MemoryStack.stackPush()) {
-            nDestroyUpscaler(device.handle, upscaler);
-        }
-    }
-
-    private static native void nDestroyUpscaler(long device, int upscaler);
 }

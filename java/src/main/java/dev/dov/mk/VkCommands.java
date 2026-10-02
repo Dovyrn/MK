@@ -68,13 +68,13 @@ public class VkCommands extends Commands {
     }
 
     public void beginConditional(int buffer, long offset, int inverted) {
-        var p = head(71, 16);
+        var p = head(70, 16);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, inverted);
     }
 
     public void endConditional() {
-        head(72, 0);
+        head(71, 0);
     }
 }

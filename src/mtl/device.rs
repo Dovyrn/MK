@@ -6,12 +6,11 @@ use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 use crate::mtl::table::Table;
 use crate::mtl::texture::Texture;
-use crate::mtl::upscaler::Upscaler;
 use crate::{
     AccelInfo, Caps, ColorTarget, Commands, ComputeInfo, DepthInfo, IndirectInfo, MeshInfo,
-    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, UpscaleInfo,
-    ViewInfo, accel, address, blend, border, dimension, fill, filter, format, index, mask, memory,
-    query, topology, usage,
+    RenderInfo, SamplerInfo, SparseRange, SparseRegion, StencilFace, TextureInfo, ViewInfo, accel,
+    address, blend, border, dimension, fill, filter, format, index, mask, memory, query, topology,
+    usage,
 };
 use dispatch2::DispatchData;
 use objc2::AllocAnyThread;
@@ -51,10 +50,6 @@ use objc2_metal::{
     MTLStencilOperation, MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
     MTLVertexStepFunction, MTLVisibleFunctionTable, MTLVisibleFunctionTableDescriptor,
-};
-use objc2_metal_fx::{
-    MTLFXSpatialScalerBase, MTLFXSpatialScalerDescriptor, MTLFXTemporalScalerBase,
-    MTLFXTemporalScalerDescriptor,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
@@ -1400,47 +1395,6 @@ impl Device {
 
     pub fn destroy_rate_map(&mut self, map: u32) {
         self.res.maps.remove(map);
-    }
-
-    pub fn create_upscaler(&mut self, info: &UpscaleInfo) -> Result<u32, String> {
-        let upscaler = unsafe {
-            if info.temporal {
-                let desc = MTLFXTemporalScalerDescriptor::new();
-                desc.setInputWidth(info.input_width as usize);
-                desc.setInputHeight(info.input_height as usize);
-                desc.setOutputWidth(info.output_width as usize);
-                desc.setOutputHeight(info.output_height as usize);
-                desc.setColorTextureFormat(format::mtl(info.color));
-                desc.setOutputTextureFormat(format::mtl(info.output));
-                desc.setDepthTextureFormat(format::mtl(info.depth));
-                desc.setMotionTextureFormat(format::mtl(info.motion));
-                let s = desc
-                    .newTemporalScalerWithDevice_compiler(&self.raw, &self.compiler)
-                    .ok_or("temporal scaler")?;
-                s.setInputContentWidth(info.input_width as usize);
-                s.setInputContentHeight(info.input_height as usize);
-                Upscaler::Temporal(s)
-            } else {
-                let desc = MTLFXSpatialScalerDescriptor::new();
-                desc.setInputWidth(info.input_width as usize);
-                desc.setInputHeight(info.input_height as usize);
-                desc.setOutputWidth(info.output_width as usize);
-                desc.setOutputHeight(info.output_height as usize);
-                desc.setColorTextureFormat(format::mtl(info.color));
-                desc.setOutputTextureFormat(format::mtl(info.output));
-                let s = desc
-                    .newSpatialScalerWithDevice_compiler(&self.raw, &self.compiler)
-                    .ok_or("spatial scaler")?;
-                s.setInputContentWidth(info.input_width as usize);
-                s.setInputContentHeight(info.input_height as usize);
-                Upscaler::Spatial(s)
-            }
-        };
-        Ok(self.res.upscalers.insert(upscaler))
-    }
-
-    pub fn destroy_upscaler(&mut self, upscaler: u32) {
-        self.res.upscalers.remove(upscaler);
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
