@@ -269,7 +269,7 @@ fn java_type(kind: &str) -> String {
         "u32" | "i32" => "int".into(),
         "u64" => "long".into(),
         "f32" => "float".into(),
-        "bytes" => "ByteBuffer".into(),
+        "bytes" => "long".into(),
         "str" => "String".into(),
         k => format!("{}[]", list(k).unwrap()),
     }
@@ -308,16 +308,13 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
         .collect();
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
-    if kinds.contains(&"bytes") {
-        s += "import java.nio.ByteBuffer;\n";
-    }
     if kinds.contains(&"str") {
         s += "import java.nio.charset.StandardCharsets;\n";
     }
     if backend.is_none() {
         s += "import lombok.Getter;\n";
     }
-    if kinds.contains(&"bytes") || kinds.contains(&"str") || backend.is_none() {
+    if kinds.contains(&"str") || backend.is_none() {
         s += "\n";
     }
     match backend {
@@ -335,7 +332,14 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
             None => op
                 .fields
                 .iter()
-                .map(|f| format!("{} {}", java_type(&f.kind), camel(&f.name)))
+                .flat_map(|f| {
+                    let n = camel(&f.name);
+                    let mut v = vec![format!("{} {n}", java_type(&f.kind))];
+                    if f.kind == "bytes" {
+                        v.push(format!("long {n}Size"));
+                    }
+                    v
+                })
                 .collect(),
         };
         writeln!(
@@ -356,7 +360,7 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
                 .unwrap();
                 format!("{fixed} + b.length")
             }
-            Some(f) if f.kind == "bytes" => format!("{fixed} + {}.remaining()", camel(&f.name)),
+            Some(f) if f.kind == "bytes" => format!("{fixed} + (int) {}Size", camel(&f.name)),
             Some(f) => format!(
                 "{fixed} + {}.length * {}",
                 camel(&f.name),
@@ -376,14 +380,16 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
             let n = camel(&f.name);
             let p = offset("p", at);
             match f.kind.as_str() {
-                "bytes" => writeln!(
-                    s,
-                    "        memByteBuffer({p}, {n}.remaining()).put(0, {n}, {n}.position(), {n}.remaining());"
-                ),
+                "bytes" => writeln!(s, "        memCopy({n}, {p}, {n}Size);"),
                 "str" => writeln!(s, "        memByteBuffer({p}, b.length).put(b);"),
                 k if list(k).is_some() => {
                     writeln!(s, "        for (var i = 0; i < {n}.length; i++) {{").unwrap();
-                    writeln!(s, "            var q = {p} + i * {};", self::fixed(&op.items)).unwrap();
+                    writeln!(
+                        s,
+                        "            var q = {p} + i * {};",
+                        self::fixed(&op.items)
+                    )
+                    .unwrap();
                     let mut step = 0;
                     for item in &op.items {
                         let value = format!("{n}[i].{}", camel(&item.name));

@@ -19,21 +19,23 @@ public class Smoke {
             var n = 1024;
             var buffer = device.createBuffer(n * 4L, Memory.READBACK);
             var bytes = Files.readAllBytes(Path.of(args[1]));
-            var code = memAlloc(bytes.length).put(bytes).flip();
+            var code = nmemAlloc(bytes.length);
+            memByteBuffer(code, bytes.length).put(bytes);
             var info = new ComputeInfo()
                     .code(code)
+                    .codeSize(bytes.length)
                     .entry("fill")
                     .group(new int[] {64, 1, 1});
             var pipeline = device.createPipeline(info);
             var event = device.createEvent();
-            var push = memAlloc(8);
-            push.putInt(0, n);
-            push.putInt(4, 100);
+            var push = nmemAlloc(8);
+            memPutInt(push, n);
+            memPutInt(push + 4, 100);
             try (var c = new Commands()) {
                 c.beginCompute();
                 c.bindPipeline(pipeline);
                 c.bindStorage(0, buffer, 0, n * 4L);
-                c.pushConstants(0, push);
+                c.pushConstants(0, push, 8);
                 c.dispatch(n / 64, 1, 1);
                 c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
                 c.endCompute();
@@ -50,11 +52,13 @@ public class Smoke {
             }
             device.unmap(buffer);
             try {
-                device.createPipeline(info.code(push));
+                device.createPipeline(info.code(push).codeSize(8));
                 throw new IllegalStateException("bad code was accepted");
             } catch (RuntimeException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
+            nmemFree(code);
+            nmemFree(push);
             record(Path.of(args[2]));
             System.out.println("java: 1024 values match");
         }
@@ -74,7 +78,12 @@ public class Smoke {
         try (var s = new Commands()) {
             s.beginCompute();
             s.bindPipeline(7);
-            s.pushConstants(16, memAlloc(3).put((byte) 1).put((byte) 2).put((byte) 3).flip());
+            var push = nmemAlloc(3);
+            memPutByte(push, (byte) 1);
+            memPutByte(push + 1, (byte) 2);
+            memPutByte(push + 2, (byte) 3);
+            s.pushConstants(16, push, 3);
+            nmemFree(push);
             s.dispatch(1, 2, 3);
             s.dispatchIndirect(4, 1L << 40);
             s.copyBuffer(1, 2, 3, 4, 5);

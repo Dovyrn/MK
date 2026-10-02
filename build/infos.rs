@@ -142,7 +142,7 @@ pub fn java_type(kind: &str) -> String {
         "u64" => "long".into(),
         "f32" => "float".into(),
         "bool" => "boolean".into(),
-        "bytes" => "ByteBuffer".into(),
+        "bytes" => "long".into(),
         "str" => "String".into(),
         "u32x3" => "int[]".into(),
         "[str]" => "String[]".into(),
@@ -155,7 +155,7 @@ pub fn java_type(kind: &str) -> String {
 
 fn java_value(f: &Field) -> String {
     match f.kind.as_str() {
-        "bytes" => "null".into(),
+        "bytes" => "0".into(),
         "str" => "\"\"".into(),
         "u32x3" => format!(
             "new int[] {{{}}}",
@@ -204,9 +204,6 @@ pub fn java(info: &Info) -> String {
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     let kinds: Vec<_> = info.fields.iter().map(|f| f.kind.as_str()).collect();
-    if kinds.contains(&"bytes") {
-        s += "import java.nio.ByteBuffer;\n";
-    }
     let strings = kinds.contains(&"str") || kinds.contains(&"[str]");
     if strings {
         s += "import java.nio.charset.StandardCharsets;\n";
@@ -227,6 +224,9 @@ pub fn java(info: &Info) -> String {
             java_value(f)
         )
         .unwrap();
+        if f.kind == "bytes" {
+            writeln!(s, "    public long {}Size = 0;", camel(&f.name)).unwrap();
+        }
     }
     if !borrows(info) {
         let mut fixed = 0;
@@ -284,7 +284,7 @@ pub fn java(info: &Info) -> String {
             ),
             "bytes" => writeln!(
                 s,
-                "        if ({n} != null && !{n}.isDirect()) {{\n            throw new IllegalArgumentException(\"{n} must be a direct ByteBuffer\");\n        }}\n        memPutLong(p, {n} == null ? 0 : memAddress({n}));\n        memPutLong(p + 8, {n} == null ? 0 : {n}.remaining());\n        p += 16;"
+                "        memPutLong(p, {n});\n        memPutLong(p + 8, {n}Size);\n        p += 16;"
             ),
             "str" => writeln!(
                 s,

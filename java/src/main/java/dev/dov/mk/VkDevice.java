@@ -2,8 +2,6 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import java.lang.ref.Reference;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
 
@@ -47,8 +45,6 @@ public class VkDevice extends Device {
             var out = stack.nmalloc(8, 16);
             nTextureSize(handle, infoAddress, info.encodedSize(), out);
             return new long[] {memGetLong(out), memGetLong(out + 8)};
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -65,8 +61,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -95,8 +89,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateAccel(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -124,14 +116,9 @@ public class VkDevice extends Device {
 
     private static native long nAccelHandle(long device, int accel);
 
-    public void writeInstance(ByteBuffer out, int accel, float[] transform, int id, int mask, int flags) {
+    public void writeInstance(long out, long outSize, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
-            if (!out.isDirect()) {
-                throw new IllegalArgumentException("out must be a direct ByteBuffer");
-            }
-            nWriteInstance(handle, memAddress(out), out.remaining(), accel, memAddress(stack.floats(transform)), id, mask, flags);
-        } finally {
-            Reference.reachabilityFence(out);
+            nWriteInstance(handle, out, outSize, accel, memAddress(stack.floats(transform)), id, mask, flags);
         }
     }
 
@@ -156,8 +143,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nImportTexture(handle, image, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -222,8 +207,6 @@ public class VkDevice extends Device {
             var out = stack.nmalloc(8, 12);
             nSparseTile(handle, infoAddress, info.encodedSize(), out);
             return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -240,8 +223,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateSparseTexture(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -322,8 +303,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateCommandsLayout(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -346,8 +325,6 @@ public class VkDevice extends Device {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateRayPipeline(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 

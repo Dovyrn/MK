@@ -2,7 +2,6 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import lombok.Getter;
 
@@ -53,10 +52,10 @@ public class Commands implements AutoCloseable {
         memPutInt(p, pipeline);
     }
 
-    public void pushConstants(int offset, ByteBuffer data) {
-        var p = head(3, 4 + data.remaining());
+    public void pushConstants(int offset, long data, long dataSize) {
+        var p = head(3, 4 + (int) dataSize);
         memPutInt(p, offset);
-        memByteBuffer(p + 4, data.remaining()).put(0, data, data.position(), data.remaining());
+        memCopy(data, p + 4, dataSize);
     }
 
     public void dispatch(int x, int y, int z) {

@@ -2,8 +2,6 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import java.lang.ref.Reference;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.lwjgl.system.MemoryStack;
 
@@ -75,8 +73,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreatePipeline(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -93,8 +89,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -105,8 +99,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -123,8 +115,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateDepthState(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -141,8 +131,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateTexture(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -165,8 +153,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateView(handle, texture, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 
@@ -183,8 +169,6 @@ public class Device implements AutoCloseable {
             var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             return nCreateSampler(handle, infoAddress, info.encodedSize());
-        } finally {
-            Reference.reachabilityFence(info);
         }
     }
 

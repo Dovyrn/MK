@@ -245,7 +245,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     let name = class(backend, "Device");
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
-    s += "import java.lang.ref.Reference;\nimport java.nio.ByteBuffer;\nimport java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
+    s += "import java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
     if backend.is_none() {
         s += include_str!("device.java");
     } else {
@@ -265,13 +265,16 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "usize" | "i32" => "int".into(),
                 "handle" | "object" | "pointer" => "long".into(),
                 "f32s" | "f32x12" => "float[]".into(),
-                "mutbytes" => "ByteBuffer".into(),
+                "bytes" | "mutbytes" => "long".into(),
                 "commands" => "Commands".into(),
                 "u32s" | "pairs" => "int[]".into(),
                 "waits" => "long[]".into(),
                 k => java_type(k),
             };
             params.push(format!("{t} {}", camel(&p.name)));
+            if matches!(p.kind.as_str(), "bytes" | "mutbytes") {
+                params.push(format!("long {}Size", camel(&p.name)));
+            }
         }
         let (java_ret, _) = result_types(call);
         let ret = match call.result.as_str() {
@@ -289,27 +292,10 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
-        let fenced: Vec<_> = call
-            .params
-            .iter()
-            .filter(|p| matches!(p.kind.as_str(), "bytes" | "mutbytes") || info(&p.kind))
-            .map(|p| {
-                format!(
-                    "            Reference.reachabilityFence({});",
-                    camel(&p.name)
-                )
-            })
-            .collect();
         let stack = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
-        let indent = if stack || !fenced.is_empty() {
-            "            "
-        } else {
-            "        "
-        };
+        let indent = if stack { "            " } else { "        " };
         if stack {
             s += "        try (var stack = MemoryStack.stackPush()) {\n";
-        } else if !fenced.is_empty() {
-            s += "        try {\n";
         }
         let mut args = Vec::new();
         if !statics(call) {
@@ -341,13 +327,8 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}Bytes.remaining()"));
                 }
                 "bytes" | "mutbytes" => {
-                    writeln!(
-                        s,
-                        "            if (!{n}.isDirect()) {{\n                throw new IllegalArgumentException(\"{n} must be a direct ByteBuffer\");\n            }}"
-                    )
-                    .unwrap();
-                    args.push(format!("memAddress({n})"));
-                    args.push(format!("{n}.remaining()"));
+                    args.push(n.clone());
+                    args.push(format!("{n}Size"));
                 }
                 "commands" => {
                     args.push(format!("{n}.getAddress()"));
@@ -410,14 +391,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             _ => format!("return {invoke};"),
         };
         writeln!(s, "{indent}{line}").unwrap();
-        if !fenced.is_empty() {
-            writeln!(
-                s,
-                "        }} finally {{\n{}\n        }}",
-                fenced.join("\n")
-            )
-            .unwrap();
-        } else if stack {
+        if stack {
             s += "        }\n";
         }
         s += "    }\n";

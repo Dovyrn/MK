@@ -2,7 +2,6 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -10,7 +9,8 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class ComputeInfo {
-    public ByteBuffer code = null;
+    public long code = 0;
+    public long codeSize = 0;
     public String entry = "";
     public int[] group = new int[] {1, 1, 1};
     public String[] functions = new String[0];
@@ -25,11 +25,8 @@ public class ComputeInfo {
     }
 
     long encode(long p) {
-        if (code != null && !code.isDirect()) {
-            throw new IllegalArgumentException("code must be a direct ByteBuffer");
-        }
-        memPutLong(p, code == null ? 0 : memAddress(code));
-        memPutLong(p + 8, code == null ? 0 : code.remaining());
+        memPutLong(p, code);
+        memPutLong(p + 8, codeSize);
         p += 16;
         var entryBytes = entry.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, entryBytes.length);
