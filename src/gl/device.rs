@@ -413,6 +413,10 @@ impl Device {
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         if info.memory == memory::TRANSIENT {
+            assert!(
+                info.usage & !(usage::COLOR | usage::DEPTH) == 0,
+                "transient textures are attachments only"
+            );
             return Err("memoryless storage is not supported".into());
         }
         if !self.at(42, "GL_ARB_texture_storage") {
