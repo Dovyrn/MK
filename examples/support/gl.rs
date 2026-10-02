@@ -16,9 +16,17 @@ unsafe extern "C" {
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
 }
 
+const PROFILE: i32 = 99;
+
+const CORE: i32 = 0x4100;
+
+const SURFACELESS: u32 = 0x31DD;
+
+const LAZY: i32 = 1;
+
 pub fn apple() -> impl Fn(&str) -> *const c_void {
     unsafe {
-        let attributes = [99, 0x4100, 0];
+        let attributes = [PROFILE, CORE, 0];
         let mut pixel = std::ptr::null_mut();
         let mut count = 0;
         CGLChoosePixelFormat(attributes.as_ptr(), &mut pixel, &mut count);
@@ -26,7 +34,7 @@ pub fn apple() -> impl Fn(&str) -> *const c_void {
         CGLCreateContext(pixel, std::ptr::null_mut(), &mut context);
         CGLSetCurrentContext(context);
         let path = c"/System/Library/Frameworks/OpenGL.framework/OpenGL";
-        let library = dlopen(path.as_ptr(), 1) as usize;
+        let library = dlopen(path.as_ptr(), LAZY) as usize;
         move |name| {
             let name = CString::new(name).unwrap();
             dlsym(library as *mut c_void, name.as_ptr())
@@ -40,7 +48,7 @@ pub fn mesa(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
         let egl = egl::DynamicInstance::<egl::EGL1_5>::load_required_from_filename("libEGL.dylib")
             .unwrap();
         let display = egl
-            .get_platform_display(0x31DD, std::ptr::null_mut(), &[egl::ATTRIB_NONE])
+            .get_platform_display(SURFACELESS, std::ptr::null_mut(), &[egl::ATTRIB_NONE])
             .unwrap();
         egl.initialize(display).unwrap();
         egl.bind_api(egl::OPENGL_API).unwrap();
@@ -96,6 +104,10 @@ pub fn proc() -> Proc {
     }
 }
 
-pub fn device(_queues: usize) -> mk::Device {
-    mk::Device::adopt(proc()).unwrap()
+pub fn device(queues: usize) -> mk::Device {
+    try_device(queues).expect("GL has one queue")
+}
+
+pub fn try_device(queues: usize) -> Option<mk::Device> {
+    (queues <= 1).then(|| mk::Device::adopt(proc()).unwrap())
 }
