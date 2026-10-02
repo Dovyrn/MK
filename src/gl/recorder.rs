@@ -1,7 +1,7 @@
 use crate::gl::device::compare;
 use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
-use crate::gl::pipeline::Pipeline;
+use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
 use crate::gl::resources::Resources;
 use crate::register;
@@ -298,6 +298,33 @@ impl<'a> Recorder<'a> {
         let b = self.res.buffers.get(buffer);
         let size = if size == !0 { b.size - offset } else { size };
         unsafe { (self.extra.range)(target, index, b.raw.0.get(), offset as isize, size as isize) };
+    }
+
+    fn colors(&self, p: &Pipeline) {
+        let gl = self.gl;
+        let uniform = uniform(&p.colors);
+        unsafe {
+            for (i, c) in p.colors.iter().enumerate() {
+                let i = i as u32;
+                let m = c.mask;
+                gl.color_mask_draw_buffer(i, m & 1 != 0, m & 2 != 0, m & 4 != 0, m & 8 != 0);
+                if !c.blend {
+                    gl.disable_draw_buffer(glow::BLEND, i);
+                    continue;
+                }
+                gl.enable_draw_buffer(glow::BLEND, i);
+                let (src, dst) = (factor(c.src), factor(c.dst));
+                let (src_alpha, dst_alpha) = (factor(c.src_alpha), factor(c.dst_alpha));
+                let (op, op_alpha) = (equation(c.op), equation(c.op_alpha));
+                if uniform {
+                    gl.blend_func_separate(src, dst, src_alpha, dst_alpha);
+                    gl.blend_equation_separate(op, op_alpha);
+                } else {
+                    gl.blend_func_separate_draw_buffer(i, src, dst, src_alpha, dst_alpha);
+                    gl.blend_equation_separate_draw_buffer(i, op, op_alpha);
+                }
+            }
+        }
     }
 
     fn attach(&self, target: u32, point: u32, texture: u32, layers: u32) {
@@ -865,34 +892,7 @@ impl<'a> Recorder<'a> {
                     } else {
                         gl.disable(glow::SAMPLE_ALPHA_TO_COVERAGE);
                     }
-                    for (i, c) in p.colors.iter().enumerate() {
-                        let i = i as u32;
-                        let m = c.mask;
-                        gl.color_mask_draw_buffer(
-                            i,
-                            m & 1 != 0,
-                            m & 2 != 0,
-                            m & 4 != 0,
-                            m & 8 != 0,
-                        );
-                        if c.blend {
-                            gl.enable_draw_buffer(glow::BLEND, i);
-                            gl.blend_func_separate_draw_buffer(
-                                i,
-                                factor(c.src),
-                                factor(c.dst),
-                                factor(c.src_alpha),
-                                factor(c.dst_alpha),
-                            );
-                            gl.blend_equation_separate_draw_buffer(
-                                i,
-                                equation(c.op),
-                                equation(c.op_alpha),
-                            );
-                        } else {
-                            gl.disable_draw_buffer(glow::BLEND, i);
-                        }
-                    }
+                    self.colors(p);
                 }
                 Command::SetViewport {
                     x,

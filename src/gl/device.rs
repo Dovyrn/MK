@@ -3,7 +3,7 @@ use crate::gl::cache::Cache;
 use crate::gl::event::Event;
 use crate::gl::extra::Extra;
 use crate::gl::native::Callback;
-use crate::gl::pipeline::Pipeline;
+use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
@@ -316,6 +316,9 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        if !uniform(info.colors) && !self.caps().blends {
+            return Err("different blend states per color target need GL 4.0".into());
+        }
         if info.views > 1 {
             return Err("multiview is not supported on GL".into());
         }
@@ -350,6 +353,9 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        if !uniform(info.colors) && !self.caps().blends {
+            return Err("different blend states per color target need GL 4.0".into());
+        }
         if !self.caps().mesh {
             return Err("GL_EXT_mesh_shader is not supported".into());
         }
