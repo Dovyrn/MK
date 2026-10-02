@@ -65,6 +65,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
         (stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
         (stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
         (stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
+        (stage::RAY, vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR),
         (stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
         (
             stage::DEPTH,
@@ -141,6 +142,36 @@ impl Recorder<'_> {
             .offset(offset)
             .range(size)];
         self.slot(slot_write(kind, slot).buffer_info(&info))
+    }
+
+    fn stamp(&self, bit: u32) -> vk::PipelineStageFlags2 {
+        let graphics = self.points.contains(&vk::PipelineBindPoint::GRAPHICS);
+        let mesh = graphics && self.ext.mesh.is_some();
+        let (flag, valid) = match bit {
+            stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
+            stage::FRAGMENT | stage::TILE => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
+            stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
+            stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
+            stage::RAY => (
+                vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR,
+                self.ext.rays.is_some(),
+            ),
+            stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
+            stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
+            stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
+            stage::COMPUTE | stage::ML => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
+            stage::COPY | stage::RESOURCE => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
+            stage::ACCEL => (
+                vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
+                self.ext.ray.is_some(),
+            ),
+            _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
+        };
+        if valid {
+            flag
+        } else {
+            vk::PipelineStageFlags2::ALL_COMMANDS
+        }
     }
 
     fn multi(&self, count: u32) -> Result<(), &'static str> {
@@ -776,9 +807,12 @@ impl Recorder<'_> {
                 Command::ResetQueries { heap, first, count } => {
                     d.cmd_reset_query_pool(b, self.res.queries.get(heap).0, first, count)
                 }
-                Command::WriteTimestamp { heap, index, stage } => {
-                    d.cmd_write_timestamp2(b, stages(stage), self.res.queries.get(heap).0, index)
-                }
+                Command::WriteTimestamp { heap, index, stage } => d.cmd_write_timestamp2(
+                    b,
+                    self.stamp(stage),
+                    self.res.queries.get(heap).0,
+                    index,
+                ),
                 Command::BeginQuery { heap, index } => {
                     let (pool, flags, _) = *self.res.queries.get(heap);
                     d.cmd_begin_query(b, pool, index, flags)
