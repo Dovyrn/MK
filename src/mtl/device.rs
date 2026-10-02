@@ -417,7 +417,7 @@ impl Device {
             slots: true,
             storage: true,
             persistent: true,
-            alignment: 256,
+            bind_alignment: 256,
             buffers: 500_000,
             compute: true,
             texture_views: true,

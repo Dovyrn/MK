@@ -207,7 +207,7 @@ fields = [
     ["slots", "bool", "false"],
     ["storage", "bool", "false"],
     ["persistent", "bool", "false"],
-    ["alignment", "u32", "0"],
+    ["bind_alignment", "u32", "0"],
     ["buffers", "u32", "0"],
     ["compute", "bool", "false"],
     ["texture_views", "bool", "false"],

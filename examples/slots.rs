@@ -61,7 +61,7 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let at = caps.alignment.max(16) as u64;
+    let at = caps.bind_alignment.max(16) as u64;
     let upload = device.create_buffer(at + 16, memory::UPLOAD).unwrap();
     let back = device.create_buffer(64, memory::READBACK).unwrap();
     unsafe {

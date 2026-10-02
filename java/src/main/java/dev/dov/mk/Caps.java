@@ -44,7 +44,7 @@ public class Caps {
     public boolean slots = false;
     public boolean storage = false;
     public boolean persistent = false;
-    public int alignment = 0;
+    public int bindAlignment = 0;
     public int buffers = 0;
     public boolean compute = false;
     public boolean textureViews = false;
@@ -141,7 +141,7 @@ public class Caps {
         p += 4;
         memPutInt(p, persistent ? 1 : 0);
         p += 4;
-        memPutInt(p, alignment);
+        memPutInt(p, bindAlignment);
         p += 4;
         memPutInt(p, buffers);
         p += 4;
@@ -252,7 +252,7 @@ public class Caps {
         p += 4;
         r.persistent = memGetInt(p) != 0;
         p += 4;
-        r.alignment = memGetInt(p);
+        r.bindAlignment = memGetInt(p);
         p += 4;
         r.buffers = memGetInt(p);
         p += 4;

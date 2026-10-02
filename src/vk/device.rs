@@ -462,7 +462,7 @@ impl Device {
             slots: self.ext.push.is_some(),
             storage: self.ext.push.is_some(),
             persistent: true,
-            alignment: limits
+            bind_alignment: limits
                 .min_uniform_buffer_offset_alignment
                 .max(limits.min_storage_buffer_offset_alignment) as u32,
         }

@@ -143,7 +143,7 @@ impl Device {
 
     pub fn caps(&self) -> Caps {
         let gl = &self.gl;
-        let alignment = |p| unsafe { gl.get_parameter_i32(p) as u32 };
+        let int = |p| unsafe { gl.get_parameter_i32(p) as u32 };
         let storage = self.at(43, "GL_ARB_shader_storage_buffer_object");
         let results = self.at(44, "GL_ARB_query_buffer_object");
         Caps {
@@ -153,7 +153,7 @@ impl Device {
             timestamps: results,
             precise: results,
             viewports: if self.at(99, "GL_ARB_shader_viewport_layer_array") {
-                alignment(glow::MAX_VIEWPORTS)
+                int(glow::MAX_VIEWPORTS)
             } else {
                 1
             },
@@ -167,11 +167,11 @@ impl Device {
             slots: true,
             storage,
             persistent: self.at(44, "GL_ARB_buffer_storage"),
-            alignment: if storage {
-                alignment(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
-                    .max(alignment(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
+            bind_alignment: if storage {
+                int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
+                    .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
             } else {
-                alignment(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
+                int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
             },
             compute: self.at(43, "GL_ARB_compute_shader"),
             texture_views: self.at(43, "GL_ARB_texture_view"),
@@ -184,10 +184,10 @@ impl Device {
             indirect_offset: false,
             wide_lines: false,
             max_buffer: isize::MAX as u64,
-            max_texture: alignment(glow::MAX_TEXTURE_SIZE),
-            max_cube: alignment(glow::MAX_CUBE_MAP_TEXTURE_SIZE),
-            max_volume: alignment(glow::MAX_3D_TEXTURE_SIZE),
-            max_layers: alignment(glow::MAX_ARRAY_TEXTURE_LAYERS),
+            max_texture: int(glow::MAX_TEXTURE_SIZE),
+            max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE),
+            max_volume: int(glow::MAX_3D_TEXTURE_SIZE),
+            max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS),
             mesh: self.at(99, "GL_EXT_mesh_shader") && self.extra.mesh.is_some(),
             ..Default::default()
         }
