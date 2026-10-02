@@ -199,6 +199,7 @@ impl<'a> Recorder<'a> {
             self.gl
                 .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
         };
+        unsafe { (self.extra.provoking)(glow::FIRST_VERTEX_CONVENTION) };
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?)?;
         }
