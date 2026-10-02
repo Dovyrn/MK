@@ -31,9 +31,9 @@ impl Commands {
     }
 
     fn head(&mut self, op: u16, size: usize) {
+        assert!(size <= 0xffff, "payload of {size} bytes is over 65535");
         self.bytes.extend_from_slice(&op.to_le_bytes());
-        self.bytes
-            .extend_from_slice(&u16::try_from(size).unwrap().to_le_bytes());
+        self.bytes.extend_from_slice(&(size as u16).to_le_bytes());
     }
 }
 

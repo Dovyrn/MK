@@ -276,6 +276,9 @@ pub fn java(ops: &[Op], backend: Option<&str>, class: &str) -> String {
         s += "    public void reset() {\n        size = 0;\n    }\n\n";
         s += "    public void free() {\n        nmemFree(address);\n    }\n\n";
         s += "    protected long head(int op, int length) {\n";
+        s += "        if (length > 0xffff) {\n";
+        s += "            throw new IllegalArgumentException(\"payload of \" + length + \" bytes is over 65535\");\n";
+        s += "        }\n";
         s += "        if (size + 4 + length > capacity) {\n";
         s += "            capacity = Math.max(capacity * 2, size + 4 + length);\n";
         s += "            address = nmemRealloc(address, capacity);\n";

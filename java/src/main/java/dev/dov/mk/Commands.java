@@ -22,6 +22,9 @@ public class Commands {
     }
 
     protected long head(int op, int length) {
+        if (length > 0xffff) {
+            throw new IllegalArgumentException("payload of " + length + " bytes is over 65535");
+        }
         if (size + 4 + length > capacity) {
             capacity = Math.max(capacity * 2, size + 4 + length);
             address = nmemRealloc(address, capacity);
