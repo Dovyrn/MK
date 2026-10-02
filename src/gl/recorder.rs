@@ -1279,8 +1279,16 @@ impl<'a> Recorder<'a> {
                         views.iter().map(|v| [v[0], v[1], v[2], v[3]]).collect();
                     let ranges: Vec<[f64; 2]> =
                         views.iter().map(|v| [v[4] as f64, v[5] as f64]).collect();
-                    gl.viewport_f32_slice(0, rects.len() as i32, &rects);
-                    gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
+                    match views.as_slice() {
+                        [v] if self.caps.viewports == 1 => {
+                            gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
+                            gl.depth_range(v[4] as f64, v[5] as f64);
+                        }
+                        _ => {
+                            gl.viewport_f32_slice(0, rects.len() as i32, &rects);
+                            gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
+                        }
+                    }
                 }
                 Command::SetScissors { data } => {
                     let rects: Vec<[i32; 4]> = data
@@ -1295,7 +1303,10 @@ impl<'a> Recorder<'a> {
                         return Err("multiple scissors need GL 4.1".into());
                     }
                     gl.enable(glow::SCISSOR_TEST);
-                    gl.scissor_slice(0, rects.len() as i32, &rects);
+                    match rects.as_slice() {
+                        [r] if self.caps.viewports == 1 => gl.scissor(r[0], r[1], r[2], r[3]),
+                        _ => gl.scissor_slice(0, rects.len() as i32, &rects),
+                    }
                 }
                 Command::SetDepthBounds { .. } => {
                     return Err("depth bounds are not supported on GL".into());
