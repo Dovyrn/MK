@@ -1,6 +1,7 @@
 use super::{Device, options, texture_desc};
 use crate::mtl::texture::Texture;
 use crate::{TextureInfo, dimension, format, memory};
+use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString};
 use objc2_io_surface::{
@@ -10,26 +11,30 @@ use objc2_metal::MTLDevice;
 
 impl Device {
     pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
-        self.sharable(info)?;
-        let [bytes, _, _] = format::block(info.format);
-        let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
-        let values = [
-            CFNumber::new_i32(info.width as i32),
-            CFNumber::new_i32(info.height as i32),
-            CFNumber::new_i32(bytes as i32),
-        ];
-        let values: Vec<&CFNumber> = values.iter().map(|v| &**v).collect();
-        let properties = CFDictionary::<CFString, CFNumber>::from_slices(&keys, &values);
-        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }
-            .ok_or("IOSurface allocation failed")?;
-        let id = surface.id();
-        Ok((self.surface_texture(&surface, info)?, id))
+        autoreleasepool(|_| {
+            self.sharable(info)?;
+            let [bytes, _, _] = format::block(info.format);
+            let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
+            let values = [
+                CFNumber::new_i32(info.width as i32),
+                CFNumber::new_i32(info.height as i32),
+                CFNumber::new_i32(bytes as i32),
+            ];
+            let values: Vec<&CFNumber> = values.iter().map(|v| &**v).collect();
+            let properties = CFDictionary::<CFString, CFNumber>::from_slices(&keys, &values);
+            let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }
+                .ok_or("IOSurface allocation failed")?;
+            let id = surface.id();
+            Ok((self.surface_texture(&surface, info)?, id))
+        })
     }
 
     pub fn import_shared_texture(&mut self, id: u32, info: &TextureInfo) -> Result<u32, String> {
-        self.sharable(info)?;
-        let surface = IOSurfaceRef::lookup(id).ok_or("no IOSurface with that id")?;
-        self.surface_texture(&surface, info)
+        autoreleasepool(|_| {
+            self.sharable(info)?;
+            let surface = IOSurfaceRef::lookup(id).ok_or("no IOSurface with that id")?;
+            self.surface_texture(&surface, info)
+        })
     }
 
     fn sharable(&self, info: &TextureInfo) -> Result<(), String> {

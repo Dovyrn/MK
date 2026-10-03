@@ -40,4 +40,10 @@ impl Residency {
             self.set.commit();
         }
     }
+
+    pub fn clear(&mut self) {
+        self.counts.clear();
+        self.set.removeAllAllocations();
+        self.set.commit();
+    }
 }

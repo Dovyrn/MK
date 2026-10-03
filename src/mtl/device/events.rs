@@ -1,13 +1,15 @@
 use super::Device;
-use objc2::rc::Retained;
+use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLSharedEvent};
 
 impl Device {
     pub fn import_event(&mut self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> u32 {
-        let id = self.res.events.insert(raw);
-        self.res.table.events.set(id, (0, usize::MAX));
-        id
+        autoreleasepool(|_| {
+            let id = self.res.events.insert(raw);
+            self.res.table.events.set(id, (0, usize::MAX));
+            id
+        })
     }
 
     pub fn raw_event(&self, event: u32) -> &ProtocolObject<dyn MTLSharedEvent> {
@@ -16,10 +18,12 @@ impl Device {
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
-        let event = self.raw.newSharedEvent().ok_or("event allocation failed")?;
-        let id = self.res.events.insert(event);
-        self.res.table.events.set(id, (0, usize::MAX));
-        Ok(id)
+        autoreleasepool(|_| {
+            let event = self.raw.newSharedEvent().ok_or("event allocation failed")?;
+            let id = self.res.events.insert(event);
+            self.res.table.events.set(id, (0, usize::MAX));
+            Ok(id)
+        })
     }
 
     pub fn destroy_event(&mut self, event: u32) {
@@ -29,21 +33,25 @@ impl Device {
     }
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
-        self.res.table.events.get(event);
-        self.collect();
-        self.healthy()?;
-        Ok(self.res.events.get(event).signaledValue())
+        autoreleasepool(|_| {
+            self.res.table.events.get(event);
+            self.collect();
+            self.healthy()?;
+            Ok(self.res.events.get(event).signaledValue())
+        })
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
-        self.res.table.events.get(event);
-        let done = self
-            .res
-            .events
-            .get(event)
-            .waitUntilSignaledValue_timeoutMS(value, ms);
-        self.collect();
-        self.healthy()?;
-        Ok(done)
+        autoreleasepool(|_| {
+            self.res.table.events.get(event);
+            let done = self
+                .res
+                .events
+                .get(event)
+                .waitUntilSignaledValue_timeoutMS(value, ms);
+            self.collect();
+            self.healthy()?;
+            Ok(done)
+        })
     }
 }

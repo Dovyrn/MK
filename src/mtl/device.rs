@@ -22,7 +22,7 @@ use crate::mtl::residency::Residency;
 use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
 use crate::{Caps, TextureInfo, dimension, format, memory, usage};
-use objc2::rc::Retained;
+use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
@@ -216,13 +216,19 @@ pub struct Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        for q in &mut self.queues {
-            q.signal();
-            q.idle();
-        }
-        for path in &self.archives {
-            let _ = std::fs::remove_file(path);
-        }
+        autoreleasepool(|_| {
+            for q in &mut self.queues {
+                q.signal();
+                q.idle();
+            }
+            for path in &self.archives {
+                let _ = std::fs::remove_file(path);
+            }
+            self.garbage.clear();
+            self.queues.clear();
+            self.res = Resources::default();
+            self.residency.clear();
+        })
     }
 }
 
@@ -231,58 +237,64 @@ impl Device {
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
         queues: usize,
     ) -> Result<Self, String> {
-        assert!(
-            (1..=32).contains(&queues),
-            "queue count {queues} is outside 1..=32"
-        );
-        let compiler = raw
-            .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
-            .map_err(|e| e.localizedDescription().to_string())?;
-        let residency = Residency::new(&raw)?;
-        let lost = Arc::new(Mutex::new(None));
-        let queues = (0..queues)
-            .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
-            .collect::<Result<Vec<_>, _>>()?;
-        let caps = Self::detect(&raw, queues.len());
-        let resolve = Resolve::new(&raw)?;
-        Ok(Self {
-            raw,
-            compiler,
-            options: MTL4CompilerTaskOptions::new(),
-            serializer: None,
-            cache: RefCell::new(Vec::new()),
-            archives: Vec::new(),
-            residency,
-            res: Resources::default(),
-            queues,
-            lost,
-            garbage: VecDeque::new(),
-            caps,
-            resolve,
+        autoreleasepool(|_| {
+            assert!(
+                (1..=32).contains(&queues),
+                "queue count {queues} is outside 1..=32"
+            );
+            let compiler = raw
+                .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
+                .map_err(|e| e.localizedDescription().to_string())?;
+            let residency = Residency::new(&raw)?;
+            let lost = Arc::new(Mutex::new(None));
+            let queues = (0..queues)
+                .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let caps = Self::detect(&raw, queues.len());
+            let resolve = Resolve::new(&raw)?;
+            Ok(Self {
+                raw,
+                compiler,
+                options: MTL4CompilerTaskOptions::new(),
+                serializer: None,
+                cache: RefCell::new(Vec::new()),
+                archives: Vec::new(),
+                residency,
+                res: Resources::default(),
+                queues,
+                lost,
+                garbage: VecDeque::new(),
+                caps,
+                resolve,
+            })
         })
     }
 
     fn defer(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
-        let counts = self
-            .queues
-            .iter_mut()
-            .map(|q| {
-                q.signal();
-                q.count
-            })
-            .collect();
-        self.garbage.push_back((counts, Box::new(free)));
-        self.collect();
+        autoreleasepool(|_| {
+            let counts = self
+                .queues
+                .iter_mut()
+                .map(|q| {
+                    q.signal();
+                    q.count
+                })
+                .collect();
+            self.garbage.push_back((counts, Box::new(free)));
+            self.collect();
+        })
     }
 
     fn collect(&mut self) {
-        let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
-        while let Some((_, free)) = self
-            .garbage
-            .pop_front_if(|(counts, _)| counts.iter().zip(&done).all(|(c, d)| c <= d))
-        {
-            free(&mut self.residency);
-        }
+        autoreleasepool(|_| {
+            let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
+            while let Some((_, free)) = self
+                .garbage
+                .pop_front_if(|(counts, _)| counts.iter().zip(&done).all(|(c, d)| c <= d))
+            {
+                free(&mut self.residency);
+            }
+        })
     }
 
     pub fn adopt_raw(device: u64, queues: usize) -> Result<Self, String> {
@@ -318,16 +330,18 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-        self.res.table.submit(queue, waits, signals);
-        self.collect();
-        self.queues[queue].submit(
-            &self.raw,
-            &self.res,
-            &self.resolve,
-            (commands, natives),
-            waits,
-            signals,
-        )
+        autoreleasepool(|_| {
+            Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
+            self.res.table.submit(queue, waits, signals);
+            self.collect();
+            self.queues[queue].submit(
+                &self.raw,
+                &self.res,
+                &self.resolve,
+                (commands, natives),
+                waits,
+                signals,
+            )
+        })
     }
 }

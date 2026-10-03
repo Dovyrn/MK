@@ -1,49 +1,55 @@
 use super::{Device, options};
 use crate::memory;
-use objc2::rc::Retained;
+use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
 use std::ptr::NonNull;
 
 impl Device {
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps.buffer(size, memory)?;
-        let buffer = self
-            .raw
-            .newBufferWithLength_options(size as usize, options(memory))
-            .ok_or("buffer allocation failed")?;
-        self.residency.add(ProtocolObject::from_ref(&*buffer));
-        let id = self.res.buffers.insert(buffer);
-        self.res.table.buffers.set(id, size);
-        Ok(id)
+        autoreleasepool(|_| {
+            self.caps.buffer(size, memory)?;
+            let buffer = self
+                .raw
+                .newBufferWithLength_options(size as usize, options(memory))
+                .ok_or("buffer allocation failed")?;
+            self.residency.add(ProtocolObject::from_ref(&*buffer));
+            let id = self.res.buffers.insert(buffer);
+            self.res.table.buffers.set(id, size);
+            Ok(id)
+        })
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps.host(pointer, size);
-        self.caps.buffer(size, memory::UPLOAD)?;
-        let buffer = unsafe {
-            self.raw
-                .newBufferWithBytesNoCopy_length_options_deallocator(
-                    NonNull::new(pointer.cast()).ok_or("null pointer")?,
-                    size as usize,
-                    options(memory::READBACK),
-                    None,
-                )
-                .ok_or("host buffer allocation failed")?
-        };
-        self.residency.add(ProtocolObject::from_ref(&*buffer));
-        let id = self.res.buffers.insert(buffer);
-        self.res.table.buffers.set(id, size);
-        Ok(id)
+        autoreleasepool(|_| {
+            self.caps.host(pointer, size);
+            self.caps.buffer(size, memory::UPLOAD)?;
+            let buffer = unsafe {
+                self.raw
+                    .newBufferWithBytesNoCopy_length_options_deallocator(
+                        NonNull::new(pointer.cast()).ok_or("null pointer")?,
+                        size as usize,
+                        options(memory::READBACK),
+                        None,
+                    )
+                    .ok_or("host buffer allocation failed")?
+            };
+            self.residency.add(ProtocolObject::from_ref(&*buffer));
+            let id = self.res.buffers.insert(buffer);
+            self.res.table.buffers.set(id, size);
+            Ok(id)
+        })
     }
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
-        self.residency.add(ProtocolObject::from_ref(&*raw));
-        let size = raw.length() as u64;
-        let id = self.res.buffers.insert(raw);
-        self.res.table.buffers.set(id, size);
-        self.res.imports.insert(id);
-        id
+        autoreleasepool(|_| {
+            self.residency.add(ProtocolObject::from_ref(&*raw));
+            let size = raw.length() as u64;
+            let id = self.res.buffers.insert(raw);
+            self.res.table.buffers.set(id, size);
+            self.res.imports.insert(id);
+            id
+        })
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> &ProtocolObject<dyn MTLBuffer> {

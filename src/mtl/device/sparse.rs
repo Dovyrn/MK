@@ -1,6 +1,7 @@
 use super::{Device, kind, options, size, texture_desc};
 use crate::mtl::texture::Texture;
 use crate::{SparseRange, SparseRegion, TextureInfo, format, memory};
+use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
 use objc2_metal::{
@@ -45,38 +46,42 @@ impl Device {
     }
 
     pub fn create_sparse_buffer(&mut self, size: u64) -> Result<u32, String> {
-        self.caps.buffer(size, memory::DEVICE)?;
-        self.sparse_check()?;
-        let buffer = unsafe {
-            self.raw
-                .newBufferWithLength_options_placementSparsePageSize(
-                    size as usize,
-                    options(memory::DEVICE),
-                    MTLSparsePageSize::Size64,
-                )
-                .ok_or("sparse buffer allocation failed")?
-        };
-        self.residency.add(ProtocolObject::from_ref(&*buffer));
-        let id = self.res.buffers.insert(buffer);
-        self.res.table.buffers.set(id, size);
-        Ok(id)
+        autoreleasepool(|_| {
+            self.caps.buffer(size, memory::DEVICE)?;
+            self.sparse_check()?;
+            let buffer = unsafe {
+                self.raw
+                    .newBufferWithLength_options_placementSparsePageSize(
+                        size as usize,
+                        options(memory::DEVICE),
+                        MTLSparsePageSize::Size64,
+                    )
+                    .ok_or("sparse buffer allocation failed")?
+            };
+            self.residency.add(ProtocolObject::from_ref(&*buffer));
+            let id = self.res.buffers.insert(buffer);
+            self.res.table.buffers.set(id, size);
+            Ok(id)
+        })
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
-        self.sparse_tile(info)?;
-        let desc = texture_desc(info);
-        desc.setPlacementSparsePageSize(MTLSparsePageSize::Size64);
-        let raw = self
-            .raw
-            .newTextureWithDescriptor(&desc)
-            .ok_or("sparse texture allocation failed")?;
-        self.residency.add(ProtocolObject::from_ref(&*raw));
-        let id = self.res.textures.insert(Texture {
-            raw,
-            format: info.format,
-        });
-        self.res.table.textures.set(id, *info);
-        Ok(id)
+        autoreleasepool(|_| {
+            self.sparse_tile(info)?;
+            let desc = texture_desc(info);
+            desc.setPlacementSparsePageSize(MTLSparsePageSize::Size64);
+            let raw = self
+                .raw
+                .newTextureWithDescriptor(&desc)
+                .ok_or("sparse texture allocation failed")?;
+            self.residency.add(ProtocolObject::from_ref(&*raw));
+            let id = self.res.textures.insert(Texture {
+                raw,
+                format: info.format,
+            });
+            self.res.table.textures.set(id, *info);
+            Ok(id)
+        })
     }
 
     fn sparse(
@@ -115,42 +120,44 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        self.check_queue(queue);
-        self.res.table.buffers.get(buffer);
-        if heap != !0 {
-            self.res.table.heaps.get(heap);
-        }
-        self.res.table.submit(queue, waits, signals);
-        let mode = if heap == !0 {
-            MTLSparseTextureMappingMode::Unmap
-        } else {
-            MTLSparseTextureMappingMode::Map
-        };
-        let mut ops: Vec<_> = ranges
-            .iter()
-            .map(|r| MTL4UpdateSparseBufferMappingOperation {
-                mode,
-                bufferRange: NSRange::new(r.page as usize, r.count as usize),
-                heapOffset: r.heap_page as usize,
-            })
-            .collect();
-        let raw = self.res.buffers.get(buffer);
-        self.sparse(
-            queue,
-            waits,
-            signals,
-            |q, h| unsafe {
-                q.updateBufferMappings_heap_operations_count(
-                    raw,
-                    h,
-                    NonNull::new(ops.as_mut_ptr()).unwrap(),
-                    ops.len(),
-                )
-            },
-            heap,
-        )?;
-        self.queues[queue].signal();
-        Ok(())
+        autoreleasepool(|_| {
+            self.check_queue(queue);
+            self.res.table.buffers.get(buffer);
+            if heap != !0 {
+                self.res.table.heaps.get(heap);
+            }
+            self.res.table.submit(queue, waits, signals);
+            let mode = if heap == !0 {
+                MTLSparseTextureMappingMode::Unmap
+            } else {
+                MTLSparseTextureMappingMode::Map
+            };
+            let mut ops: Vec<_> = ranges
+                .iter()
+                .map(|r| MTL4UpdateSparseBufferMappingOperation {
+                    mode,
+                    bufferRange: NSRange::new(r.page as usize, r.count as usize),
+                    heapOffset: r.heap_page as usize,
+                })
+                .collect();
+            let raw = self.res.buffers.get(buffer);
+            self.sparse(
+                queue,
+                waits,
+                signals,
+                |q, h| unsafe {
+                    q.updateBufferMappings_heap_operations_count(
+                        raw,
+                        h,
+                        NonNull::new(ops.as_mut_ptr()).unwrap(),
+                        ops.len(),
+                    )
+                },
+                heap,
+            )?;
+            self.queues[queue].signal();
+            Ok(())
+        })
     }
 
     pub fn map_sparse_texture(
@@ -162,50 +169,52 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
-        self.check_queue(queue);
-        self.res.table.textures.get(texture);
-        if heap != !0 {
-            self.res.table.heaps.get(heap);
-        }
-        self.res.table.submit(queue, waits, signals);
-        let mode = if heap == !0 {
-            MTLSparseTextureMappingMode::Unmap
-        } else {
-            MTLSparseTextureMappingMode::Map
-        };
-        let mut ops: Vec<_> = regions
-            .iter()
-            .map(|r| MTL4UpdateSparseTextureMappingOperation {
-                mode,
-                textureRegion: MTLRegion {
-                    origin: MTLOrigin {
-                        x: r.x as usize,
-                        y: r.y as usize,
-                        z: r.z as usize,
+        autoreleasepool(|_| {
+            self.check_queue(queue);
+            self.res.table.textures.get(texture);
+            if heap != !0 {
+                self.res.table.heaps.get(heap);
+            }
+            self.res.table.submit(queue, waits, signals);
+            let mode = if heap == !0 {
+                MTLSparseTextureMappingMode::Unmap
+            } else {
+                MTLSparseTextureMappingMode::Map
+            };
+            let mut ops: Vec<_> = regions
+                .iter()
+                .map(|r| MTL4UpdateSparseTextureMappingOperation {
+                    mode,
+                    textureRegion: MTLRegion {
+                        origin: MTLOrigin {
+                            x: r.x as usize,
+                            y: r.y as usize,
+                            z: r.z as usize,
+                        },
+                        size: size([r.width, r.height, r.depth]),
                     },
-                    size: size([r.width, r.height, r.depth]),
+                    textureLevel: r.mip as usize,
+                    textureSlice: r.layer as usize,
+                    heapOffset: r.heap_page as usize,
+                })
+                .collect();
+            let raw = &self.res.textures.get(texture).raw;
+            self.sparse(
+                queue,
+                waits,
+                signals,
+                |q, h| unsafe {
+                    q.updateTextureMappings_heap_operations_count(
+                        raw,
+                        h,
+                        NonNull::new(ops.as_mut_ptr()).unwrap(),
+                        ops.len(),
+                    )
                 },
-                textureLevel: r.mip as usize,
-                textureSlice: r.layer as usize,
-                heapOffset: r.heap_page as usize,
-            })
-            .collect();
-        let raw = &self.res.textures.get(texture).raw;
-        self.sparse(
-            queue,
-            waits,
-            signals,
-            |q, h| unsafe {
-                q.updateTextureMappings_heap_operations_count(
-                    raw,
-                    h,
-                    NonNull::new(ops.as_mut_ptr()).unwrap(),
-                    ops.len(),
-                )
-            },
-            heap,
-        )?;
-        self.queues[queue].signal();
-        Ok(())
+                heap,
+            )?;
+            self.queues[queue].signal();
+            Ok(())
+        })
     }
 }

@@ -1,28 +1,31 @@
 use super::{Device, options, texture_desc};
 use crate::mtl::texture::Texture;
 use crate::{TextureInfo, memory};
+use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLSparsePageSize};
 
 impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        assert!(
-            memory != memory::TRANSIENT,
-            "transient memory is for textures"
-        );
-        let desc = MTLHeapDescriptor::new();
-        desc.setType(MTLHeapType::Placement);
-        desc.setResourceOptions(options(memory));
-        desc.setSize(size as usize);
-        desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
-        let heap = self
-            .raw
-            .newHeapWithDescriptor(&desc)
-            .ok_or("heap allocation failed")?;
-        self.residency.add(ProtocolObject::from_ref(&*heap));
-        let id = self.res.heaps.insert((heap, memory));
-        self.res.table.heaps.set(id, size);
-        Ok(id)
+        autoreleasepool(|_| {
+            assert!(
+                memory != memory::TRANSIENT,
+                "transient memory is for textures"
+            );
+            let desc = MTLHeapDescriptor::new();
+            desc.setType(MTLHeapType::Placement);
+            desc.setResourceOptions(options(memory));
+            desc.setSize(size as usize);
+            desc.setMaxCompatiblePlacementSparsePageSize(MTLSparsePageSize::Size64);
+            let heap = self
+                .raw
+                .newHeapWithDescriptor(&desc)
+                .ok_or("heap allocation failed")?;
+            self.residency.add(ProtocolObject::from_ref(&*heap));
+            let id = self.res.heaps.insert((heap, memory));
+            self.res.table.heaps.set(id, size);
+            Ok(id)
+        })
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
@@ -51,16 +54,22 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
-        self.res.table.heaps.get(heap);
-        self.caps.buffer(size, memory::DEVICE)?;
-        let (h, memory) = self.res.heaps.get(heap);
-        let buffer = unsafe {
-            h.newBufferWithLength_options_offset(size as usize, options(*memory), offset as usize)
+        autoreleasepool(|_| {
+            self.res.table.heaps.get(heap);
+            self.caps.buffer(size, memory::DEVICE)?;
+            let (h, memory) = self.res.heaps.get(heap);
+            let buffer = unsafe {
+                h.newBufferWithLength_options_offset(
+                    size as usize,
+                    options(*memory),
+                    offset as usize,
+                )
                 .ok_or("placed buffer allocation failed")?
-        };
-        let id = self.res.buffers.insert(buffer);
-        self.res.table.buffers.set(id, size);
-        Ok(id)
+            };
+            let id = self.res.buffers.insert(buffer);
+            self.res.table.buffers.set(id, size);
+            Ok(id)
+        })
     }
 
     pub fn create_placed_texture(
@@ -69,20 +78,22 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
-        self.res.table.heaps.get(heap);
-        self.supports(info)?;
-        let (h, memory) = self.res.heaps.get(heap);
-        let desc = texture_desc(info);
-        desc.setResourceOptions(options(*memory));
-        let raw = unsafe {
-            h.newTextureWithDescriptor_offset(&desc, offset as usize)
-                .ok_or("placed texture allocation failed")?
-        };
-        let id = self.res.textures.insert(Texture {
-            raw,
-            format: info.format,
-        });
-        self.res.table.textures.set(id, *info);
-        Ok(id)
+        autoreleasepool(|_| {
+            self.res.table.heaps.get(heap);
+            self.supports(info)?;
+            let (h, memory) = self.res.heaps.get(heap);
+            let desc = texture_desc(info);
+            desc.setResourceOptions(options(*memory));
+            let raw = unsafe {
+                h.newTextureWithDescriptor_offset(&desc, offset as usize)
+                    .ok_or("placed texture allocation failed")?
+            };
+            let id = self.res.textures.insert(Texture {
+                raw,
+                format: info.format,
+            });
+            self.res.table.textures.set(id, *info);
+            Ok(id)
+        })
     }
 }

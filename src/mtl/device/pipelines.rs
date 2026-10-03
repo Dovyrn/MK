@@ -7,7 +7,7 @@ use crate::{
     mask, topology,
 };
 use dispatch2::DispatchData;
-use objc2::rc::Retained;
+use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSArray, NSString};
 use objc2_metal::{
@@ -149,32 +149,34 @@ impl Device {
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
-        let library = self.library(info.code)?;
-        let desc = MTL4ComputePipelineDescriptor::new();
-        desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
-        if !info.functions.is_empty() {
-            let linked: Vec<_> = info
-                .functions
-                .iter()
-                .map(|f| function(&library, f))
-                .collect::<Result<_, _>>()?;
-            let linking = MTL4StaticLinkingDescriptor::new();
-            linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
-            desc.setStaticLinkingDescriptor(Some(&linking));
-        }
-        desc.setSupportIndirectCommandBuffers(support(info.indirect));
-        let state = self
-            .compiler
-            .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
-                &desc,
-                Some(&self.options),
-            )
-            .map_err(|e| e.localizedDescription().to_string())?;
-        threads(info.group, state.maxTotalThreadsPerThreadgroup())?;
-        let group = size(info.group);
-        let id = self.res.pipelines.insert(Pipeline { state, group });
-        self.res.table.pipelines.set(id, ());
-        Ok(id)
+        autoreleasepool(|_| {
+            let library = self.library(info.code)?;
+            let desc = MTL4ComputePipelineDescriptor::new();
+            desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
+            if !info.functions.is_empty() {
+                let linked: Vec<_> = info
+                    .functions
+                    .iter()
+                    .map(|f| function(&library, f))
+                    .collect::<Result<_, _>>()?;
+                let linking = MTL4StaticLinkingDescriptor::new();
+                linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
+                desc.setStaticLinkingDescriptor(Some(&linking));
+            }
+            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            let state = self
+                .compiler
+                .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
+                    &desc,
+                    Some(&self.options),
+                )
+                .map_err(|e| e.localizedDescription().to_string())?;
+            threads(info.group, state.maxTotalThreadsPerThreadgroup())?;
+            let group = size(info.group);
+            let id = self.res.pipelines.insert(Pipeline { state, group });
+            self.res.table.pipelines.set(id, ());
+            Ok(id)
+        })
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
@@ -184,118 +186,124 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
-        crate::caps::targets(
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-        );
-        crate::caps::primitive(info.topology);
-        let library = self.library(info.code)?;
-        let desc = MTL4RenderPipelineDescriptor::new();
-        desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
-        let inputs = library
-            .newFunctionWithName(&NSString::from_str(info.vertex))
-            .and_then(|f| f.vertexAttributes());
-        for input in inputs.iter().flat_map(|a| a.iter()) {
-            let location = input.attributeIndex() as u32;
-            if input.isActive() && !info.attributes.iter().any(|a| a.location == location) {
-                return Err(format!("vertex input {location} has no attribute"));
-            }
-        }
-        if !info.fragment.is_empty() {
-            desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
-        }
-        if !info.attributes.is_empty() {
-            let layout = MTLVertexDescriptor::new();
-            for (i, b) in info.buffers.iter().enumerate() {
-                let l = unsafe { layout.layouts().objectAtIndexedSubscript(VERTICES + i) };
-                unsafe { l.setStride(b.stride as usize) };
-                l.setStepFunction(if b.instance {
-                    MTLVertexStepFunction::PerInstance
-                } else {
-                    MTLVertexStepFunction::PerVertex
-                });
-            }
-            for a in info.attributes {
-                let at = unsafe {
-                    layout
-                        .attributes()
-                        .objectAtIndexedSubscript(a.location as usize)
-                };
-                at.setFormat(vertex_format(a.format));
-                unsafe {
-                    at.setOffset(a.offset as usize);
-                    at.setBufferIndex(VERTICES + a.buffer as usize);
+        autoreleasepool(|_| {
+            crate::caps::targets(
+                info.colors,
+                info.depth,
+                info.stencil,
+                info.samples,
+                info.fill,
+            );
+            crate::caps::primitive(info.topology);
+            let library = self.library(info.code)?;
+            let desc = MTL4RenderPipelineDescriptor::new();
+            desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
+            let inputs = library
+                .newFunctionWithName(&NSString::from_str(info.vertex))
+                .and_then(|f| f.vertexAttributes());
+            for input in inputs.iter().flat_map(|a| a.iter()) {
+                let location = input.attributeIndex() as u32;
+                if input.isActive() && !info.attributes.iter().any(|a| a.location == location) {
+                    return Err(format!("vertex input {location} has no attribute"));
                 }
             }
-            desc.setVertexDescriptor(Some(&layout));
-        }
-        colors(&desc.colorAttachments(), info.colors);
-        unsafe { desc.setRasterSampleCount(info.samples as usize) };
-        desc.setInputPrimitiveTopology(match info.topology {
-            topology::POINT => MTLPrimitiveTopologyClass::Point,
-            topology::LINE | topology::LINE_STRIP => MTLPrimitiveTopologyClass::Line,
-            topology::TRIANGLE | topology::TRIANGLE_STRIP => MTLPrimitiveTopologyClass::Triangle,
-            t => panic!("unknown topology {t}"),
-        });
-        desc.setAlphaToCoverageState(coverage(info.coverage));
-        desc.setSupportIndirectCommandBuffers(support(info.indirect));
-        unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
-        let state = self.compile(&desc)?;
-        let id = self.res.renders.insert(Render {
-            state,
-            fill: fill(info.fill),
-            clip: clip(info.clamp),
-            primitive: MTLPrimitiveType(info.topology as usize),
-            task: size([1, 1, 1]),
-            mesh: size([1, 1, 1]),
-        });
-        self.res.table.renders.set(id, ());
-        Ok(id)
+            if !info.fragment.is_empty() {
+                desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
+            }
+            if !info.attributes.is_empty() {
+                let layout = MTLVertexDescriptor::new();
+                for (i, b) in info.buffers.iter().enumerate() {
+                    let l = unsafe { layout.layouts().objectAtIndexedSubscript(VERTICES + i) };
+                    unsafe { l.setStride(b.stride as usize) };
+                    l.setStepFunction(if b.instance {
+                        MTLVertexStepFunction::PerInstance
+                    } else {
+                        MTLVertexStepFunction::PerVertex
+                    });
+                }
+                for a in info.attributes {
+                    let at = unsafe {
+                        layout
+                            .attributes()
+                            .objectAtIndexedSubscript(a.location as usize)
+                    };
+                    at.setFormat(vertex_format(a.format));
+                    unsafe {
+                        at.setOffset(a.offset as usize);
+                        at.setBufferIndex(VERTICES + a.buffer as usize);
+                    }
+                }
+                desc.setVertexDescriptor(Some(&layout));
+            }
+            colors(&desc.colorAttachments(), info.colors);
+            unsafe { desc.setRasterSampleCount(info.samples as usize) };
+            desc.setInputPrimitiveTopology(match info.topology {
+                topology::POINT => MTLPrimitiveTopologyClass::Point,
+                topology::LINE | topology::LINE_STRIP => MTLPrimitiveTopologyClass::Line,
+                topology::TRIANGLE | topology::TRIANGLE_STRIP => {
+                    MTLPrimitiveTopologyClass::Triangle
+                }
+                t => panic!("unknown topology {t}"),
+            });
+            desc.setAlphaToCoverageState(coverage(info.coverage));
+            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
+            let state = self.compile(&desc)?;
+            let id = self.res.renders.insert(Render {
+                state,
+                fill: fill(info.fill),
+                clip: clip(info.clamp),
+                primitive: MTLPrimitiveType(info.topology as usize),
+                task: size([1, 1, 1]),
+                mesh: size([1, 1, 1]),
+            });
+            self.res.table.renders.set(id, ());
+            Ok(id)
+        })
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
-        crate::caps::targets(
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-        );
-        if !self.caps.mesh {
-            return Err("create_mesh_pipeline needs caps.mesh".into());
-        }
-        let library = self.library(info.code)?;
-        let desc = MTL4MeshRenderPipelineDescriptor::new();
-        if !info.task.is_empty() {
-            desc.setObjectFunctionDescriptor(Some(&*function(&library, info.task)?));
-        }
-        desc.setMeshFunctionDescriptor(Some(&*function(&library, info.mesh)?));
-        if !info.fragment.is_empty() {
-            desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
-        }
-        colors(&desc.colorAttachments(), info.colors);
-        unsafe { desc.setRasterSampleCount(info.samples as usize) };
-        desc.setAlphaToCoverageState(coverage(info.coverage));
-        desc.setSupportIndirectCommandBuffers(support(info.indirect));
-        unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
-        let state = self.compile(&desc)?;
-        threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
-        if !info.task.is_empty() {
-            threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
-        }
-        let id = self.res.renders.insert(Render {
-            state,
-            fill: fill(info.fill),
-            clip: clip(info.clamp),
-            primitive: MTLPrimitiveType::Triangle,
-            task: size(info.task_group),
-            mesh: size(info.mesh_group),
-        });
-        self.res.table.renders.set(id, ());
-        Ok(id)
+        autoreleasepool(|_| {
+            crate::caps::targets(
+                info.colors,
+                info.depth,
+                info.stencil,
+                info.samples,
+                info.fill,
+            );
+            if !self.caps.mesh {
+                return Err("create_mesh_pipeline needs caps.mesh".into());
+            }
+            let library = self.library(info.code)?;
+            let desc = MTL4MeshRenderPipelineDescriptor::new();
+            if !info.task.is_empty() {
+                desc.setObjectFunctionDescriptor(Some(&*function(&library, info.task)?));
+            }
+            desc.setMeshFunctionDescriptor(Some(&*function(&library, info.mesh)?));
+            if !info.fragment.is_empty() {
+                desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
+            }
+            colors(&desc.colorAttachments(), info.colors);
+            unsafe { desc.setRasterSampleCount(info.samples as usize) };
+            desc.setAlphaToCoverageState(coverage(info.coverage));
+            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
+            let state = self.compile(&desc)?;
+            threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
+            if !info.task.is_empty() {
+                threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
+            }
+            let id = self.res.renders.insert(Render {
+                state,
+                fill: fill(info.fill),
+                clip: clip(info.clamp),
+                primitive: MTLPrimitiveType::Triangle,
+                task: size(info.task_group),
+                mesh: size(info.mesh_group),
+            });
+            self.res.table.renders.set(id, ());
+            Ok(id)
+        })
     }
 
     pub fn create_tile_pipeline(
@@ -305,26 +313,28 @@ impl Device {
         colors: &[u32],
         samples: u32,
     ) -> Result<u32, String> {
-        let library = self.library(code)?;
-        let desc = MTL4TileRenderPipelineDescriptor::new();
-        desc.setTileFunctionDescriptor(Some(&*function(&library, entry)?));
-        let array = desc.colorAttachments();
-        for (i, f) in colors.iter().enumerate() {
-            unsafe { array.objectAtIndexedSubscript(i) }.setPixelFormat(format::mtl(*f));
-        }
-        unsafe { desc.setRasterSampleCount(samples as usize) };
-        desc.setThreadgroupSizeMatchesTileSize(true);
-        let state = self.compile(&desc)?;
-        let id = self.res.renders.insert(Render {
-            state,
-            fill: MTLTriangleFillMode::Fill,
-            clip: MTLDepthClipMode::Clip,
-            primitive: MTLPrimitiveType::Triangle,
-            task: size([1, 1, 1]),
-            mesh: size([1, 1, 1]),
-        });
-        self.res.table.renders.set(id, ());
-        Ok(id)
+        autoreleasepool(|_| {
+            let library = self.library(code)?;
+            let desc = MTL4TileRenderPipelineDescriptor::new();
+            desc.setTileFunctionDescriptor(Some(&*function(&library, entry)?));
+            let array = desc.colorAttachments();
+            for (i, f) in colors.iter().enumerate() {
+                unsafe { array.objectAtIndexedSubscript(i) }.setPixelFormat(format::mtl(*f));
+            }
+            unsafe { desc.setRasterSampleCount(samples as usize) };
+            desc.setThreadgroupSizeMatchesTileSize(true);
+            let state = self.compile(&desc)?;
+            let id = self.res.renders.insert(Render {
+                state,
+                fill: MTLTriangleFillMode::Fill,
+                clip: MTLDepthClipMode::Clip,
+                primitive: MTLPrimitiveType::Triangle,
+                task: size([1, 1, 1]),
+                mesh: size([1, 1, 1]),
+            });
+            self.res.table.renders.set(id, ());
+            Ok(id)
+        })
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
@@ -334,21 +344,23 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
-        self.caps.depth(info);
-        let desc = MTLDepthStencilDescriptor::new();
-        desc.setDepthCompareFunction(compare(info.compare));
-        desc.setDepthWriteEnabled(info.write);
-        if info.stencil {
-            desc.setFrontFaceStencil(Some(&stencil(&info.front)));
-            desc.setBackFaceStencil(Some(&stencil(&info.back)));
-        }
-        let state = self
-            .raw
-            .newDepthStencilStateWithDescriptor(&desc)
-            .ok_or("depth state allocation failed")?;
-        let id = self.res.depths.insert(state);
-        self.res.table.states.set(id, ());
-        Ok(id)
+        autoreleasepool(|_| {
+            self.caps.depth(info);
+            let desc = MTLDepthStencilDescriptor::new();
+            desc.setDepthCompareFunction(compare(info.compare));
+            desc.setDepthWriteEnabled(info.write);
+            if info.stencil {
+                desc.setFrontFaceStencil(Some(&stencil(&info.front)));
+                desc.setBackFaceStencil(Some(&stencil(&info.back)));
+            }
+            let state = self
+                .raw
+                .newDepthStencilStateWithDescriptor(&desc)
+                .ok_or("depth state allocation failed")?;
+            let id = self.res.depths.insert(state);
+            self.res.table.states.set(id, ());
+            Ok(id)
+        })
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
