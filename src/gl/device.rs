@@ -2,6 +2,7 @@ mod budget;
 mod copies;
 mod heaps;
 mod host;
+mod sparse;
 
 use crate::caps;
 use crate::check::Check;
@@ -192,6 +193,10 @@ impl Device {
                     0
                 },
                 addresses: extra.addresses.is_some(),
+                sparse: extra.sparse.is_some() && extra.memory.is_some(),
+                sparse_textures: extra.sparse.is_some()
+                    && extra.tiles.is_some()
+                    && extra.memory.is_some(),
                 images: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
@@ -513,7 +518,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
         let storage = self.has(42, "GL_ARB_texture_storage");
-        let texture = Texture::new(&self.gl, &self.extra, info, storage, None)?;
+        let texture = Texture::new(&self.gl, &self.extra, info, storage, None, false)?;
         let id = self.res.textures.insert(texture);
         self.res.table.textures.set(id, *info);
         Ok(id)

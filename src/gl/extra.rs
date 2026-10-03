@@ -1,6 +1,8 @@
 use crate::gl::addresses::Addresses;
 use crate::gl::bindless::Bindless;
 use crate::gl::memory::Memory;
+use crate::gl::sparse::Sparse;
+use crate::gl::tiles::Tiles;
 use std::ffi::c_void;
 
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
@@ -126,6 +128,8 @@ pub struct Extra {
     pub memory: Option<Memory>,
     pub bindless: Option<Bindless>,
     pub addresses: Option<Addresses>,
+    pub sparse: Option<Sparse>,
+    pub tiles: Option<Tiles>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -246,6 +250,10 @@ impl Extra {
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
                 addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
                     .filter(|_| has(99, "GL_NV_shader_buffer_store")),
+                sparse: Sparse::load(&|name| get(name, 99, "GL_NV_memory_object_sparse"))
+                    .filter(|_| has(99, "GL_ARB_sparse_buffer")),
+                tiles: Tiles::load(&|name| get(name, 99, "GL_NV_memory_object_sparse"))
+                    .filter(|_| has(99, "GL_ARB_sparse_texture")),
             })
         }
     }

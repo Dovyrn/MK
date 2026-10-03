@@ -383,40 +383,34 @@ fails = true
 
 [[call]]
 name = "sparse_page"
-backend = "vk mtl"
 result = "u64"
 fails = true
 
 [[call]]
 name = "sparse_tile"
-backend = "vk mtl"
 params = [["info", "TextureInfo"]]
 result = "u32x3"
 fails = true
 
 [[call]]
 name = "create_sparse_buffer"
-backend = "vk mtl"
 params = [["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "create_sparse_texture"
-backend = "vk mtl"
 params = [["info", "TextureInfo"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "map_sparse_buffer"
-backend = "vk mtl"
 params = [["queue", "usize"], ["buffer", "u32"], ["heap", "u32"], ["ranges", "[SparseRange]"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
 
 [[call]]
 name = "map_sparse_texture"
-backend = "vk mtl"
 params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
 

@@ -2,6 +2,7 @@ use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::binding;
 use crate::gl::state::buffer;
+use crate::gl::tiles;
 use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
 use glow::HasContext;
 use std::cell::Cell;
@@ -47,6 +48,7 @@ impl Texture {
         info: &TextureInfo,
         storage: bool,
         place: Option<(u32, u64)>,
+        sparse: bool,
     ) -> Result<Self, String> {
         let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
@@ -64,6 +66,10 @@ impl Texture {
                 kind,
                 glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
             );
+            if sparse {
+                gl.tex_parameter_i32(kind, tiles::SPARSE, 1);
+                gl.tex_parameter_i32(kind, tiles::INDEX, 0);
+            }
             if let Some((memory, offset)) = place {
                 let m = extra.memory.as_ref().unwrap();
                 let fixed = 1;
@@ -85,7 +91,7 @@ impl Texture {
                     glow::TEXTURE_3D => (m.texture3)(kind, mips, internal, w, h, d, memory, offset),
                     _ => (m.texture3)(kind, mips, internal, w, h, layers, memory, offset),
                 }
-            } else if !storage && !multisample {
+            } else if !storage && !multisample && !sparse {
                 let [bytes, bw, bh] = format::block(info.format);
                 let internal = internal as i32;
                 for m in 0..mips {

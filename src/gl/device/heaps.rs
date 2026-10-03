@@ -79,7 +79,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
         let place = Some((*self.res.heaps.get(heap), offset));
-        let texture = Texture::new(&self.gl, &self.extra, info, true, place)?;
+        let texture = Texture::new(&self.gl, &self.extra, info, true, place, false)?;
         let id = self.res.textures.insert(texture);
         self.res.table.textures.set(id, *info);
         Ok(id)

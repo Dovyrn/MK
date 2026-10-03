@@ -91,7 +91,6 @@ pub fn f32s<'a>(address: jlong, count: i64) -> &'a [f32] {
     unsafe { std::slice::from_raw_parts(address as *const f32, count as usize) }
 }
 
-#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn u32s_out(out: jlong, v: &[u32]) {
     unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };
 }
