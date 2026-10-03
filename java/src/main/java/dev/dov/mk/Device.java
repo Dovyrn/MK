@@ -68,6 +68,32 @@ public class Device implements AutoCloseable {
 
     private static native void nUnmap(long device, int buffer);
 
+    public synchronized void destroyHeap(int heap) {
+        nDestroyHeap(handle, heap);
+    }
+
+    private static native void nDestroyHeap(long device, int heap);
+
+    public synchronized int createPlacedBuffer(int heap, long offset, long size) {
+        return nCreatePlacedBuffer(handle, heap, offset, size);
+    }
+
+    private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
+
+    public synchronized int createPlacedTexture(int heap, long offset, TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = nmemAlloc(info.encodedSize());
+            info.encode(infoAddress);
+            try {
+                return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
+        }
+    }
+
+    private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
+
     public synchronized Budget memoryBudget() {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, Budget.SIZE);

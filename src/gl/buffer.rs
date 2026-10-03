@@ -71,6 +71,40 @@ impl Buffer {
         }
     }
 
+    pub fn placed(
+        gl: &glow::Context,
+        extra: &Extra,
+        (memory, offset): (u32, u64),
+        size: u64,
+    ) -> Result<Self, String> {
+        let place = extra.memory.as_ref().unwrap().buffer;
+        let target = glow::COPY_WRITE_BUFFER;
+        unsafe {
+            let host = drain(gl);
+            let raw = gl.create_buffer()?;
+            let old = buffer(gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
+            gl.bind_buffer(target, Some(raw));
+            place(target, size as isize, memory, offset);
+            gl.bind_buffer(target, old);
+            let error = drain(gl).first().copied();
+            if error.is_some() {
+                gl.delete_buffer(raw);
+            }
+            raise(gl, extra, &host);
+            if let Some(e) = error {
+                return Err(format!("placing {size} bytes at {offset} failed ({e:#x})"));
+            }
+            Ok(Self {
+                raw,
+                size,
+                memory: memory::DEVICE,
+                data: Cell::new(std::ptr::null_mut()),
+                persistent: false,
+                own: true,
+            })
+        }
+    }
+
     pub fn pinned(
         gl: &glow::Context,
         extra: &Extra,

@@ -10,7 +10,6 @@ pub struct Table {
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub accels: Entries<(u64, u64)>,
@@ -41,7 +40,6 @@ impl Default for Table {
             states: Entries::new("depth state"),
             queries: Entries::new("query heap"),
             events: Entries::new("event"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
             heaps: Entries::new("heap"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
             accels: Entries::new("acceleration structure"),

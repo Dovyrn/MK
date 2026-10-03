@@ -32,12 +32,6 @@ public class MtlDevice extends Device {
 
     private static native int nCreateHeap(long device, long size, int memory);
 
-    public synchronized void destroyHeap(int heap) {
-        nDestroyHeap(handle, heap);
-    }
-
-    private static native void nDestroyHeap(long device, int heap);
-
     public synchronized long[] bufferSize(long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, 16);
@@ -63,26 +57,6 @@ public class MtlDevice extends Device {
     }
 
     private static native void nTextureSize(long device, long info, int infoLength, long out);
-
-    public synchronized int createPlacedBuffer(int heap, long offset, long size) {
-        return nCreatePlacedBuffer(handle, heap, offset, size);
-    }
-
-    private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
-
-    public synchronized int createPlacedTexture(int heap, long offset, TextureInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
-            info.encode(infoAddress);
-            try {
-                return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
-        }
-    }
-
-    private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
     public synchronized long textureHandle(int texture) {
         return nTextureHandle(handle, texture);

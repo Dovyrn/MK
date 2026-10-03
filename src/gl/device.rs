@@ -1,5 +1,6 @@
 mod budget;
 mod copies;
+mod heaps;
 mod host;
 
 use crate::caps;
@@ -181,6 +182,7 @@ impl Device {
                 } else {
                     4096
                 },
+                shared_memory: extra.memory.is_some(),
                 views: if extra.multiview.is_some() {
                     int(MAX_VIEWS) as u32
                 } else {
@@ -468,7 +470,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
         let storage = self.has(42, "GL_ARB_texture_storage");
-        let texture = Texture::new(&self.gl, &self.extra, info, storage)?;
+        let texture = Texture::new(&self.gl, &self.extra, info, storage, None)?;
         let id = self.res.textures.insert(texture);
         self.res.table.textures.set(id, *info);
         Ok(id)
@@ -791,6 +793,11 @@ impl Drop for Device {
             }
             for t in self.res.textures.drain() {
                 t.delete(gl);
+            }
+            if let Some(m) = &self.extra.memory {
+                for h in self.res.heaps.drain() {
+                    (m.delete)(1, &h);
+                }
             }
             for s in self.res.samplers.drain() {
                 sampler::delete(gl, s);

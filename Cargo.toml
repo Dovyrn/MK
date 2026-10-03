@@ -34,6 +34,7 @@ glow = { version = "0.17", optional = true }
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
+ash = "0.38"
 khronos-egl = { version = "6", features = ["dynamic"] }
 
 [build-dependencies]

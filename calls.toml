@@ -52,7 +52,6 @@ fails = true
 
 [[call]]
 name = "destroy_heap"
-backend = "vk mtl"
 params = [["heap", "u32"]]
 
 [[call]]
@@ -69,14 +68,12 @@ result = "pair"
 
 [[call]]
 name = "create_placed_buffer"
-backend = "vk mtl"
 params = [["heap", "u32"], ["offset", "u64"], ["size", "u64"]]
 result = "u32"
 fails = true
 
 [[call]]
 name = "create_placed_texture"
-backend = "vk mtl"
 params = [["heap", "u32"], ["offset", "u64"], ["info", "TextureInfo"]]
 result = "u32"
 fails = true
@@ -478,7 +475,7 @@ fails = true
 
 [[call]]
 name = "import_heap"
-backend = "vk"
+backend = "vk gl"
 params = [["fd", "i32"], ["size", "u64"], ["memory", "u32"]]
 result = "u32"
 fails = true
