@@ -39,9 +39,12 @@ pub struct Recorder<'a> {
     pass: Retained<MTL4RenderPassDescriptor>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     views: u32,
+    amplify: u32,
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
-    state: Vec<&'a [u8]>,
+    state: Vec<(u64, &'a [u8])>,
+    binds: Vec<(u64, &'a [u8])>,
+    local: Vec<(u64, &'a [u8])>,
     width: u32,
     height: u32,
     primitive: MTLPrimitiveType,
@@ -172,6 +175,11 @@ fn store(s: u32, resolve: bool) -> MTLStoreAction {
     }
 }
 
+fn keep<'a>(list: &mut Vec<(u64, &'a [u8])>, key: u64, bytes: &'a [u8]) {
+    list.retain(|&(k, _)| k != key);
+    list.push((key, bytes));
+}
+
 impl<'a> Recorder<'a> {
     pub fn new(
         device: &'a ProtocolObject<dyn MTLDevice>,
@@ -196,9 +204,12 @@ impl<'a> Recorder<'a> {
             pass: MTL4RenderPassDescriptor::new(),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             views: 0,
+            amplify: 0,
             compute_pipeline: None,
             render_pipeline: None,
             state: Vec::new(),
+            binds: Vec::new(),
+            local: Vec::new(),
             width: 0,
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
@@ -265,11 +276,58 @@ impl<'a> Recorder<'a> {
         Ok(())
     }
 
+    fn setup(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
+        let all = MTLRenderStages::Vertex
+            | MTLRenderStages::Fragment
+            | MTLRenderStages::Tile
+            | MTLRenderStages::Object
+            | MTLRenderStages::Mesh;
+        encoder.setArgumentTable_atStages(self.table, all);
+        encoder.setFrontFacingWinding(MTLWinding::CounterClockwise);
+        if self.amplify > 1 {
+            let mappings: Vec<_> = (0..self.amplify)
+                .map(|i| MTLVertexAmplificationViewMapping {
+                    viewportArrayIndexOffset: 0,
+                    renderTargetArrayIndexOffset: i,
+                })
+                .collect();
+            unsafe {
+                encoder.setVertexAmplificationCount_viewMappings(
+                    self.amplify as usize,
+                    mappings.as_ptr(),
+                )
+            };
+        }
+    }
+
+    fn restore(&mut self) -> Result<(), &'static str> {
+        for i in 0..self.binds.len() {
+            let mut bytes = self.binds[i].1;
+            self.step(Command::read(&mut bytes)?)?;
+        }
+        self.dirty = self.size > 0;
+        if let Some(e) = &self.compute {
+            e.setArgumentTable(Some(self.table));
+            if let Some(p) = self.compute_pipeline {
+                e.setComputePipelineState(&p.state);
+            }
+        }
+        if let Some(e) = &self.render {
+            self.setup(e);
+            self.stale = true;
+            for i in 0..self.local.len() {
+                let mut bytes = self.local[i].1;
+                self.step(Command::read(&mut bytes)?)?;
+            }
+        }
+        Ok(())
+    }
+
     fn prepare(&mut self) -> Result<(), &'static str> {
         if self.stale && self.render.is_some() {
             self.stale = false;
             for i in 0..self.state.len() {
-                let mut bytes = self.state[i];
+                let mut bytes = self.state[i].1;
                 self.step(Command::read(&mut bytes)?)?;
             }
         }
@@ -280,21 +338,36 @@ impl<'a> Recorder<'a> {
         while !bytes.is_empty() {
             let at = bytes;
             let command = Command::read(&mut bytes)?;
-            if matches!(
-                command,
+            let kept = &at[..at.len() - bytes.len()];
+            let op = u16::from_le_bytes([kept[0], kept[1]]) as u64;
+            match command {
                 Command::BindRenderPipeline { .. }
-                    | Command::SetCull { .. }
-                    | Command::SetFace { .. }
-                    | Command::SetTopology { .. }
-                    | Command::SetDepthState { .. }
-                    | Command::SetStencilReference { .. }
-                    | Command::SetDepthBias { .. }
-                    | Command::SetBlendColor { .. }
-                    | Command::SetDepthBounds { .. }
-            ) {
-                let kept = &at[..at.len() - bytes.len()];
-                self.state.retain(|s| s[..2] != kept[..2]);
-                self.state.push(kept);
+                | Command::SetCull { .. }
+                | Command::SetFace { .. }
+                | Command::SetTopology { .. }
+                | Command::SetDepthState { .. }
+                | Command::SetStencilReference { .. }
+                | Command::SetDepthBias { .. }
+                | Command::SetBlendColor { .. }
+                | Command::SetDepthBounds { .. } => keep(&mut self.state, op, kept),
+                Command::BindUniform { slot, .. }
+                | Command::BindStorage { slot, .. }
+                | Command::BindTexture { slot, .. }
+                | Command::BindImage { slot, .. }
+                | Command::BindSampler { slot, .. }
+                | Command::BindVertexBuffer { slot, .. } => {
+                    keep(&mut self.binds, op << 32 | slot as u64, kept)
+                }
+                Command::TileMemory { index, .. } => {
+                    keep(&mut self.local, op << 32 | index as u64, kept)
+                }
+                Command::SetViewport { .. }
+                | Command::SetViewports { .. }
+                | Command::SetScissor { .. }
+                | Command::SetScissors { .. }
+                | Command::BeginQuery { .. }
+                | Command::EndQuery { .. } => keep(&mut self.local, op, kept),
+                _ => {}
             }
             self.step(command)?;
         }
@@ -599,34 +672,15 @@ impl<'a> Recorder<'a> {
             } => {
                 self.pass.setRenderTargetWidth(width as usize);
                 self.pass.setRenderTargetHeight(height as usize);
+                self.amplify = std::mem::take(&mut self.views);
                 self.pass
-                    .setRenderTargetArrayLength(layers.max(self.views) as usize);
+                    .setRenderTargetArrayLength(layers.max(self.amplify) as usize);
                 let encoder = self
                     .buffer
                     .renderCommandEncoderWithDescriptor(&self.pass)
                     .ok_or("render encoder allocation failed")?;
-                let all = MTLRenderStages::Vertex
-                    | MTLRenderStages::Fragment
-                    | MTLRenderStages::Tile
-                    | MTLRenderStages::Object
-                    | MTLRenderStages::Mesh;
-                encoder.setArgumentTable_atStages(self.table, all);
-                encoder.setFrontFacingWinding(MTLWinding::CounterClockwise);
-                if self.views > 1 {
-                    let mappings: Vec<_> = (0..self.views)
-                        .map(|i| MTLVertexAmplificationViewMapping {
-                            viewportArrayIndexOffset: 0,
-                            renderTargetArrayIndexOffset: i,
-                        })
-                        .collect();
-                    unsafe {
-                        encoder.setVertexAmplificationCount_viewMappings(
-                            self.views as usize,
-                            mappings.as_ptr(),
-                        )
-                    };
-                    self.views = 0;
-                }
+                self.setup(&encoder);
+                self.local.clear();
                 self.opened(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
                 self.pass = MTL4RenderPassDescriptor::new();
@@ -1033,7 +1087,8 @@ impl<'a> Recorder<'a> {
                     table: self.table,
                     compute: self.compute.as_deref(),
                     render: self.render.as_deref(),
-                })
+                });
+                self.restore()?;
             }
             Command::ExecuteIndirect {
                 indirect,
