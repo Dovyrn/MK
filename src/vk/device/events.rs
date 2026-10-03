@@ -5,6 +5,7 @@ use ash::vk;
 
 impl Device {
     pub fn raw_event(&self, event: u32) -> vk::Semaphore {
+        self.res.table.events.get(event);
         self.res.events.get(event).raw
     }
 
@@ -32,6 +33,7 @@ impl Device {
     }
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
+        self.res.table.events.get(event);
         self.collect();
         unsafe {
             self.raw
@@ -41,6 +43,7 @@ impl Device {
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
+        self.res.table.events.get(event);
         self.collect();
         let semaphores = [self.res.events.get(event).raw];
         let values = [value];

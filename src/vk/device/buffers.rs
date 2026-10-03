@@ -136,17 +136,21 @@ impl Device {
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> vk::Buffer {
+        self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer).raw
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
+        self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "map of an imported buffer");
         assert!(!b.device, "map of a device buffer");
         b.data
     }
 
-    pub fn unmap(&self, _buffer: u32) {}
+    pub fn unmap(&self, buffer: u32) {
+        self.res.table.buffers.get(buffer);
+    }
 
     pub(super) fn insert_buffer(&mut self, buffer: Buffer, size: u64) -> u32 {
         let info = vk::DescriptorBufferInfo::default()
@@ -169,6 +173,7 @@ impl Device {
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
+        self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "imported buffers have no address on Vulkan");
         b.address

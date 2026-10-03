@@ -23,6 +23,7 @@ impl Device {
     }
 
     pub fn export_heap(&self, heap: u32) -> Result<i32, String> {
+        self.res.table.heaps.get(heap);
         let fd = self.ext.fd.as_ref().ok_or(FD)?;
         let info = vk::MemoryGetFdInfoKHR::default()
             .memory(self.res.heaps.get(heap).memory)
@@ -140,6 +141,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
+        self.res.table.heaps.get(heap);
         self.caps.buffer(size, memory::DEVICE)?;
         let h = self.res.heaps.get(heap);
         unsafe {
@@ -193,6 +195,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.res.table.heaps.get(heap);
         self.texture(info)?;
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory, h.index);

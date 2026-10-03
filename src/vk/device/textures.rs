@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 impl Device {
     pub fn raw_texture(&self, texture: u32) -> (vk::Image, vk::ImageView) {
+        self.res.table.textures.get(texture);
         let t = self.res.textures.get(texture);
         (t.image, t.view)
     }
@@ -159,10 +160,12 @@ impl Device {
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
+        self.res.table.textures.get(texture);
         Bindless::texture(texture) as u64
     }
 
     pub fn image_handle(&self, texture: u32) -> u64 {
+        self.res.table.textures.get(texture);
         Bindless::image(texture) as u64
     }
 }

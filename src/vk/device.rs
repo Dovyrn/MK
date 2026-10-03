@@ -373,6 +373,8 @@ impl Device {
     }
 
     pub fn raw_queue(&self, queue: usize) -> vk::Queue {
+        let count = self.queues.len();
+        assert!(queue < count, "queue {queue} is outside 0..{count}");
         self.queues[queue].raw
     }
 

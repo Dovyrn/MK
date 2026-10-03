@@ -166,10 +166,12 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.res.table.buffers.get(buffer);
         let page = self.sparse_page()?;
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {
+            self.res.table.heaps.get(heap);
             self.res.heaps.get(heap).memory
         };
         let binds: Vec<_> = ranges
@@ -197,10 +199,12 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.res.table.textures.get(texture);
         let page = self.sparse_page()?;
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {
+            self.res.table.heaps.get(heap);
             self.res.heaps.get(heap).memory
         };
         let t = self.res.textures.get(texture);

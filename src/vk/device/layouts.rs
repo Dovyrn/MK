@@ -78,10 +78,13 @@ impl Device {
     }
 
     pub fn generated_size(&self, layout: u32, pipeline: u32, sequences: u32, draws: u32) -> u64 {
+        self.res.table.layouts.get(layout);
         let (handle, stages) = *self.res.layouts.get(layout);
         let pipeline = if stages == vk::ShaderStageFlags::COMPUTE {
+            self.res.table.pipelines.get(pipeline);
             *self.res.pipelines.get(pipeline)
         } else {
+            self.res.table.renders.get(pipeline);
             self.res.renders.get(pipeline).0
         };
         let mut bound = ffi::PipelineInfo {

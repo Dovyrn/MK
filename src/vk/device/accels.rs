@@ -17,7 +17,7 @@ impl Device {
             for b in info.boxes {
                 let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::default()
                     .data(vk::DeviceOrHostAddressConstKHR {
-                        device_address: self.res.buffers.get(b.buffer).address + b.offset,
+                        device_address: self.address(b.buffer) + b.offset,
                     })
                     .stride(b.stride as u64);
                 geometry.push(
@@ -42,8 +42,7 @@ impl Device {
         } else if info.triangles.is_empty() {
             let instances = vk::AccelerationStructureGeometryInstancesDataKHR::default().data(
                 vk::DeviceOrHostAddressConstKHR {
-                    device_address: self.res.buffers.get(info.instances).address
-                        + info.instance_offset,
+                    device_address: self.address(info.instances) + info.instance_offset,
                 },
             );
             let geometry = vk::AccelerationStructureGeometryKHR::default()
@@ -61,7 +60,7 @@ impl Device {
             let mut ranges = Vec::new();
             for t in info.triangles {
                 let address = |b: u32, o: u64| vk::DeviceOrHostAddressConstKHR {
-                    device_address: self.res.buffers.get(b).address + o,
+                    device_address: self.address(b) + o,
                 };
                 let mut triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                     .vertex_format(format::vk(t.format))
@@ -132,6 +131,7 @@ impl Device {
             .accel
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
+        self.res.table.accels.get(accel);
         let source = self.res.accels.get(accel);
         let accel = self.new_accel(ray, size, source.kind, source.flags)?;
         let id = self.res.accels.insert(accel);
@@ -182,11 +182,13 @@ impl Device {
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
+        self.res.table.accels.get(accel);
         let a = self.res.accels.get(accel);
         (a.build, a.update)
     }
 
     pub fn accel_handle(&self, accel: u32) -> u64 {
+        self.res.table.accels.get(accel);
         self.res.accels.get(accel).address
     }
 
