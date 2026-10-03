@@ -15,7 +15,11 @@ impl Device {
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         self.texture(info)?;
-        let create = self.share_image(image_info(info));
+        let mut create = self.share_image(image_info(info));
+        let host = self.host_usage(info, &create);
+        if host {
+            create.usage |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+        }
         let image = unsafe { self.raw.create_image(&create, None) }.map_err(|e| e.to_string())?;
         let destroy = || unsafe { self.raw.destroy_image(image, None) };
         let needs = unsafe { self.raw.get_image_memory_requirements(image) };
@@ -32,8 +36,9 @@ impl Device {
             })
             .inspect_err(|_| destroy())?;
         let id = self.register(image, Some(Rc::new(memory)), &whole(info))?;
+        self.res.textures.get_mut(id).host = host;
         self.res.table.textures.set(id, *info);
-        Ok(id)
+        self.prepare(id)
     }
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
@@ -49,7 +54,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         supports(info.format, info.usage, 1, usable, counts)?;
         let t = self.res.textures.get(texture);
-        let (image, owner, heap) = (t.image, t.owner.clone(), t.heap.clone());
+        let (image, owner, heap, host) = (t.image, t.owner.clone(), t.heap.clone(), t.host);
         let view = ViewInfo {
             base_mip: t.base_mip + info.base_mip,
             mips: count(info.mips, info.base_mip, t.mips),
@@ -59,7 +64,9 @@ impl Device {
             ..*info
         };
         let id = self.register(image, owner, &view)?;
-        self.res.textures.get_mut(id).heap = heap;
+        let t = self.res.textures.get_mut(id);
+        t.heap = heap;
+        t.host = host;
         self.res.table.view(id, texture, info);
         Ok(id)
     }
@@ -126,6 +133,7 @@ impl Device {
             base_layer: info.base_layer,
             layers: info.layers,
             tile: vk::Extent3D::default(),
+            host: false,
         };
         let mut views = || -> Result<(), vk::Result> {
             if !bits.is_empty() {

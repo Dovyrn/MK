@@ -1,3 +1,4 @@
+mod copies;
 mod host;
 
 use crate::caps;
@@ -466,7 +467,7 @@ impl Device {
         let base = usage::SAMPLED | if views { usage::VIEW } else { 0 };
         let copies = usage::COPY_SRC | usage::COPY_DST;
         match kind {
-            0 => base | usage::COPY_DST,
+            0 => base | usage::COPY_DST | usage::HOST,
             glow::DEPTH_STENCIL if format == format::D24_UNORM_S8 => base | usage::DEPTH,
             glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
                 base | usage::DEPTH | copies
@@ -495,7 +496,7 @@ impl Device {
                         | format::RGB32_SINT
                         | format::RGB32_FLOAT
                 );
-                let mut u = base | usage::COPY_DST;
+                let mut u = base | usage::COPY_DST | usage::HOST;
                 if !unrenderable {
                     u |= usage::COLOR | usage::COPY_SRC;
                 }

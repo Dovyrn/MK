@@ -1,5 +1,5 @@
 use crate::entries::Entries;
-use crate::{TextureInfo, ViewInfo, dimension, format, usage};
+use crate::{HostCopy, TextureInfo, ViewInfo, dimension, format, layout, usage};
 
 pub struct Table {
     pub buffers: Entries<u64>,
@@ -153,6 +153,78 @@ impl Table {
                 ..t
             },
         );
+    }
+
+    pub fn host(&self, c: &HostCopy, size: usize) -> (u64, u64) {
+        let texture = c.texture;
+        let t = self.textures.get(texture);
+        assert!(
+            t.usage & usage::HOST != 0,
+            "texture {texture} has no usage::HOST"
+        );
+        assert!(
+            t.samples == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&t.format),
+            "host copies need a single-sampled color texture, not texture {texture}"
+        );
+        assert!(
+            layout::valid(c.layout) && c.layout != layout::UNDEFINED,
+            "host copy layout {} is not a defined layout",
+            c.layout
+        );
+        let (w, h, d) = (c.width, c.height, c.depth);
+        assert!(
+            w > 0 && h > 0 && d > 0,
+            "host copy region {w}x{h}x{d} has a zero"
+        );
+        assert!(
+            c.mip < t.mips && c.layer < t.layers,
+            "mip {} layer {} is outside {} mips and {} layers of texture {texture}",
+            c.mip,
+            c.layer,
+            t.mips,
+            t.layers
+        );
+        let sizes = [t.width, t.height, t.depth].map(|n| (n >> c.mip).max(1));
+        let [_, bw, bh] = format::block(t.format);
+        let fits = |at: u32, n: u32, end: u32| at as u64 + n as u64 <= end as u64;
+        let edge = |at: u32, n: u32, end: u32, b: u32| {
+            at.is_multiple_of(b) && (n.is_multiple_of(b) || at + n == end)
+        };
+        assert!(
+            fits(c.x, w, sizes[0]) && fits(c.y, h, sizes[1]) && fits(c.z, d, sizes[2]),
+            "region {},{},{} {w}x{h}x{d} is outside mip {} of texture {texture} ({}x{}x{})",
+            c.x,
+            c.y,
+            c.z,
+            c.mip,
+            sizes[0],
+            sizes[1],
+            sizes[2]
+        );
+        assert!(
+            edge(c.x, w, sizes[0], bw) && edge(c.y, h, sizes[1], bh),
+            "region {},{} {w}x{h} is not aligned to the {bw}x{bh} blocks of texture {texture}",
+            c.x,
+            c.y
+        );
+        let row = if c.row_length == 0 { w } else { c.row_length };
+        let rows = if c.row_count == 0 { h } else { c.row_count };
+        assert!(
+            row >= w && (row.is_multiple_of(bw) || row == w),
+            "row length {row} is below width {w} or not a multiple of block width {bw}"
+        );
+        assert!(
+            rows >= h && (rows.is_multiple_of(bh) || rows == h),
+            "row count {rows} is below height {h} or not a multiple of block height {bh}"
+        );
+        let pitch = row.div_ceil(bw) as u64 * format::block(t.format)[0] as u64;
+        let image = pitch * rows.div_ceil(bh) as u64;
+        assert!(
+            size as u64 >= image * d as u64,
+            "host copy needs {} bytes, not {size}",
+            image * d as u64
+        );
+        (pitch, image)
     }
 
     pub fn submit(&self, queue: usize, waits: &[(u32, u64)], signals: &[(u32, u64)]) {

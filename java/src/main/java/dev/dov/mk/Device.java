@@ -156,6 +156,34 @@ public class Device implements AutoCloseable {
 
     private static native int nCreateTexture(long device, long info, int infoLength);
 
+    public synchronized void writeTexture(HostCopy copy, long data, long dataSize) {
+        try (var stack = MemoryStack.stackPush()) {
+            var copyAddress = nmemAlloc(copy.encodedSize());
+            copy.encode(copyAddress);
+            try {
+                nWriteTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
+            } finally {
+                nmemFree(copyAddress);
+            }
+        }
+    }
+
+    private static native void nWriteTexture(long device, long copy, int copyLength, long data, long dataLength);
+
+    public synchronized void readTexture(HostCopy copy, long data, long dataSize) {
+        try (var stack = MemoryStack.stackPush()) {
+            var copyAddress = nmemAlloc(copy.encodedSize());
+            copy.encode(copyAddress);
+            try {
+                nReadTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
+            } finally {
+                nmemFree(copyAddress);
+            }
+        }
+    }
+
+    private static native void nReadTexture(long device, long copy, int copyLength, long data, long dataLength);
+
     public synchronized int formatUsage(int format) {
         return nFormatUsage(handle, format);
     }

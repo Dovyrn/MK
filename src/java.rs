@@ -37,7 +37,6 @@ pub fn bytes<'a>(address: jlong, length: i64) -> &'a [u8] {
     unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) }
 }
 
-#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn bytes_mut<'a>(address: jlong, length: i64) -> &'a mut [u8] {
     assert!(
         length >= 0 && address != 0,

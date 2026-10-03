@@ -1,6 +1,7 @@
 mod accels;
 mod buffers;
 mod caps;
+mod copies;
 mod events;
 mod heaps;
 mod layouts;
@@ -56,6 +57,10 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
         (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
         (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
         (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
+        (
+            usage::HOST,
+            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
+        ),
     ];
     let mut bits = vk::ImageUsageFlags::empty();
     for (u, f) in map {
@@ -142,7 +147,7 @@ impl Device {
                 "queue {i} of family {f} is not on this device"
             );
         }
-        let ext = unsafe { Extensions::new(&instance, &raw, features) }?;
+        let ext = unsafe { Extensions::new(&instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
         let range = vk::PushConstantRange::default()

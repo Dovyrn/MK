@@ -92,7 +92,12 @@ impl Device {
         if usage == 0 {
             return 0;
         }
-        usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW
+        let host = if (format::D16_UNORM..=format::S8_UINT).contains(&format) {
+            0
+        } else {
+            usage::HOST
+        };
+        usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW | host
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {

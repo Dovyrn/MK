@@ -1,6 +1,8 @@
 use crate::vk::ffi;
 use crate::vk::generated::Generated;
-use ash::ext::{conditional_rendering, debug_utils, external_memory_host, mesh_shader};
+use ash::ext::{
+    conditional_rendering, debug_utils, external_memory_host, host_image_copy, mesh_shader,
+};
 use ash::khr::push_descriptor;
 use ash::khr::{
     acceleration_structure, external_memory_fd, fragment_shading_rate, ray_tracing_pipeline,
@@ -23,6 +25,8 @@ pub struct Extensions {
     pub count: bool,
     pub buffers: bool,
     pub push: Option<push_descriptor::Device>,
+    pub copy: Option<host_image_copy::Device>,
+    pub layouts: Vec<vk::ImageLayout>,
 }
 
 unsafe fn chained<'a, T: vk::TaggedStructure>(
@@ -41,6 +45,7 @@ unsafe fn chained<'a, T: vk::TaggedStructure>(
 impl Extensions {
     pub unsafe fn new(
         instance: &ash::Instance,
+        physical: vk::PhysicalDevice,
         raw: &ash::Device,
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
@@ -131,6 +136,31 @@ impl Extensions {
                     .is_some_and(|f| f.multiview != 0);
             let buffers =
                 v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
+            let copy = chained::<vk::PhysicalDeviceHostImageCopyFeaturesEXT>(features)
+                .is_some_and(|f| f.host_image_copy != 0)
+                && has(c"vkCopyMemoryToImageEXT");
+            let layouts = if copy {
+                let mut counts = vk::PhysicalDeviceHostImageCopyPropertiesEXT::default();
+                let mut properties =
+                    vk::PhysicalDeviceProperties2::default().push_next(&mut counts);
+                instance.get_physical_device_properties2(physical, &mut properties);
+                let mut src =
+                    vec![vk::ImageLayout::UNDEFINED; counts.copy_src_layout_count as usize];
+                let mut dst =
+                    vec![vk::ImageLayout::UNDEFINED; counts.copy_dst_layout_count as usize];
+                let mut lists = vk::PhysicalDeviceHostImageCopyPropertiesEXT::default()
+                    .copy_src_layouts(&mut src)
+                    .copy_dst_layouts(&mut dst);
+                let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut lists);
+                instance.get_physical_device_properties2(physical, &mut properties);
+                src.into_iter().filter(|l| dst.contains(l)).collect()
+            } else {
+                Vec::new()
+            };
+            let copy = layouts
+                .contains(&vk::ImageLayout::GENERAL)
+                .then(|| host_image_copy::Device::new(instance, raw));
+
             Ok(Self {
                 debug,
                 mesh,
@@ -147,6 +177,8 @@ impl Extensions {
                 count: v12.is_some_and(|f| f.draw_indirect_count != 0),
                 buffers,
                 push,
+                copy,
+                layouts,
             })
         }
     }

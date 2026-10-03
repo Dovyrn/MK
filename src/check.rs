@@ -157,8 +157,13 @@ impl<'a> Check<'a> {
 
     fn texture(&self, texture: u32, needs: u32, what: &str) -> &TextureInfo {
         let t = self.table.textures.get(texture);
+        let copies = if t.usage & usage::HOST != 0 {
+            usage::COPY_SRC | usage::COPY_DST
+        } else {
+            0
+        };
         assert!(
-            t.usage & needs != 0,
+            (t.usage | copies) & needs != 0,
             "texture {texture} has no usage::{what}"
         );
         t

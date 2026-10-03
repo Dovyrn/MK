@@ -110,7 +110,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
     flags
 }
 
-fn layout(l: u32) -> vk::ImageLayout {
+pub fn layout(l: u32) -> vk::ImageLayout {
     match l {
         layout::UNDEFINED => vk::ImageLayout::UNDEFINED,
         layout::GENERAL => vk::ImageLayout::GENERAL,

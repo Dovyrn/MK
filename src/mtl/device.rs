@@ -2,6 +2,7 @@ mod accels;
 mod buffers;
 mod cache;
 mod caps;
+mod copies;
 mod events;
 mod heaps;
 mod indirect;

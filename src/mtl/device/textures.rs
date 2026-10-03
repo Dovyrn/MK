@@ -5,13 +5,16 @@ use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
-use objc2_metal::{MTLDevice, MTLTexture, MTLTextureType, MTLTextureUsage};
+use objc2_metal::{MTLDevice, MTLStorageMode, MTLTexture, MTLTextureType, MTLTextureUsage};
 
 impl Device {
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
+            if info.usage & usage::HOST != 0 && self.raw.hasUnifiedMemory() {
+                desc.setStorageMode(MTLStorageMode::Shared);
+            }
             let raw = self
                 .raw
                 .newTextureWithDescriptor(&desc)
@@ -53,6 +56,10 @@ impl Device {
             };
             let flags = raw.usage();
             let mut usage = usage::COPY_SRC | usage::COPY_DST;
+            let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
+            if !depth && raw.sampleCount() == 1 {
+                usage |= usage::HOST;
+            }
             if flags.contains(MTLTextureUsage::ShaderRead) {
                 usage |= usage::SAMPLED;
             }
@@ -60,11 +67,7 @@ impl Device {
                 usage |= usage::STORAGE;
             }
             if flags.contains(MTLTextureUsage::RenderTarget) {
-                usage |= if (format::D16_UNORM..=format::S8_UINT).contains(&format) {
-                    usage::DEPTH
-                } else {
-                    usage::COLOR
-                };
+                usage |= if depth { usage::DEPTH } else { usage::COLOR };
             }
             if flags.contains(MTLTextureUsage::PixelFormatView) {
                 usage |= usage::VIEW;

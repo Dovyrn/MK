@@ -48,7 +48,7 @@ const ENABLES: [u32; 30] = [
     glow::CLIP_DISTANCE7,
 ];
 
-const PIXELS: [u32; 16] = [
+pub const PIXELS: [u32; 16] = [
     glow::UNPACK_ALIGNMENT,
     glow::UNPACK_ROW_LENGTH,
     glow::UNPACK_IMAGE_HEIGHT,
@@ -67,7 +67,7 @@ const PIXELS: [u32; 16] = [
     glow::PACK_LSB_FIRST,
 ];
 
-const BLOCKS: [u32; 8] = [
+pub const BLOCKS: [u32; 8] = [
     glow::UNPACK_COMPRESSED_BLOCK_WIDTH,
     glow::UNPACK_COMPRESSED_BLOCK_HEIGHT,
     glow::UNPACK_COMPRESSED_BLOCK_DEPTH,

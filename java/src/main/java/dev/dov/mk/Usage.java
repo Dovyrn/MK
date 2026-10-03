@@ -8,4 +8,5 @@ public interface Usage {
     int COPY_SRC = 16;
     int COPY_DST = 32;
     int VIEW = 64;
+    int HOST = 128;
 }

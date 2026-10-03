@@ -156,6 +156,10 @@ impl Caps {
         if info.dimension == dimension::CUBE {
             assert!(l == 6, "a cube texture has 6 layers");
         }
+        assert!(
+            info.usage & usage::HOST == 0 || info.samples == 1,
+            "a usage::HOST texture has one sample"
+        );
         if info.samples > 1 {
             assert!(
                 matches!(info.dimension, dimension::D2 | dimension::D2_ARRAY) && info.mips == 1,

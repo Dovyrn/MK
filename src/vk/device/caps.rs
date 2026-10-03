@@ -2,6 +2,7 @@ use super::{Device, image_usage};
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
+use crate::vk::texture::aspect;
 use crate::{Caps, TextureInfo, format, usage};
 use ash::vk;
 
@@ -155,6 +156,14 @@ impl Device {
             ),
             (vk::FormatFeatureFlags::TRANSFER_SRC, usage::COPY_SRC),
             (vk::FormatFeatureFlags::TRANSFER_DST, usage::COPY_DST),
+            (
+                vk::FormatFeatureFlags::TRANSFER_SRC | vk::FormatFeatureFlags::TRANSFER_DST,
+                if aspect(format) == vk::ImageAspectFlags::COLOR {
+                    usage::HOST
+                } else {
+                    0
+                },
+            ),
         ]
         .into_iter()
         .filter(|(f, _)| features.contains(*f))

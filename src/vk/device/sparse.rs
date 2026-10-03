@@ -115,7 +115,7 @@ impl Device {
             height,
             depth,
         };
-        Ok(slot)
+        self.prepare(slot)
     }
 
     fn bind_sparse(

@@ -341,6 +341,23 @@ fields = [
 ]
 
 [[info]]
+name = "HostCopy"
+fields = [
+    ["texture", "u32", "0"],
+    ["layout", "u32", "layout::GENERAL"],
+    ["mip", "u32", "0"],
+    ["layer", "u32", "0"],
+    ["x", "u32", "0"],
+    ["y", "u32", "0"],
+    ["z", "u32", "0"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+    ["row_length", "u32", "0"],
+    ["row_count", "u32", "0"],
+]
+
+[[info]]
 name = "ColorAttachment"
 fields = [
     ["index", "u32", "0"],

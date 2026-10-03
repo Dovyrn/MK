@@ -118,6 +118,16 @@ result = "u32"
 fails = true
 
 [[call]]
+name = "write_texture"
+params = [["copy", "HostCopy"], ["data", "bytes"]]
+fails = true
+
+[[call]]
+name = "read_texture"
+params = [["copy", "HostCopy"], ["data", "mutbytes"]]
+fails = true
+
+[[call]]
 name = "format_usage"
 params = [["format", "u32"]]
 result = "u32"

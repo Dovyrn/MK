@@ -1,5 +1,6 @@
 use mk::ash::ext::{
-    conditional_rendering, debug_utils, external_memory_host, mesh_shader, mutable_descriptor_type,
+    conditional_rendering, debug_utils, external_memory_host, host_image_copy, mesh_shader,
+    mutable_descriptor_type,
 };
 use mk::ash::khr::{
     acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
@@ -177,6 +178,14 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if has(&available, external_memory_host::NAME) {
             extensions.push(external_memory_host::NAME.as_ptr());
         }
+        let mut supported_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_copy);
+        instance.get_physical_device_features2(physical, &mut query);
+        let copies = has(&available, host_image_copy::NAME) && supported_copy.host_image_copy != 0;
+        let mut copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default().host_image_copy(true);
+        if copies {
+            extensions.push(host_image_copy::NAME.as_ptr());
+        }
         let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
         instance.get_physical_device_features2(physical, &mut query);
@@ -310,6 +319,9 @@ pub fn try_device(queues: usize) -> Option<Host> {
         }
         if conditional {
             info = info.push_next(&mut conditions);
+        }
+        if copies {
+            info = info.push_next(&mut copy);
         }
         if generated {
             info = info.push_next(&mut maintenance);
