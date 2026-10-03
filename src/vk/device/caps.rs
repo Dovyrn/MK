@@ -3,7 +3,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, TextureInfo, format, usage};
+use crate::{Caps, Matrix, TextureInfo, format, usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -124,6 +124,7 @@ pub(super) fn probe(
         slots: ext.push.is_some(),
         storage: ext.push.is_some(),
         persistent: true,
+        matrices: ext.matrices.len() as u32,
         bind_alignment: limits
             .min_uniform_buffer_offset_alignment
             .max(limits.min_storage_buffer_offset_alignment) as u32,
@@ -133,6 +134,10 @@ pub(super) fn probe(
 impl Device {
     pub fn caps(&self) -> Caps {
         self.caps
+    }
+
+    pub fn matrix(&self, index: u32) -> Matrix {
+        self.ext.matrices[self.caps.matrix(index)]
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {

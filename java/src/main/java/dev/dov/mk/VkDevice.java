@@ -16,6 +16,16 @@ public class VkDevice extends Device {
 
     private static native long nAddress(long device, int buffer);
 
+    public synchronized Matrix matrix(int index) {
+        try (var stack = MemoryStack.stackPush()) {
+            var out = stack.nmalloc(8, Matrix.SIZE);
+            nMatrix(handle, index, out);
+            return Matrix.decode(out);
+        }
+    }
+
+    private static native void nMatrix(long device, int index, long out);
+
     public synchronized int createHeap(long size, int memory) {
         return nCreateHeap(handle, size, memory);
     }

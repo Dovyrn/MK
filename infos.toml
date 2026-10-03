@@ -230,6 +230,7 @@ fields = [
     ["mirror_clamp", "bool", "false"],
     ["budget", "bool", "false"],
     ["host_read", "bool", "false"],
+    ["matrices", "u32", "0"],
 ]
 
 [[info]]
@@ -453,4 +454,16 @@ fields = [
     ["width", "u32", "1"],
     ["height", "u32", "1"],
     ["depth", "u32", "1"],
+]
+
+[[info]]
+name = "Matrix"
+fields = [
+    ["m", "u32", "0"],
+    ["n", "u32", "0"],
+    ["k", "u32", "0"],
+    ["a", "u32", "element::F16"],
+    ["b", "u32", "element::F16"],
+    ["c", "u32", "element::F32"],
+    ["result", "u32", "element::F32"],
 ]

@@ -3,9 +3,9 @@ use mk::ash::ext::{
     mutable_descriptor_type,
 };
 use mk::ash::khr::{
-    acceleration_structure, deferred_host_operations, external_memory_fd, fragment_shading_rate,
-    maintenance5, portability_enumeration, portability_subset, push_descriptor, ray_query,
-    ray_tracing_pipeline,
+    acceleration_structure, cooperative_matrix, deferred_host_operations, external_memory_fd,
+    fragment_shading_rate, maintenance5, portability_enumeration, portability_subset,
+    push_descriptor, ray_query, ray_tracing_pipeline,
 };
 use mk::ash::{self, vk};
 use std::ffi::{CStr, c_void};
@@ -26,7 +26,7 @@ pub struct Host {
     device: ManuallyDrop<mk::Device>,
     raw: ash::Device,
     instance: ash::Instance,
-    _entry: ash::Entry,
+    pub entry: ash::Entry,
 }
 
 impl Deref for Host {
@@ -237,6 +237,16 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if meshes {
             extensions.push(mesh_shader::NAME.as_ptr());
         }
+        let mut supported_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_matrix);
+        instance.get_physical_device_features2(physical, &mut query);
+        let matrices =
+            has(&available, cooperative_matrix::NAME) && supported_matrix.cooperative_matrix != 0;
+        let mut matrix =
+            vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default().cooperative_matrix(true);
+        if matrices {
+            extensions.push(cooperative_matrix::NAME.as_ptr());
+        }
         let supported = instance.get_physical_device_features(physical);
         let features = vk::PhysicalDeviceFeatures::default()
             .sampler_anisotropy(supported.sampler_anisotropy != 0)
@@ -284,7 +294,10 @@ pub fn try_device(queues: usize) -> Option<Host> {
             )
             .shader_output_viewport_index(supported_v12.shader_output_viewport_index != 0)
             .shader_output_layer(supported_v12.shader_output_layer != 0)
-            .draw_indirect_count(supported_v12.draw_indirect_count != 0);
+            .draw_indirect_count(supported_v12.draw_indirect_count != 0)
+            .vulkan_memory_model(supported_v12.vulkan_memory_model != 0)
+            .shader_float16(supported_v12.shader_float16 != 0)
+            .shader_int8(supported_v12.shader_int8 != 0);
         let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
             .mutable_descriptor_type(true);
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
@@ -323,6 +336,9 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if copies {
             info = info.push_next(&mut copy);
         }
+        if matrices {
+            info = info.push_next(&mut matrix);
+        }
         if generated {
             info = info.push_next(&mut maintenance);
             enabled_generated.next = info.p_next as *mut _;
@@ -331,13 +347,20 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let raw = instance.create_device(physical, &info, None).unwrap();
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
         enabled.p_next = info.p_next as *mut _;
-        let device =
-            mk::Device::adopt(instance.clone(), physical, raw.clone(), &slots, &enabled).unwrap();
+        let device = mk::Device::adopt(
+            &entry,
+            instance.clone(),
+            physical,
+            raw.clone(),
+            &slots,
+            &enabled,
+        )
+        .unwrap();
         Some(Host {
             device: ManuallyDrop::new(device),
             raw,
             instance,
-            _entry: entry,
+            entry,
         })
     }
 }

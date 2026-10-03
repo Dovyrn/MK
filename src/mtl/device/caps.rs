@@ -1,7 +1,25 @@
 use super::Device;
-use crate::{Caps, TextureInfo, format, usage};
+use crate::{Caps, Matrix, TextureInfo, element, format, usage};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
+
+const MATRICES: [Matrix; 3] = [
+    shape(element::F16, element::F16),
+    shape(element::F16, element::F32),
+    shape(element::F32, element::F32),
+];
+
+const fn shape(input: u32, sum: u32) -> Matrix {
+    Matrix {
+        m: 8,
+        n: 8,
+        k: 8,
+        a: input,
+        b: input,
+        c: sum,
+        result: sum,
+    }
+}
 
 impl Device {
     pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize) -> Caps {
@@ -69,11 +87,16 @@ impl Device {
             max_layers: 2048,
             budget: true,
             host_read: raw.hasUnifiedMemory(),
+            matrices: MATRICES.len() as u32,
         }
     }
 
     pub fn caps(&self) -> Caps {
         self.caps
+    }
+
+    pub fn matrix(&self, index: u32) -> Matrix {
+        MATRICES[self.caps.matrix(index)]
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {

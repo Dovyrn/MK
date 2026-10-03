@@ -38,6 +38,12 @@ params = [["buffer", "u32"]]
 result = "u64"
 
 [[call]]
+name = "matrix"
+backend = "vk mtl"
+params = [["index", "u32"]]
+result = "Matrix"
+
+[[call]]
 name = "create_heap"
 backend = "vk mtl"
 params = [["size", "u64"], ["memory", "u32"]]

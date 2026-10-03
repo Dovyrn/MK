@@ -94,6 +94,16 @@ impl Caps {
     }
 
     #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub(crate) fn matrix(&self, index: u32) -> usize {
+        assert!(
+            index < self.matrices,
+            "matrix {index} is outside 0..caps.matrices {}",
+            self.matrices
+        );
+        index as usize
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub(crate) fn host(&self, pointer: *mut u8, size: u64) {
         let a = self.host_alignment.max(1) as u64;
         assert!(

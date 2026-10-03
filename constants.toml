@@ -241,3 +241,17 @@ STORAGE = 5
 IMAGE = 13
 TEXTURE = 0
 SAMPLER = 0
+
+[element]
+F16 = 0
+F32 = 1
+F64 = 2
+I8 = 3
+I16 = 4
+I32 = 5
+I64 = 6
+U8 = 7
+U16 = 8
+U32 = 9
+U64 = 10
+BF16 = 1000141000
