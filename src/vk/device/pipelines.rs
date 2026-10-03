@@ -268,6 +268,9 @@ impl Device {
     }
 
     pub fn save_cache(&self, path: &str) -> Result<(), String> {
+        if self.cache == vk::PipelineCache::null() {
+            return Err("record_cache was not called".into());
+        }
         let data = unsafe {
             self.raw
                 .get_pipeline_cache_data(self.cache)
