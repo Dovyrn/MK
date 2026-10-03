@@ -216,7 +216,8 @@ pub struct Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        for q in &self.queues {
+        for q in &mut self.queues {
+            q.signal();
             q.idle();
         }
         for path in &self.archives {
@@ -258,7 +259,14 @@ impl Device {
     }
 
     fn defer(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
-        let counts = self.queues.iter().map(|q| q.count).collect();
+        let counts = self
+            .queues
+            .iter_mut()
+            .map(|q| {
+                q.signal();
+                q.count
+            })
+            .collect();
         self.garbage.push_back((counts, Box::new(free)));
         self.collect();
     }
