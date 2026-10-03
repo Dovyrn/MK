@@ -102,6 +102,9 @@ impl Device {
     ) -> Result<u32, String> {
         self.res.table.heaps.get(heap);
         self.caps.buffer(size, memory::DEVICE)?;
+        self.res
+            .table
+            .place(heap, offset, self.buffer_size(size, memory::DEVICE));
         let h = self.res.heaps.get(heap);
         unsafe {
             let info = self.buffer_info(size, self.usage());
@@ -150,6 +153,7 @@ impl Device {
     ) -> Result<u32, String> {
         self.res.table.heaps.get(heap);
         self.texture(info)?;
+        self.res.table.place(heap, offset, self.texture_size(info));
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory.clone(), h.index);
         let mut create = self.share_image(image_info(info));

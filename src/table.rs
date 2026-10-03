@@ -63,6 +63,19 @@ fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
 }
 
 impl Table {
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn place(&self, heap: u32, offset: u64, (size, align): (u64, u64)) {
+        let total = *self.heaps.get(heap);
+        assert!(
+            offset.is_multiple_of(align),
+            "offset {offset} in heap {heap} is not a multiple of the alignment {align}"
+        );
+        assert!(
+            offset.checked_add(size).is_some_and(|end| end <= total),
+            "{size} bytes at offset {offset} run past heap {heap} ({total} bytes)"
+        );
+    }
+
     pub fn indirect(&self, info: &IndirectInfo) -> (IndirectInfo, u32, bool) {
         assert!(info.size > 0, "indirect buffer size is 0");
         let pipeline = info.pipeline;

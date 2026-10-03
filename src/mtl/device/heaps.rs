@@ -54,6 +54,9 @@ impl Device {
             self.res.table.heaps.get(heap);
             self.caps.buffer(size, memory::DEVICE)?;
             let (h, memory) = self.res.heaps.get(heap);
+            self.res
+                .table
+                .place(heap, offset, self.buffer_size(size, *memory));
             let buffer = unsafe {
                 h.newBufferWithLength_options_offset(
                     size as usize,
@@ -77,6 +80,7 @@ impl Device {
         autoreleasepool(|_| {
             self.res.table.heaps.get(heap);
             self.supports(info)?;
+            self.res.table.place(heap, offset, self.texture_size(info));
             let (h, memory) = self.res.heaps.get(heap);
             let desc = texture_desc(info);
             desc.setResourceOptions(options(*memory));
