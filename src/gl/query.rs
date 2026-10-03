@@ -1,9 +1,11 @@
 use crate::query;
 use glow::HasContext;
+use std::cell::Cell;
 
 pub struct Query {
     pub kind: u32,
     pub ids: Vec<glow::Query>,
+    pub used: Vec<Cell<bool>>,
 }
 
 impl Query {
@@ -11,7 +13,8 @@ impl Query {
         let ids = (0..count)
             .map(|_| unsafe { gl.create_query() })
             .collect::<Result<_, _>>()?;
-        Ok(Self { kind, ids })
+        let used = (0..count).map(|_| Cell::new(false)).collect();
+        Ok(Self { kind, ids, used })
     }
 
     pub fn target(&self) -> u32 {

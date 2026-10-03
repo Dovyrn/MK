@@ -709,12 +709,15 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::WriteTimestamp { heap, index, .. } => {
-                    gl.query_counter(res.queries.get(heap).ids[index as usize], glow::TIMESTAMP);
+                    let q = res.queries.get(heap);
+                    gl.query_counter(q.ids[index as usize], glow::TIMESTAMP);
+                    q.used[index as usize].set(true);
                 }
                 Command::BeginQuery { heap, index } => {
                     let q = res.queries.get(heap);
                     let target = q.target();
                     gl.begin_query(target, q.ids[index as usize]);
+                    q.used[index as usize].set(true);
                     self.query = Some(target);
                 }
                 Command::EndQuery { heap, .. } => {
@@ -734,9 +737,23 @@ impl<'a> Recorder<'a> {
                     let raw = res.buffers.get(buffer).raw;
                     gl.bind_buffer(glow::QUERY_BUFFER, Some(raw));
                     for i in 0..count {
-                        let id = q.ids[(first + i) as usize];
+                        let k = (first + i) as usize;
                         let at = (offset + i as u64 * 8) as usize;
-                        gl.get_query_parameter_u64_with_offset(id, glow::QUERY_RESULT, at);
+                        if q.used[k].get() {
+                            gl.get_query_parameter_u64_with_offset(
+                                q.ids[k],
+                                glow::QUERY_RESULT,
+                                at,
+                            );
+                        } else {
+                            let zero = [0u8; 8];
+                            (self.extra.sub)(
+                                glow::QUERY_BUFFER,
+                                at as isize,
+                                8,
+                                zero.as_ptr().cast(),
+                            );
+                        }
                     }
                     gl.bind_buffer(glow::QUERY_BUFFER, None);
                 }
