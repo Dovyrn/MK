@@ -37,7 +37,7 @@ pub struct Recorder<'a> {
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
-    pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
+    pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     views: u32,
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
@@ -194,7 +194,7 @@ impl<'a> Recorder<'a> {
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
-            pending: queue.pending,
+            pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             views: 0,
             compute_pipeline: None,
             render_pipeline: None,
@@ -221,6 +221,22 @@ impl<'a> Recorder<'a> {
     fn opened(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
         order(encoder, mask, self.pending);
         self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
+    }
+
+    pub fn release(&mut self) -> Result<(), &'static str> {
+        let (from, to, options) = self.pending;
+        if from.is_empty() || to.is_empty() {
+            return Ok(());
+        }
+        let encoder = self
+            .buffer
+            .computeCommandEncoder()
+            .ok_or("compute encoder allocation failed")?;
+        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(from, COMPUTE, options);
+        encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from | COMPUTE, to, options);
+        encoder.endEncoding();
+        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
+        Ok(())
     }
 
     fn resolve(&mut self) -> Result<(), &'static str> {
@@ -1011,6 +1027,7 @@ impl<'a> Recorder<'a> {
             Command::Multiview { views } => self.views = views,
             Command::Callback { index } => {
                 self.flush()?;
+                self.release()?;
                 self.natives[index as usize](&Native {
                     buffer: self.buffer,
                     table: self.table,

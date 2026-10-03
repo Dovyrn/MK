@@ -10,8 +10,8 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTL4VisibilityOptions, MTLDevice, MTLEvent, MTLResidencySet,
-    MTLResidencySetDescriptor, MTLSharedEvent, MTLStages,
+    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
+    MTLSharedEvent,
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
@@ -24,7 +24,6 @@ pub struct Queue {
     pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
-    pub pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     pub count: u64,
     free: Vec<Frame>,
@@ -60,7 +59,6 @@ impl Queue {
                 .ok_or("command buffer allocation failed")?,
             table,
             residency,
-            pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             event: device.newSharedEvent().ok_or("event allocation failed")?,
             count: 0,
             free: Vec::new(),
@@ -93,14 +91,16 @@ impl Queue {
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
         let mut recorder = Recorder::new(device, self, resolve, &mut frame, res, natives);
-        let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            recorder.run(commands)?;
+            recorder.release()
+        }));
         if let Some(e) = recorder.compute.take() {
             e.endEncoding();
         }
         if let Some(e) = recorder.render.take() {
             e.endEncoding();
         }
-        let pending = recorder.pending;
         self.buffer.endCommandBuffer();
         if !matches!(result, Ok(Ok(()))) {
             frame.reset();
@@ -109,7 +109,6 @@ impl Queue {
                 .unwrap_or_else(|p| resume_unwind(p))
                 .map_err(String::from);
         }
-        self.pending = pending;
         for &(event, value) in waits {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
             self.raw.waitForEvent_value(event, value);
