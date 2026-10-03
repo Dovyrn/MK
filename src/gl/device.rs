@@ -48,6 +48,7 @@ pub struct Device {
 }
 
 pub const PUSH: usize = 256;
+pub const RING: usize = 1 << 16;
 
 const TASK_SHADER: u32 = 0x955A;
 
@@ -196,7 +197,7 @@ impl Device {
             let push = gl.create_buffer()?;
             let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
             gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
-            gl.buffer_data_size(glow::UNIFORM_BUFFER, PUSH as i32, glow::DYNAMIC_DRAW);
+            gl.buffer_data_size(glow::UNIFORM_BUFFER, RING as i32, glow::DYNAMIC_DRAW);
             gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;

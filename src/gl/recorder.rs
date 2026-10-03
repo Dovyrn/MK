@@ -4,7 +4,7 @@ mod pass;
 mod textures;
 
 use crate::command;
-use crate::gl::device::{PUSH, compare};
+use crate::gl::device::{PUSH, RING, compare};
 use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
@@ -83,6 +83,10 @@ pub struct Recorder<'a> {
     query: Option<u32>,
     labels: u32,
     natives: &'a [Callback],
+    used: Option<glow::Program>,
+    ring: usize,
+    units: Vec<Option<(Option<u32>, Option<u32>)>>,
+    fed: Option<glow::VertexArray>,
 }
 
 fn mode(t: u32) -> u32 {
@@ -234,14 +238,14 @@ impl<'a> Recorder<'a> {
             query: None,
             labels: 0,
             natives,
+            used: None,
+            ring: RING,
+            units: Vec::new(),
+            fed: None,
         }
     }
 
     pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), String> {
-        unsafe {
-            self.gl
-                .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
-        };
         self.reset();
         self.shade();
         while !bytes.is_empty() {
@@ -501,7 +505,10 @@ impl<'a> Recorder<'a> {
                         self.labels -= 1;
                     }
                 }
-                Command::CopyBufferToTexture { .. } => self.upload(command),
+                Command::CopyBufferToTexture { .. } => {
+                    self.upload(command);
+                    self.units.clear();
+                }
                 Command::CopyTextureToBuffer { .. } => self.readback(command)?,
                 Command::CopyTexture { .. } => self.copy_texture(command),
                 Command::BlitTexture { .. } => self.blit_texture(command),
@@ -514,6 +521,7 @@ impl<'a> Recorder<'a> {
                     gl.bind_texture(t.target, t.raw);
                     gl.generate_mipmap(t.target);
                     gl.bind_texture(t.target, None);
+                    self.units.clear();
                 }
                 Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
@@ -676,7 +684,10 @@ impl<'a> Recorder<'a> {
                     slot,
                     buffer,
                     offset,
-                } => self.vertices[slot as usize] = Some((buffer, offset)),
+                } => {
+                    self.vertices[slot as usize] = Some((buffer, offset));
+                    self.fed = None;
+                }
                 Command::BindIndexBuffer {
                     buffer,
                     offset,
@@ -688,6 +699,7 @@ impl<'a> Recorder<'a> {
                         k => panic!("unknown index {k}"),
                     };
                     self.index = Some((buffer, offset, kind));
+                    self.fed = None;
                 }
                 Command::Draw {
                     vertices,

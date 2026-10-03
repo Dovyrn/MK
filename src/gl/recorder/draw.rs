@@ -1,5 +1,6 @@
 use super::{Recorder, integer};
 use crate::format;
+use crate::gl::device::{PUSH, RING};
 use crate::gl::pipeline::Pipeline;
 use glow::HasContext;
 
@@ -15,26 +16,57 @@ impl Recorder<'_> {
             return false;
         };
         unsafe {
-            gl.use_program(Some(program.raw));
+            if self.used != Some(program.raw) {
+                gl.use_program(Some(program.raw));
+                self.used = Some(program.raw);
+            }
             if self.dirty {
+                let stride = PUSH.next_multiple_of(self.caps.bind_alignment as usize);
                 gl.bind_buffer(glow::UNIFORM_BUFFER, Some(self.push));
-                gl.buffer_sub_data_u8_slice(glow::UNIFORM_BUFFER, 0, &self.data[..self.size]);
+                if self.ring + stride > RING {
+                    gl.buffer_data_size(glow::UNIFORM_BUFFER, RING as i32, glow::DYNAMIC_DRAW);
+                    self.ring = 0;
+                }
+                let at = self.ring;
+                self.ring += stride;
+                let bits = glow::MAP_WRITE_BIT
+                    | glow::MAP_UNSYNCHRONIZED_BIT
+                    | glow::MAP_INVALIDATE_RANGE_BIT;
+                let to = gl.map_buffer_range(glow::UNIFORM_BUFFER, at as i32, PUSH as i32, bits);
+                std::ptr::copy_nonoverlapping(self.data.as_ptr(), to, self.size);
+                gl.unmap_buffer(glow::UNIFORM_BUFFER);
                 gl.bind_buffer(glow::UNIFORM_BUFFER, None);
+                let push = Some(self.push);
+                gl.bind_buffer_range(glow::UNIFORM_BUFFER, 0, push, at as i32, PUSH as i32);
                 self.dirty = false;
             }
             for (unit, &(t, s)) in program.pairs.iter().enumerate() {
-                if let Some(texture) = self.textures[t as usize] {
+                let pair = (
+                    self.textures[t as usize],
+                    s.and_then(|s| self.samplers[s as usize]),
+                );
+                if self.units.len() <= unit {
+                    self.units.resize(unit + 1, None);
+                }
+                if self.units[unit] == Some(pair) {
+                    continue;
+                }
+                self.units[unit] = Some(pair);
+                if let Some(texture) = pair.0 {
                     let texture = self.res.textures.get(texture);
                     gl.active_texture(glow::TEXTURE0 + unit as u32);
                     gl.bind_texture(texture.target, texture.raw);
                 }
-                let sampler = s.and_then(|s| self.samplers[s as usize]);
-                let sampler = sampler.map(|s| *self.res.samplers.get(s));
+                let sampler = pair.1.map(|s| *self.res.samplers.get(s));
                 gl.bind_sampler(unit as u32, sampler);
             }
             let Some(p) = self.render.filter(|_| render) else {
                 return true;
             };
+            if self.fed == Some(p.vao) {
+                return true;
+            }
+            self.fed = Some(p.vao);
             gl.bind_vertex_array(Some(p.vao));
             self.attributes(p, 0);
             if let Some((buffer, _, _)) = self.index {

@@ -12,8 +12,8 @@ const SUFFIX: &str = "spv";
 const SUFFIX: &str = "gl";
 
 fn build(device: &mut Device) -> f64 {
-    let fill = std::fs::read(format!("shaders/out/count.{SUFFIX}")).unwrap();
-    let mesh = std::fs::read(format!("shaders/out/triangle.{SUFFIX}")).unwrap();
+    let fill = std::fs::read(format!("examples/shaders/out/count.{SUFFIX}")).unwrap();
+    let mesh = std::fs::read(format!("examples/shaders/out/triangle.{SUFFIX}")).unwrap();
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
