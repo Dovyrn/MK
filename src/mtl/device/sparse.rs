@@ -115,6 +115,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.res.table.submit(queue, waits, signals);
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap
         } else {
@@ -156,6 +157,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.res.table.submit(queue, waits, signals);
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap
         } else {

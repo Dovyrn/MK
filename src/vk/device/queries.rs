@@ -5,6 +5,7 @@ use ash::vk;
 
 impl Device {
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        self.caps.queries(kind, count)?;
         let caps = self.caps;
         let none = vk::QueryControlFlags::empty();
         let wanted = kind;
@@ -57,12 +58,12 @@ impl Device {
             flags,
             stride,
         });
-        self.res.table.heaps.set(id, (wanted, count));
+        self.res.table.queries.set(id, (wanted, count));
         Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        self.res.table.heaps.clear(heap);
+        self.res.table.queries.clear(heap);
         self.defer(move |d| {
             let query = d.res.queries.remove(heap);
             unsafe { d.raw.destroy_query_pool(query.pool, None) };

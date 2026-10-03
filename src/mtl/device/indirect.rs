@@ -26,10 +26,13 @@ impl Device {
                 .ok_or("indirect command buffer allocation failed")?
         };
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        Ok(self.res.indirects.insert(raw))
+        let id = self.res.indirects.insert(raw);
+        self.res.table.indirects.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_indirect(&mut self, indirect: u32) {
+        self.res.table.indirects.clear(indirect);
         let raw = self.res.indirects.remove(indirect);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
     }

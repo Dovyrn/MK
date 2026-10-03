@@ -100,7 +100,9 @@ impl Device {
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
-        Ok(self.res.rays.insert((pipeline, groups.len() as u32)))
+        let id = self.res.rays.insert((pipeline, groups.len() as u32));
+        self.res.table.rays.set(id, ());
+        Ok(id)
     }
 
     pub fn ray_handles(&self, pipeline: u32) -> Result<Vec<u8>, String> {
@@ -117,6 +119,7 @@ impl Device {
     }
 
     pub fn destroy_ray_pipeline(&mut self, pipeline: u32) {
+        self.res.table.rays.clear(pipeline);
         self.defer(move |d| {
             let (raw, _) = d.res.rays.remove(pipeline);
             unsafe { d.raw.destroy_pipeline(raw, None) };

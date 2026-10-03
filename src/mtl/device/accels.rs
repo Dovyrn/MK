@@ -107,12 +107,14 @@ impl Device {
             .newAccelerationStructureWithSize(sizes.accelerationStructureSize)
             .ok_or("acceleration structure allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
-        Ok(self.res.accels.insert(Accel {
+        let id = self.res.accels.insert(Accel {
             raw,
             desc,
             build: sizes.buildScratchBufferSize as u64,
             update: sizes.refitScratchBufferSize as u64,
-        }))
+        });
+        self.res.table.accels.set(id, ());
+        Ok(id)
     }
 
     pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
@@ -122,15 +124,18 @@ impl Device {
             .ok_or("acceleration structure allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*raw));
         let desc = self.res.accels.get(accel).desc.clone();
-        Ok(self.res.accels.insert(Accel {
+        let id = self.res.accels.insert(Accel {
             raw,
             desc,
             build: 0,
             update: 0,
-        }))
+        });
+        self.res.table.accels.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {
+        self.res.table.accels.clear(accel);
         let a = self.res.accels.remove(accel);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*a.raw)));
     }

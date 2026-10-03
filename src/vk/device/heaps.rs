@@ -81,16 +81,19 @@ impl Device {
         let data = self
             .mapped(memory, index)
             .inspect_err(|_| unsafe { self.raw.free_memory(memory, None) })?;
-        Ok(self.res.heaps.insert(Heap {
+        let id = self.res.heaps.insert(Heap {
             memory,
             data,
             shared,
             device,
             index,
-        }))
+        });
+        self.res.table.heaps.set(id, size);
+        Ok(id)
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
+        self.res.table.heaps.clear(heap);
         self.defer(move |d| {
             let heap = d.res.heaps.remove(heap);
             unsafe { d.raw.free_memory(heap.memory, None) };

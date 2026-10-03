@@ -48,10 +48,13 @@ impl Device {
             (ProtocolObject::from_retained(table), handle)
         };
         self.residency.add(&table);
-        Ok(self.res.tables.insert((table, handle)))
+        let id = self.res.tables.insert((table, handle));
+        self.res.table.functions.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_function_table(&mut self, table: u32) {
+        self.res.table.functions.clear(table);
         let (table, _) = self.res.tables.remove(table);
         self.defer(move |r| r.remove(&table));
     }

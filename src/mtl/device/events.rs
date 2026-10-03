@@ -5,7 +5,9 @@ use objc2_metal::{MTLDevice, MTLSharedEvent};
 
 impl Device {
     pub fn import_event(&mut self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> u32 {
-        self.res.events.insert(raw)
+        let id = self.res.events.insert(raw);
+        self.res.table.events.set(id, (0, usize::MAX));
+        id
     }
 
     pub fn raw_event(&self, event: u32) -> &ProtocolObject<dyn MTLSharedEvent> {
@@ -14,10 +16,13 @@ impl Device {
 
     pub fn create_event(&mut self) -> Result<u32, String> {
         let event = self.raw.newSharedEvent().ok_or("event allocation failed")?;
-        Ok(self.res.events.insert(event))
+        let id = self.res.events.insert(event);
+        self.res.table.events.set(id, (0, usize::MAX));
+        Ok(id)
     }
 
     pub fn destroy_event(&mut self, event: u32) {
+        self.res.table.events.clear(event);
         let event = self.res.events.remove(event);
         self.defer(move |_| drop(event));
     }

@@ -10,17 +10,22 @@ impl Device {
 
     pub fn create_event(&mut self) -> Result<u32, String> {
         let event = timeline(&self.raw).map_err(|e| e.to_string())?;
-        Ok(self.res.events.insert(Event {
+        let id = self.res.events.insert(Event {
             raw: event,
             own: true,
-        }))
+        });
+        self.res.table.events.set(id, (0, usize::MAX));
+        Ok(id)
     }
 
     pub fn import_event(&mut self, raw: vk::Semaphore) -> u32 {
-        self.res.events.insert(Event { raw, own: false })
+        let id = self.res.events.insert(Event { raw, own: false });
+        self.res.table.events.set(id, (0, usize::MAX));
+        id
     }
 
     pub fn destroy_event(&mut self, event: u32) {
+        self.res.table.events.clear(event);
         self.defer(move |d| {
             d.res.events.remove(event).free(&d.raw);
         });

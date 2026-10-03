@@ -184,6 +184,14 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
+        crate::caps::primitive(info.topology);
         self.graphics(
             info.code,
             &[
@@ -203,6 +211,13 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
         if self.ext.mesh.is_none() {
             return Err("VK_EXT_mesh_shader is not enabled".into());
         }
@@ -234,6 +249,7 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+        self.caps.depth(info);
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)

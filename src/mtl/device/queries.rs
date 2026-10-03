@@ -6,6 +6,7 @@ use objc2_metal::{MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTL
 
 impl Device {
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        self.caps.queries(kind, count)?;
         let heap = match kind {
             query::TIMESTAMP => {
                 let desc = MTL4CounterHeapDescriptor::new();
@@ -31,12 +32,12 @@ impl Device {
             k => panic!("unknown query kind {k}"),
         };
         let id = self.res.queries.insert(heap);
-        self.res.table.heaps.set(id, (kind, count));
+        self.res.table.queries.set(id, (kind, count));
         Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        self.res.table.heaps.clear(heap);
+        self.res.table.queries.clear(heap);
         let heap = self.res.queries.remove(heap);
         self.defer(move |r| {
             if let Query::Buffer(buffer) = &heap {

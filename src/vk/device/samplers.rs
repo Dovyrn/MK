@@ -4,6 +4,7 @@ use ash::vk;
 
 impl Device {
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+        self.caps.sampler(info)?;
         if info.anisotropy > 1 && self.ext.features.sampler_anisotropy == 0 {
             return Err("anisotropic filtering is not supported".into());
         }

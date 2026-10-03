@@ -41,6 +41,8 @@ impl Device {
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+        let info = &self.res.table.resolve(texture, info);
+        self.caps.view(info.dimension)?;
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         supports(info.format, info.usage, 1, usable, counts)?;

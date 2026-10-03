@@ -142,6 +142,9 @@ impl Device {
                 indirect_ids: false,
                 indirect_offset: false,
                 wide_lines: false,
+                max_queries: 65536,
+                cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
+                mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
                 max_buffer: isize::MAX as u64,
                 max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
                 max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
@@ -297,6 +300,14 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
+        crate::caps::primitive(info.topology);
         let stages = [
             (glow::VERTEX_SHADER, info.vertex),
             (glow::FRAGMENT_SHADER, info.fragment),
@@ -305,6 +316,13 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
         if !self.caps.mesh {
             return Err("GL_EXT_mesh_shader is not supported".into());
         }
@@ -342,6 +360,7 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+        self.caps.depth(info);
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
@@ -468,6 +487,8 @@ impl Device {
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+        let info = &self.res.table.resolve(texture, info);
+        self.caps.view(info.dimension)?;
         let view = self.extra.view.ok_or("texture views need GL 4.3")?;
         let parent = self.res.textures.get(texture);
         let usable = self.format_usage(info.format);
@@ -485,6 +506,7 @@ impl Device {
     }
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+        self.caps.sampler(info)?;
         let raw = sampler::create(&self.gl, info, self.anisotropy)?;
         let id = self.res.samplers.insert(raw);
         self.res.table.samplers.set(id, ());
@@ -519,6 +541,7 @@ impl Device {
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        self.caps.queries(kind, count)?;
         let results = self.has(44, "GL_ARB_query_buffer_object");
         match kind {
             query::TIMESTAMP | query::OCCLUSION | query::PRECISE if !results => {
@@ -532,23 +555,26 @@ impl Device {
             k => panic!("unknown query kind {k}"),
         }
         let id = self.res.queries.insert(Query::new(&self.gl, kind, count)?);
-        self.res.table.heaps.set(id, (kind, count));
+        self.res.table.queries.set(id, (kind, count));
         Ok(id)
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
-        self.res.table.heaps.clear(heap);
+        self.res.table.queries.clear(heap);
         self.res.queries.remove(heap).delete(&self.gl);
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
-        Ok(self.res.events.insert(Event {
+        let id = self.res.events.insert(Event {
             fences: Vec::new(),
             value: 0,
-        }))
+        });
+        self.res.table.events.set(id, (0, usize::MAX));
+        Ok(id)
     }
 
     pub fn destroy_event(&mut self, event: u32) {
+        self.res.table.events.clear(event);
         self.res.events.remove(event).delete(&self.gl);
     }
 
@@ -578,6 +604,7 @@ impl Device {
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
+        self.res.table.submit(queue, waits, signals);
         if let Some(i) = self
             .res
             .buffers

@@ -20,10 +20,13 @@ impl Device {
             .newHeapWithDescriptor(&desc)
             .ok_or("heap allocation failed")?;
         self.residency.add(ProtocolObject::from_ref(&*heap));
-        Ok(self.res.heaps.insert((heap, memory)))
+        let id = self.res.heaps.insert((heap, memory));
+        self.res.table.heaps.set(id, size);
+        Ok(id)
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
+        self.res.table.heaps.clear(heap);
         let (heap, _) = self.res.heaps.remove(heap);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*heap)));
     }

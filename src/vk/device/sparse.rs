@@ -125,6 +125,7 @@ impl Device {
         buffers: &[vk::SparseBufferMemoryBindInfo],
         images: &[vk::SparseImageMemoryBindInfo],
     ) -> Result<(), String> {
+        self.res.table.submit(queue, waits, signals);
         let q = &self.queues[queue];
         let value = q.count + 1;
         let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).raw).collect();

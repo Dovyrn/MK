@@ -186,6 +186,14 @@ impl Device {
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
+        crate::caps::primitive(info.topology);
         let library = self.library(info.code)?;
         let desc = MTL4RenderPipelineDescriptor::new();
         desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
@@ -251,6 +259,13 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        crate::caps::targets(
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
         if !self.caps.mesh {
             return Err("create_mesh_pipeline needs caps.mesh".into());
         }
@@ -321,6 +336,7 @@ impl Device {
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+        self.caps.depth(info);
         let desc = MTLDepthStencilDescriptor::new();
         desc.setDepthCompareFunction(compare(info.compare));
         desc.setDepthWriteEnabled(info.write);

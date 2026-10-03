@@ -107,6 +107,9 @@ pub(super) fn probe(
         indirect_ids: true,
         indirect_offset: true,
         wide_lines: features.wide_lines != 0,
+        max_queries: 65536,
+        cube_arrays: features.image_cube_array != 0,
+        mirror_clamp: ext.mirror,
         max_buffer: buffer.max_buffer_size,
         max_texture: limits
             .max_image_dimension1_d

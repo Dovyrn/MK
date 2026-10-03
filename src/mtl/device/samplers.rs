@@ -7,6 +7,7 @@ use objc2_metal::{
 
 impl Device {
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+        self.caps.sampler(info)?;
         let filter = |f| match f {
             filter::NEAREST => MTLSamplerMinMagFilter::Nearest,
             filter::LINEAR => MTLSamplerMinMagFilter::Linear,

@@ -224,6 +224,9 @@ fields = [
     ["max_cube", "u32", "0"],
     ["max_volume", "u32", "0"],
     ["max_layers", "u32", "0"],
+    ["max_queries", "u32", "0"],
+    ["cube_arrays", "bool", "false"],
+    ["mirror_clamp", "bool", "false"],
 ]
 
 [[info]]

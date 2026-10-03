@@ -291,6 +291,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
+        self.res.table.submit(queue, waits, signals);
         self.collect();
         self.queues[queue].submit(
             &self.raw,

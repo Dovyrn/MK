@@ -19,6 +19,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
+        self.caps.host(pointer, size);
         self.caps.buffer(size, memory::UPLOAD)?;
         let buffer = unsafe {
             self.raw

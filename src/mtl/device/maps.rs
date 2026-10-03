@@ -34,7 +34,9 @@ impl Device {
             .raw
             .newRasterizationRateMapWithDescriptor(&desc)
             .ok_or("rasterization rate map allocation failed")?;
-        Ok(self.res.maps.insert(map))
+        let id = self.res.maps.insert(map);
+        self.res.table.maps.set(id, ());
+        Ok(id)
     }
 
     pub fn rate_map_size(&self, map: u32) -> [u32; 2] {
@@ -43,6 +45,7 @@ impl Device {
     }
 
     pub fn destroy_rate_map(&mut self, map: u32) {
+        self.res.table.maps.clear(map);
         let map = self.res.maps.remove(map);
         self.defer(move |_| drop(map));
     }

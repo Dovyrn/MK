@@ -121,7 +121,9 @@ impl Device {
             update: sizes.update_scratch_size,
             ..self.new_accel(ray, sizes.acceleration_structure_size, kind, flags)?
         };
-        Ok(self.res.accels.insert(accel))
+        let id = self.res.accels.insert(accel);
+        self.res.table.accels.set(id, ());
+        Ok(id)
     }
 
     pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
@@ -132,7 +134,9 @@ impl Device {
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
         let source = self.res.accels.get(accel);
         let accel = self.new_accel(ray, size, source.kind, source.flags)?;
-        Ok(self.res.accels.insert(accel))
+        let id = self.res.accels.insert(accel);
+        self.res.table.accels.set(id, ());
+        Ok(id)
     }
 
     fn new_accel(
@@ -170,6 +174,7 @@ impl Device {
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {
+        self.res.table.accels.clear(accel);
         self.defer(move |d| {
             let accel = d.res.accels.remove(accel);
             accel.free(&d.raw, d.ext.accel.as_ref().unwrap());

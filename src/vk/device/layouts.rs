@@ -64,10 +64,13 @@ impl Device {
         if result != vk::Result::SUCCESS {
             return Err(result.to_string());
         }
-        Ok(self.res.layouts.insert((handle, stages)))
+        let id = self.res.layouts.insert((handle, stages));
+        self.res.table.layouts.set(id, ());
+        Ok(id)
     }
 
     pub fn destroy_commands_layout(&mut self, layout: u32) {
+        self.res.table.layouts.clear(layout);
         self.defer(move |d| {
             let (layout, _) = d.res.layouts.remove(layout);
             d.ext.generated.as_ref().unwrap().free(&d.raw, layout);
