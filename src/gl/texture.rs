@@ -2,7 +2,7 @@ use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::binding;
 use crate::gl::state::buffer;
-use crate::{TextureInfo, ViewInfo, dimension, format};
+use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
 use glow::HasContext;
 
 pub struct Texture {
@@ -24,6 +24,17 @@ pub fn target(dimension: u32, samples: u32) -> u32 {
         (dimension::CUBE, _) => glow::TEXTURE_CUBE_MAP,
         (dimension::CUBE_ARRAY, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
         (d, _) => panic!("unknown dimension {d}"),
+    }
+}
+
+pub fn aspect(f: u32) -> (u32, u32) {
+    match f {
+        format::D24_UNORM_S8 => (glow::DEPTH_COMPONENT, glow::UNSIGNED_INT),
+        format::D32_FLOAT_S8 => (glow::DEPTH_COMPONENT, glow::FLOAT),
+        f => {
+            let [_, f, ty] = format::gl(f);
+            (f, ty)
+        }
     }
 }
 
@@ -195,6 +206,101 @@ impl Texture {
                 format: info.format,
                 own: true,
             })
+        }
+    }
+
+    pub unsafe fn upload(&self, gl: &glow::Context, e: &Extra, c: &TextureCopy, base: *const u8) {
+        let internal = format::gl(self.format)[0];
+        let (f, ty) = aspect(self.format);
+        let (width, height, depth) = (c.width, c.height, c.depth);
+        let (row_length, row_count, layer, z) = (c.row_length, c.row_count, c.layer, c.z);
+        unsafe {
+            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);
+            gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, row_count as i32);
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(self.target, self.raw);
+            let data = base.cast::<std::ffi::c_void>();
+            let (w, h, d) = (width as i32, height as i32, depth as i32);
+            let (mip, x, y) = (c.mip as i32, c.x as i32, c.y as i32);
+            if f == 0 {
+                let [bytes, bw, bh] = format::block(self.format);
+                let wide = width.div_ceil(bw);
+                let pitch = row_length.max(width).div_ceil(bw) as usize * bytes as usize;
+                let rows = row_count.max(height).div_ceil(bh) as usize;
+                let tall = height.div_ceil(bh) as usize;
+                let step = if pitch == wide as usize * bytes as usize {
+                    tall
+                } else {
+                    1
+                };
+                for s in 0..depth as usize {
+                    for r in (0..tall).step_by(step) {
+                        let n = step.min(tall - r);
+                        let top = y + (r as u32 * bh) as i32;
+                        let h = (n as i32 * bh as i32).min(h - (r as u32 * bh) as i32);
+                        let at = base.wrapping_add(s * rows * pitch + r * pitch);
+                        let at = at.cast::<std::ffi::c_void>();
+                        let size = (n * wide as usize * bytes as usize) as i32;
+                        match self.target {
+                            glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
+                                let target = if self.target == glow::TEXTURE_2D {
+                                    self.target
+                                } else {
+                                    glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer
+                                };
+                                (e.compressed2)(target, mip, x, top, w, h, internal, size, at)
+                            }
+                            _ => {
+                                let z = if self.target == glow::TEXTURE_3D {
+                                    (z as usize + s) as i32
+                                } else {
+                                    layer as i32
+                                };
+                                (e.compressed3)(
+                                    self.target,
+                                    mip,
+                                    x,
+                                    top,
+                                    z,
+                                    w,
+                                    h,
+                                    1,
+                                    internal,
+                                    size,
+                                    at,
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                match self.target {
+                    glow::TEXTURE_1D => (e.image1)(self.target, mip, x, w, f, ty, data),
+                    glow::TEXTURE_2D => (e.image2)(self.target, mip, x, y, w, h, f, ty, data),
+                    glow::TEXTURE_1D_ARRAY => {
+                        (e.image2)(self.target, mip, x, layer as i32, w, 1, f, ty, data)
+                    }
+                    glow::TEXTURE_CUBE_MAP => (e.image2)(
+                        glow::TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+                        mip,
+                        x,
+                        y,
+                        w,
+                        h,
+                        f,
+                        ty,
+                        data,
+                    ),
+                    glow::TEXTURE_3D => {
+                        (e.image3)(self.target, mip, x, y, z as i32, w, h, d, f, ty, data)
+                    }
+                    _ => (e.image3)(self.target, mip, x, y, layer as i32, w, h, 1, f, ty, data),
+                }
+            }
+            gl.bind_texture(self.target, None);
+            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+            gl.pixel_store_i32(glow::UNPACK_IMAGE_HEIGHT, 0);
         }
     }
 
