@@ -154,6 +154,7 @@ pub struct State {
     viewports: Vec<[f32; 4]>,
     depths: Vec<[f64; 2]>,
     scissors: Vec<[i32; 4]>,
+    tests: Vec<bool>,
     values: [i32; 5],
     polygon: [i32; 2],
     offset: [f32; 3],
@@ -299,9 +300,10 @@ impl State {
                 vec![BLEND.map(int)]
             };
             let (mut viewports, mut depths, mut scissors) = (Vec::new(), Vec::new(), Vec::new());
-            match (caps.viewports > 1, extra.floats, extra.doubles) {
-                (true, Some(floats), Some(doubles)) => {
-                    for i in 0..caps.viewports {
+            let mut tests = Vec::new();
+            match (extra.floats, extra.doubles) {
+                (Some(floats), Some(doubles)) => {
+                    for i in 0..int(glow::MAX_VIEWPORTS) as u32 {
                         let mut v = [0.0; 4];
                         floats(glow::VIEWPORT, i, v.as_mut_ptr());
                         viewports.push(v);
@@ -309,6 +311,7 @@ impl State {
                         doubles(glow::DEPTH_RANGE, i, d.as_mut_ptr());
                         depths.push(d);
                         scissors.push(indexed(glow::SCISSOR_BOX, i));
+                        tests.push((extra.enabled)(glow::SCISSOR_TEST, i) != 0);
                     }
                 }
                 _ => {
@@ -316,8 +319,8 @@ impl State {
                     gl.get_parameter_i32_slice(glow::VIEWPORT, &mut v);
                     viewports.push(v.map(|x| x as f32));
                     let mut d = [0.0; 2];
-                    gl.get_parameter_f32_slice(glow::DEPTH_RANGE, &mut d);
-                    depths.push(d.map(f64::from));
+                    (extra.double)(glow::DEPTH_RANGE, d.as_mut_ptr());
+                    depths.push(d);
                     let mut s = [0; 4];
                     gl.get_parameter_i32_slice(glow::SCISSOR_BOX, &mut s);
                     scissors.push(s);
@@ -350,6 +353,7 @@ impl State {
                 viewports,
                 depths,
                 scissors,
+                tests,
                 values: [
                     glow::CULL_FACE_MODE,
                     glow::FRONT_FACE,
@@ -471,6 +475,13 @@ impl State {
                     gl.viewport_f32_slice(0, count, &self.viewports);
                     gl.depth_range_f64_slice(0, count, &self.depths);
                     gl.scissor_slice(0, count, &self.scissors);
+                    for (i, &on) in self.tests.iter().enumerate() {
+                        if on {
+                            gl.enable_draw_buffer(glow::SCISSOR_TEST, i as u32);
+                        } else {
+                            gl.disable_draw_buffer(glow::SCISSOR_TEST, i as u32);
+                        }
+                    }
                 }
             }
             let [cull, front, provoking, func, clamp] = self.values.map(|v| v as u32);

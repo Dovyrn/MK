@@ -34,6 +34,7 @@ type Integers = unsafe extern "system" fn(u32, u32, *mut i32);
 type Booleans = unsafe extern "system" fn(u32, u32, *mut u8);
 type Floats = unsafe extern "system" fn(u32, u32, *mut f32);
 type Doubles = unsafe extern "system" fn(u32, u32, *mut f64);
+type Double = unsafe extern "system" fn(u32, *mut f64);
 type Enabled = unsafe extern "system" fn(u32, u32) -> u8;
 type ClampColor = unsafe extern "system" fn(u32, u32);
 type Provoking = unsafe extern "system" fn(u32);
@@ -73,6 +74,7 @@ pub struct Extra {
     pub booleans: Booleans,
     pub floats: Option<Floats>,
     pub doubles: Option<Doubles>,
+    pub double: Double,
     pub enabled: Enabled,
     pub clamp_color: ClampColor,
     pub offset_clamp: Option<Clamp>,
@@ -158,6 +160,7 @@ impl Extra {
                 booleans: cast(need("glGetBooleani_v")?),
                 floats: get("glGetFloati_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),
                 doubles: get("glGetDoublei_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),
+                double: cast(need("glGetDoublev")?),
                 enabled: cast(need("glIsEnabledi")?),
                 clamp_color: cast(need("glClampColor")?),
                 offset_clamp: get("glPolygonOffsetClamp", 46, "GL_ARB_polygon_offset_clamp")
