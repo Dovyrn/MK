@@ -384,7 +384,7 @@ impl<'a> Recorder<'a> {
                     self.dirty = true;
                 }
                 Command::Dispatch { x, y, z } => {
-                    if self.prepare(false) {
+                    if x.min(y).min(z) != 0 && self.prepare(false) {
                         gl.dispatch_compute(x, y, z);
                     }
                 }
@@ -638,7 +638,7 @@ impl<'a> Recorder<'a> {
                     first_vertex,
                     first_instance,
                 } => {
-                    if self.prepare(true) {
+                    if vertices.min(instances) != 0 && self.prepare(true) {
                         self.direct(false, vertices, instances, first_vertex, 0, first_instance);
                     }
                 }
@@ -649,7 +649,7 @@ impl<'a> Recorder<'a> {
                     base_vertex,
                     first_instance,
                 } => {
-                    if self.prepare(true) {
+                    if indices.min(instances) != 0 && self.prepare(true) {
                         self.direct(
                             true,
                             indices,
@@ -666,7 +666,7 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if self.prepare(true) {
+                    if count != 0 && self.prepare(true) {
                         self.indirect(false, buffer, offset, count, stride)?;
                     }
                 }
@@ -676,12 +676,12 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if self.prepare(true) {
+                    if count != 0 && self.prepare(true) {
                         self.indirect(true, buffer, offset, count, stride)?;
                     }
                 }
                 Command::DrawMesh { x, y, z } => {
-                    if self.prepare(true) {
+                    if x.min(y).min(z) != 0 && self.prepare(true) {
                         self.extra.mesh.unwrap()(x, y, z);
                     }
                 }
@@ -691,7 +691,7 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if !self.prepare(true) {
+                    if count == 0 || !self.prepare(true) {
                         return Ok(());
                     }
                     gl.bind_buffer(

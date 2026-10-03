@@ -166,7 +166,6 @@ impl Recorder<'_> {
             let pointer = offset as usize as *const std::ffi::c_void;
             let (n, step) = (count as i32, stride as i32);
             match (indexed, count) {
-                (_, 0) => {}
                 (true, 1) => extra.indexed_indirect.unwrap()(self.mode, kind, pointer),
                 (false, 1) => extra.indirect.unwrap()(self.mode, pointer),
                 (true, _) => extra.multi_indexed.unwrap()(self.mode, kind, pointer, n, step),
