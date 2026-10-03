@@ -144,7 +144,7 @@ pub fn java_type(kind: &str) -> String {
         "bool" => "boolean".into(),
         "bytes" => "long".into(),
         "str" => "String".into(),
-        "u32x3" => "int[]".into(),
+        "u32x3" | "[u32]" => "int[]".into(),
         "[str]" => "String[]".into(),
         k => match list(k) {
             Some(item) => format!("{item}[]"),
@@ -163,6 +163,7 @@ fn java_value(f: &Field) -> String {
         ),
         "f32" => format!("{}f", f.value),
         "[str]" => "new String[0]".into(),
+        "[u32]" => "new int[0]".into(),
         k if list(k).is_some() => format!("new {}[0]", list(k).unwrap()),
         k if !scalar(k) => format!("new {k}()"),
         _ => match f.value.split_once("::") {
@@ -176,6 +177,7 @@ fn java_value(f: &Field) -> String {
 pub fn list_size(s: &mut String, kind: &str, n: &str, indent: &str) {
     let item = match kind {
         "[str]" => "4 + x.getBytes(StandardCharsets.UTF_8).length",
+        "[u32]" => "4",
         _ => "x.encodedSize()",
     };
     writeln!(
@@ -195,6 +197,7 @@ pub fn list_put(s: &mut String, kind: &str, n: &str, at: &str, indent: &str) -> 
             s,
             "{indent}    var b = x.getBytes(StandardCharsets.UTF_8);\n{indent}    memPutInt({at}, b.length);\n{indent}    memByteBuffer({at} + 4, b.length).put(b);\n{indent}    {at} += 4 + b.length;"
         )?,
+        "[u32]" => writeln!(s, "{indent}    memPutInt({at}, x);\n{indent}    {at} += 4;")?,
         _ => writeln!(s, "{indent}    {at} = x.encode({at});")?,
     }
     writeln!(s, "{indent}}}")

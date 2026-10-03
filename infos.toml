@@ -231,6 +231,7 @@ fields = [
     ["budget", "bool", "false"],
     ["host_read", "bool", "false"],
     ["matrices", "u32", "0"],
+    ["tensors", "bool", "false"],
 ]
 
 [[info]]
@@ -466,4 +467,14 @@ fields = [
     ["b", "u32", "element::F16"],
     ["c", "u32", "element::F32"],
     ["result", "u32", "element::F32"],
+]
+
+[[info]]
+name = "TensorInfo"
+fields = [
+    ["dimensions", "[u32]", ""],
+    ["strides", "[u32]", ""],
+    ["element", "u32", "element::F32"],
+    ["usage", "u32", "tensor::COMPUTE"],
+    ["memory", "u32", "memory::DEVICE"],
 ]

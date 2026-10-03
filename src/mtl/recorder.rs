@@ -19,7 +19,7 @@ use objc2_metal::{
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
     MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
     MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
-    MTLStoreAction, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
+    MTLStoreAction, MTLTensor, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
     MTLVisibilityResultMode, MTLWinding,
 };
 use std::ptr::NonNull;
@@ -355,7 +355,8 @@ impl<'a> Recorder<'a> {
                 | Command::BindTexture { slot, .. }
                 | Command::BindImage { slot, .. }
                 | Command::BindSampler { slot, .. }
-                | Command::BindVertexBuffer { slot, .. } => {
+                | Command::BindVertexBuffer { slot, .. }
+                | Command::BindTensor { slot, .. } => {
                     keep(&mut self.binds, op << 32 | slot as u64, kept)
                 }
                 Command::TileMemory { index, .. } => {
@@ -782,6 +783,11 @@ impl<'a> Recorder<'a> {
                 let id = self.res.textures.get(texture).raw.gpuResourceID();
                 let index = (register::IMAGE + slot) as usize;
                 unsafe { self.table.setTexture_atIndex(id, index) };
+            }
+            Command::BindTensor { slot, tensor } => {
+                let id = self.res.tensors.get(tensor).gpuResourceID();
+                let index = (register::STORAGE + slot) as usize;
+                unsafe { self.table.setResource_atBufferIndex(id, index) };
             }
             Command::BindSampler { slot, sampler } => {
                 let id = self.res.samplers.get(sampler).gpuResourceID();

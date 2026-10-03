@@ -717,6 +717,12 @@ impl<'a> Check<'a> {
             }
             #[cfg(feature = "mtl")]
             Command::RateMap { .. } => self.rate = true,
+            #[cfg(feature = "mtl")]
+            Command::BindTensor { slot: i, tensor } => {
+                self.need(c, caps.tensors, "tensors")?;
+                slot(i, slot::STORAGES);
+                self.table.tensors.get(tensor);
+            }
             #[cfg(feature = "vk")]
             Command::SetLineWidth { width } => {
                 if width != 1.0 {

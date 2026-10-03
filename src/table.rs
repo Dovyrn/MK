@@ -24,6 +24,8 @@ pub struct Table {
     pub maps: Entries<()>,
     #[cfg(feature = "mtl")]
     pub functions: Entries<()>,
+    #[cfg(feature = "mtl")]
+    pub tensors: Entries<u32>,
 }
 
 impl Default for Table {
@@ -51,6 +53,8 @@ impl Default for Table {
             maps: Entries::new("rate map"),
             #[cfg(feature = "mtl")]
             functions: Entries::new("function table"),
+            #[cfg(feature = "mtl")]
+            tensors: Entries::new("tensor"),
         }
     }
 }

@@ -452,4 +452,36 @@ public class MtlDevice extends Device {
     }
 
     private static native int nImportSharedTexture(long device, int id, long info, int infoLength);
+
+    public synchronized int createTensor(TensorInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = nmemAlloc(info.encodedSize());
+            info.encode(infoAddress);
+            try {
+                return nCreateTensor(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
+        }
+    }
+
+    private static native int nCreateTensor(long device, long info, int infoLength);
+
+    public synchronized void destroyTensor(int tensor) {
+        nDestroyTensor(handle, tensor);
+    }
+
+    private static native void nDestroyTensor(long device, int tensor);
+
+    public synchronized long tensorHandle(int tensor) {
+        return nTensorHandle(handle, tensor);
+    }
+
+    private static native long nTensorHandle(long device, int tensor);
+
+    public synchronized long mapTensor(int tensor) {
+        return nMapTensor(handle, tensor);
+    }
+
+    private static native long nMapTensor(long device, int tensor);
 }

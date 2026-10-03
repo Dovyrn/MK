@@ -553,6 +553,30 @@ result = "u32"
 fails = true
 
 [[call]]
+name = "create_tensor"
+backend = "mtl"
+params = [["info", "TensorInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_tensor"
+backend = "mtl"
+params = [["tensor", "u32"]]
+
+[[call]]
+name = "tensor_handle"
+backend = "mtl"
+params = [["tensor", "u32"]]
+result = "u64"
+
+[[call]]
+name = "map_tensor"
+backend = "mtl"
+params = [["tensor", "u32"]]
+result = "pointer"
+
+[[call]]
 name = "adopt_raw"
 backend = "gl"
 params = [["proc", "u64"]]

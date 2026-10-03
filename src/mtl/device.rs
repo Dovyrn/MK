@@ -14,6 +14,7 @@ mod samplers;
 mod shared;
 mod sparse;
 mod tables;
+mod tensors;
 mod textures;
 
 use crate::check::Check;

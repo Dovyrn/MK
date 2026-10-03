@@ -255,3 +255,8 @@ U16 = 8
 U32 = 9
 U64 = 10
 BF16 = 1000141000
+
+[tensor]
+COMPUTE = 1
+RENDER = 2
+ML = 4

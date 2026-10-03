@@ -84,4 +84,10 @@ public class MtlCommands extends Commands {
         memPutInt(p + 4, dst);
         memPutInt(p + 8, compact);
     }
+
+    public void bindTensor(int slot, int tensor) {
+        var p = head(74, 8);
+        memPutInt(p, slot);
+        memPutInt(p + 4, tensor);
+    }
 }

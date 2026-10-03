@@ -15,6 +15,11 @@ for e in $examples; do
     MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 cargo run -q --features mtl --example $e > $O 2>&1
     echo "$e: $(tail -1 $O)"
 done
+echo "== metal without shader validation, which faults inside MPP"
+for e in tensor; do
+    MTL_DEBUG_LAYER=1 cargo run -q --features mtl --example $e > $O 2>&1
+    echo "$e: $(tail -1 $O)"
+done
 cargo build -q --features vk --examples
 for d in $icds; do
     echo "== ${d:t}"

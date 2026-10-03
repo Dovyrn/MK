@@ -353,3 +353,8 @@ fields = [["buffer", "u32"], ["offset", "u64"], ["inverted", "u32"]]
 [[command]]
 name = "end_conditional"
 backend = "vk"
+
+[[command]]
+name = "bind_tensor"
+backend = "mtl"
+fields = [["slot", "u32"], ["tensor", "u32"]]

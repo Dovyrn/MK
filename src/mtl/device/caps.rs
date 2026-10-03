@@ -88,6 +88,7 @@ impl Device {
             budget: true,
             host_read: raw.hasUnifiedMemory(),
             matrices: MATRICES.len() as u32,
+            tensors: true,
         }
     }
 
