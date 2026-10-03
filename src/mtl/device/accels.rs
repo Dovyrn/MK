@@ -117,7 +117,11 @@ impl Device {
                 build: sizes.buildScratchBufferSize as u64,
                 update: sizes.refitScratchBufferSize as u64,
             });
-            self.res.table.accels.set(id, ());
+            let scratch = (
+                sizes.buildScratchBufferSize as u64,
+                sizes.refitScratchBufferSize as u64,
+            );
+            self.res.table.accels.set(id, scratch);
             Ok(id)
         })
     }
@@ -137,7 +141,7 @@ impl Device {
                 build: 0,
                 update: 0,
             });
-            self.res.table.accels.set(id, ());
+            self.res.table.accels.set(id, (0, 0));
             Ok(id)
         })
     }

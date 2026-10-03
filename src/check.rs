@@ -17,6 +17,8 @@ pub struct Check<'a> {
     targets: Vec<(u32, bool)>,
     views: u32,
     samples: u32,
+    #[cfg(feature = "vk")]
+    ray: bool,
 }
 
 fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
@@ -105,6 +107,8 @@ impl<'a> Check<'a> {
             targets: Vec::new(),
             views: 0,
             samples: 0,
+            #[cfg(feature = "vk")]
+            ray: false,
         };
         while !bytes.is_empty() {
             let c = Command::read(&mut bytes)
@@ -687,8 +691,23 @@ impl<'a> Check<'a> {
                 self.views = views;
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
-            Command::BuildAccel { .. } | Command::CopyAccel { .. } => {
+            Command::BuildAccel {
+                accel,
+                scratch,
+                scratch_offset,
+                update,
+            } => {
                 self.need(c, caps.ray, "ray")?;
+                let (build, refit) = *self.table.accels.get(accel);
+                let size = if update != 0 { refit } else { build };
+                assert!(size > 0, "accel {accel} is compacted and cannot be built");
+                self.range(scratch, scratch_offset, size);
+            }
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            Command::CopyAccel { src, dst, .. } => {
+                self.need(c, caps.ray, "ray")?;
+                self.table.accels.get(src);
+                self.table.accels.get(dst);
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::WriteCompactedSize { heap, index, .. } => {
@@ -713,11 +732,89 @@ impl<'a> Check<'a> {
                 self.table.textures.get(texture);
             }
             #[cfg(feature = "vk")]
-            Command::BindRayPipeline { .. } | Command::TraceRays { .. } => {
+            Command::BindRayPipeline { pipeline } => {
                 self.need(c, caps.rays, "rays")?;
+                self.table.rays.get(pipeline);
+                self.ray = true;
             }
             #[cfg(feature = "vk")]
-            Command::ExecuteGenerated { .. } => self.need(c, caps.generated, "generated")?,
+            Command::TraceRays {
+                raygen,
+                raygen_offset,
+                raygen_stride,
+                raygen_size,
+                miss,
+                miss_offset,
+                miss_stride,
+                miss_size,
+                hit,
+                hit_offset,
+                hit_stride,
+                hit_size,
+                callable,
+                callable_offset,
+                callable_stride,
+                callable_size,
+                ..
+            } => {
+                self.need(c, caps.rays, "rays")?;
+                assert!(self.ray, "trace_rays needs bind_ray_pipeline first");
+                assert!(raygen != !0, "trace_rays needs a raygen table");
+                assert!(
+                    raygen_stride == raygen_size,
+                    "raygen stride {raygen_stride} must equal its size {raygen_size}"
+                );
+                for (what, buffer, offset, stride, size) in [
+                    ("raygen", raygen, raygen_offset, raygen_stride, raygen_size),
+                    ("miss", miss, miss_offset, miss_stride, miss_size),
+                    ("hit", hit, hit_offset, hit_stride, hit_size),
+                    (
+                        "callable",
+                        callable,
+                        callable_offset,
+                        callable_stride,
+                        callable_size,
+                    ),
+                ] {
+                    if buffer == !0 {
+                        continue;
+                    }
+                    let base = caps.table_alignment.max(1) as u64;
+                    let handle = caps.handle_alignment.max(1) as u64;
+                    assert!(
+                        offset.is_multiple_of(base),
+                        "{what} offset {offset} is not a multiple of caps.table_alignment {base}"
+                    );
+                    assert!(
+                        stride.is_multiple_of(handle) && stride >= caps.handle_size as u64,
+                        "{what} stride {stride} must be a multiple of caps.handle_alignment {handle} and at least caps.handle_size"
+                    );
+                    self.range(buffer, offset, size);
+                }
+            }
+            #[cfg(feature = "vk")]
+            Command::ExecuteGenerated {
+                layout,
+                indirect,
+                offset,
+                size,
+                preprocess,
+                preprocess_offset,
+                preprocess_size,
+                count,
+                count_offset,
+                ..
+            } => {
+                self.need(c, caps.generated, "generated")?;
+                self.table.layouts.get(layout);
+                self.filled(c, indirect, offset, size);
+                if preprocess != !0 {
+                    self.range(preprocess, preprocess_offset, preprocess_size);
+                }
+                if count != !0 {
+                    self.range(count, count_offset, 4);
+                }
+            }
             _ => {}
         }
         Ok(())

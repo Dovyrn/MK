@@ -13,7 +13,7 @@ pub struct Table {
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub accels: Entries<()>,
+    pub accels: Entries<(u64, u64)>,
     #[cfg(feature = "vk")]
     pub rays: Entries<()>,
     #[cfg(feature = "vk")]

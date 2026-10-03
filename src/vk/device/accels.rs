@@ -121,7 +121,10 @@ impl Device {
             ..self.new_accel(ray, sizes.acceleration_structure_size, kind, flags)?
         };
         let id = self.res.accels.insert(accel);
-        self.res.table.accels.set(id, ());
+        self.res
+            .table
+            .accels
+            .set(id, (sizes.build_scratch_size, sizes.update_scratch_size));
         Ok(id)
     }
 
@@ -135,7 +138,7 @@ impl Device {
         let source = self.res.accels.get(accel);
         let accel = self.new_accel(ray, size, source.kind, source.flags)?;
         let id = self.res.accels.insert(accel);
-        self.res.table.accels.set(id, ());
+        self.res.table.accels.set(id, (0, 0));
         Ok(id)
     }
 
