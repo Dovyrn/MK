@@ -276,7 +276,11 @@ impl State {
                 pixels.extend(BLOCKS);
             }
             let pixels = pixels.into_iter().map(|p| (p, int(p))).collect();
-            let enables = ENABLES.iter().map(|&e| (e, gl.is_enabled(e))).collect();
+            let mut enables = ENABLES.to_vec();
+            if has(43, "GL_ARB_ES3_compatibility") {
+                enables.push(glow::PRIMITIVE_RESTART_FIXED_INDEX);
+            }
+            let enables = enables.into_iter().map(|e| (e, gl.is_enabled(e))).collect();
             let blends = (0..slot::COLORS)
                 .map(|i| (extra.enabled)(glow::BLEND, i) != 0)
                 .collect();
@@ -378,6 +382,10 @@ impl State {
         }
         if let Some(clip) = extra.clip {
             unsafe { clip(glow::LOWER_LEFT, glow::NEGATIVE_ONE_TO_ONE) };
+        }
+        let fixed = glow::PRIMITIVE_RESTART_FIXED_INDEX;
+        if self.enables.iter().any(|&(e, _)| e == fixed) {
+            unsafe { gl.disable(fixed) };
         }
     }
 
