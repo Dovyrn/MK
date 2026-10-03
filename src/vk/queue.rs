@@ -4,7 +4,7 @@ use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
 use ash::vk;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::panic::AssertUnwindSafe;
 
 pub struct Queue {
@@ -89,6 +89,7 @@ impl Queue {
                 compute: vk::Pipeline::null(),
                 graphics: vk::Pipeline::null(),
                 slots: BTreeMap::new(),
+                stale: vec![BTreeSet::new(); points.len()],
                 push: Vec::new(),
                 rate: None,
                 defaults: false,

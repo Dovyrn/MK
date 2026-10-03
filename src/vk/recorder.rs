@@ -8,7 +8,7 @@ use crate::vk::texture::{Texture, count};
 use crate::vk::{Callback, Native};
 use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
 use ash::vk;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::CString;
 
 const NONE: u32 = !0;
@@ -34,6 +34,7 @@ pub struct Recorder<'a> {
     pub compute: vk::Pipeline,
     pub graphics: vk::Pipeline,
     pub slots: BTreeMap<u32, Slot>,
+    pub stale: Vec<BTreeSet<u32>>,
     pub push: Vec<u8>,
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub defaults: bool,
@@ -154,7 +155,31 @@ impl Recorder<'_> {
     ) -> Result<(), &'static str> {
         let binding = bindings::binding(kind, slot);
         self.slots.insert(binding, (kind, buffer, image));
-        self.push_slots(&[write(binding, &self.slots[&binding])])
+        for s in &mut self.stale {
+            s.insert(binding);
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self, point: vk::PipelineBindPoint) -> Result<(), &'static str> {
+        let Some(i) = self.points.iter().position(|&p| p == point) else {
+            return Ok(());
+        };
+        if self.stale[i].is_empty() {
+            return Ok(());
+        }
+        let push = self
+            .ext
+            .push
+            .as_ref()
+            .ok_or("VK_KHR_push_descriptor is not enabled")?;
+        let writes: Vec<_> = self.stale[i]
+            .iter()
+            .map(|b| write(*b, &self.slots[b]))
+            .collect();
+        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, &writes) };
+        self.stale[i].clear();
+        Ok(())
     }
 
     fn buffer_slot(
@@ -196,11 +221,14 @@ impl Recorder<'_> {
         }
     }
 
-    fn restore(&self) -> Result<(), &'static str> {
+    fn restore(&mut self) -> Result<(), &'static str> {
         self.bind_heap();
         let writes: Vec<_> = self.slots.iter().map(|(b, s)| write(*b, s)).collect();
         if !writes.is_empty() {
             self.push_slots(&writes)?;
+        }
+        for s in &mut self.stale {
+            s.clear();
         }
         let bound = [
             (vk::PipelineBindPoint::COMPUTE, self.compute),
@@ -344,6 +372,20 @@ impl Recorder<'_> {
 
     fn step(&mut self, command: Command) -> Result<(), &'static str> {
         let (d, b) = (self.device, self.buffer);
+        match command {
+            Command::Dispatch { .. } | Command::DispatchIndirect { .. } => {
+                self.flush(vk::PipelineBindPoint::COMPUTE)?
+            }
+            Command::Draw { .. }
+            | Command::DrawIndexed { .. }
+            | Command::DrawIndirect { .. }
+            | Command::DrawIndexedIndirect { .. }
+            | Command::ExecuteIndirect { .. }
+            | Command::ExecuteIndirectCount { .. }
+            | Command::DrawMesh { .. }
+            | Command::DrawMeshIndirect { .. } => self.flush(vk::PipelineBindPoint::GRAPHICS)?,
+            _ => {}
+        }
         unsafe {
             match command {
                 Command::BeginCompute | Command::EndCompute => {}
