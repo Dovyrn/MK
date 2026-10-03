@@ -101,16 +101,34 @@ impl Table {
         );
         let mips = rest(info.base_mip, info.mips, t.mips, "mip", texture);
         let layers = rest(info.base_layer, info.layers, t.layers, "layer", texture);
-        let three = t.dimension == dimension::D3;
+        let family = |d: u32| match d {
+            dimension::D1 | dimension::D1_ARRAY => 1,
+            dimension::D3 => 3,
+            _ => 2,
+        };
         assert!(
-            three == (info.dimension == dimension::D3),
-            "a view of texture {texture} cannot change between 3D and layered"
+            family(t.dimension) == family(info.dimension),
+            "a view of texture {texture} cannot change dimension {} to {}",
+            t.dimension,
+            info.dimension
         );
-        if matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY) {
-            assert!(
-                layers.is_multiple_of(6) && t.width == t.height,
-                "a cube view needs square faces and a multiple of 6 layers"
-            );
+        let cube = matches!(t.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
+        match info.dimension {
+            dimension::D1 | dimension::D2 | dimension::D3 => {
+                assert!(
+                    layers == 1,
+                    "a view without layers has one layer, not {layers}"
+                )
+            }
+            dimension::CUBE => assert!(
+                cube && layers == 6,
+                "a cube view needs a cube texture and 6 layers"
+            ),
+            dimension::CUBE_ARRAY => assert!(
+                cube && layers.is_multiple_of(6),
+                "a cube array view needs a cube texture and a multiple of 6 layers"
+            ),
+            _ => {}
         }
         ViewInfo {
             mips,
