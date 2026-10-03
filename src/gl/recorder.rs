@@ -71,6 +71,7 @@ pub struct Recorder<'a> {
     state: Option<DepthInfo>,
     references: (u32, u32),
     extent: (i32, i32),
+    layers: u32,
     rendering: bool,
     query: Option<u32>,
     labels: u32,
@@ -216,6 +217,7 @@ impl<'a> Recorder<'a> {
             state: None,
             references: (0, 0),
             extent: (0, 0),
+            layers: 0,
             rendering: false,
             query: None,
             labels: 0,
@@ -781,7 +783,12 @@ impl<'a> Recorder<'a> {
                 }
                 Command::Callback { index } => {
                     self.prepare(self.rendering);
+                    let state = (self.snapshot)();
                     self.natives[index as usize](&Native { gl });
+                    state.restore(gl, self.extra);
+                    if self.rendering {
+                        self.bind(self.layers)?;
+                    }
                 }
             }
         }

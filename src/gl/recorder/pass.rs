@@ -24,16 +24,18 @@ impl Recorder<'_> {
         }
     }
 
-    pub fn begin_render(&mut self, width: u32, height: u32, layers: u32) -> Result<(), String> {
+    fn default(&self) -> bool {
+        self.colors
+            .iter()
+            .any(|c| self.res.textures.get(c.texture).raw.is_none())
+    }
+
+    pub fn bind(&self, layers: u32) -> Result<(), String> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
-            let default = self
-                .colors
-                .iter()
-                .any(|c| res.textures.get(c.texture).raw.is_none());
             let target = glow::DRAW_FRAMEBUFFER;
-            if default {
+            if self.default() {
                 gl.bind_framebuffer(target, None);
             } else {
                 gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo));
@@ -73,6 +75,16 @@ impl Recorder<'_> {
                     return Err("render targets form an incomplete framebuffer".into());
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub fn begin_render(&mut self, width: u32, height: u32, layers: u32) -> Result<(), String> {
+        let gl = self.gl;
+        let res = self.res;
+        self.bind(layers)?;
+        let default = self.default();
+        unsafe {
             gl.color_mask(true, true, true, true);
             gl.depth_mask(true);
             gl.stencil_mask(0xff);
@@ -112,6 +124,7 @@ impl Recorder<'_> {
             gl.disable(glow::SCISSOR_TEST);
             self.rendering = true;
             self.extent = (width as i32, height as i32);
+            self.layers = layers;
         }
         Ok(())
     }
