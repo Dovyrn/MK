@@ -31,6 +31,8 @@ use objc2_metal::{
     MTLCompareFunction, MTLDevice, MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize,
     MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLVertexFormat,
 };
+use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 fn compare(c: u32) -> MTLCompareFunction {
@@ -200,6 +202,8 @@ pub struct Device {
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
     options: Retained<MTL4CompilerTaskOptions>,
     serializer: Option<Retained<ProtocolObject<dyn MTL4PipelineDataSetSerializer>>>,
+    cache: RefCell<Vec<u8>>,
+    archives: Vec<PathBuf>,
     residency: Residency,
     res: Resources,
     queues: Vec<Queue>,
@@ -213,6 +217,9 @@ impl Drop for Device {
     fn drop(&mut self) {
         for q in &self.queues {
             q.idle();
+        }
+        for path in &self.archives {
+            let _ = std::fs::remove_file(path);
         }
     }
 }
@@ -237,6 +244,8 @@ impl Device {
             compiler,
             options: MTL4CompilerTaskOptions::new(),
             serializer: None,
+            cache: RefCell::new(Vec::new()),
+            archives: Vec::new(),
             residency,
             res: Resources::default(),
             queues,
