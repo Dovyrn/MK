@@ -1,5 +1,5 @@
 /target
-/shaders/out
+/examples/shaders/out
 .idea
 CLAUDE.md
 /libs/*/Cargo.lock

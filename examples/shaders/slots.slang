@@ -33,7 +33,7 @@ struct Varyings {
 };
 
 [shader("vertex")]
-Varyings vert(uint id: SV_VertexID) {
+Varyings vert(uint id: SV_VulkanVertexID) {
     float2 p = float2((id << 1) & 2, id & 2);
     Varyings o;
     o.position = float4(p * 2 - 1, 0, 1);

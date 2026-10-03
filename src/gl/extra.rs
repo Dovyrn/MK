@@ -120,7 +120,6 @@ pub struct Extra {
     pub storage3: Option<Samples3>,
     pub copy_image: Option<CopyImage>,
     pub clear_image: Option<ClearImage>,
-    pub parameters: bool,
     pub bindless: Option<Bindless>,
     pub addresses: Option<Addresses>,
     pub rates: Option<Rates>,
@@ -237,7 +236,6 @@ impl Extra {
                 storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
                 copy_image: get("glCopyImageSubData", 43, "GL_ARB_copy_image").map(|p| cast(p)),
                 clear_image: get("glClearTexSubImage", 44, "GL_ARB_clear_texture").map(|p| cast(p)),
-                parameters: has(46, "GL_ARB_shader_draw_parameters"),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
                 addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
                     .filter(|_| has(99, "GL_NV_shader_buffer_store")),

@@ -1,46 +1,20 @@
-void mk_draw(uint2 commands, uint topology, uint index, uint vertices, uint instances, uint first, uint base) {
-    __target_switch {
-    case metal:
-        __intrinsic_asm "({ uint2 mk_list = $0; metal::render_command(*(thread metal::command_buffer*)&mk_list, $2).draw_primitives(metal::primitive_type($1), $5, $3, $4, $6); })";
-    default:
-        DescriptorHandle<RWStructuredBuffer<uint4>> h = DescriptorHandle<RWStructuredBuffer<uint4>>(commands);
-        h[index] = uint4(vertices, instances, first, base);
-    }
-}
-
-void mk_indexed(uint2 commands, uint2 indices, uint topology, uint kind, uint index, uint count, uint instances, uint first, int offset, uint base) {
-    __target_switch {
-    case metal:
-        __intrinsic_asm "({ uint2 mk_list = $0; ulong mk_at = as_type<ulong>($1); metal::render_command mk_command(*(thread metal::command_buffer*)&mk_list, $4); if ($3 == 0) { mk_command.draw_indexed_primitives(metal::primitive_type($2), $5, (const device ushort*)mk_at + $7, $6, $8, $9); } else { mk_command.draw_indexed_primitives(metal::primitive_type($2), $5, (const device uint*)mk_at + $7, $6, $8, $9); } })";
-    default:
-        DescriptorHandle<RWStructuredBuffer<uint>> h = DescriptorHandle<RWStructuredBuffer<uint>>(commands);
-        h[index * 5] = count;
-        h[index * 5 + 1] = instances;
-        h[index * 5 + 2] = first;
-        h[index * 5 + 3] = asuint(offset);
-        h[index * 5 + 4] = base;
-    }
-}
-
-void mk_mesh(uint2 commands, uint3 task, uint3 mesh, uint index, uint x, uint y, uint z) {
-    __target_switch {
-    case metal:
-        __intrinsic_asm "({ uint2 mk_list = $0; metal::render_command(*(thread metal::command_buffer*)&mk_list, $3).draw_mesh_threadgroups(uint3($4, $5, $6), $1, $2); })";
-    default:
-        DescriptorHandle<RWStructuredBuffer<uint>> h = DescriptorHandle<RWStructuredBuffer<uint>>(commands);
-        h[index * 3] = x;
-        h[index * 3 + 1] = y;
-        h[index * 3 + 2] = z;
-    }
-}
-
 struct IndirectBuffer {
     uint2 commands;
     uint topology;
     uint padding[5];
 
     void draw(uint index, uint vertices, uint instances, uint first, uint base) {
-        mk_draw(commands, topology, index, vertices, instances, first, base);
+        write(commands, topology, index, vertices, instances, first, base);
+    }
+
+    private static void write(uint2 commands, uint topology, uint index, uint vertices, uint instances, uint first, uint base) {
+        __target_switch {
+        case metal:
+            __intrinsic_asm "({ uint2 mk_list = $0; metal::render_command(*(thread metal::command_buffer*)&mk_list, $2).draw_primitives(metal::primitive_type($1), $5, $3, $4, $6); })";
+        default:
+            DescriptorHandle<RWStructuredBuffer<uint4>> h = DescriptorHandle<RWStructuredBuffer<uint4>>(commands);
+            h[index] = uint4(vertices, instances, first, base);
+        }
     }
 };
 
@@ -52,7 +26,21 @@ struct IndexedIndirectBuffer {
     uint padding[2];
 
     void draw(uint index, uint count, uint instances, uint first, int offset, uint base) {
-        mk_indexed(commands, indices, topology, kind, index, count, instances, first, offset, base);
+        write(commands, indices, topology, kind, index, count, instances, first, offset, base);
+    }
+
+    private static void write(uint2 commands, uint2 indices, uint topology, uint kind, uint index, uint count, uint instances, uint first, int offset, uint base) {
+        __target_switch {
+        case metal:
+            __intrinsic_asm "({ uint2 mk_list = $0; ulong mk_at = as_type<ulong>($1); metal::render_command mk_command(*(thread metal::command_buffer*)&mk_list, $4); if ($3 == 0) { mk_command.draw_indexed_primitives(metal::primitive_type($2), $5, (const device ushort*)mk_at + $7, $6, $8, $9); } else { mk_command.draw_indexed_primitives(metal::primitive_type($2), $5, (const device uint*)mk_at + $7, $6, $8, $9); } })";
+        default:
+            DescriptorHandle<RWStructuredBuffer<uint>> h = DescriptorHandle<RWStructuredBuffer<uint>>(commands);
+            h[index * 5] = count;
+            h[index * 5 + 1] = instances;
+            h[index * 5 + 2] = first;
+            h[index * 5 + 3] = asuint(offset);
+            h[index * 5 + 4] = base;
+        }
     }
 };
 
@@ -62,6 +50,18 @@ struct MeshIndirectBuffer {
     uint mesh[3];
 
     void draw(uint index, uint x, uint y, uint z) {
-        mk_mesh(commands, uint3(task[0], task[1], task[2]), uint3(mesh[0], mesh[1], mesh[2]), index, x, y, z);
+        write(commands, uint3(task[0], task[1], task[2]), uint3(mesh[0], mesh[1], mesh[2]), index, x, y, z);
+    }
+
+    private static void write(uint2 commands, uint3 task, uint3 mesh, uint index, uint x, uint y, uint z) {
+        __target_switch {
+        case metal:
+            __intrinsic_asm "({ uint2 mk_list = $0; metal::render_command(*(thread metal::command_buffer*)&mk_list, $3).draw_mesh_threadgroups(uint3($4, $5, $6), $1, $2); })";
+        default:
+            DescriptorHandle<RWStructuredBuffer<uint>> h = DescriptorHandle<RWStructuredBuffer<uint>>(commands);
+            h[index * 3] = x;
+            h[index * 3 + 1] = y;
+            h[index * 3 + 2] = z;
+        }
     }
 };

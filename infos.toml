@@ -215,7 +215,6 @@ fields = [
     ["bias_clamp", "bool", "false"],
     ["blends", "bool", "false"],
     ["indirect", "bool", "false"],
-    ["indirect_ids", "bool", "false"],
     ["indirect_offset", "bool", "false"],
     ["max_buffer", "u64", "0"],
     ["max_texture", "u32", "0"],

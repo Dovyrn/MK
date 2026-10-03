@@ -23,6 +23,7 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         let json = out.join(format!("{name}.{entry}.json"));
         run(Command::new("slangc")
             .arg(&slang)
+            .args(["-I", crate::LIBRARY])
             .args(["-target", "metal", "-entry", &entry])
             .arg("-reflection-json")
             .arg(&json)

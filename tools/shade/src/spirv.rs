@@ -23,6 +23,7 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
     let (textures, samplers) = crate::shifts();
     run(Command::new("slangc")
         .arg(dir.join(format!("{name}.slang")))
+        .args(["-I", crate::LIBRARY])
         .args([
             "-target",
             "spirv",

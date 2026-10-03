@@ -99,14 +99,6 @@ impl Recorder<'_> {
         };
         let native = self.extra.elements_base.is_some();
         unsafe {
-            let shift = match indexed {
-                false => first as i32,
-                true if self.extra.parameters => 0,
-                true => base,
-            };
-            if let Some(l) = &p.program.base {
-                gl.uniform_1_i32(Some(l), shift);
-            }
             if let Some(l) = &p.program.instance {
                 gl.uniform_1_i32(Some(l), instance as i32);
             }
@@ -178,18 +170,10 @@ impl Recorder<'_> {
         count: u32,
         stride: u32,
         parameter: Option<(u32, u64)>,
-    ) -> Result<(), String> {
+    ) {
         let gl = self.gl;
-        let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
-            return Ok(());
-        };
-        if let Some(l) = &p.program.base {
-            if !indexed || !self.extra.parameters {
-                return Err("indirect draws of a shader that reads SV_VertexID need \
-                    GL_ARB_shader_draw_parameters and an index buffer"
-                    .into());
-            }
-            unsafe { gl.uniform_1_i32(Some(l), 0) };
+        if self.render.is_none() || indexed && self.index.is_none() {
+            return;
         }
         let size = if indexed { 20 } else { 16 };
         let stride = if stride == 0 { size } else { stride };
@@ -213,7 +197,7 @@ impl Recorder<'_> {
                 } else {
                     extra.count.unwrap()(self.mode, pointer, at, n, step);
                 }
-                return Ok(());
+                return;
             }
             match (indexed, count) {
                 (true, 1) => extra.indexed_indirect.unwrap()(self.mode, kind, pointer),
@@ -222,6 +206,5 @@ impl Recorder<'_> {
                 (false, _) => extra.multi.unwrap()(self.mode, pointer, n, step),
             }
         }
-        Ok(())
     }
 }

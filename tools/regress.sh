@@ -3,7 +3,7 @@ cd ${0:A:h}/..
 O=$PWD/target/mk.out
 mkdir -p target
 icds=(${=MK_ICDS:-/usr/local/share/vulkan/icd.d/libkosmickrisp_icd.json $HOME/.local/mesa/share/vulkan/icd.d/lvp_icd.aarch64.json})
-examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues native indirect sparse compact viewports slots handles draws uploads blits images})
+examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues native indirect sparse compact viewports slots handles uploads blits images})
 cargo fmt --check || echo "fmt dirty"
 cargo run -q -p shade
 for f in mtl vk gl mtl,jni vk,jni gl,jni; do
@@ -26,7 +26,7 @@ done
 cargo build -q --features gl --examples
 for h in mesa apple legacy; do
     echo "== gl $h"
-    for e in slots render viewports adopt view queries native mesh cache draws uploads blits images handles indirect; do
+    for e in slots render viewports adopt view queries native mesh cache uploads blits images handles indirect; do
         MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
         echo "$e: $(tail -1 $O)"
     done
@@ -51,14 +51,14 @@ run() {
     $J/java --enable-native-access=ALL-UNNAMED -cp target/mkjava:$CP "$@"
 }
 echo "== java metal"
-run dev.dov.mk.Smoke target/debug/libmk_mtl.dylib shaders/out/count.metallib target/java-mtl.bin 2>&1 | grep -v WARNING | tail -1
+run dev.dov.mk.Smoke target/debug/libmk_mtl.dylib examples/shaders/out/count.metallib target/java-mtl.bin 2>&1 | grep -v WARNING | tail -1
 cargo run -q --features mtl --example parity target/java-mtl.bin 2>&1 | tail -1
 for d in $icds; do
     echo "== java ${d:t}"
-    DYLD_FALLBACK_LIBRARY_PATH=/usr/local/lib VK_LOADER_LAYERS_ENABLE='*validation' VK_DRIVER_FILES=$d run dev.dov.mk.Smoke target/debug/libmk_vk.dylib shaders/out/count.spv target/java-vk.bin > $O 2>&1
+    DYLD_FALLBACK_LIBRARY_PATH=/usr/local/lib VK_LOADER_LAYERS_ENABLE='*validation' VK_DRIVER_FILES=$d run dev.dov.mk.Smoke target/debug/libmk_vk.dylib examples/shaders/out/count.spv target/java-vk.bin > $O 2>&1
     echo "$(grep -ciE 'validation error|exception' $O) errors, $(tail -1 $O)"
 done
 cargo run -q --features vk --example parity target/java-vk.bin 2>&1 | tail -1
 echo "== java gl"
-run -XstartOnFirstThread dev.dov.mk.Smoke target/debug/libmk_gl.dylib shaders/out/count.gl target/java-gl.bin 2>&1 | grep -v WARNING | tail -1
+run -XstartOnFirstThread dev.dov.mk.Smoke target/debug/libmk_gl.dylib examples/shaders/out/count.gl target/java-gl.bin 2>&1 | grep -v WARNING | tail -1
 cargo run -q --features gl --example parity target/java-gl.bin 2>&1 | tail -1

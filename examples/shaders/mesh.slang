@@ -36,6 +36,21 @@ void mesh(uint i: SV_GroupThreadID, in payload Payload p, out indices uint3 tris
     }
 }
 
+[shader("mesh")]
+[numthreads(3, 1, 1)]
+[outputtopology("triangle")]
+void single(uint i: SV_GroupThreadID, out indices uint3 tris[1], out vertices Varyings verts[3]) {
+    SetMeshOutputCounts(3, 1);
+    float2 corners[3] = { float2(-1, -1), float2(1, -1), float2(0, 1) };
+    Varyings v;
+    v.position = float4(corners[i] * 0.5, push.z, 1);
+    v.color = float3(1, 0, 0);
+    verts[i] = v;
+    if (i == 0) {
+        tris[0] = uint3(0, 1, 2);
+    }
+}
+
 [shader("fragment")]
 float4 frag(Varyings v) : SV_Target {
     return float4(v.color, 1);

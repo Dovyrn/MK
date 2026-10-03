@@ -724,7 +724,7 @@ impl<'a> Recorder<'a> {
                     stride,
                 } => {
                     if count != 0 && self.prepare(true) {
-                        self.indirect(false, buffer, offset, count, stride, None)?;
+                        self.indirect(false, buffer, offset, count, stride, None);
                     }
                 }
                 Command::DrawIndexedIndirect {
@@ -734,33 +734,7 @@ impl<'a> Recorder<'a> {
                     stride,
                 } => {
                     if count != 0 && self.prepare(true) {
-                        self.indirect(true, buffer, offset, count, stride, None)?;
-                    }
-                }
-                Command::DrawIndirectCount {
-                    buffer,
-                    offset,
-                    count,
-                    count_offset,
-                    max,
-                    stride,
-                } => {
-                    if max != 0 && self.prepare(true) {
-                        let parameter = Some((count, count_offset));
-                        self.indirect(false, buffer, offset, max, stride, parameter)?;
-                    }
-                }
-                Command::DrawIndexedIndirectCount {
-                    buffer,
-                    offset,
-                    count,
-                    count_offset,
-                    max,
-                    stride,
-                } => {
-                    if max != 0 && self.prepare(true) {
-                        let parameter = Some((count, count_offset));
-                        self.indirect(true, buffer, offset, max, stride, parameter)?;
+                        self.indirect(true, buffer, offset, count, stride, None);
                     }
                 }
                 Command::ExecuteIndirect {
@@ -776,7 +750,7 @@ impl<'a> Recorder<'a> {
                         if mesh {
                             self.mesh(buffer, offset, count, stride, None)?;
                         } else {
-                            self.indirect(info.indexed, buffer, offset, count, stride, None)?;
+                            self.indirect(info.indexed, buffer, offset, count, stride, None);
                         }
                     }
                 }
@@ -795,7 +769,7 @@ impl<'a> Recorder<'a> {
                             self.mesh(commands, 0, size, stride, range)?;
                         } else {
                             let indexed = info.indexed;
-                            self.indirect(indexed, commands, 0, size, stride, range)?;
+                            self.indirect(indexed, commands, 0, size, stride, range);
                         }
                     }
                 }
@@ -812,18 +786,6 @@ impl<'a> Recorder<'a> {
                 } => {
                     if count != 0 && self.prepare(true) {
                         self.mesh(buffer, offset, count, stride, None)?;
-                    }
-                }
-                Command::DrawMeshIndirectCount {
-                    buffer,
-                    offset,
-                    count,
-                    count_offset,
-                    max,
-                    stride,
-                } => {
-                    if max != 0 && self.prepare(true) {
-                        self.mesh(buffer, offset, max, stride, Some((count, count_offset)))?;
                     }
                 }
                 Command::WriteTimestamp { heap, index, .. } => {

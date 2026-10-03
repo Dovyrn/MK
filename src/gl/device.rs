@@ -148,7 +148,6 @@ impl Device {
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
                 blends: has(40, "GL_ARB_draw_buffers_blend"),
                 indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
-                indirect_ids: false,
                 indirect_offset: false,
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),

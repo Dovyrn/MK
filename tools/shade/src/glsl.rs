@@ -118,15 +118,14 @@ pub fn glsl(out: &Path, name: &str) {
                 "#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_{b} gl_{b}ARB\n#else\nuniform int SPIRV_Cross_{b};\n#endif\n"
             )
         };
-        let plain = plain
-            .replace(
-                &block("BaseVertex"),
-                "uniform int mk_BaseVertex;\n#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_BaseVertex (mk_BaseVertex + gl_BaseVertexARB)\n#else\n#define SPIRV_Cross_BaseVertex mk_BaseVertex\n#endif\n",
-            )
-            .replace(
-                &block("BaseInstance"),
-                "uniform int SPIRV_Cross_BaseInstance;\n",
-            );
+        assert!(
+            !plain.contains("SPIRV_Cross_BaseVertex"),
+            "{name} {entry} reads the base vertex, use SV_VulkanVertexID instead of SV_VertexID"
+        );
+        let plain = plain.replace(
+            &block("BaseInstance"),
+            "uniform int SPIRV_Cross_BaseInstance;\n",
+        );
         container += &format!("//@ entry {entry}\n{plain}");
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         let mut table = Vec::new();

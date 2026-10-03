@@ -42,11 +42,16 @@ fn main() {
             return;
         }
     };
-    let counted = cfg!(not(feature = "mtl")) && device.caps().indirect_count;
-    let words: [u32; 7] = [1, 1, 1, 0, 0, 0, 1];
-    let args = device.create_buffer(28, memory::UPLOAD).unwrap();
-    unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), device.map(args).cast(), 7) };
-    device.unmap(args);
+    let single = device
+        .create_mesh_pipeline(&MeshInfo {
+            code: host::code!("mesh"),
+            mesh: "single",
+            fragment: "frag",
+            colors: &colors,
+            mesh_group: [3, 1, 1],
+            ..Default::default()
+        })
+        .unwrap();
     let event = device.create_event().unwrap();
     let listed = device.caps().buffers > 0 && device.caps().indirect_count;
     let range = device.create_buffer(8, memory::DEVICE).unwrap();
@@ -57,7 +62,8 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    for pass in 0..1 + listed as u64 {
+    let passes = [Some(0), listed.then_some(1), Some(2)];
+    for pass in passes.into_iter().flatten() {
         let mut c = Commands::default();
         if pass == 1 {
             let encode = device
@@ -98,13 +104,10 @@ fn main() {
             ..Default::default()
         });
         c.begin_render(n, n, 1);
-        c.bind_render_pipeline(pipeline);
+        c.bind_render_pipeline(if pass == 2 { single } else { pipeline });
         c.push_constants(0, &0.5f32.to_le_bytes());
         if pass == 1 {
             c.execute_indirect_count(list, range, 0);
-        } else if counted {
-            #[cfg(not(feature = "mtl"))]
-            c.draw_mesh_indirect_count(args, 0, args, 24, 2, 0);
         } else {
             c.draw_mesh(1, 1, 1);
         }
@@ -146,6 +149,6 @@ fn main() {
         assert_eq!(at(20, 20), [0, 0, 255, 255], "upper left of pass {pass}");
     }
     println!(
-        "task and mesh shader triangle drawn, count read from the GPU: {counted}, from an indirect buffer: {listed}"
+        "task and mesh shader triangle drawn, from an indirect buffer: {listed}, mesh shader without a task shader: true"
     );
 }

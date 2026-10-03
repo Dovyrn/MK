@@ -72,7 +72,6 @@ pub(super) fn probe(
         bias_clamp: features.depth_bias_clamp != 0,
         blends: features.independent_blend != 0,
         indirect: true,
-        indirect_ids: true,
         indirect_offset: true,
         max_queries: 65536,
         cube_arrays: features.image_cube_array != 0,

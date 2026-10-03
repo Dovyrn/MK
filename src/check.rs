@@ -823,45 +823,6 @@ impl<'a> Check<'a> {
                 }
                 self.indirect(buffer, offset, count, stride, 20);
             }
-            #[cfg(any(feature = "vk", feature = "gl"))]
-            Command::DrawIndirectCount {
-                buffer,
-                offset,
-                count,
-                count_offset,
-                max,
-                stride,
-            }
-            | Command::DrawIndexedIndirectCount {
-                buffer,
-                offset,
-                count,
-                count_offset,
-                max,
-                stride,
-            } => {
-                let indexed = matches!(c, Command::DrawIndexedIndirectCount { .. });
-                self.need(c, caps.indirect_count, "indirect_count")?;
-                self.draw(c, indexed);
-                assert!(
-                    self.indirect,
-                    "{c} needs a render pipeline created with indirect: true"
-                );
-                if indexed && self.index.map(|i| i.1) != Some(0) {
-                    self.need(c, caps.indirect_offset, "indirect_offset")?;
-                }
-                let size = if indexed { 20 } else { 16 };
-                assert!(
-                    offset.is_multiple_of(4) && count_offset.is_multiple_of(4),
-                    "{c} offsets {offset} and {count_offset} must be multiples of 4"
-                );
-                assert!(
-                    stride == 0 || (stride.is_multiple_of(4) && stride >= size),
-                    "{c} stride {stride} must be 0 or a multiple of 4 of at least {size}"
-                );
-                self.indirect(buffer, offset, max, stride, size as u64);
-                self.range(count, count_offset, 4);
-            }
             Command::DrawMesh { .. } => {
                 self.need(c, caps.mesh, "mesh")?;
                 self.draw(c, false);
@@ -875,33 +836,6 @@ impl<'a> Check<'a> {
                 self.need(c, caps.mesh, "mesh")?;
                 self.draw(c, false);
                 self.indirect(buffer, offset, count, stride, 12);
-            }
-            #[cfg(any(feature = "vk", feature = "gl"))]
-            Command::DrawMeshIndirectCount {
-                buffer,
-                offset,
-                count,
-                count_offset,
-                max,
-                stride,
-            } => {
-                self.need(c, caps.mesh, "mesh")?;
-                self.need(c, caps.indirect_count, "indirect_count")?;
-                self.draw(c, false);
-                assert!(
-                    self.indirect,
-                    "{c} needs a mesh pipeline created with indirect: true"
-                );
-                assert!(
-                    offset.is_multiple_of(4) && count_offset.is_multiple_of(4),
-                    "{c} offsets {offset} and {count_offset} must be multiples of 4"
-                );
-                assert!(
-                    stride == 0 || (stride.is_multiple_of(4) && stride >= 12),
-                    "{c} stride {stride} must be 0 or a multiple of 4 of at least 12"
-                );
-                self.indirect(buffer, offset, max, stride, 12);
-                self.range(count, count_offset, 4);
             }
             Command::OcclusionHeap { heap } => {
                 self.queries(heap, &[query::OCCLUSION, query::PRECISE], 0, 0);

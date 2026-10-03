@@ -42,7 +42,6 @@ impl Device {
             blends: true,
             indirect: true,
             indirect_count: true,
-            indirect_ids: true,
             indirect_offset: true,
             max_queries: 4096,
             cube_arrays: true,
