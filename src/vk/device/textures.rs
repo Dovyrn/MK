@@ -4,6 +4,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::texture::{Texture, aspect, count};
 use crate::{TextureInfo, ViewInfo, dimension, format, usage};
 use ash::vk;
+use std::rc::Rc;
 
 impl Device {
     pub fn raw_texture(&self, texture: u32) -> (vk::Image, vk::ImageView) {
@@ -29,13 +30,13 @@ impl Device {
                 self.raw.bind_image_memory(image, m, 0)
             })
             .inspect_err(|_| destroy())?;
-        let id = self.register(image, memory, true, &whole(info))?;
+        let id = self.register(image, Some(Rc::new(memory)), &whole(info))?;
         self.res.table.textures.set(id, *info);
         Ok(id)
     }
 
     pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
-        let id = self.register(image, vk::DeviceMemory::null(), false, &whole(info))?;
+        let id = self.register(image, None, &whole(info))?;
         self.res.table.textures.set(id, *info);
         Ok(id)
     }
@@ -47,6 +48,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         supports(info.format, info.usage, 1, usable, counts)?;
         let t = self.res.textures.get(texture);
+        let (image, owner) = (t.image, t.owner.clone());
         let view = ViewInfo {
             base_mip: t.base_mip + info.base_mip,
             mips: count(info.mips, info.base_mip, t.mips),
@@ -55,7 +57,7 @@ impl Device {
             usage: info.usage & t.usage,
             ..*info
         };
-        let id = self.register(t.image, vk::DeviceMemory::null(), false, &view)?;
+        let id = self.register(image, owner, &view)?;
         self.res.table.view(id, texture, info);
         Ok(id)
     }
@@ -63,8 +65,7 @@ impl Device {
     pub(super) fn register(
         &mut self,
         image: vk::Image,
-        memory: vk::DeviceMemory,
-        own: bool,
+        owner: Option<Rc<vk::DeviceMemory>>,
         info: &ViewInfo,
     ) -> Result<u32, String> {
         let kind = match info.dimension {
@@ -111,7 +112,7 @@ impl Device {
         };
         let mut t = Texture {
             image,
-            memory,
+            owner,
             view: vk::ImageView::null(),
             target: vk::ImageView::null(),
             aspect,
@@ -121,7 +122,6 @@ impl Device {
             mips: info.mips,
             base_layer: info.base_layer,
             layers: info.layers,
-            own,
             tile: vk::Extent3D::default(),
         };
         let mut views = || -> Result<(), vk::Result> {

@@ -3,6 +3,7 @@ use crate::vk::buffer::Buffer;
 use crate::vk::heap::Heap;
 use crate::{TextureInfo, format, memory, usage};
 use ash::vk;
+use std::rc::Rc;
 
 const FD: &str = "VK_KHR_external_memory_fd is not enabled";
 
@@ -218,7 +219,7 @@ impl Device {
                 self.raw.destroy_image(image, None);
                 return Err(e.to_string());
             }
-            let id = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
+            let id = self.register(image, Some(Rc::new(vk::DeviceMemory::null())), &whole(info))?;
             self.res.table.textures.set(id, *info);
             Ok(id)
         }

@@ -1,9 +1,10 @@
 use crate::format;
 use ash::vk;
+use std::rc::Rc;
 
 pub struct Texture {
     pub image: vk::Image,
-    pub memory: vk::DeviceMemory,
+    pub owner: Option<Rc<vk::DeviceMemory>>,
     pub view: vk::ImageView,
     pub target: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
@@ -13,20 +14,17 @@ pub struct Texture {
     pub mips: u32,
     pub base_layer: u32,
     pub layers: u32,
-    pub own: bool,
     pub tile: vk::Extent3D,
 }
 
 impl Texture {
-    pub fn free(&self, device: &ash::Device) {
+    pub fn free(self, device: &ash::Device) {
         unsafe {
             device.destroy_image_view(self.view, None);
             device.destroy_image_view(self.target, None);
-            if self.own {
+            if let Some(memory) = self.owner.and_then(Rc::into_inner) {
                 device.destroy_image(self.image, None);
-            }
-            if self.memory != vk::DeviceMemory::null() {
-                device.free_memory(self.memory, None);
+                device.free_memory(memory, None);
             }
         }
     }

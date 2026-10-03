@@ -2,6 +2,7 @@ use super::{Device, image_info, whole};
 use crate::vk::buffer::Buffer;
 use crate::{SparseRange, SparseRegion, TextureInfo, dimension, memory};
 use ash::vk;
+use std::rc::Rc;
 
 impl Device {
     pub fn sparse_page(&self) -> Result<u64, String> {
@@ -107,7 +108,7 @@ impl Device {
                 .create_image(&self.share_image(create), None)
                 .map_err(|e| e.to_string())?
         };
-        let slot = self.register(image, vk::DeviceMemory::null(), true, &whole(info))?;
+        let slot = self.register(image, Some(Rc::new(vk::DeviceMemory::null())), &whole(info))?;
         self.res.table.textures.set(slot, *info);
         self.res.textures.get_mut(slot).tile = vk::Extent3D {
             width,
