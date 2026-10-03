@@ -987,6 +987,9 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
             } => {
+                if count == 0 {
+                    return Ok(());
+                }
                 let dst = self.res.buffers.get(buffer);
                 match self.res.queries.get(heap) {
                     Query::Timestamp(heap) => unsafe {
