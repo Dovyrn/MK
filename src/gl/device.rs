@@ -40,6 +40,7 @@ pub struct Device {
     caps: Caps,
     anisotropy: f32,
     samples: [i32; 4],
+    thread: std::thread::ThreadId,
 }
 
 pub const PUSH: usize = 256;
@@ -186,8 +187,16 @@ impl Device {
                 resolve,
                 cache: None,
                 units: 0,
+                thread: std::thread::current().id(),
             })
         }
+    }
+
+    fn thread(&self) {
+        assert!(
+            std::thread::current().id() == self.thread,
+            "GL device used from another thread"
+        );
     }
 
     fn has(&self, version: u32, extension: &str) -> bool {
@@ -195,14 +204,17 @@ impl Device {
     }
 
     pub fn caps(&self) -> Caps {
+        self.thread();
         self.caps
     }
 
     pub fn name(&self) -> String {
+        self.thread();
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
     }
 
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.thread();
         self.caps.buffer(size, memory)?;
         let id = self
             .res
@@ -213,6 +225,7 @@ impl Device {
     }
 
     pub fn import_buffer(&mut self, raw: u32, size: u64) -> u32 {
+        self.thread();
         let raw = glow::NativeBuffer(std::num::NonZeroU32::new(raw).expect("buffer 0"));
         let id = self.res.buffers.insert(Buffer {
             raw,
@@ -227,15 +240,18 @@ impl Device {
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> u32 {
+        self.thread();
         self.res.buffers.get(buffer).raw.0.get()
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
+        self.thread();
         self.res.table.buffers.clear(buffer);
         self.res.buffers.remove(buffer).delete(&self.gl);
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
+        self.thread();
         let b = self.res.buffers.get(buffer);
         assert!(b.memory != memory::DEVICE, "map of a device buffer");
         if b.persistent || !b.data.get().is_null() {
@@ -256,6 +272,7 @@ impl Device {
     }
 
     pub fn unmap(&self, buffer: u32) {
+        self.thread();
         let b = self.res.buffers.get(buffer);
         if b.persistent || b.data.get().is_null() {
             return;
@@ -270,10 +287,12 @@ impl Device {
     }
 
     pub fn buffer_handle(&self, _buffer: u32) -> Result<u64, String> {
+        self.thread();
         Err("GL has no bindless heap".into())
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
+        self.thread();
         if !self.has(43, "GL_ARB_compute_shader") {
             return Err("compute shaders need GL 4.3".into());
         }
@@ -291,11 +310,13 @@ impl Device {
     }
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
+        self.thread();
         self.res.table.pipelines.clear(pipeline);
         self.res.pipelines.remove(pipeline).delete(&self.gl);
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+        self.thread();
         crate::caps::targets(
             info.colors,
             info.depth,
@@ -312,6 +333,7 @@ impl Device {
     }
 
     pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+        self.thread();
         crate::caps::targets(
             info.colors,
             info.depth,
@@ -352,11 +374,13 @@ impl Device {
     }
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+        self.thread();
         self.res.table.renders.clear(pipeline);
         self.res.renders.remove(pipeline).delete(&self.gl);
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+        self.thread();
         self.caps.depth(info);
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
@@ -364,11 +388,13 @@ impl Device {
     }
 
     pub fn destroy_depth_state(&mut self, state: u32) {
+        self.thread();
         self.res.table.states.clear(state);
         self.res.depths.remove(state);
     }
 
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+        self.thread();
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
@@ -380,6 +406,7 @@ impl Device {
     }
 
     pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<u32, String> {
+        self.thread();
         let id = self.res.textures.insert(Texture {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
             target: target(info.dimension, info.samples),
@@ -391,10 +418,12 @@ impl Device {
     }
 
     pub fn raw_texture(&self, texture: u32) -> u32 {
+        self.thread();
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
+        self.thread();
         let s3tc = self.has(99, "GL_EXT_texture_compression_s3tc");
         let present = match format {
             format::BC1_UNORM | format::BC2_UNORM | format::BC3_UNORM => s3tc,
@@ -464,6 +493,7 @@ impl Device {
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
+        self.thread();
         if self.format_usage(format) & usage != usage {
             return 0;
         }
@@ -484,6 +514,7 @@ impl Device {
     }
 
     pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+        self.thread();
         let info = &self.res.table.resolve(texture, info);
         self.caps.view(info.dimension)?;
         let view = self.extra.view.ok_or("texture views need GL 4.3")?;
@@ -498,11 +529,13 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
+        self.thread();
         self.res.table.textures.clear(texture);
         self.res.textures.remove(texture).delete(&self.gl);
     }
 
     pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+        self.thread();
         self.caps.sampler(info)?;
         let raw = sampler::create(&self.gl, info, self.anisotropy)?;
         let id = self.res.samplers.insert(raw);
@@ -511,11 +544,13 @@ impl Device {
     }
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
+        self.thread();
         self.res.table.samplers.clear(sampler);
         sampler::delete(&self.gl, self.res.samplers.remove(sampler));
     }
 
     pub fn record_cache(&mut self) -> Result<(), String> {
+        self.thread();
         if !self.caps.cache {
             return Err("program binaries are not supported".into());
         }
@@ -524,11 +559,13 @@ impl Device {
     }
 
     pub fn save_cache(&self, path: &str) -> Result<(), String> {
+        self.thread();
         let cache = self.cache.as_ref().ok_or("record_cache was not called")?;
         std::fs::write(path, cache.encode()).map_err(|e| e.to_string())
     }
 
     pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
+        self.thread();
         if !self.caps.cache {
             return Err("program binaries are not supported".into());
         }
@@ -538,6 +575,7 @@ impl Device {
     }
 
     pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+        self.thread();
         self.caps.queries(kind, count)?;
         let results = self.has(44, "GL_ARB_query_buffer_object");
         match kind {
@@ -557,11 +595,13 @@ impl Device {
     }
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
+        self.thread();
         self.res.table.queries.clear(heap);
         self.res.queries.remove(heap).delete(&self.gl);
     }
 
     pub fn create_event(&mut self) -> Result<u32, String> {
+        self.thread();
         let id = self.res.events.insert(Event {
             fences: Vec::new(),
             value: 0,
@@ -571,6 +611,7 @@ impl Device {
     }
 
     pub fn destroy_event(&mut self, event: u32) {
+        self.thread();
         self.res.table.events.clear(event);
         self.res.events.remove(event).delete(&self.gl);
     }
@@ -583,11 +624,13 @@ impl Device {
     }
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
+        self.thread();
         self.healthy()?;
         Ok(self.res.events.get(event).value(&self.gl))
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
+        self.thread();
         self.healthy()?;
         self.res.events.get(event).wait(&self.gl, value, ms)
     }
@@ -599,6 +642,7 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.thread();
         assert!(queue == 0, "GL has one queue");
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         if let Some(i) = self
@@ -658,6 +702,9 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        if std::thread::current().id() != self.thread {
+            return;
+        }
         let gl = &self.gl;
         unsafe {
             gl.finish();
