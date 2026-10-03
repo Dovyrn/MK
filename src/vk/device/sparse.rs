@@ -84,7 +84,7 @@ impl Device {
             Ok(self.insert_buffer(
                 Buffer {
                     raw,
-                    memory: vk::DeviceMemory::null(),
+                    memory: Rc::new(vk::DeviceMemory::null()),
                     address,
                     data: std::ptr::null_mut(),
                     own: true,
@@ -172,7 +172,7 @@ impl Device {
             vk::DeviceMemory::null()
         } else {
             self.res.table.heaps.get(heap);
-            self.res.heaps.get(heap).memory
+            *self.res.heaps.get(heap).memory
         };
         let binds: Vec<_> = ranges
             .iter()
@@ -205,7 +205,7 @@ impl Device {
             vk::DeviceMemory::null()
         } else {
             self.res.table.heaps.get(heap);
-            self.res.heaps.get(heap).memory
+            *self.res.heaps.get(heap).memory
         };
         let t = self.res.textures.get(texture);
         let binds: Vec<_> = regions

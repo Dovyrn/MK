@@ -26,7 +26,7 @@ impl Device {
         self.res.table.heaps.get(heap);
         let fd = self.ext.fd.as_ref().ok_or(FD)?;
         let info = vk::MemoryGetFdInfoKHR::default()
-            .memory(self.res.heaps.get(heap).memory)
+            .memory(*self.res.heaps.get(heap).memory)
             .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
         unsafe { fd.get_memory_fd(&info).map_err(|e| e.to_string()) }
     }
@@ -84,7 +84,7 @@ impl Device {
             .mapped(memory, index)
             .inspect_err(|_| self.release(memory))?;
         let id = self.res.heaps.insert(Heap {
-            memory,
+            memory: Rc::new(memory),
             data,
             shared,
             device,
@@ -98,7 +98,9 @@ impl Device {
         self.res.table.heaps.clear(heap);
         self.defer(move |d| {
             let heap = d.res.heaps.remove(heap);
-            d.release(heap.memory);
+            if Rc::strong_count(&heap.memory) == 1 {
+                d.release(*heap.memory);
+            }
         });
     }
 
@@ -164,7 +166,7 @@ impl Device {
                 self.raw.destroy_buffer(raw, None);
                 return Err("the heap's memory type does not fit this buffer".into());
             }
-            if let Err(e) = self.raw.bind_buffer_memory(raw, h.memory, offset) {
+            if let Err(e) = self.raw.bind_buffer_memory(raw, *h.memory, offset) {
                 self.raw.destroy_buffer(raw, None);
                 return Err(e.to_string());
             }
@@ -178,7 +180,7 @@ impl Device {
             Ok(self.insert_buffer(
                 Buffer {
                     raw,
-                    memory: vk::DeviceMemory::null(),
+                    memory: h.memory.clone(),
                     address,
                     data,
                     own: true,
@@ -198,7 +200,7 @@ impl Device {
         self.res.table.heaps.get(heap);
         self.texture(info)?;
         let h = self.res.heaps.get(heap);
-        let (memory, index) = (h.memory, h.index);
+        let (memory, index) = (h.memory.clone(), h.index);
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
             .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
         let mut create = self.share_image(image_info(info));
@@ -218,11 +220,12 @@ impl Device {
                 self.raw.destroy_image(image, None);
                 return Err("the heap's memory type does not fit this texture".into());
             }
-            if let Err(e) = self.raw.bind_image_memory(image, memory, offset) {
+            if let Err(e) = self.raw.bind_image_memory(image, *memory, offset) {
                 self.raw.destroy_image(image, None);
                 return Err(e.to_string());
             }
             let id = self.register(image, Some(Rc::new(vk::DeviceMemory::null())), &whole(info))?;
+            self.res.textures.get_mut(id).heap = Some(memory);
             self.res.table.textures.set(id, *info);
             Ok(id)
         }

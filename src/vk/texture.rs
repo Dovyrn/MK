@@ -6,6 +6,7 @@ use std::rc::Rc;
 pub struct Texture {
     pub image: vk::Image,
     pub owner: Option<Rc<vk::DeviceMemory>>,
+    pub heap: Option<Rc<vk::DeviceMemory>>,
     pub view: vk::ImageView,
     pub target: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
@@ -26,6 +27,9 @@ impl Texture {
         }
         if let Some(memory) = self.owner.and_then(Rc::into_inner) {
             unsafe { d.raw.destroy_image(self.image, None) };
+            d.release(memory);
+        }
+        if let Some(memory) = self.heap.and_then(Rc::into_inner) {
             d.release(memory);
         }
     }

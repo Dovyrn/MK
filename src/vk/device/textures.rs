@@ -49,7 +49,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         supports(info.format, info.usage, 1, usable, counts)?;
         let t = self.res.textures.get(texture);
-        let (image, owner) = (t.image, t.owner.clone());
+        let (image, owner, heap) = (t.image, t.owner.clone(), t.heap.clone());
         let view = ViewInfo {
             base_mip: t.base_mip + info.base_mip,
             mips: count(info.mips, info.base_mip, t.mips),
@@ -59,6 +59,7 @@ impl Device {
             ..*info
         };
         let id = self.register(image, owner, &view)?;
+        self.res.textures.get_mut(id).heap = heap;
         self.res.table.view(id, texture, info);
         Ok(id)
     }
@@ -114,6 +115,7 @@ impl Device {
         let mut t = Texture {
             image,
             owner,
+            heap: None,
             view: vk::ImageView::null(),
             target: vk::ImageView::null(),
             aspect,

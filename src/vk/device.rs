@@ -24,6 +24,7 @@ use crate::vk::resources::Resources;
 use crate::{Caps, TextureInfo, ViewInfo, dimension, format, memory, usage};
 use ash::vk;
 use std::cell::Cell;
+use std::rc::Rc;
 
 pub struct Device {
     pub instance: ash::Instance,
@@ -476,7 +477,9 @@ impl Drop for Device {
                 event.free(&self.raw);
             }
             for heap in res.heaps.drain() {
-                self.release(heap.memory);
+                if Rc::strong_count(&heap.memory) == 1 {
+                    self.release(*heap.memory);
+                }
             }
             self.raw.destroy_pipeline_cache(self.cache, None);
             self.raw.destroy_pipeline_layout(self.layout, None);

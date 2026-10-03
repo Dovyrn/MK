@@ -2,6 +2,7 @@ use super::Device;
 use crate::memory;
 use crate::vk::buffer::Buffer;
 use ash::vk;
+use std::rc::Rc;
 
 impl Device {
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
@@ -63,7 +64,7 @@ impl Device {
         Ok(self.insert_buffer(
             Buffer {
                 raw,
-                memory,
+                memory: Rc::new(memory),
                 address,
                 data: pointer,
                 own: true,
@@ -96,18 +97,19 @@ impl Device {
             .push_next(&mut dedicated);
         let mut buffer = Buffer {
             raw,
-            memory: self
-                .attach(index, alloc, |m| unsafe {
+            memory: Rc::new(
+                self.attach(index, alloc, |m| unsafe {
                     self.raw.bind_buffer_memory(raw, m, 0)
                 })
                 .inspect_err(|_| destroy())?,
+            ),
             address: 0,
             data: std::ptr::null_mut(),
             own: true,
             device: memory == memory::DEVICE,
         };
         buffer.data = self
-            .mapped(buffer.memory, index)
+            .mapped(*buffer.memory, index)
             .inspect_err(|_| buffer.free(self))?;
         let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
         buffer.address = unsafe { self.raw.get_buffer_device_address(&info) };
@@ -117,7 +119,7 @@ impl Device {
     pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64) -> u32 {
         let id = self.res.buffers.insert(Buffer {
             raw,
-            memory: vk::DeviceMemory::null(),
+            memory: Rc::new(vk::DeviceMemory::null()),
             address: 0,
             data: std::ptr::null_mut(),
             own: false,
