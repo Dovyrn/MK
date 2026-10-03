@@ -601,16 +601,16 @@ impl Device {
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-        self.programs()?;
-        self.queries()?;
-        self.res.table.submit(queue, waits, signals);
         if let Some(i) = self
             .res
             .buffers
             .find(|b| !b.persistent && !b.data.get().is_null())
         {
-            panic!("submit while buffer {i} is mapped; unmap it first");
+            return Err(format!("submit while buffer {i} is mapped; unmap it first"));
         }
+        self.programs()?;
+        self.queries()?;
+        self.res.table.submit(queue, waits, signals);
         self.healthy()?;
         for &(event, value) in waits {
             let e = self.res.events.get(event);
