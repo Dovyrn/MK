@@ -22,7 +22,6 @@ impl Device {
             shading_rate: false,
             viewports: 16,
             instance: 72,
-            memoryless: raw.supportsFamily(MTLGPUFamily::Apple2),
             graphics: u32::MAX >> (32 - queues),
             labels: true,
             anisotropy: true,

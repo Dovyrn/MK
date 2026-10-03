@@ -12,7 +12,6 @@ pub(super) fn probe(
     ext: &Extensions,
     queues: &[Queue],
     bindless: &Bindless,
-    memory: &vk::PhysicalDeviceMemoryProperties,
     limits: &vk::PhysicalDeviceLimits,
 ) -> Caps {
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
@@ -49,12 +48,6 @@ pub(super) fn probe(
         },
         sparse,
         instance: 64,
-        memoryless: memory.memory_types[..memory.memory_type_count as usize]
-            .iter()
-            .any(|t| {
-                t.property_flags
-                    .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
-            }),
         graphics: queues
             .iter()
             .enumerate()

@@ -3,7 +3,6 @@ package dev.dov.mk;
 public interface Stage {
     int VERTEX = 1;
     int FRAGMENT = 2;
-    int TILE = 4;
     int TASK = 8;
     int MESH = 16;
     int INDIRECT = 32;

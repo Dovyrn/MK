@@ -258,23 +258,6 @@ scope = "compute"
 fields = [["accel", "u32"], ["scratch", "u32"], ["scratch_offset", "u64"], ["update", "u32"]]
 
 [[command]]
-name = "tile_pass"
-backend = "mtl"
-fields = [["width", "u32"], ["height", "u32"], ["imageblock", "u32"], ["memory", "u32"]]
-
-[[command]]
-name = "dispatch_tile"
-scope = "render"
-backend = "mtl"
-fields = [["width", "u32"], ["height", "u32"]]
-
-[[command]]
-name = "tile_memory"
-scope = "render"
-backend = "mtl"
-fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
-
-[[command]]
 name = "callback"
 backend = "rust"
 fields = [["index", "u32"]]

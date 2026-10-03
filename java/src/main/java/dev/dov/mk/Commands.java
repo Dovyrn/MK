@@ -502,7 +502,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setViewports(Viewport[] viewports) {
-        var p = head(67, viewports.length * 24);
+        var p = head(64, viewports.length * 24);
         for (var i = 0; i < viewports.length; i++) {
             var q = p + i * 24;
             memPutFloat(q, viewports[i].x);
@@ -515,7 +515,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setScissors(Scissor[] scissors) {
-        var p = head(68, scissors.length * 16);
+        var p = head(65, scissors.length * 16);
         for (var i = 0; i < scissors.length; i++) {
             var q = p + i * 16;
             memPutInt(q, scissors[i].x);

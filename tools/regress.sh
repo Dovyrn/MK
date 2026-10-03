@@ -3,7 +3,7 @@ cd ${0:A:h}/..
 O=$PWD/target/mk.out
 mkdir -p target
 icds=(${=MK_ICDS:-/usr/local/share/vulkan/icd.d/libkosmickrisp_icd.json $HOME/.local/mesa/share/vulkan/icd.d/lvp_icd.aarch64.json})
-examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues tile native indirect sparse compact viewports slots handles draws uploads blits images})
+examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues native indirect sparse compact viewports slots handles draws uploads blits images})
 cargo fmt --check || echo "fmt dirty"
 cargo run -q -p shade
 for f in mtl vk gl mtl,jni vk,jni gl,jni; do

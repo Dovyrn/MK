@@ -8,11 +8,6 @@ use objc2_metal::{MTLDevice, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLSparseP
 impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         autoreleasepool(|_| {
-            assert_ne!(
-                memory,
-                memory::TRANSIENT,
-                "transient memory is for textures"
-            );
             let desc = MTLHeapDescriptor::new();
             desc.setType(MTLHeapType::Placement);
             desc.setResourceOptions(options(memory));

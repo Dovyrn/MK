@@ -19,57 +19,36 @@ public class MtlCommands extends Commands {
         memPutInt(p + 16, update);
     }
 
-    public void tilePass(int width, int height, int imageblock, int memory) {
-        var p = head(56, 16);
-        memPutInt(p, width);
-        memPutInt(p + 4, height);
-        memPutInt(p + 8, imageblock);
-        memPutInt(p + 12, memory);
-    }
-
-    public void dispatchTile(int width, int height) {
-        var p = head(57, 8);
-        memPutInt(p, width);
-        memPutInt(p + 4, height);
-    }
-
-    public void tileMemory(int length, int offset, int index) {
-        var p = head(58, 12);
-        memPutInt(p, length);
-        memPutInt(p + 4, offset);
-        memPutInt(p + 8, index);
-    }
-
     public void executeIndirect(int indirect, int start, int count) {
-        var p = head(60, 12);
+        var p = head(57, 12);
         memPutInt(p, indirect);
         memPutInt(p + 4, start);
         memPutInt(p + 8, count);
     }
 
     public void resetIndirect(int indirect, int start, int count) {
-        var p = head(61, 12);
+        var p = head(58, 12);
         memPutInt(p, indirect);
         memPutInt(p + 4, start);
         memPutInt(p + 8, count);
     }
 
     public void optimizeIndirect(int indirect, int start, int count) {
-        var p = head(62, 12);
+        var p = head(59, 12);
         memPutInt(p, indirect);
         memPutInt(p + 4, start);
         memPutInt(p + 8, count);
     }
 
     public void writeCompactedSize(int accel, int heap, int index) {
-        var p = head(65, 12);
+        var p = head(62, 12);
         memPutInt(p, accel);
         memPutInt(p + 4, heap);
         memPutInt(p + 8, index);
     }
 
     public void copyAccel(int src, int dst, int compact) {
-        var p = head(66, 12);
+        var p = head(63, 12);
         memPutInt(p, src);
         memPutInt(p + 4, dst);
         memPutInt(p + 8, compact);

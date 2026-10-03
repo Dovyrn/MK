@@ -11,11 +11,6 @@ impl Device {
     }
 
     fn heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        assert_ne!(
-            memory,
-            memory::TRANSIENT,
-            "transient memory is for textures"
-        );
         let device = memory == memory::DEVICE;
         let color = TextureInfo {
             format: format::RGBA8_UNORM,

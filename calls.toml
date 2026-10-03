@@ -359,13 +359,6 @@ params = [["queue", "usize"]]
 result = "object"
 
 [[call]]
-name = "create_tile_pipeline"
-backend = "mtl"
-params = [["code", "bytes"], ["entry", "str"], ["colors", "u32s"], ["samples", "u32"]]
-result = "u32"
-fails = true
-
-[[call]]
 name = "create_compacted"
 backend = "vk mtl"
 params = [["accel", "u32"], ["size", "u64"]]

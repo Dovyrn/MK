@@ -89,10 +89,7 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     if info.usage & usage::VIEW != 0 {
         flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
     }
-    let mut bits = image_usage(info.usage);
-    if info.memory == memory::TRANSIENT {
-        bits |= vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
-    }
+    let bits = image_usage(info.usage);
     vk::ImageCreateInfo::default()
         .flags(flags)
         .image_type(kind)
@@ -196,9 +193,7 @@ impl Device {
         }
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
         Ok(Self {
-            caps: probe(
-                &instance, physical, &ext, &list, &bindless, &memory, &limits,
-            ),
+            caps: probe(&instance, physical, &ext, &list, &bindless, &limits),
             name: basic
                 .device_name_as_c_str()
                 .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
@@ -254,10 +249,6 @@ impl Device {
             memory::DEVICE => (vk::MemoryPropertyFlags::DEVICE_LOCAL, "device local"),
             memory::UPLOAD => (host, "host coherent"),
             memory::READBACK => (host | vk::MemoryPropertyFlags::HOST_CACHED, "host cached"),
-            memory::TRANSIENT => (
-                vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
-                "lazily allocated",
-            ),
             _ => panic!("unknown memory {memory}"),
         };
         self.find_type(bits, flags)

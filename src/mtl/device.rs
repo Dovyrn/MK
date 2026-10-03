@@ -132,7 +132,6 @@ fn options(memory: u32) -> MTLResourceOptions {
                     | MTLResourceOptions::CPUCacheModeWriteCombined
             }
             memory::READBACK => MTLResourceOptions::StorageModeShared,
-            memory::TRANSIENT => MTLResourceOptions::StorageModeMemoryless,
             _ => panic!("unknown memory {memory}"),
         }
 }
@@ -155,10 +154,7 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage & usage::BLIT != 0 {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget;
     }
-    if integer(info.format).is_some()
-        && info.usage & usage::COLOR != 0
-        && info.memory != memory::TRANSIENT
-    {
+    if integer(info.format).is_some() && info.usage & usage::COLOR != 0 {
         flags |= if info.samples > 1 {
             MTLTextureUsage::ShaderRead
         } else {

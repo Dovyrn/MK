@@ -73,10 +73,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
                 | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
                 | vk::PipelineStageFlags2::VERTEX_SHADER,
         ),
-        (
-            stage::FRAGMENT | stage::TILE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-        ),
+        (stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
         (stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
         (stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
         (stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
@@ -233,7 +230,7 @@ impl Recorder<'_> {
         let mesh = graphics && self.ext.mesh.is_some();
         let (flag, valid) = match bit {
             stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
-            stage::FRAGMENT | stage::TILE => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
+            stage::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
             stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
             stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
             stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),

@@ -14,11 +14,11 @@ use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
     MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
-    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
-    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
-    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTL4RenderPipelineDescriptor, MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask,
+    MTLComputePipelineState, MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction,
+    MTLLibrary, MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState,
+    MTLStencilDescriptor, MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor,
+    MTLVertexStepFunction,
 };
 
 fn factor(f: u32) -> MTLBlendFactor {
@@ -296,37 +296,6 @@ impl Device {
                 .table
                 .renders
                 .set(id, (info.samples, info.indirect));
-            Ok(id)
-        })
-    }
-
-    pub fn create_tile_pipeline(
-        &mut self,
-        code: &[u8],
-        entry: &str,
-        colors: &[u32],
-        samples: u32,
-    ) -> Result<u32, String> {
-        autoreleasepool(|_| {
-            let library = self.library(code)?;
-            let desc = MTL4TileRenderPipelineDescriptor::new();
-            desc.setTileFunctionDescriptor(Some(&*function(&library, entry)?));
-            let array = desc.colorAttachments();
-            for (i, f) in colors.iter().enumerate() {
-                unsafe { array.objectAtIndexedSubscript(i) }.setPixelFormat(format::mtl(*f));
-            }
-            unsafe { desc.setRasterSampleCount(samples as usize) };
-            desc.setThreadgroupSizeMatchesTileSize(true);
-            let state = self.compile(&desc)?;
-            let id = self.res.renders.insert(Render {
-                state,
-                fill: MTLTriangleFillMode::Fill,
-                clip: MTLDepthClipMode::Clip,
-                primitive: MTLPrimitiveType::Triangle,
-                task: size([1, 1, 1]),
-                mesh: size([1, 1, 1]),
-            });
-            self.res.table.renders.set(id, (samples, false));
             Ok(id)
         })
     }

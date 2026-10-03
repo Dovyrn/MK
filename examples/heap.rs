@@ -17,7 +17,6 @@ fn main() {
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
-    let caps = device.caps();
     let color_info = TextureInfo {
         format: format::RGBA8_UNORM,
         width: n,
@@ -41,11 +40,6 @@ fn main() {
             width: n,
             height: n,
             usage: usage::DEPTH,
-            memory: if caps.memoryless {
-                memory::TRANSIENT
-            } else {
-                memory::DEVICE
-            },
             ..Default::default()
         })
         .unwrap();
@@ -169,8 +163,5 @@ fn main() {
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
     assert_eq!(pixels[(32 * n + 32) as usize], [255, 0, 0, 255], "center");
     assert_eq!(pixels[0], [0, 0, 255, 255], "corner");
-    println!(
-        "placed target, placed readback, transient depth: {}",
-        caps.memoryless
-    );
+    println!("placed target and placed readback");
 }

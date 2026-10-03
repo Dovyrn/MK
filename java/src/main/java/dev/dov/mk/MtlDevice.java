@@ -172,15 +172,6 @@ public class MtlDevice extends Device {
 
     private static native long nRawQueue(long device, int queue);
 
-    public synchronized int createTilePipeline(long code, long codeSize, String entry, int[] colors, int samples) {
-        try (var stack = MemoryStack.stackPush()) {
-            var entryBytes = stack.UTF8(entry, false);
-            return nCreateTilePipeline(handle, code, codeSize, memAddress(entryBytes), entryBytes.remaining(), memAddress(stack.ints(colors)), colors.length, samples);
-        }
-    }
-
-    private static native int nCreateTilePipeline(long device, long code, long codeLength, long entry, int entryLength, long colors, int colorsLength, int samples);
-
     public synchronized int createCompacted(int accel, long size) {
         return nCreateCompacted(handle, accel, size);
     }

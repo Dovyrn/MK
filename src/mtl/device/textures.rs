@@ -1,7 +1,7 @@
 use super::{Device, id, kind, texture_desc};
 use crate::caps;
 use crate::mtl::texture::Texture;
-use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
+use crate::{TextureInfo, ViewInfo, dimension, format, usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
@@ -19,9 +19,7 @@ impl Device {
                 .raw
                 .newTextureWithDescriptor(&desc)
                 .ok_or("texture allocation failed")?;
-            if info.memory != memory::TRANSIENT {
-                self.residency.add(ProtocolObject::from_ref(&*raw));
-            }
+            self.residency.add(ProtocolObject::from_ref(&*raw));
             let id = self.res.textures.insert(Texture {
                 raw,
                 format: info.format,

@@ -82,11 +82,6 @@ fn face(f: &StencilFace) {
 impl Caps {
     pub(crate) fn buffer(&self, size: u64, memory: u32) -> Result<(), String> {
         known("memory", memory, memory::valid(memory));
-        assert_ne!(
-            memory,
-            memory::TRANSIENT,
-            "transient memory is for textures"
-        );
         assert!(size > 0, "buffer size is 0");
         if size > self.max_buffer {
             return Err(format!("buffer size {size} is over {}", self.max_buffer));
@@ -181,16 +176,6 @@ impl Caps {
                 "format {} is not allowed in a 1D or 3D texture",
                 info.format
             );
-        }
-        if info.memory == memory::TRANSIENT {
-            assert_eq!(
-                info.usage & !(usage::COLOR | usage::DEPTH),
-                0,
-                "transient textures are attachments only"
-            );
-            if !self.memoryless {
-                return Err("transient textures need caps.memoryless".into());
-            }
         }
         if info.dimension == dimension::CUBE_ARRAY && !self.cube_arrays {
             return Err("a cube array needs caps.cube_arrays".into());

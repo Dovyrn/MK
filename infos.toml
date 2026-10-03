@@ -184,7 +184,6 @@ fields = [
     ["shading_rate", "bool", "false"],
     ["viewports", "u32", "1"],
     ["instance", "u32", "0"],
-    ["memoryless", "bool", "false"],
     ["graphics", "u32", "0"],
     ["labels", "bool", "false"],
     ["anisotropy", "bool", "false"],

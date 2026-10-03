@@ -23,7 +23,6 @@ public class Caps {
     public boolean shadingRate = false;
     public int viewports = 1;
     public int instance = 0;
-    public boolean memoryless = false;
     public int graphics = 0;
     public boolean labels = false;
     public boolean anisotropy = false;
@@ -59,10 +58,10 @@ public class Caps {
     public boolean copyFormats = false;
     public boolean textureClear = false;
 
-    public static final int SIZE = 204;
+    public static final int SIZE = 200;
 
     int encodedSize() {
-        return 204;
+        return 200;
     }
 
     long encode(long p) {
@@ -95,8 +94,6 @@ public class Caps {
         memPutInt(p, viewports);
         p += 4;
         memPutInt(p, instance);
-        p += 4;
-        memPutInt(p, memoryless ? 1 : 0);
         p += 4;
         memPutInt(p, graphics);
         p += 4;
@@ -200,8 +197,6 @@ public class Caps {
         r.viewports = memGetInt(p);
         p += 4;
         r.instance = memGetInt(p);
-        p += 4;
-        r.memoryless = memGetInt(p) != 0;
         p += 4;
         r.graphics = memGetInt(p);
         p += 4;

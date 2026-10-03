@@ -50,15 +50,6 @@ pub fn str<'a>(address: jlong, length: i64) -> &'a str {
 }
 
 #[cfg(any(feature = "vk", feature = "mtl"))]
-pub fn u32s<'a>(address: jlong, count: i64) -> &'a [u32] {
-    assert!(count >= 0, "count {count} is negative");
-    if count == 0 {
-        return &[];
-    }
-    unsafe { std::slice::from_raw_parts(address as *const u32, count as usize) }
-}
-
-#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn f32x12<'a>(address: jlong) -> &'a [f32; 12] {
     unsafe { &*(address as *const [f32; 12]) }
 }
@@ -76,7 +67,11 @@ pub fn waits(address: jlong, count: i64) -> Vec<(u32, u64)> {
 
 #[cfg(feature = "vk")]
 pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
-    u32s(address, count * 2)
+    assert!(count >= 0, "count {count} is negative");
+    if count == 0 {
+        return Vec::new();
+    }
+    unsafe { std::slice::from_raw_parts(address as *const u32, count as usize * 2) }
         .chunks(2)
         .map(|p| (p[0], p[1]))
         .collect()

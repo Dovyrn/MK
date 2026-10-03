@@ -1,7 +1,6 @@
 [stage]
 VERTEX = 1
 FRAGMENT = 2
-TILE = 4
 TASK = 8
 MESH = 16
 INDIRECT = 32
@@ -60,7 +59,6 @@ BLIT = 256
 DEVICE = 0
 UPLOAD = 1
 READBACK = 2
-TRANSIENT = 3
 
 [dimension]
 D1 = 0

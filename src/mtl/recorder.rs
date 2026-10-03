@@ -65,11 +65,7 @@ const COMPUTE: MTLStages =
     MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0 | MTLStages::AccelerationStructure.0);
 
 const RENDER: MTLStages = MTLStages(
-    MTLStages::Vertex.0
-        | MTLStages::Fragment.0
-        | MTLStages::Tile.0
-        | MTLStages::Object.0
-        | MTLStages::Mesh.0,
+    MTLStages::Vertex.0 | MTLStages::Fragment.0 | MTLStages::Object.0 | MTLStages::Mesh.0,
 );
 
 const NONE: u32 = !0;
@@ -83,7 +79,6 @@ pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 fn stages(bits: u32) -> MTLStages {
     let same = stage::VERTEX
         | stage::FRAGMENT
-        | stage::TILE
         | stage::TASK
         | stage::MESH
         | stage::RESOURCE
@@ -117,7 +112,6 @@ fn order(
 fn render_stage(bits: u32) -> MTLRenderStages {
     match bits {
         stage::VERTEX | stage::INDIRECT => MTLRenderStages::Vertex,
-        stage::TILE => MTLRenderStages::Tile,
         stage::TASK => MTLRenderStages::Object,
         stage::MESH => MTLRenderStages::Mesh,
         _ => MTLRenderStages::Fragment,
@@ -282,7 +276,6 @@ impl<'a> Recorder<'a> {
     fn setup(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
         let all = MTLRenderStages::Vertex
             | MTLRenderStages::Fragment
-            | MTLRenderStages::Tile
             | MTLRenderStages::Object
             | MTLRenderStages::Mesh;
         encoder.setArgumentTable_atStages(self.table, all);
@@ -348,9 +341,6 @@ impl<'a> Recorder<'a> {
                 | Command::BindSampler { slot, .. }
                 | Command::BindVertexBuffer { slot, .. } => {
                     keep(&mut self.binds, op << 32 | slot as u64, kept)
-                }
-                Command::TileMemory { index, .. } => {
-                    keep(&mut self.local, op << 32 | index as u64, kept)
                 }
                 Command::SetViewport { .. }
                 | Command::SetViewports { .. }
@@ -1173,35 +1163,6 @@ impl<'a> Recorder<'a> {
                     }
                 }
             }
-            Command::TilePass {
-                width,
-                height,
-                imageblock,
-                memory,
-            } => {
-                self.pass.setTileWidth(width as usize);
-                self.pass.setTileHeight(height as usize);
-                self.pass.setImageblockSampleLength(imageblock as usize);
-                self.pass.setThreadgroupMemoryLength(memory as usize);
-            }
-            Command::DispatchTile { width, height } => {
-                if self.render_pipeline.is_none() || width == 0 || height == 0 {
-                    return Ok(());
-                }
-                self.prepare()?;
-                self.render().dispatchThreadsPerTile(size(width, height, 1));
-            }
-            Command::TileMemory {
-                length,
-                offset,
-                index,
-            } => unsafe {
-                self.render().setThreadgroupMemoryLength_offset_atIndex(
-                    length as usize,
-                    offset as usize,
-                    index as usize,
-                )
-            },
             Command::Callback { index } => {
                 self.flush()?;
                 self.release()?;
