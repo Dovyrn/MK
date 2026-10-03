@@ -312,7 +312,7 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
         s += "import java.nio.charset.StandardCharsets;\n";
     }
     if backend.is_none() {
-        s += "import lombok.Getter;\n";
+        s += "import java.lang.ref.Cleaner;\nimport lombok.Getter;\n";
     }
     if kinds.contains(&"str") || backend.is_none() {
         s += "\n";
@@ -368,6 +368,14 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
             ),
             None => fixed.to_string(),
         };
+        if let Some(f) = tail(op).filter(|f| f.kind == "bytes") {
+            let n = camel(&f.name);
+            writeln!(
+                s,
+                "        if ({n}Size < 0 || {n}Size > 0xffff) {{\n            throw new IllegalArgumentException(\"{n}Size \" + {n}Size + \" is outside 0..65535\");\n        }}"
+            )
+            .unwrap();
+        }
         let call = format!("head({i}, {})", size.trim_start_matches("0 + "));
         if op.fields.is_empty() {
             writeln!(s, "        {call};").unwrap();

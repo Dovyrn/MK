@@ -29,15 +29,20 @@ pub fn device<'a>(handle: jlong) -> &'a mut Device {
 }
 
 pub fn bytes<'a>(address: jlong, length: i64) -> &'a [u8] {
-    if address == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) }
+    assert!(length >= 0, "size {length} is negative");
+    if length == 0 {
+        return &[];
     }
+    assert!(address != 0, "a null pointer with {length} bytes");
+    unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) }
 }
 
 #[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn bytes_mut<'a>(address: jlong, length: i64) -> &'a mut [u8] {
+    assert!(
+        length >= 0 && address != 0,
+        "a write target {address:#x} with size {length}"
+    );
     unsafe { std::slice::from_raw_parts_mut(address as *mut u8, length as usize) }
 }
 
@@ -47,6 +52,10 @@ pub fn str<'a>(address: jlong, length: i64) -> &'a str {
 
 #[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn u32s<'a>(address: jlong, count: i64) -> &'a [u32] {
+    assert!(count >= 0, "count {count} is negative");
+    if count == 0 {
+        return &[];
+    }
     unsafe { std::slice::from_raw_parts(address as *const u32, count as usize) }
 }
 
@@ -76,6 +85,10 @@ pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
 
 #[cfg(feature = "mtl")]
 pub fn f32s<'a>(address: jlong, count: i64) -> &'a [f32] {
+    assert!(count >= 0, "count {count} is negative");
+    if count == 0 {
+        return &[];
+    }
     unsafe { std::slice::from_raw_parts(address as *const f32, count as usize) }
 }
 

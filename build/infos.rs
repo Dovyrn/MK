@@ -280,7 +280,7 @@ pub fn java(info: &Info) -> String {
             "u64" => writeln!(s, "        memPutLong(p, {n});\n        p += 8;"),
             "u32x3" => writeln!(
                 s,
-                "        for (var x : {n}) {{\n            memPutInt(p, x);\n            p += 4;\n        }}"
+                "        if ({n}.length != 3) {{\n            throw new IllegalArgumentException(\"{n} has 3 values\");\n        }}\n        for (var x : {n}) {{\n            memPutInt(p, x);\n            p += 4;\n        }}"
             ),
             "bytes" => writeln!(
                 s,

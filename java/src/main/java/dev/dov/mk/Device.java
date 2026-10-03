@@ -22,7 +22,7 @@ public class Device implements AutoCloseable {
 
     private static native void nFree(long device);
 
-    public Caps caps() {
+    public synchronized Caps caps() {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, Caps.SIZE);
             nCaps(handle, out);
@@ -32,173 +32,201 @@ public class Device implements AutoCloseable {
 
     private static native void nCaps(long device, long out);
 
-    public String name() {
+    public synchronized String name() {
         return nName(handle);
     }
 
     private static native String nName(long device);
 
-    public int createBuffer(long size, int memory) {
+    public synchronized int createBuffer(long size, int memory) {
         return nCreateBuffer(handle, size, memory);
     }
 
     private static native int nCreateBuffer(long device, long size, int memory);
 
-    public void destroyBuffer(int buffer) {
+    public synchronized void destroyBuffer(int buffer) {
         nDestroyBuffer(handle, buffer);
     }
 
     private static native void nDestroyBuffer(long device, int buffer);
 
-    public long map(int buffer) {
+    public synchronized long map(int buffer) {
         return nMap(handle, buffer);
     }
 
     private static native long nMap(long device, int buffer);
 
-    public long bufferHandle(int buffer) {
+    public synchronized long bufferHandle(int buffer) {
         return nBufferHandle(handle, buffer);
     }
 
     private static native long nBufferHandle(long device, int buffer);
 
-    public void unmap(int buffer) {
+    public synchronized void unmap(int buffer) {
         nUnmap(handle, buffer);
     }
 
     private static native void nUnmap(long device, int buffer);
 
-    public int createPipeline(ComputeInfo info) {
+    public synchronized int createPipeline(ComputeInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreatePipeline(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreatePipeline(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreatePipeline(long device, long info, int infoLength);
 
-    public void destroyPipeline(int pipeline) {
+    public synchronized void destroyPipeline(int pipeline) {
         nDestroyPipeline(handle, pipeline);
     }
 
     private static native void nDestroyPipeline(long device, int pipeline);
 
-    public int createRenderPipeline(RenderInfo info) {
+    public synchronized int createRenderPipeline(RenderInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateRenderPipeline(long device, long info, int infoLength);
 
-    public int createMeshPipeline(MeshInfo info) {
+    public synchronized int createMeshPipeline(MeshInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateMeshPipeline(long device, long info, int infoLength);
 
-    public void destroyRenderPipeline(int pipeline) {
+    public synchronized void destroyRenderPipeline(int pipeline) {
         nDestroyRenderPipeline(handle, pipeline);
     }
 
     private static native void nDestroyRenderPipeline(long device, int pipeline);
 
-    public int createDepthState(DepthInfo info) {
+    public synchronized int createDepthState(DepthInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateDepthState(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreateDepthState(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateDepthState(long device, long info, int infoLength);
 
-    public void destroyDepthState(int state) {
+    public synchronized void destroyDepthState(int state) {
         nDestroyDepthState(handle, state);
     }
 
     private static native void nDestroyDepthState(long device, int state);
 
-    public int createTexture(TextureInfo info) {
+    public synchronized int createTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateTexture(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreateTexture(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateTexture(long device, long info, int infoLength);
 
-    public int formatUsage(int format) {
+    public synchronized int formatUsage(int format) {
         return nFormatUsage(handle, format);
     }
 
     private static native int nFormatUsage(long device, int format);
 
-    public int formatSamples(int format, int usage) {
+    public synchronized int formatSamples(int format, int usage) {
         return nFormatSamples(handle, format, usage);
     }
 
     private static native int nFormatSamples(long device, int format, int usage);
 
-    public int createView(int texture, ViewInfo info) {
+    public synchronized int createView(int texture, ViewInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateView(handle, texture, infoAddress, info.encodedSize());
+            try {
+                return nCreateView(handle, texture, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateView(long device, int texture, long info, int infoLength);
 
-    public void destroyTexture(int texture) {
+    public synchronized void destroyTexture(int texture) {
         nDestroyTexture(handle, texture);
     }
 
     private static native void nDestroyTexture(long device, int texture);
 
-    public int createSampler(SamplerInfo info) {
+    public synchronized int createSampler(SamplerInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateSampler(handle, infoAddress, info.encodedSize());
+            try {
+                return nCreateSampler(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nCreateSampler(long device, long info, int infoLength);
 
-    public void destroySampler(int sampler) {
+    public synchronized void destroySampler(int sampler) {
         nDestroySampler(handle, sampler);
     }
 
     private static native void nDestroySampler(long device, int sampler);
 
-    public int createQueryHeap(int kind, int count) {
+    public synchronized int createQueryHeap(int kind, int count) {
         return nCreateQueryHeap(handle, kind, count);
     }
 
     private static native int nCreateQueryHeap(long device, int kind, int count);
 
-    public void destroyQueryHeap(int heap) {
+    public synchronized void destroyQueryHeap(int heap) {
         nDestroyQueryHeap(handle, heap);
     }
 
     private static native void nDestroyQueryHeap(long device, int heap);
 
-    public void recordCache() {
+    public synchronized void recordCache() {
         nRecordCache(handle);
     }
 
     private static native void nRecordCache(long device);
 
-    public void saveCache(String path) {
+    public synchronized void saveCache(String path) {
         try (var stack = MemoryStack.stackPush()) {
             var pathBytes = stack.UTF8(path, false);
             nSaveCache(handle, memAddress(pathBytes), pathBytes.remaining());
@@ -207,7 +235,7 @@ public class Device implements AutoCloseable {
 
     private static native void nSaveCache(long device, long path, int pathLength);
 
-    public void loadCache(String path) {
+    public synchronized void loadCache(String path) {
         try (var stack = MemoryStack.stackPush()) {
             var pathBytes = stack.UTF8(path, false);
             nLoadCache(handle, memAddress(pathBytes), pathBytes.remaining());
@@ -216,31 +244,31 @@ public class Device implements AutoCloseable {
 
     private static native void nLoadCache(long device, long path, int pathLength);
 
-    public int createEvent() {
+    public synchronized int createEvent() {
         return nCreateEvent(handle);
     }
 
     private static native int nCreateEvent(long device);
 
-    public void destroyEvent(int event) {
+    public synchronized void destroyEvent(int event) {
         nDestroyEvent(handle, event);
     }
 
     private static native void nDestroyEvent(long device, int event);
 
-    public long eventValue(int event) {
+    public synchronized long eventValue(int event) {
         return nEventValue(handle, event);
     }
 
     private static native long nEventValue(long device, int event);
 
-    public boolean await(int event, long value, long ms) {
+    public synchronized boolean await(int event, long value, long ms) {
         return nWait(handle, event, value, ms);
     }
 
     private static native boolean nWait(long device, int event, long value, long ms);
 
-    public void submit(int queue, Commands commands, long[] waits, long[] signals) {
+    public synchronized void submit(int queue, Commands commands, long[] waits, long[] signals) {
         try (var stack = MemoryStack.stackPush()) {
             if (waits.length % 2 != 0) {
                 throw new IllegalArgumentException("waits holds event and value pairs");

@@ -71,9 +71,15 @@ public class MeshInfo {
         p += 4;
         memPutInt(p, clamp ? 1 : 0);
         p += 4;
+        if (taskGroup.length != 3) {
+            throw new IllegalArgumentException("taskGroup has 3 values");
+        }
         for (var x : taskGroup) {
             memPutInt(p, x);
             p += 4;
+        }
+        if (meshGroup.length != 3) {
+            throw new IllegalArgumentException("meshGroup has 3 values");
         }
         for (var x : meshGroup) {
             memPutInt(p, x);

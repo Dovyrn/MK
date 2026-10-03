@@ -16,29 +16,33 @@ public class GlDevice extends Device {
 
     private static native long nAdoptRaw(long proc);
 
-    public int importBuffer(int raw, long size) {
+    public synchronized int importBuffer(int raw, long size) {
         return nImportBuffer(handle, raw, size);
     }
 
     private static native int nImportBuffer(long device, int raw, long size);
 
-    public int importTexture(int raw, TextureInfo info) {
+    public synchronized int importTexture(int raw, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+            var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
-            return nImportTexture(handle, raw, infoAddress, info.encodedSize());
+            try {
+                return nImportTexture(handle, raw, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
         }
     }
 
     private static native int nImportTexture(long device, int raw, long info, int infoLength);
 
-    public int rawBuffer(int buffer) {
+    public synchronized int rawBuffer(int buffer) {
         return nRawBuffer(handle, buffer);
     }
 
     private static native int nRawBuffer(long device, int buffer);
 
-    public int rawTexture(int texture) {
+    public synchronized int rawTexture(int texture) {
         return nRawTexture(handle, texture);
     }
 

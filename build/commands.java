@@ -1,8 +1,14 @@
-@Getter
 public class Commands implements AutoCloseable {
-    private long address = nmemAlloc(4096);
+    private static final Cleaner cleaner = Cleaner.create();
+    private final Block block = new Block();
+    private final Cleaner.Cleanable cleanable = cleaner.register(this, block);
     private int capacity = 4096;
+    @Getter
     private int size;
+
+    public long getAddress() {
+        return block.address;
+    }
 
     public void reset() {
         size = 0;
@@ -10,22 +16,25 @@ public class Commands implements AutoCloseable {
 
     @Override
     public void close() {
-        nmemFree(address);
-        address = 0;
+        cleanable.clean();
     }
 
     protected long head(int op, int length) {
-        if (address == 0) {
+        if (block.address == 0) {
             throw new IllegalStateException("commands used after close");
         }
-        if (length > 0xffff) {
-            throw new IllegalArgumentException("payload of " + length + " bytes is over 65535");
+        if (length < 0 || length > 0xffff) {
+            throw new IllegalArgumentException("payload of " + length + " bytes is outside 0..65535");
         }
-        if (size + 4 + length > capacity) {
-            capacity = Math.max(capacity * 2, size + 4 + length);
-            address = nmemRealloc(address, capacity);
+        var needed = (long) size + 4 + length;
+        if (needed > Integer.MAX_VALUE) {
+            throw new IllegalStateException("commands are over 2 GiB");
         }
-        var p = address + size;
+        if (needed > capacity) {
+            capacity = (int) Math.min(Integer.MAX_VALUE, Math.max(2L * capacity, needed));
+            block.address = nmemRealloc(block.address, capacity);
+        }
+        var p = block.address + size;
         memPutShort(p, (short) op);
         memPutShort(p + 2, (short) length);
         size += 4 + length;

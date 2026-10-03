@@ -32,6 +32,9 @@ public class ComputeInfo {
         memPutInt(p, entryBytes.length);
         memByteBuffer(p + 4, entryBytes.length).put(entryBytes);
         p += 4 + entryBytes.length;
+        if (group.length != 3) {
+            throw new IllegalArgumentException("group has 3 values");
+        }
         for (var x : group) {
             memPutInt(p, x);
             p += 4;

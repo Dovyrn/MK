@@ -49,6 +49,7 @@ fn main() {
     let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
+    save(&dir.join("Block.java"), include_str!("build/block.java"));
     let borrowing: Vec<String> = infos
         .iter()
         .filter(|i| infos::borrows(i))
