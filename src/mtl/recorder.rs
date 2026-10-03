@@ -49,6 +49,7 @@ pub struct Recorder<'a> {
     push: [u8; 256],
     size: usize,
     dirty: bool,
+    stale: bool,
 }
 
 const COMPUTE: MTLStages =
@@ -205,6 +206,7 @@ impl<'a> Recorder<'a> {
             push: [0; 256],
             size: 0,
             dirty: false,
+            stale: false,
         }
     }
 
@@ -245,6 +247,17 @@ impl<'a> Recorder<'a> {
             self.dirty = false;
         }
         Ok(())
+    }
+
+    fn prepare(&mut self) -> Result<(), &'static str> {
+        if self.stale && self.render.is_some() {
+            self.stale = false;
+            for i in 0..self.state.len() {
+                let mut bytes = self.state[i];
+                self.step(Command::read(&mut bytes)?)?;
+            }
+        }
+        self.flush()
     }
 
     pub fn run(&mut self, mut bytes: &'a [u8]) -> Result<(), &'static str> {
@@ -603,10 +616,7 @@ impl<'a> Recorder<'a> {
                 self.pass = MTL4RenderPassDescriptor::new();
                 self.width = width;
                 self.height = height;
-                for i in 0..self.state.len() {
-                    let mut bytes = self.state[i];
-                    self.step(Command::read(&mut bytes)?)?;
-                }
+                self.stale = true;
             }
             Command::EndRender => {
                 let encoder = self.render.take().unwrap();
@@ -740,7 +750,7 @@ impl<'a> Recorder<'a> {
                 if self.render_pipeline.is_none() || vertices == 0 || instances == 0 {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 unsafe {
                     self.render()
                         .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(
@@ -767,7 +777,7 @@ impl<'a> Recorder<'a> {
                 if indices == 0 || instances == 0 {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 let skip = first_index as u64 * size;
                 unsafe {
                     self.render()
@@ -792,7 +802,7 @@ impl<'a> Recorder<'a> {
                 if self.render_pipeline.is_none() {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     self.render()
@@ -809,7 +819,7 @@ impl<'a> Recorder<'a> {
                 else {
                     return Ok(());
                 };
-                self.flush()?;
+                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     unsafe {
@@ -831,7 +841,7 @@ impl<'a> Recorder<'a> {
                 if [x, y, z].contains(&0) {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 self.render()
                     .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                         size(x, y, z),
@@ -848,7 +858,7 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.render_pipeline else {
                     return Ok(());
                 };
-                self.flush()?;
+                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 for i in 0..count as u64 {
                     self.render()
@@ -984,7 +994,7 @@ impl<'a> Recorder<'a> {
                 if self.render_pipeline.is_none() || width == 0 || height == 0 {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 self.render().dispatchThreadsPerTile(size(width, height, 1));
             }
             Command::TileMemory {
@@ -1016,7 +1026,7 @@ impl<'a> Recorder<'a> {
                 if count == 0 {
                     return Ok(());
                 }
-                self.flush()?;
+                self.prepare()?;
                 let icb = self.res.indirects.get(indirect);
                 let range = NSRange::new(start as usize, count as usize);
                 unsafe {
