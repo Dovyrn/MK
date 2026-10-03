@@ -1,11 +1,11 @@
 use super::{Device, id, kind, texture_desc};
 use crate::caps;
 use crate::mtl::texture::Texture;
-use crate::{TextureInfo, ViewInfo, format, memory};
+use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
-use objc2_metal::{MTLDevice, MTLTexture, MTLTextureUsage};
+use objc2_metal::{MTLDevice, MTLTexture, MTLTextureType, MTLTextureUsage};
 
 impl Device {
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
@@ -31,16 +31,52 @@ impl Device {
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
         format: u32,
     ) -> Result<u32, String> {
+        if format::mtl(format) != raw.pixelFormat() {
+            return Err(format!(
+                "format {format} does not match the texture's pixel format"
+            ));
+        }
+        let (dimension, faces) = match raw.textureType() {
+            MTLTextureType::Type1D => (dimension::D1, 1),
+            MTLTextureType::Type1DArray => (dimension::D1_ARRAY, 1),
+            MTLTextureType::Type2D | MTLTextureType::Type2DMultisample => (dimension::D2, 1),
+            MTLTextureType::Type2DArray | MTLTextureType::Type2DMultisampleArray => {
+                (dimension::D2_ARRAY, 1)
+            }
+            MTLTextureType::Type3D => (dimension::D3, 1),
+            MTLTextureType::TypeCube => (dimension::CUBE, 6),
+            MTLTextureType::TypeCubeArray => (dimension::CUBE_ARRAY, 6),
+            t => return Err(format!("texture type {} cannot be imported", t.0)),
+        };
+        let flags = raw.usage();
+        let mut usage = usage::COPY_SRC | usage::COPY_DST;
+        if flags.contains(MTLTextureUsage::ShaderRead) {
+            usage |= usage::SAMPLED;
+        }
+        if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite) {
+            usage |= usage::STORAGE;
+        }
+        if flags.contains(MTLTextureUsage::RenderTarget) {
+            usage |= if (format::D16_UNORM..=format::S8_UINT).contains(&format) {
+                usage::DEPTH
+            } else {
+                usage::COLOR
+            };
+        }
+        if flags.contains(MTLTextureUsage::PixelFormatView) {
+            usage |= usage::VIEW;
+        }
         self.residency.add(ProtocolObject::from_ref(&*raw));
         let info = TextureInfo {
+            dimension,
             format,
             width: raw.width() as u32,
             height: raw.height() as u32,
             depth: raw.depth() as u32,
-            layers: raw.arrayLength() as u32,
+            layers: raw.arrayLength() as u32 * faces,
             mips: raw.mipmapLevelCount() as u32,
             samples: raw.sampleCount() as u32,
-            usage: !0,
+            usage,
             ..Default::default()
         };
         let id = self.res.textures.insert(Texture { raw, format });
