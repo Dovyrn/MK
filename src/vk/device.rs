@@ -62,6 +62,10 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
             usage::HOST,
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
         ),
+        (
+            usage::BLIT,
+            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
+        ),
     ];
     let mut bits = vk::ImageUsageFlags::empty();
     for (u, f) in map {

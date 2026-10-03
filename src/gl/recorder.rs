@@ -1,6 +1,7 @@
 mod copy;
 mod draw;
 mod pass;
+mod textures;
 
 use crate::command;
 use crate::gl::device::{PUSH, compare};
@@ -474,6 +475,19 @@ impl<'a> Recorder<'a> {
                 }
                 Command::CopyBufferToTexture { .. } => self.upload(command),
                 Command::CopyTextureToBuffer { .. } => self.readback(command)?,
+                Command::CopyTexture { .. } => self.copy_texture(command),
+                Command::BlitTexture { .. } => self.blit_texture(command),
+                Command::GenerateMips { texture, .. } => {
+                    if res.table.textures.get(texture).mips < 2 {
+                        return Ok(());
+                    }
+                    let t = res.textures.get(texture);
+                    gl.active_texture(glow::TEXTURE0);
+                    gl.bind_texture(t.target, t.raw);
+                    gl.generate_mipmap(t.target);
+                    gl.bind_texture(t.target, None);
+                }
+                Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,

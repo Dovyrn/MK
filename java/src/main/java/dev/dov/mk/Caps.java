@@ -70,11 +70,13 @@ public class Caps {
     public int matrices = 0;
     public boolean tensors = false;
     public boolean networks = false;
+    public boolean copyFormats = false;
+    public boolean textureClear = false;
 
-    public static final int SIZE = 252;
+    public static final int SIZE = 260;
 
     int encodedSize() {
-        return 252;
+        return 260;
     }
 
     long encode(long p) {
@@ -201,6 +203,10 @@ public class Caps {
         memPutInt(p, tensors ? 1 : 0);
         p += 4;
         memPutInt(p, networks ? 1 : 0);
+        p += 4;
+        memPutInt(p, copyFormats ? 1 : 0);
+        p += 4;
+        memPutInt(p, textureClear ? 1 : 0);
         p += 4;
         return p;
     }
@@ -330,6 +336,10 @@ public class Caps {
         r.tensors = memGetInt(p) != 0;
         p += 4;
         r.networks = memGetInt(p) != 0;
+        p += 4;
+        r.copyFormats = memGetInt(p) != 0;
+        p += 4;
+        r.textureClear = memGetInt(p) != 0;
         p += 4;
         return r;
     }

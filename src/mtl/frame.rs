@@ -3,7 +3,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4CommandAllocator, MTLAllocation, MTLBuffer, MTLDevice, MTLIndirectCommandBuffer,
     MTLIndirectCommandBufferDescriptor, MTLIndirectCommandType, MTLResidencySet,
-    MTLResourceOptions,
+    MTLResourceOptions, MTLTexture,
 };
 
 type Icb = Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>;
@@ -18,6 +18,7 @@ pub struct Frame {
     icb: Option<(Icb, u32)>,
     old: Vec<Icb>,
     busy: bool,
+    views: Vec<Retained<ProtocolObject<dyn MTLTexture>>>,
 }
 
 impl Frame {
@@ -32,6 +33,7 @@ impl Frame {
             icb: None,
             old: Vec::new(),
             busy: false,
+            views: Vec::new(),
         })
     }
 
@@ -40,6 +42,7 @@ impl Frame {
         self.chunk = 0;
         self.used = 0;
         self.busy = false;
+        self.views.clear();
         if !self.old.is_empty() {
             for icb in self.old.drain(..) {
                 residency.removeAllocation(ProtocolObject::from_ref(&*icb));
@@ -80,6 +83,10 @@ impl Frame {
             self.old.push(old);
         }
         Ok((icb, false))
+    }
+
+    pub fn keep(&mut self, view: Retained<ProtocolObject<dyn MTLTexture>>) {
+        self.views.push(view);
     }
 
     pub fn push(

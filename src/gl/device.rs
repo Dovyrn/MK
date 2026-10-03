@@ -152,6 +152,8 @@ impl Device {
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
                 mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
+                copy_formats: has(43, "GL_ARB_copy_image"),
+                texture_clear: has(44, "GL_ARB_clear_texture"),
                 max_buffer: isize::MAX as u64,
                 max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
                 max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
@@ -505,7 +507,7 @@ impl Device {
                 );
                 let mut u = base | usage::COPY_DST | usage::HOST;
                 if !unrenderable {
-                    u |= usage::COLOR | usage::COPY_SRC;
+                    u |= usage::COLOR | usage::COPY_SRC | usage::BLIT;
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
                     u |= usage::STORAGE;

@@ -9,4 +9,5 @@ public interface Usage {
     int COPY_DST = 32;
     int VIEW = 64;
     int HOST = 128;
+    int BLIT = 256;
 }

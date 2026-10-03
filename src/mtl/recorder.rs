@@ -1,4 +1,7 @@
+mod textures;
+
 use crate::command;
+use crate::mtl::blit::Blit;
 use crate::mtl::count::Count;
 use crate::mtl::device::id;
 use crate::mtl::frame::Frame;
@@ -36,6 +39,7 @@ pub struct Recorder<'a> {
     resolve: &'a Resolve,
     count: &'a Count,
     counts: VecDeque<(Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>, u64)>,
+    blit: &'a Blit,
     resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
     res: &'a Resources,
@@ -190,8 +194,7 @@ impl<'a> Recorder<'a> {
     pub fn new(
         device: &'a ProtocolObject<dyn MTLDevice>,
         queue: &'a Queue,
-        resolve: &'a Resolve,
-        count: &'a Count,
+        (resolve, count, blit): (&'a Resolve, &'a Count, &'a Blit),
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
@@ -205,6 +208,7 @@ impl<'a> Recorder<'a> {
             resolve,
             count,
             counts: VecDeque::new(),
+            blit,
             resolves: Vec::new(),
             frame,
             res,
@@ -740,6 +744,10 @@ impl<'a> Recorder<'a> {
                         )
                 }
             }
+            Command::CopyTexture { .. } => self.copy_texture(command)?,
+            Command::BlitTexture { .. } => self.blit_texture(command)?,
+            Command::GenerateMips { texture, .. } => self.generate_mips(texture)?,
+            Command::ClearTexture { .. } => self.clear_texture(command)?,
             Command::ColorAttachment {
                 index,
                 texture,

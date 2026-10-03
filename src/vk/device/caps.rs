@@ -3,7 +3,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, Matrix, TextureInfo, format, usage};
+use crate::{Caps, Matrix, TextureInfo, caps, format, usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -114,6 +114,8 @@ pub(super) fn probe(
         mirror_clamp: ext.mirror,
         budget: ext.budget,
         host_read: ext.copy.is_some(),
+        copy_formats: true,
+        texture_clear: true,
         max_buffer: buffer.max_buffer_size,
         max_texture: limits
             .max_image_dimension1_d
@@ -155,6 +157,15 @@ impl Device {
         if features.is_empty() {
             return 0;
         }
+        let mut need = vk::FormatFeatureFlags::BLIT_SRC | vk::FormatFeatureFlags::BLIT_DST;
+        if !format::uint(format) && !format::sint(format) {
+            need |= vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+        }
+        let blit = if features.contains(need) && !caps::depth(format) {
+            usage::BLIT
+        } else {
+            0
+        };
         [
             (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),
             (vk::FormatFeatureFlags::STORAGE_IMAGE, usage::STORAGE),
@@ -177,6 +188,7 @@ impl Device {
         .into_iter()
         .filter(|(f, _)| features.contains(*f))
         .fold(usage::VIEW, |u, (_, b)| u | b)
+            | blit
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {

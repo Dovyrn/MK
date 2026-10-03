@@ -77,6 +77,26 @@ scope = "compute"
 info = "TextureCopy"
 
 [[command]]
+name = "copy_texture"
+scope = "compute outside"
+info = "CopyInfo"
+
+[[command]]
+name = "blit_texture"
+scope = "compute outside"
+info = "BlitInfo"
+
+[[command]]
+name = "generate_mips"
+scope = "compute outside"
+fields = [["texture", "u32"], ["layout", "u32"]]
+
+[[command]]
+name = "clear_texture"
+scope = "compute outside"
+info = "ClearInfo"
+
+[[command]]
 name = "color_attachment"
 info = "ColorAttachment"
 

@@ -44,6 +44,25 @@ type Double = unsafe extern "system" fn(u32, *mut f64);
 type Enabled = unsafe extern "system" fn(u32, u32) -> u8;
 type ClampColor = unsafe extern "system" fn(u32, u32);
 type Provoking = unsafe extern "system" fn(u32);
+type CopyImage = unsafe extern "system" fn(
+    u32,
+    u32,
+    i32,
+    i32,
+    i32,
+    i32,
+    u32,
+    u32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+);
+type ClearImage =
+    unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
@@ -94,6 +113,8 @@ pub struct Extra {
     pub samples3: Samples3,
     pub storage2: Option<Samples2>,
     pub storage3: Option<Samples3>,
+    pub copy_image: Option<CopyImage>,
+    pub clear_image: Option<ClearImage>,
 }
 
 unsafe fn cast<F>(p: *const c_void) -> F {
@@ -204,6 +225,8 @@ impl Extra {
                 samples3: cast(need("glTexImage3DMultisample")?),
                 storage2: multisample("glTexStorage2DMultisample").map(|p| cast(p)),
                 storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
+                copy_image: get("glCopyImageSubData", 43, "GL_ARB_copy_image").map(|p| cast(p)),
+                clear_image: get("glClearTexSubImage", 44, "GL_ARB_clear_texture").map(|p| cast(p)),
             })
         }
     }

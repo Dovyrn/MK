@@ -20,6 +20,7 @@ mod textures;
 
 use crate::check::Check;
 use crate::mtl::Callback;
+use crate::mtl::blit::Blit;
 use crate::mtl::count::Count;
 use crate::mtl::queue::Queue;
 use crate::mtl::recorder::integer;
@@ -156,6 +157,9 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage & usage::VIEW != 0 {
         flags |= MTLTextureUsage::PixelFormatView;
     }
+    if info.usage & usage::BLIT != 0 {
+        flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget;
+    }
     if integer(info.format).is_some()
         && info.usage & usage::COLOR != 0
         && info.memory != memory::TRANSIENT
@@ -218,6 +222,7 @@ pub struct Device {
     caps: Caps,
     resolve: Resolve,
     count: Count,
+    blit: Blit,
 }
 
 impl Drop for Device {
@@ -259,6 +264,7 @@ impl Device {
             let caps = Self::detect(&raw, queues.len());
             let resolve = Resolve::new(&raw)?;
             let count = Count::new(&raw)?;
+            let blit = Blit::new(&raw)?;
             Ok(Self {
                 raw,
                 compiler,
@@ -274,6 +280,7 @@ impl Device {
                 caps,
                 resolve,
                 count,
+                blit,
             })
         })
     }
@@ -345,8 +352,7 @@ impl Device {
             self.queues[queue].submit(
                 &self.raw,
                 &self.res,
-                &self.resolve,
-                &self.count,
+                (&self.resolve, &self.count, &self.blit),
                 (commands, natives),
                 waits,
                 signals,

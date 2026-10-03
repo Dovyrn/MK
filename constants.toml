@@ -56,6 +56,7 @@ COPY_SRC = 16
 COPY_DST = 32
 VIEW = 64
 HOST = 128
+BLIT = 256
 
 [memory]
 DEVICE = 0

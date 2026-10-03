@@ -233,6 +233,8 @@ fields = [
     ["matrices", "u32", "0"],
     ["tensors", "bool", "false"],
     ["networks", "bool", "false"],
+    ["copy_formats", "bool", "false"],
+    ["texture_clear", "bool", "false"],
 ]
 
 [[info]]
@@ -367,6 +369,68 @@ fields = [
     ["depth", "u32", "1"],
     ["row_length", "u32", "0"],
     ["row_count", "u32", "0"],
+]
+
+[[info]]
+name = "CopyInfo"
+fields = [
+    ["src", "u32", "0"],
+    ["src_layout", "u32", "layout::COPY_SRC"],
+    ["src_mip", "u32", "0"],
+    ["src_layer", "u32", "0"],
+    ["src_x", "u32", "0"],
+    ["src_y", "u32", "0"],
+    ["src_z", "u32", "0"],
+    ["dst", "u32", "0"],
+    ["dst_layout", "u32", "layout::COPY_DST"],
+    ["dst_mip", "u32", "0"],
+    ["dst_layer", "u32", "0"],
+    ["dst_x", "u32", "0"],
+    ["dst_y", "u32", "0"],
+    ["dst_z", "u32", "0"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["depth", "u32", "1"],
+    ["layers", "u32", "1"],
+]
+
+[[info]]
+name = "BlitInfo"
+fields = [
+    ["src", "u32", "0"],
+    ["src_layout", "u32", "layout::COPY_SRC"],
+    ["src_mip", "u32", "0"],
+    ["src_layer", "u32", "0"],
+    ["src_x", "u32", "0"],
+    ["src_y", "u32", "0"],
+    ["src_width", "u32", "1"],
+    ["src_height", "u32", "1"],
+    ["dst", "u32", "0"],
+    ["dst_layout", "u32", "layout::COPY_DST"],
+    ["dst_mip", "u32", "0"],
+    ["dst_layer", "u32", "0"],
+    ["dst_x", "u32", "0"],
+    ["dst_y", "u32", "0"],
+    ["dst_width", "u32", "1"],
+    ["dst_height", "u32", "1"],
+    ["filter", "u32", "filter::LINEAR"],
+]
+
+[[info]]
+name = "ClearInfo"
+fields = [
+    ["texture", "u32", "0"],
+    ["layout", "u32", "layout::COPY_DST"],
+    ["base_mip", "u32", "0"],
+    ["mips", "u32", "!0"],
+    ["base_layer", "u32", "0"],
+    ["layers", "u32", "!0"],
+    ["r", "f32", "0.0"],
+    ["g", "f32", "0.0"],
+    ["b", "f32", "0.0"],
+    ["a", "f32", "0.0"],
+    ["depth", "f32", "1.0"],
+    ["stencil", "u32", "0"],
 ]
 
 [[info]]

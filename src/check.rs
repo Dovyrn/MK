@@ -1,7 +1,8 @@
+use crate::caps::{compressed, depth};
 use crate::table::Table;
 use crate::{
-    Caps, Command, TextureInfo, access, cull, face, format, index, layout, load, query, slot,
-    stage, store, topology, usage,
+    Caps, Command, TextureInfo, access, cull, dimension, face, filter, format, index, layout, load,
+    query, slot, stage, store, topology, usage,
 };
 
 pub struct Check<'a> {
@@ -79,6 +80,17 @@ fn span(what: &str, base: u32, count: u32, total: u32, texture: u32) {
         base < total && end <= total,
         "{what}s {base}..{end} are outside 0..{total} of texture {texture}"
     );
+}
+
+fn needs_layout(what: &str, l: u32, want: u32) {
+    assert!(
+        l == want || l == layout::GENERAL,
+        "{what} layout {l} must be {want} or GENERAL"
+    );
+}
+
+fn apart(a: u32, b: u32, n: u32) -> bool {
+    a as u64 + n as u64 <= b as u64 || b as u64 + n as u64 <= a as u64
 }
 
 fn copied(f: u32) -> u32 {
@@ -167,6 +179,30 @@ impl<'a> Check<'a> {
         assert!(
             (t.usage | copies) & needs != 0,
             "texture {texture} has no usage::{what}"
+        );
+        t
+    }
+
+    fn region(
+        &self,
+        texture: u32,
+        (mip, layer, layers): (u32, u32, u32),
+        at: [u32; 3],
+        size: [u32; 3],
+    ) -> &TextureInfo {
+        let t = self.table.textures.get(texture);
+        span("mip", mip, 1, t.mips, texture);
+        span("layer", layer, layers, t.layers, texture);
+        let end = [t.width, t.height, t.depth].map(|n| (n >> mip).max(1));
+        assert!(
+            (0..3).all(|i| at[i] as u64 + size[i] as u64 <= end[i] as u64),
+            "region {at:?} {size:?} is outside mip {mip} of texture {texture} ({end:?})"
+        );
+        let [_, bw, bh] = format::block(t.format);
+        let edge = |i: usize, b: u32| size[i].is_multiple_of(b) || at[i] + size[i] == end[i];
+        assert!(
+            at[0].is_multiple_of(bw) && at[1].is_multiple_of(bh) && edge(0, bw) && edge(1, bh),
+            "region {at:?} {size:?} is not aligned to the {bw}x{bh} blocks of texture {texture}"
         );
         t
     }
@@ -426,6 +462,173 @@ impl<'a> Check<'a> {
             }
             Command::CopyBufferToTexture { .. } | Command::CopyTextureToBuffer { .. } => {
                 self.copy(c);
+            }
+            Command::CopyTexture {
+                src,
+                src_layout,
+                src_mip,
+                src_layer,
+                src_x,
+                src_y,
+                src_z,
+                dst,
+                dst_layout,
+                dst_mip,
+                dst_layer,
+                dst_x,
+                dst_y,
+                dst_z,
+                width,
+                height,
+                depth: d,
+                layers,
+            } => {
+                self.texture(src, usage::COPY_SRC, "COPY_SRC");
+                self.texture(dst, usage::COPY_DST, "COPY_DST");
+                needs_layout("copy_texture source", src_layout, layout::COPY_SRC);
+                needs_layout("copy_texture destination", dst_layout, layout::COPY_DST);
+                let size = [width, height, d];
+                assert!(
+                    size.iter().all(|&n| n > 0),
+                    "copy_texture region {width}x{height}x{d} has a zero"
+                );
+                let from = (src_mip, src_layer, layers);
+                let s = self.region(src, from, [src_x, src_y, src_z], size);
+                let to = (dst_mip, dst_layer, layers);
+                let t = self.region(dst, to, [dst_x, dst_y, dst_z], size);
+                assert!(
+                    format::block(s.format) == format::block(t.format),
+                    "copy_texture formats {} and {} have different blocks",
+                    s.format,
+                    t.format
+                );
+                assert!(
+                    s.format == t.format || !depth(s.format) && !depth(t.format),
+                    "copy_texture between depth formats {} and {} needs one format",
+                    s.format,
+                    t.format
+                );
+                assert!(
+                    s.samples == t.samples,
+                    "copy_texture sample counts {} and {} differ",
+                    s.samples,
+                    t.samples
+                );
+                assert!(
+                    src != dst
+                        || src_mip != dst_mip
+                        || apart(src_layer, dst_layer, layers)
+                        || apart(src_x, dst_x, width)
+                        || apart(src_y, dst_y, height)
+                        || apart(src_z, dst_z, d),
+                    "copy_texture source and destination overlap in texture {src}"
+                );
+                let line =
+                    |t: &TextureInfo| matches!(t.dimension, dimension::D1 | dimension::D1_ARRAY);
+                assert!(
+                    line(s) == line(t),
+                    "copy_texture cannot copy between 1D texture and 2D or 3D texture"
+                );
+                if s.format != t.format {
+                    self.need(c, caps.copy_formats, "copy_formats")?;
+                }
+            }
+            Command::BlitTexture {
+                src,
+                src_layout,
+                src_mip,
+                src_layer,
+                src_x,
+                src_y,
+                src_width,
+                src_height,
+                dst,
+                dst_layout,
+                dst_mip,
+                dst_layer,
+                dst_x,
+                dst_y,
+                dst_width,
+                dst_height,
+                filter: f,
+            } => {
+                known("filter", f, filter::valid(f));
+                self.texture(src, usage::BLIT, "BLIT");
+                self.texture(dst, usage::BLIT, "BLIT");
+                needs_layout("blit_texture source", src_layout, layout::COPY_SRC);
+                needs_layout("blit_texture destination", dst_layout, layout::COPY_DST);
+                assert!(
+                    src_width.min(src_height).min(dst_width).min(dst_height) > 0,
+                    "blit_texture region {src_width}x{src_height} to {dst_width}x{dst_height} has a zero"
+                );
+                let from = (src_mip, src_layer, 1);
+                let s = self.region(src, from, [src_x, src_y, 0], [src_width, src_height, 1]);
+                let to = (dst_mip, dst_layer, 1);
+                let t = self.region(dst, to, [dst_x, dst_y, 0], [dst_width, dst_height, 1]);
+                for (id, t) in [(src, s), (dst, t)] {
+                    assert!(
+                        matches!(
+                            t.dimension,
+                            dimension::D2
+                                | dimension::D2_ARRAY
+                                | dimension::CUBE
+                                | dimension::CUBE_ARRAY
+                        ) && t.samples == 1,
+                        "blit_texture needs single-sampled 2D, 2D array or cube textures, not texture {id}"
+                    );
+                }
+                let kind = |f| (format::uint(f), format::sint(f));
+                assert!(
+                    kind(s.format) == kind(t.format),
+                    "blit_texture formats {} and {} differ in integer kind",
+                    s.format,
+                    t.format
+                );
+                assert!(
+                    f == filter::NEAREST || kind(s.format) == (false, false),
+                    "blit_texture of integer format {} needs filter::NEAREST",
+                    s.format
+                );
+                assert!(
+                    src != dst || src_mip != dst_mip || src_layer != dst_layer,
+                    "blit_texture reads and writes one subresource of texture {src}"
+                );
+            }
+            Command::GenerateMips { texture, layout: l } => {
+                let t = self.texture(texture, usage::BLIT, "BLIT");
+                needs_layout("generate_mips", l, layout::COPY_DST);
+                assert!(
+                    !format::uint(t.format) && !format::sint(t.format),
+                    "generate_mips needs a filterable format, not integer format {}",
+                    t.format
+                );
+            }
+            Command::ClearTexture {
+                texture,
+                layout: l,
+                base_mip,
+                mips,
+                base_layer,
+                layers,
+                depth: value,
+                ..
+            } => {
+                let t = self.texture(texture, usage::COPY_DST, "COPY_DST");
+                needs_layout("clear_texture", l, layout::COPY_DST);
+                span("mip", base_mip, mips, t.mips, texture);
+                span("layer", base_layer, layers, t.layers, texture);
+                assert!(
+                    !compressed(t.format),
+                    "clear_texture cannot clear compressed format {}",
+                    t.format
+                );
+                assert!(
+                    (0.0..=1.0).contains(&value),
+                    "clear_texture depth {value} is outside 0..1"
+                );
+                if t.usage & (usage::COLOR | usage::DEPTH) == 0 {
+                    self.need(c, caps.texture_clear, "texture_clear")?;
+                }
             }
             Command::ColorAttachment {
                 index,

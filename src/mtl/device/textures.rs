@@ -72,6 +72,9 @@ impl Device {
             if flags.contains(MTLTextureUsage::PixelFormatView) {
                 usage |= usage::VIEW;
             }
+            if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget) {
+                usage |= self.format_usage(format) & usage::BLIT;
+            }
             self.residency.add(ProtocolObject::from_ref(&*raw));
             let info = TextureInfo {
                 dimension,

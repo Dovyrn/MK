@@ -18,12 +18,12 @@ fn samples(n: u32) {
     );
 }
 
-fn compressed(f: u32) -> bool {
+pub(crate) fn compressed(f: u32) -> bool {
     let [_, w, h] = format::block(f);
     w > 1 || h > 1
 }
 
-fn depth(f: u32) -> bool {
+pub(crate) fn depth(f: u32) -> bool {
     (format::D16_UNORM..=format::S8_UINT).contains(&f)
 }
 

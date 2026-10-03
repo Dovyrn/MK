@@ -1,4 +1,5 @@
 use crate::mtl::Callback;
+use crate::mtl::blit::Blit;
 use crate::mtl::count::Count;
 use crate::mtl::frame::Frame;
 use crate::mtl::recorder::{Recorder, VERTICES};
@@ -80,8 +81,7 @@ impl Queue {
         &mut self,
         device: &ProtocolObject<dyn MTLDevice>,
         res: &Resources,
-        resolve: &Resolve,
-        count: &Count,
+        (resolve, count, blit): (&Resolve, &Count, &Blit),
         (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -100,7 +100,14 @@ impl Queue {
         };
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
-        let mut recorder = Recorder::new(device, self, resolve, count, &mut frame, res, natives);
+        let mut recorder = Recorder::new(
+            device,
+            self,
+            (resolve, count, blit),
+            &mut frame,
+            res,
+            natives,
+        );
         let result = catch_unwind(AssertUnwindSafe(|| {
             recorder.run(commands)?;
             recorder.release()

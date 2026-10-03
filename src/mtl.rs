@@ -1,4 +1,5 @@
 mod accel;
+mod blit;
 mod count;
 mod device;
 mod frame;

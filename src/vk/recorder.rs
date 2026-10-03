@@ -1,3 +1,5 @@
+mod textures;
+
 use crate::command;
 use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
@@ -526,6 +528,10 @@ impl Recorder<'_> {
                         &[region],
                     )
                 }
+                Command::CopyTexture { .. } => self.copy_texture(command),
+                Command::BlitTexture { .. } => self.blit_texture(command),
+                Command::GenerateMips { texture, layout } => self.generate_mips(texture, layout),
+                Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,
