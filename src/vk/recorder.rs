@@ -74,7 +74,10 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
                 | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
                 | vk::PipelineStageFlags2::VERTEX_SHADER,
         ),
-        (stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
+        (
+            stage::FRAGMENT | stage::TILE,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+        ),
         (stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
         (stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
         (stage::RAY, vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR),
@@ -96,7 +99,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
             vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
         ),
     ];
-    let foreign = bits & (stage::TILE | stage::RESOURCE | stage::ML);
+    let foreign = bits & (stage::RESOURCE | stage::ML);
     assert!(foreign == 0, "stage {foreign} has no Vulkan equivalent");
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
