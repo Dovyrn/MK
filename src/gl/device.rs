@@ -709,6 +709,7 @@ impl Device {
         for &(event, value) in signals {
             self.res.events.get_mut(event).signal(&self.gl, value)?;
         }
+        self.res.table.signal(queue, signals);
         unsafe { self.gl.flush() };
         Ok(())
     }

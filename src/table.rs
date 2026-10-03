@@ -155,16 +155,25 @@ impl Table {
         );
     }
 
-    pub fn submit(&mut self, queue: usize, waits: &[(u32, u64)], signals: &[(u32, u64)]) {
+    pub fn submit(&self, queue: usize, waits: &[(u32, u64)], signals: &[(u32, u64)]) {
         for &(event, _) in waits {
             self.events.get(event);
         }
-        for &(event, value) in signals {
+        for (i, &(event, value)) in signals.iter().enumerate() {
             let (last, from) = *self.events.get(event);
             assert!(
                 from != queue || value > last,
                 "event {event} is already signalled to {last} on queue {queue}, not below {value}"
             );
+            assert!(
+                signals[..i].iter().all(|s| s.0 != event),
+                "event {event} is signalled twice in one submit"
+            );
+        }
+    }
+
+    pub fn signal(&mut self, queue: usize, signals: &[(u32, u64)]) {
+        for &(event, value) in signals {
             self.events.set(event, (value, queue));
         }
     }

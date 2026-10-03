@@ -368,7 +368,9 @@ impl Device {
             (commands, natives),
             waits,
             signals,
-        )
+        )?;
+        self.res.table.signal(queue, signals);
+        Ok(())
     }
 }
 

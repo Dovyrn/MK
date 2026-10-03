@@ -155,6 +155,7 @@ impl Device {
                 },
                 heap,
             )?;
+            self.res.table.signal(queue, signals);
             self.queues[queue].signal();
             Ok(())
         })
@@ -213,6 +214,7 @@ impl Device {
                 },
                 heap,
             )?;
+            self.res.table.signal(queue, signals);
             self.queues[queue].signal();
             Ok(())
         })

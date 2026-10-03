@@ -152,6 +152,7 @@ impl Device {
                 .map_err(|e| e.to_string())?
         };
         self.queues[queue].count = value;
+        self.res.table.signal(queue, signals);
         Ok(())
     }
 
