@@ -1,4 +1,4 @@
-use crate::gl::device::drain;
+use crate::gl::errors::{drain, raise};
 use crate::gl::extra::Extra;
 use crate::gl::state::buffer;
 use crate::memory;
@@ -27,7 +27,7 @@ impl Buffer {
             isize::try_from(size).map_err(|_| format!("buffer size {size} is too large"))?;
         let target = glow::COPY_WRITE_BUFFER;
         unsafe {
-            drain(gl);
+            let host = drain(gl);
             let raw = gl.create_buffer()?;
             let old = buffer(gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
             gl.bind_buffer(target, Some(raw));
@@ -47,9 +47,13 @@ impl Buffer {
                 (extra.data)(target, length, std::ptr::null(), usage);
             }
             gl.bind_buffer(target, old);
-            let error = gl.get_error();
-            if error != glow::NO_ERROR || (flags != 0 && persistent && data.is_null()) {
+            let error = drain(gl).first().copied().unwrap_or(glow::NO_ERROR);
+            let failed = error != glow::NO_ERROR || (flags != 0 && persistent && data.is_null());
+            if failed {
                 gl.delete_buffer(raw);
+            }
+            raise(gl, extra, &host);
+            if failed {
                 return Err(format!(
                     "buffer allocation of {size} bytes failed ({error:#x})"
                 ));

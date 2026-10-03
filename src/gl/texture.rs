@@ -1,4 +1,4 @@
-use crate::gl::device::drain;
+use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::binding;
 use crate::gl::state::buffer;
@@ -40,7 +40,7 @@ impl Texture {
         let (mips, layers) = (info.mips as i32, info.layers as i32);
         let samples = info.samples as i32;
         unsafe {
-            drain(gl);
+            let host = drain(gl);
             let raw = gl.create_texture()?;
             let old = gl.get_parameter_i32(binding(kind)) as u32;
             let unpack = buffer(gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING));
@@ -138,8 +138,12 @@ impl Texture {
                 kind,
                 std::num::NonZeroU32::new(old).map(glow::NativeTexture),
             );
-            if gl.get_error() != glow::NO_ERROR {
+            let failed = !drain(gl).is_empty();
+            if failed {
                 gl.delete_texture(raw);
+            }
+            raise(gl, extra, &host);
+            if failed {
                 return Err("texture allocation failed".into());
             }
             Ok(Self {
@@ -153,6 +157,7 @@ impl Texture {
 
     pub fn view(
         gl: &glow::Context,
+        extra: &Extra,
         view: View,
         parent: &Texture,
         info: &ViewInfo,
@@ -164,7 +169,7 @@ impl Texture {
         );
         let kind = target(info.dimension, if multisample { 2 } else { 1 });
         unsafe {
-            drain(gl);
+            let host = drain(gl);
             let raw = gl.create_texture()?;
             view(
                 raw.0.get(),
@@ -176,9 +181,12 @@ impl Texture {
                 info.base_layer,
                 info.layers,
             );
-            let error = gl.get_error();
+            let error = drain(gl).first().copied().unwrap_or(glow::NO_ERROR);
             if error != glow::NO_ERROR {
                 gl.delete_texture(raw);
+            }
+            raise(gl, extra, &host);
+            if error != glow::NO_ERROR {
                 return Err(format!("texture view failed ({error:#x})"));
             }
             Ok(Self {

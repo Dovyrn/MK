@@ -1,6 +1,7 @@
 mod buffer;
 mod cache;
 mod device;
+mod errors;
 mod event;
 mod extra;
 mod native;

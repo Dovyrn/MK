@@ -54,13 +54,6 @@ pub fn compare(c: u32) -> u32 {
     }
 }
 
-pub unsafe fn drain(gl: &glow::Context) {
-    while !matches!(
-        unsafe { gl.get_error() },
-        glow::NO_ERROR | glow::CONTEXT_LOST
-    ) {}
-}
-
 fn has(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bool {
     version >= minimum
         || extensions
@@ -494,7 +487,7 @@ impl Device {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         caps::supports(info.format, info.usage | usage::VIEW, 1, usable, counts)?;
-        let view = Texture::view(&self.gl, view, parent, info)?;
+        let view = Texture::view(&self.gl, &self.extra, view, parent, info)?;
         let id = self.res.textures.insert(view);
         self.res.table.view(id, texture, info);
         Ok(id)
