@@ -6,7 +6,7 @@ pub struct Table {
     pub textures: Entries<TextureInfo>,
     pub samplers: Entries<()>,
     pub pipelines: Entries<()>,
-    pub renders: Entries<()>,
+    pub renders: Entries<u32>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,

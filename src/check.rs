@@ -15,6 +15,19 @@ pub struct Check<'a> {
     heap: Option<u32>,
     rate: bool,
     targets: Vec<(u32, bool)>,
+    views: u32,
+    samples: u32,
+}
+
+fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
+    assert!(
+        [x, y, width, height].iter().all(|v| v.is_finite()) && width > 0.0 && height > 0.0,
+        "viewport {x},{y} {width}x{height} is not a finite positive area"
+    );
+    assert!(
+        (0.0..=1.0).contains(&near) && (0.0..=1.0).contains(&far),
+        "viewport depth range {near}..{far} is outside 0..1"
+    );
 }
 
 fn known(what: &str, value: u32, valid: bool) {
@@ -90,6 +103,8 @@ impl<'a> Check<'a> {
             heap: None,
             rate: false,
             targets: Vec::new(),
+            views: 0,
+            samples: 0,
         };
         while !bytes.is_empty() {
             let c = Command::read(&mut bytes)
@@ -277,6 +292,24 @@ impl<'a> Check<'a> {
                     "begin_render size {width}x{height}x{layers} has a zero"
                 );
                 assert!(open == "outside", "{c} inside begin_{open}");
+                let samples: Vec<u32> = self
+                    .targets
+                    .iter()
+                    .map(|&(t, _)| self.table.textures.get(t).samples)
+                    .collect();
+                assert!(
+                    samples.windows(2).all(|w| w[0] == w[1]),
+                    "begin_render attachments have different sample counts {samples:?}"
+                );
+                self.samples = samples.first().copied().unwrap_or(0);
+                for &(texture, _) in &self.targets {
+                    let t = self.table.textures.get(texture).layers;
+                    assert!(
+                        self.views <= t,
+                        "multiview {} is more than texture {texture} has layers ({t})",
+                        self.views
+                    );
+                }
                 for &(texture, clear) in self.targets.iter().filter(|_| !self.rate) {
                     let t = self.table.textures.get(texture);
                     assert!(
@@ -309,6 +342,7 @@ impl<'a> Check<'a> {
                 self.targets.clear();
                 self.heap = None;
                 self.rate = false;
+                self.views = 0;
             }
             Command::BindPipeline { pipeline } => {
                 self.need(c, caps.compute, "compute")?;
@@ -408,6 +442,7 @@ impl<'a> Check<'a> {
                 layout: l,
                 load: ld,
                 store: st,
+                depth,
                 stencil_load,
                 stencil_store,
                 ..
@@ -417,12 +452,21 @@ impl<'a> Check<'a> {
                 known("store", st, store::valid(st));
                 known("load", stencil_load, load::valid(stencil_load));
                 known("store", stencil_store, store::valid(stencil_store));
+                assert!(
+                    (0.0..=1.0).contains(&depth),
+                    "depth clear value {depth} is outside 0..1"
+                );
                 self.texture(texture, usage::DEPTH, "DEPTH");
                 let clear = ld == load::CLEAR || stencil_load == load::CLEAR;
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                self.table.renders.get(pipeline);
+                let samples = *self.table.renders.get(pipeline);
+                assert!(
+                    self.samples == 0 || samples == self.samples,
+                    "render pipeline {pipeline} has {samples} samples but the pass has {}",
+                    self.samples
+                );
                 self.render = true;
             }
             Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
@@ -599,7 +643,20 @@ impl<'a> Check<'a> {
                 );
             }
             Command::BeginLabel { .. } => self.need(c, caps.labels, "labels")?,
-            Command::SetViewports { viewports } => rects(viewports, 24, caps.viewports),
+            Command::SetViewports { viewports } => {
+                rects(viewports, 24, caps.viewports);
+                for v in crate::command::viewports(viewports) {
+                    viewport(v.x, v.y, v.width, v.height, v.near, v.far);
+                }
+            }
+            Command::SetViewport {
+                x,
+                y,
+                width,
+                height,
+                near,
+                far,
+            } => viewport(x, y, width, height, near, far),
             Command::SetScissors { scissors } => {
                 rects(scissors, 16, caps.viewports);
                 for r in crate::command::scissors(scissors) {
@@ -627,6 +684,7 @@ impl<'a> Check<'a> {
                 if views > 1 {
                     self.need(c, views <= caps.views, "views")?;
                 }
+                self.views = views;
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::BuildAccel { .. } | Command::CopyAccel { .. } => {

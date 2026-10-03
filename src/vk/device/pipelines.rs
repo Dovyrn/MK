@@ -179,7 +179,7 @@ impl Device {
             vk::PrimitiveTopology::from_raw(v.topology as i32)
         });
         let id = self.res.renders.insert((pipeline, topology));
-        self.res.table.renders.set(id, ());
+        self.res.table.renders.set(id, samples);
         Ok(id)
     }
 

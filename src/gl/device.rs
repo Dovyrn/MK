@@ -380,7 +380,7 @@ impl Device {
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
-        self.res.table.renders.set(id, ());
+        self.res.table.renders.set(id, info.samples);
         Ok(id)
     }
 
