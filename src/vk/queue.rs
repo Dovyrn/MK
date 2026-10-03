@@ -4,7 +4,7 @@ use crate::vk::frame::Frame;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
 use ash::vk;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::panic::AssertUnwindSafe;
 
 pub struct Queue {
@@ -89,13 +89,17 @@ impl Queue {
                 stencil: vk::RenderingAttachmentInfo::default(),
                 views: 0,
                 natives,
+                heap,
                 compute: vk::Pipeline::null(),
                 graphics: vk::Pipeline::null(),
+                rays: vk::Pipeline::null(),
+                slots: BTreeMap::new(),
+                push: Vec::new(),
                 rate: None,
                 defaults: false,
                 area: vk::Rect2D::default(),
             }
-            .run(heap, commands)?;
+            .run(commands)?;
             unsafe { device.end_command_buffer(frame.buffer) }.map_err(|e| e.to_string())?;
             let info = |semaphore, value| {
                 vk::SemaphoreSubmitInfo::default()

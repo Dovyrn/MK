@@ -7,9 +7,16 @@ use crate::vk::texture::{Texture, count};
 use crate::vk::{Callback, Native};
 use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
 use ash::vk;
+use std::collections::BTreeMap;
 use std::ffi::CString;
 
 const NONE: u32 = !0;
+
+type Slot = (
+    vk::DescriptorType,
+    vk::DescriptorBufferInfo,
+    vk::DescriptorImageInfo,
+);
 
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
@@ -23,8 +30,12 @@ pub struct Recorder<'a> {
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub views: u32,
     pub natives: &'a [Callback],
+    pub heap: vk::DescriptorSet,
     pub compute: vk::Pipeline,
     pub graphics: vk::Pipeline,
+    pub rays: vk::Pipeline,
+    pub slots: BTreeMap<u32, Slot>,
+    pub push: Vec<u8>,
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub defaults: bool,
     pub area: vk::Rect2D,
@@ -111,38 +122,110 @@ fn layout(l: u32) -> vk::ImageLayout {
     }
 }
 
-fn slot_write(kind: vk::DescriptorType, slot: u32) -> vk::WriteDescriptorSet<'static> {
-    vk::WriteDescriptorSet::default()
-        .dst_binding(bindings::binding(kind, slot))
-        .descriptor_type(kind)
+fn write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'_> {
+    let write = vk::WriteDescriptorSet::default()
+        .dst_binding(binding)
+        .descriptor_type(*kind);
+    match *kind {
+        vk::DescriptorType::UNIFORM_BUFFER | vk::DescriptorType::STORAGE_BUFFER => {
+            write.buffer_info(std::slice::from_ref(buffer))
+        }
+        _ => write.image_info(std::slice::from_ref(image)),
+    }
 }
 
 impl Recorder<'_> {
-    fn slot(&self, write: vk::WriteDescriptorSet) -> Result<(), &'static str> {
+    fn push_slots(&self, writes: &[vk::WriteDescriptorSet]) -> Result<(), &'static str> {
         let push = self
             .ext
             .push
             .as_ref()
             .ok_or("VK_KHR_push_descriptor is not enabled")?;
         for point in self.points {
-            unsafe { push.cmd_push_descriptor_set(self.buffer, *point, self.layout, 0, &[write]) };
+            unsafe { push.cmd_push_descriptor_set(self.buffer, *point, self.layout, 0, writes) };
         }
         Ok(())
     }
 
+    fn slot(
+        &mut self,
+        kind: vk::DescriptorType,
+        slot: u32,
+        buffer: vk::DescriptorBufferInfo,
+        image: vk::DescriptorImageInfo,
+    ) -> Result<(), &'static str> {
+        let binding = bindings::binding(kind, slot);
+        self.slots.insert(binding, (kind, buffer, image));
+        self.push_slots(&[write(binding, &self.slots[&binding])])
+    }
+
     fn buffer_slot(
-        &self,
+        &mut self,
         kind: vk::DescriptorType,
         slot: u32,
         buffer: u32,
         offset: u64,
         size: u64,
     ) -> Result<(), &'static str> {
-        let info = [vk::DescriptorBufferInfo::default()
+        let info = vk::DescriptorBufferInfo::default()
             .buffer(self.res.buffers.get(buffer).raw)
             .offset(offset)
-            .range(size)];
-        self.slot(slot_write(kind, slot).buffer_info(&info))
+            .range(size);
+        self.slot(kind, slot, info, vk::DescriptorImageInfo::default())
+    }
+
+    fn image_slot(
+        &mut self,
+        kind: vk::DescriptorType,
+        slot: u32,
+        info: vk::DescriptorImageInfo,
+    ) -> Result<(), &'static str> {
+        self.slot(kind, slot, vk::DescriptorBufferInfo::default(), info)
+    }
+
+    fn bind_heap(&self) {
+        for point in self.points {
+            unsafe {
+                self.device.cmd_bind_descriptor_sets(
+                    self.buffer,
+                    *point,
+                    self.layout,
+                    1,
+                    &[self.heap],
+                    &[],
+                )
+            };
+        }
+    }
+
+    fn restore(&self) -> Result<(), &'static str> {
+        self.bind_heap();
+        let writes: Vec<_> = self.slots.iter().map(|(b, s)| write(*b, s)).collect();
+        if !writes.is_empty() {
+            self.push_slots(&writes)?;
+        }
+        let bound = [
+            (vk::PipelineBindPoint::COMPUTE, self.compute),
+            (vk::PipelineBindPoint::GRAPHICS, self.graphics),
+            (vk::PipelineBindPoint::RAY_TRACING_KHR, self.rays),
+        ];
+        for (point, pipeline) in bound {
+            if pipeline != vk::Pipeline::null() {
+                unsafe { self.device.cmd_bind_pipeline(self.buffer, point, pipeline) };
+            }
+        }
+        if !self.push.is_empty() {
+            unsafe {
+                self.device.cmd_push_constants(
+                    self.buffer,
+                    self.layout,
+                    vk::ShaderStageFlags::ALL,
+                    0,
+                    &self.push,
+                )
+            };
+        }
+        Ok(())
     }
 
     fn stamp(&self, bit: u32) -> vk::PipelineStageFlags2 {
@@ -258,19 +341,8 @@ impl Recorder<'_> {
         (t, region)
     }
 
-    pub fn run(&mut self, heap: vk::DescriptorSet, mut bytes: &[u8]) -> Result<(), &'static str> {
-        for point in self.points {
-            unsafe {
-                self.device.cmd_bind_descriptor_sets(
-                    self.buffer,
-                    *point,
-                    self.layout,
-                    1,
-                    &[heap],
-                    &[],
-                )
-            };
-        }
+    pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+        self.bind_heap();
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?)?;
         }
@@ -287,6 +359,11 @@ impl Recorder<'_> {
                     d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, self.compute)
                 }
                 Command::PushConstants { offset, data } => {
+                    let range = offset as usize..offset as usize + data.len();
+                    if self.push.len() < range.end {
+                        self.push.resize(range.end, 0);
+                    }
+                    self.push[range].copy_from_slice(data);
                     d.cmd_push_constants(b, self.layout, vk::ShaderStageFlags::ALL, offset, data)
                 }
                 Command::Dispatch { x, y, z } => d.cmd_dispatch(b, x, y, z),
@@ -678,25 +755,21 @@ impl Recorder<'_> {
                     size,
                 )?,
                 Command::BindTexture { slot, texture } => {
-                    let info = [vk::DescriptorImageInfo::default()
+                    let info = vk::DescriptorImageInfo::default()
                         .image_view(self.res.textures.get(texture).view)
-                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
-                    let kind = vk::DescriptorType::SAMPLED_IMAGE;
-                    self.slot(slot_write(kind, slot).image_info(&info))?
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+                    self.image_slot(vk::DescriptorType::SAMPLED_IMAGE, slot, info)?
                 }
                 Command::BindImage { slot, texture } => {
-                    let info = [vk::DescriptorImageInfo::default()
+                    let info = vk::DescriptorImageInfo::default()
                         .image_view(self.res.textures.get(texture).view)
-                        .image_layout(vk::ImageLayout::GENERAL)];
-                    let kind = vk::DescriptorType::STORAGE_IMAGE;
-                    self.slot(slot_write(kind, slot).image_info(&info))?
+                        .image_layout(vk::ImageLayout::GENERAL);
+                    self.image_slot(vk::DescriptorType::STORAGE_IMAGE, slot, info)?
                 }
                 Command::BindSampler { slot, sampler } => {
                     let info =
-                        [vk::DescriptorImageInfo::default()
-                            .sampler(*self.res.samplers.get(sampler))];
-                    let kind = vk::DescriptorType::SAMPLER;
-                    self.slot(slot_write(kind, slot).image_info(&info))?
+                        vk::DescriptorImageInfo::default().sampler(*self.res.samplers.get(sampler));
+                    self.image_slot(vk::DescriptorType::SAMPLER, slot, info)?
                 }
                 Command::BindVertexBuffer {
                     slot,
@@ -851,10 +924,13 @@ impl Recorder<'_> {
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
                 Command::Multiview { views } => self.views = views,
-                Command::Callback { index } => self.natives[index as usize](&Native {
-                    device: d,
-                    buffer: b,
-                }),
+                Command::Callback { index } => {
+                    self.natives[index as usize](&Native {
+                        device: d,
+                        buffer: b,
+                    });
+                    self.restore()?
+                }
                 Command::ExecuteGenerated {
                     layout,
                     indirect,
@@ -901,11 +977,10 @@ impl Recorder<'_> {
                     };
                     (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
                 }
-                Command::BindRayPipeline { pipeline } => d.cmd_bind_pipeline(
-                    b,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    self.res.rays.get(pipeline).0,
-                ),
+                Command::BindRayPipeline { pipeline } => {
+                    self.rays = self.res.rays.get(pipeline).0;
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::RAY_TRACING_KHR, self.rays)
+                }
                 Command::TraceRays {
                     raygen,
                     raygen_offset,
