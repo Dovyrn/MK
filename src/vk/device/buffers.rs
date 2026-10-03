@@ -1,6 +1,6 @@
 use super::Device;
-use crate::memory;
 use crate::vk::buffer::Buffer;
+use crate::{IndirectInfo, memory};
 use ash::vk;
 use std::rc::Rc;
 
@@ -65,9 +65,10 @@ impl Device {
         id
     }
 
-    pub fn create_indirect_buffer(&mut self, size: u32, pipeline: u32) -> Result<u32, String> {
-        let entry = self.res.table.indirect(size, pipeline);
-        let buffer = self.create_buffer(16 * size as u64, memory::DEVICE)?;
+    pub fn create_indirect_buffer(&mut self, info: &IndirectInfo) -> Result<u32, String> {
+        let entry = self.res.table.indirect(info);
+        let stride = crate::table::stride(entry.2, info.indexed);
+        let buffer = self.create_buffer(info.size as u64 * stride as u64, memory::DEVICE)?;
         let id = self.res.indirects.insert(buffer);
         self.res.table.indirects.set(id, entry);
         Ok(id)
@@ -79,10 +80,9 @@ impl Device {
         self.destroy_buffer(buffer);
     }
 
-    pub fn indirect_handle(&self, indirect: u32) -> Result<(u64, u64), String> {
-        let (_, topology) = *self.res.table.indirects.get(indirect);
+    pub fn indirect_handle(&self, indirect: u32) -> Result<[u32; 8], String> {
         let handle = self.buffer_handle(*self.res.indirects.get(indirect))?;
-        Ok((handle, topology as u64))
+        Ok(self.res.table.handle(indirect, handle, 0, [0; 6]))
     }
 
     pub fn destroy_buffer(&mut self, buffer: u32) {

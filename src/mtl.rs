@@ -2,6 +2,7 @@ mod accel;
 mod blit;
 mod device;
 mod frame;
+mod indirect;
 mod native;
 mod pipeline;
 mod query;

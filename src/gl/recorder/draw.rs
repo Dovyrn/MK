@@ -141,6 +141,35 @@ impl Recorder<'_> {
         }
     }
 
+    pub fn mesh(
+        &self,
+        buffer: u32,
+        offset: u64,
+        count: u32,
+        stride: u32,
+        parameter: Option<(u32, u64)>,
+    ) -> Result<(), String> {
+        let gl = self.gl;
+        let extra = self.extra;
+        let raw = self.res.buffers.get(buffer).raw;
+        unsafe {
+            gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
+            if let Some((buffer, at)) = parameter {
+                let draw = extra
+                    .mesh_count
+                    .ok_or("mesh count draws need glMultiDrawMeshTasksIndirectCountEXT")?;
+                let raw = self.res.buffers.get(buffer).raw;
+                gl.bind_buffer(glow::PARAMETER_BUFFER, Some(raw));
+                draw(offset as isize, at as isize, count as i32, stride as i32);
+            } else if count == 1 {
+                extra.mesh_indirect.unwrap()(offset as isize);
+            } else {
+                extra.mesh_multi.unwrap()(offset as isize, count as i32, stride as i32);
+            }
+        }
+        Ok(())
+    }
+
     pub fn indirect(
         &self,
         indexed: bool,

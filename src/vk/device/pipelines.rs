@@ -176,7 +176,10 @@ impl Device {
         });
         let id = self.res.renders.insert((pipeline, topology));
         let shape = vertex.map_or(topology::TRIANGLE, |v| v.topology);
-        self.res.table.renders.set(id, (samples, indirect, shape));
+        self.res
+            .table
+            .renders
+            .set(id, (samples, indirect, shape, vertex.is_none()));
         Ok(id)
     }
 

@@ -2,6 +2,7 @@ mod budget;
 mod copies;
 mod host;
 
+use crate::IndirectInfo;
 use crate::caps;
 use crate::check::Check;
 use crate::gl::addresses::GPU_ADDRESS;
@@ -254,9 +255,10 @@ impl Device {
         Ok(id)
     }
 
-    pub fn create_indirect_buffer(&mut self, size: u32, pipeline: u32) -> Result<u32, String> {
-        let entry = self.res.table.indirect(size, pipeline);
-        let buffer = self.create_buffer(16 * size as u64, memory::DEVICE)?;
+    pub fn create_indirect_buffer(&mut self, info: &IndirectInfo) -> Result<u32, String> {
+        let entry = self.res.table.indirect(info);
+        let stride = crate::table::stride(entry.2, info.indexed);
+        let buffer = self.create_buffer(info.size as u64 * stride as u64, memory::DEVICE)?;
         let id = self.res.indirects.insert(buffer);
         self.res.table.indirects.set(id, entry);
         Ok(id)
@@ -268,10 +270,9 @@ impl Device {
         self.destroy_buffer(buffer);
     }
 
-    pub fn indirect_handle(&self, indirect: u32) -> Result<(u64, u64), String> {
-        let (_, topology) = *self.res.table.indirects.get(indirect);
+    pub fn indirect_handle(&self, indirect: u32) -> Result<[u32; 8], String> {
         let handle = self.buffer_handle(*self.res.indirects.get(indirect))?;
-        Ok((handle, topology as u64))
+        Ok(self.res.table.handle(indirect, handle, 0, [0; 6]))
     }
 
     pub fn import_buffer(&mut self, raw: u32, size: u64) -> u32 {
@@ -453,10 +454,11 @@ impl Device {
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
+        let mesh = stages.iter().any(|s| s.0 == MESH_SHADER);
         self.res
             .table
             .renders
-            .set(id, (info.samples, info.indirect, info.topology));
+            .set(id, (info.samples, info.indirect, info.topology, mesh));
         Ok(id)
     }
 

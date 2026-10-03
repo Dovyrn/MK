@@ -1,4 +1,5 @@
 use crate::mtl::accel::Accel;
+use crate::mtl::indirect::Indirect;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
@@ -6,10 +7,7 @@ use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{
-    MTLBuffer, MTLDepthStencilState, MTLHeap, MTLIndirectCommandBuffer, MTLSamplerState,
-    MTLSharedEvent,
-};
+use objc2_metal::{MTLBuffer, MTLDepthStencilState, MTLHeap, MTLSamplerState, MTLSharedEvent};
 use std::collections::HashSet;
 
 #[derive(Default)]
@@ -21,7 +19,7 @@ pub struct Resources {
     pub renders: Slots<Render>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub heaps: Slots<(Retained<ProtocolObject<dyn MTLHeap>>, u32)>,
-    pub indirects: Slots<Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>>,
+    pub indirects: Slots<Indirect>,
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,

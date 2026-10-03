@@ -191,7 +191,7 @@ public class MtlDevice extends Device {
             var out = stack.nmalloc(8, 12);
             try {
                 nSparseTile(handle, infoAddress, info.encodedSize(), out);
-                return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
+                return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8)};
             } finally {
                 nmemFree(infoAddress);
             }

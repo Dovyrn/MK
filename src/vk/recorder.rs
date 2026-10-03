@@ -860,20 +860,44 @@ impl Recorder<'_> {
                     first,
                     count,
                 } => {
-                    let buffer = *self.res.indirects.get(indirect);
-                    let raw = self.res.buffers.get(buffer).raw;
-                    d.cmd_draw_indirect(b, raw, first as u64 * 16, count, 16)
+                    let (info, _, mesh) = *self.res.table.indirects.get(indirect);
+                    let stride = crate::table::stride(mesh, info.indexed);
+                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
+                    let offset = first as u64 * stride as u64;
+                    match (mesh, info.indexed) {
+                        (true, _) => self
+                            .ext
+                            .mesh
+                            .as_ref()
+                            .unwrap()
+                            .cmd_draw_mesh_tasks_indirect(b, raw, offset, count, stride),
+                        (_, true) => d.cmd_draw_indexed_indirect(b, raw, offset, count, stride),
+                        _ => d.cmd_draw_indirect(b, raw, offset, count, stride),
+                    }
                 }
                 Command::ExecuteIndirectCount {
                     indirect,
                     buffer,
                     offset,
                 } => {
-                    let commands = *self.res.indirects.get(indirect);
-                    let raw = self.res.buffers.get(commands).raw;
+                    let (info, _, mesh) = *self.res.table.indirects.get(indirect);
+                    let size = info.size;
+                    let stride = crate::table::stride(mesh, info.indexed);
+                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
                     let range = self.res.buffers.get(buffer).raw;
-                    let (size, _) = *self.res.table.indirects.get(indirect);
-                    d.cmd_draw_indirect_count(b, raw, 0, range, offset + 4, size, 16)
+                    let at = offset + 4;
+                    match (mesh, info.indexed) {
+                        (true, _) => self
+                            .ext
+                            .mesh
+                            .as_ref()
+                            .unwrap()
+                            .cmd_draw_mesh_tasks_indirect_count(b, raw, 0, range, at, size, stride),
+                        (_, true) => {
+                            d.cmd_draw_indexed_indirect_count(b, raw, 0, range, at, size, stride)
+                        }
+                        _ => d.cmd_draw_indirect_count(b, raw, 0, range, at, size, stride),
+                    }
                 }
                 Command::DrawMesh { x, y, z } => self
                     .ext

@@ -769,9 +769,15 @@ impl<'a> Recorder<'a> {
                     count,
                 } => {
                     if count != 0 && self.prepare(true) {
+                        let (info, _, mesh) = *res.table.indirects.get(indirect);
+                        let stride = crate::table::stride(mesh, info.indexed);
                         let buffer = *res.indirects.get(indirect);
-                        let offset = first as u64 * 16;
-                        self.indirect(false, buffer, offset, count, 16, None)?;
+                        let offset = first as u64 * stride as u64;
+                        if mesh {
+                            self.mesh(buffer, offset, count, stride, None)?;
+                        } else {
+                            self.indirect(info.indexed, buffer, offset, count, stride, None)?;
+                        }
                     }
                 }
                 Command::ExecuteIndirectCount {
@@ -780,10 +786,17 @@ impl<'a> Recorder<'a> {
                     offset,
                 } => {
                     if self.prepare(true) {
+                        let (info, _, mesh) = *res.table.indirects.get(indirect);
+                        let size = info.size;
+                        let stride = crate::table::stride(mesh, info.indexed);
                         let commands = *res.indirects.get(indirect);
-                        let (size, _) = *res.table.indirects.get(indirect);
                         let range = Some((buffer, offset + 4));
-                        self.indirect(false, commands, 0, size, 16, range)?;
+                        if mesh {
+                            self.mesh(commands, 0, size, stride, range)?;
+                        } else {
+                            let indexed = info.indexed;
+                            self.indirect(indexed, commands, 0, size, stride, range)?;
+                        }
                     }
                 }
                 Command::DrawMesh { x, y, z } => {
@@ -797,21 +810,8 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count == 0 || !self.prepare(true) {
-                        return Ok(());
-                    }
-                    gl.bind_buffer(
-                        glow::DRAW_INDIRECT_BUFFER,
-                        Some(res.buffers.get(buffer).raw),
-                    );
-                    if count == 1 {
-                        self.extra.mesh_indirect.unwrap()(offset as isize);
-                    } else {
-                        self.extra.mesh_multi.unwrap()(
-                            offset as isize,
-                            count as i32,
-                            stride as i32,
-                        );
+                    if count != 0 && self.prepare(true) {
+                        self.mesh(buffer, offset, count, stride, None)?;
                     }
                 }
                 Command::DrawMeshIndirectCount {
@@ -822,24 +822,9 @@ impl<'a> Recorder<'a> {
                     max,
                     stride,
                 } => {
-                    if max == 0 || !self.prepare(true) {
-                        return Ok(());
+                    if max != 0 && self.prepare(true) {
+                        self.mesh(buffer, offset, max, stride, Some((count, count_offset)))?;
                     }
-                    let draw = self
-                        .extra
-                        .mesh_count
-                        .ok_or("mesh count draws need glMultiDrawMeshTasksIndirectCountEXT")?;
-                    gl.bind_buffer(
-                        glow::DRAW_INDIRECT_BUFFER,
-                        Some(res.buffers.get(buffer).raw),
-                    );
-                    gl.bind_buffer(glow::PARAMETER_BUFFER, Some(res.buffers.get(count).raw));
-                    draw(
-                        offset as isize,
-                        count_offset as isize,
-                        max as i32,
-                        stride as i32,
-                    );
                 }
                 Command::WriteTimestamp { heap, index, .. } => {
                     let q = res.queries.get(heap);

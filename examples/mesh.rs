@@ -1,6 +1,6 @@
 use mk::{
-    ColorAttachment, ColorTarget, Commands, MeshInfo, TextureBarrier, TextureCopy, TextureInfo,
-    access, format, layout, memory, stage, usage,
+    ColorAttachment, ColorTarget, Commands, ComputeInfo, IndirectInfo, MeshInfo, TextureBarrier,
+    TextureCopy, TextureInfo, access, format, layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -48,67 +48,104 @@ fn main() {
     unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), device.map(args).cast(), 7) };
     device.unmap(args);
     let event = device.create_event().unwrap();
-    let mut c = Commands::default();
-    c.texture_barrier(&TextureBarrier {
-        texture: color,
-        dst_stage: stage::COLOR,
-        dst_access: access::COLOR_WRITE,
-        after: layout::COLOR,
-        ..Default::default()
-    });
-    c.color_attachment(&ColorAttachment {
-        texture: color,
-        b: 1.0,
-        a: 1.0,
-        ..Default::default()
-    });
-    c.begin_render(n, n, 1);
-    c.bind_render_pipeline(pipeline);
-    c.push_constants(0, &0.5f32.to_le_bytes());
-    if counted {
-        #[cfg(not(feature = "mtl"))]
-        c.draw_mesh_indirect_count(args, 0, args, 24, 2, 0);
-    } else {
-        c.draw_mesh(1, 1, 1);
+    let listed = device.caps().buffers > 0 && device.caps().indirect_count;
+    let range = device.create_buffer(8, memory::DEVICE).unwrap();
+    let list = device
+        .create_indirect_buffer(&IndirectInfo {
+            size: 1,
+            pipeline,
+            ..Default::default()
+        })
+        .unwrap();
+    for pass in 0..1 + listed as u64 {
+        let mut c = Commands::default();
+        if pass == 1 {
+            let encode = device
+                .create_pipeline(&ComputeInfo {
+                    code: host::code!("encode_mesh"),
+                    entry: "encode",
+                    group: [1, 1, 1],
+                    ..Default::default()
+                })
+                .unwrap();
+            let mut push = device.buffer_handle(range).unwrap().to_le_bytes().to_vec();
+            for word in device.indirect_handle(list).unwrap() {
+                push.extend(word.to_le_bytes());
+            }
+            c.begin_compute();
+            c.bind_pipeline(encode);
+            c.push_constants(0, &push);
+            c.dispatch(1, 1, 1);
+            c.end_compute();
+            c.barrier(
+                stage::COMPUTE,
+                access::SHADER_WRITE,
+                stage::INDIRECT,
+                access::INDIRECT_READ,
+            );
+        }
+        c.texture_barrier(&TextureBarrier {
+            texture: color,
+            dst_stage: stage::COLOR,
+            dst_access: access::COLOR_WRITE,
+            after: layout::COLOR,
+            ..Default::default()
+        });
+        c.color_attachment(&ColorAttachment {
+            texture: color,
+            b: 1.0,
+            a: 1.0,
+            ..Default::default()
+        });
+        c.begin_render(n, n, 1);
+        c.bind_render_pipeline(pipeline);
+        c.push_constants(0, &0.5f32.to_le_bytes());
+        if pass == 1 {
+            c.execute_indirect_count(list, range, 0);
+        } else if counted {
+            #[cfg(not(feature = "mtl"))]
+            c.draw_mesh_indirect_count(args, 0, args, 24, 2, 0);
+        } else {
+            c.draw_mesh(1, 1, 1);
+        }
+        c.end_render();
+        c.texture_barrier(&TextureBarrier {
+            texture: color,
+            src_stage: stage::COLOR,
+            src_access: access::COLOR_WRITE,
+            dst_stage: stage::COPY,
+            dst_access: access::COPY_READ,
+            before: layout::COLOR,
+            after: layout::COPY_SRC,
+            ..Default::default()
+        });
+        c.begin_compute();
+        c.copy_texture_to_buffer(&TextureCopy {
+            texture: color,
+            layout: layout::COPY_SRC,
+            width: n,
+            height: n,
+            buffer: back,
+            ..Default::default()
+        });
+        c.barrier(
+            stage::COPY,
+            access::COPY_WRITE,
+            stage::HOST,
+            access::HOST_READ,
+        );
+        c.end_compute();
+        device.submit(0, &c, &[], &[(event, pass + 1)]).unwrap();
+        assert!(device.wait(event, pass + 1, 1000).unwrap());
+        let pixels = unsafe {
+            std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
+        };
+        let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
+        assert_eq!(at(32, 32), [255, 0, 0, 255], "center of pass {pass}");
+        assert_eq!(at(20, 44), [255, 0, 0, 255], "lower left of pass {pass}");
+        assert_eq!(at(20, 20), [0, 0, 255, 255], "upper left of pass {pass}");
     }
-    c.end_render();
-    c.texture_barrier(&TextureBarrier {
-        texture: color,
-        src_stage: stage::COLOR,
-        src_access: access::COLOR_WRITE,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::COLOR,
-        after: layout::COPY_SRC,
-        ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
-        texture: color,
-        layout: layout::COPY_SRC,
-        width: n,
-        height: n,
-        buffer: back,
-        ..Default::default()
-    });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
+    println!(
+        "task and mesh shader triangle drawn, count read from the GPU: {counted}, from an indirect buffer: {listed}"
     );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
-    let pixels =
-        unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
-    let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
-    assert_eq!(at(32, 32), [255, 0, 0, 255], "center");
-    assert_eq!(at(20, 44), [255, 0, 0, 255], "lower left of the triangle");
-    assert_eq!(
-        at(20, 20),
-        [0, 0, 255, 255],
-        "upper left, outside the triangle"
-    );
-    println!("task and mesh shader triangle drawn, count read from the GPU: {counted}");
 }

@@ -19,7 +19,7 @@ params = [["buffer", "u32"]]
 
 [[call]]
 name = "create_indirect_buffer"
-params = [["size", "u32"], ["pipeline", "u32"]]
+params = [["info", "IndirectInfo"]]
 result = "u32"
 fails = true
 
@@ -30,7 +30,7 @@ params = [["indirect", "u32"]]
 [[call]]
 name = "indirect_handle"
 params = [["indirect", "u32"]]
-result = "pair"
+result = "u32x8"
 fails = true
 [[call]]
 name = "map"

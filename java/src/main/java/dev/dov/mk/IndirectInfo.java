@@ -8,13 +8,12 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class IndirectInfo {
-    public int kinds = Indirect.DRAW;
-    public int count = 1;
-    public boolean inheritPipeline = true;
-    public boolean inheritBuffers = true;
-    public int vertexBuffers = 0;
-    public int fragmentBuffers = 0;
-    public int kernelBuffers = 0;
+    public int size = 0;
+    public int pipeline = 0;
+    public boolean indexed = false;
+    public int indices = 0;
+    public long offset = 0;
+    public int kind = Index.U16;
 
     public static final int SIZE = 28;
 
@@ -23,38 +22,34 @@ public class IndirectInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, kinds);
+        memPutInt(p, size);
         p += 4;
-        memPutInt(p, count);
+        memPutInt(p, pipeline);
         p += 4;
-        memPutInt(p, inheritPipeline ? 1 : 0);
+        memPutInt(p, indexed ? 1 : 0);
         p += 4;
-        memPutInt(p, inheritBuffers ? 1 : 0);
+        memPutInt(p, indices);
         p += 4;
-        memPutInt(p, vertexBuffers);
-        p += 4;
-        memPutInt(p, fragmentBuffers);
-        p += 4;
-        memPutInt(p, kernelBuffers);
+        memPutLong(p, offset);
+        p += 8;
+        memPutInt(p, kind);
         p += 4;
         return p;
     }
 
     static IndirectInfo decode(long p) {
         var r = new IndirectInfo();
-        r.kinds = memGetInt(p);
+        r.size = memGetInt(p);
         p += 4;
-        r.count = memGetInt(p);
+        r.pipeline = memGetInt(p);
         p += 4;
-        r.inheritPipeline = memGetInt(p) != 0;
+        r.indexed = memGetInt(p) != 0;
         p += 4;
-        r.inheritBuffers = memGetInt(p) != 0;
+        r.indices = memGetInt(p);
         p += 4;
-        r.vertexBuffers = memGetInt(p);
-        p += 4;
-        r.fragmentBuffers = memGetInt(p);
-        p += 4;
-        r.kernelBuffers = memGetInt(p);
+        r.offset = memGetLong(p);
+        p += 8;
+        r.kind = memGetInt(p);
         p += 4;
         return r;
     }

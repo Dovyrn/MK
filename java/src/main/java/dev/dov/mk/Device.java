@@ -50,11 +50,19 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyBuffer(long device, int buffer);
 
-    public synchronized int createIndirectBuffer(int size, int pipeline) {
-        return nCreateIndirectBuffer(handle, size, pipeline);
+    public synchronized int createIndirectBuffer(IndirectInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = nmemAlloc(info.encodedSize());
+            info.encode(infoAddress);
+            try {
+                return nCreateIndirectBuffer(handle, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
+        }
     }
 
-    private static native int nCreateIndirectBuffer(long device, int size, int pipeline);
+    private static native int nCreateIndirectBuffer(long device, long info, int infoLength);
 
     public synchronized void destroyIndirectBuffer(int indirect) {
         nDestroyIndirectBuffer(handle, indirect);
@@ -62,11 +70,11 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyIndirectBuffer(long device, int indirect);
 
-    public synchronized long[] indirectHandle(int indirect) {
+    public synchronized int[] indirectHandle(int indirect) {
         try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 16);
+            var out = stack.nmalloc(8, 32);
             nIndirectHandle(handle, indirect, out);
-            return new long[] {memGetLong(out), memGetLong(out + 8)};
+            return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
         }
     }
 

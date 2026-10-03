@@ -1,12 +1,14 @@
 use crate::entries::Entries;
-use crate::{HostCopy, TextureInfo, ViewInfo, dimension, format, layout, usage};
+use crate::{
+    HostCopy, IndirectInfo, TextureInfo, ViewInfo, dimension, format, index, layout, usage,
+};
 
 pub struct Table {
     pub buffers: Entries<u64>,
     pub textures: Entries<TextureInfo>,
     pub samplers: Entries<()>,
     pub pipelines: Entries<()>,
-    pub renders: Entries<(u32, bool, u32)>,
+    pub renders: Entries<(u32, bool, u32, bool)>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,
@@ -14,7 +16,7 @@ pub struct Table {
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub accels: Entries<(u64, u64)>,
-    pub indirects: Entries<(u32, u32)>,
+    pub indirects: Entries<(IndirectInfo, u32, bool)>,
 }
 
 impl Default for Table {
@@ -37,6 +39,15 @@ impl Default for Table {
     }
 }
 
+#[cfg(any(feature = "vk", feature = "gl"))]
+pub fn stride(mesh: bool, indexed: bool) -> u32 {
+    match (mesh, indexed) {
+        (true, _) => 12,
+        (_, true) => 20,
+        _ => 16,
+    }
+}
+
 fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
     assert!(
         base < total,
@@ -52,14 +63,43 @@ fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
 }
 
 impl Table {
-    pub fn indirect(&self, size: u32, pipeline: u32) -> (u32, u32) {
-        assert!(size > 0, "indirect buffer size is 0");
-        let (_, indirect, topology) = *self.renders.get(pipeline);
+    pub fn indirect(&self, info: &IndirectInfo) -> (IndirectInfo, u32, bool) {
+        assert!(info.size > 0, "indirect buffer size is 0");
+        let pipeline = info.pipeline;
+        let (_, indirect, topology, mesh) = *self.renders.get(pipeline);
         assert!(
             indirect,
             "an indirect buffer needs render pipeline {pipeline} created with indirect: true"
         );
-        (size, topology)
+        if info.indexed {
+            assert!(
+                !mesh,
+                "an indirect buffer of mesh pipeline {pipeline} is not indexed"
+            );
+            assert!(index::valid(info.kind), "unknown index kind {}", info.kind);
+            let total = *self.buffers.get(info.indices);
+            assert!(
+                info.offset < total,
+                "index offset {} is past buffer {} ({total} bytes)",
+                info.offset,
+                info.indices
+            );
+        }
+        (*info, topology, mesh)
+    }
+
+    pub fn handle(&self, indirect: u32, commands: u64, indices: u64, groups: [u32; 6]) -> [u32; 8] {
+        let (info, topology, mesh) = *self.indirects.get(indirect);
+        let mut words = [commands as u32, (commands >> 32) as u32, 0, 0, 0, 0, 0, 0];
+        if mesh {
+            words[2..].copy_from_slice(&groups);
+        } else if info.indexed {
+            let kind = info.kind;
+            words[2..6].copy_from_slice(&[indices as u32, (indices >> 32) as u32, topology, kind]);
+        } else {
+            words[2] = topology;
+        }
+        words
     }
 
     pub fn resolve(&self, texture: u32, info: &ViewInfo) -> ViewInfo {

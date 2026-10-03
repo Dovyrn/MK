@@ -77,11 +77,11 @@ pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
         .collect()
 }
 
-#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn u32s_out(out: jlong, v: &[u32]) {
     unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };
 }
 
+#[cfg(any(feature = "vk", feature = "mtl"))]
 pub fn pair(out: jlong, v: (u64, u64)) {
     unsafe { *(out as *mut [u64; 2]) = [v.0, v.1] };
 }

@@ -10,7 +10,8 @@ pub struct Check<'a> {
     table: &'a Table,
     natives: usize,
     open: &'static str,
-    index: Option<u64>,
+    index: Option<(u32, u64, u32)>,
+    mesh: bool,
     compute: bool,
     render: bool,
     indirect: bool,
@@ -110,6 +111,7 @@ impl<'a> Check<'a> {
             natives,
             open: "outside",
             index: None,
+            mesh: false,
             compute: false,
             render: false,
             indirect: false,
@@ -214,18 +216,37 @@ impl<'a> Check<'a> {
         }
     }
 
-    fn list(&self, c: &Command, indirect: u32) {
-        self.draw(c, false);
-        let (_, topology) = *self.table.indirects.get(indirect);
+    fn list(&self, c: &Command, indirect: u32) -> Result<u32, String> {
+        let (info, topology, mesh) = *self.table.indirects.get(indirect);
+        self.draw(c, info.indexed);
         assert!(
             self.indirect,
             "{c} needs a render pipeline created with indirect: true"
+        );
+        assert_eq!(
+            self.mesh, mesh,
+            "{c} of indirect buffer {indirect} needs a mesh pipeline exactly when it was made with one"
         );
         assert_eq!(
             self.topology, topology,
             "{c} draws with topology {} but indirect buffer {indirect} holds topology {topology}",
             self.topology
         );
+        if info.indexed {
+            let (buffer, offset, kind) = (info.indices, info.offset, info.kind);
+            assert_eq!(
+                self.index,
+                Some((buffer, offset, kind)),
+                "{c} needs index buffer {buffer} bound at offset {offset} with kind {kind}"
+            );
+            if offset != 0 {
+                self.need(c, self.caps.indirect_offset, "indirect_offset")?;
+            }
+        }
+        if mesh {
+            self.need(c, self.caps.mesh, "mesh")?;
+        }
+        Ok(info.size)
     }
 
     fn draw(&self, c: &Command, indexed: bool) {
@@ -683,7 +704,7 @@ impl<'a> Check<'a> {
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let (samples, indirect, shape) = *self.table.renders.get(pipeline);
+                let (samples, indirect, shape, mesh) = *self.table.renders.get(pipeline);
                 assert!(
                     self.samples == 0 || samples == self.samples,
                     "render pipeline {pipeline} has {samples} samples but the pass has {}",
@@ -692,6 +713,7 @@ impl<'a> Check<'a> {
                 self.render = true;
                 self.indirect = indirect;
                 self.topology = shape;
+                self.mesh = mesh;
             }
             Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
             Command::SetFace { face: v } => known("face", v, face::valid(v)),
@@ -770,7 +792,7 @@ impl<'a> Check<'a> {
             } => {
                 known("index kind", kind, index::valid(kind));
                 self.range(buffer, offset, 0);
-                self.index = Some(offset);
+                self.index = Some((buffer, offset, kind));
             }
             Command::DrawIndirect {
                 buffer,
@@ -796,7 +818,7 @@ impl<'a> Check<'a> {
                     self.need(c, caps.multi_draw, "multi_draw")?;
                 }
                 self.draw(c, true);
-                if self.index != Some(0) {
+                if self.index.map(|i| i.1) != Some(0) {
                     self.need(c, caps.indirect_offset, "indirect_offset")?;
                 }
                 self.indirect(buffer, offset, count, stride, 20);
@@ -825,7 +847,7 @@ impl<'a> Check<'a> {
                     self.indirect,
                     "{c} needs a render pipeline created with indirect: true"
                 );
-                if indexed && self.index != Some(0) {
+                if indexed && self.index.map(|i| i.1) != Some(0) {
                     self.need(c, caps.indirect_offset, "indirect_offset")?;
                 }
                 let size = if indexed { 20 } else { 16 };
@@ -965,8 +987,7 @@ impl<'a> Check<'a> {
                 first,
                 count,
             } => {
-                self.list(c, indirect);
-                let (size, _) = *self.table.indirects.get(indirect);
+                let size = self.list(c, indirect)?;
                 assert!(
                     first as u64 + count as u64 <= size as u64,
                     "{c} draws {first}..{} past indirect buffer {indirect} of {size}",
@@ -981,7 +1002,7 @@ impl<'a> Check<'a> {
                 buffer,
                 offset,
             } => {
-                self.list(c, indirect);
+                self.list(c, indirect)?;
                 assert!(
                     offset.is_multiple_of(4),
                     "{c} range offset {offset} is not a multiple of 4"

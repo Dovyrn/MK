@@ -1,6 +1,6 @@
 use mk::{
-    ColorAttachment, ColorTarget, Commands, ComputeInfo, RenderInfo, TextureBarrier, TextureCopy,
-    TextureInfo, access, format, layout, memory, stage, usage,
+    ColorAttachment, ColorTarget, Commands, ComputeInfo, IndirectInfo, RenderInfo, TextureBarrier,
+    TextureCopy, TextureInfo, access, format, index, layout, memory, stage, usage,
 };
 
 #[path = "support/host.rs"]
@@ -40,7 +40,27 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let list = device.create_indirect_buffer(1, draw).unwrap();
+    let indices = device.create_buffer(8, memory::UPLOAD).unwrap();
+    let words: [u16; 4] = [7, 0, 1, 2];
+    unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), device.map(indices).cast(), 4) };
+    device.unmap(indices);
+    let list = device
+        .create_indirect_buffer(&IndirectInfo {
+            size: 1,
+            pipeline: draw,
+            ..Default::default()
+        })
+        .unwrap();
+    let indexed = device
+        .create_indirect_buffer(&IndirectInfo {
+            size: 1,
+            pipeline: draw,
+            indexed: true,
+            indices,
+            kind: index::U16,
+            ..Default::default()
+        })
+        .unwrap();
     let encode = device
         .create_pipeline(&ComputeInfo {
             code: host::code!("encode"),
@@ -50,16 +70,18 @@ fn main() {
         })
         .unwrap();
     let event = device.create_event().unwrap();
-    let cases = [
-        (Some(0), [0, 0, 255, 255]),
-        (Some(1), [255, 0, 0, 255]),
-        (None, [255, 0, 0, 255]),
-    ];
-    for (i, (count, center)) in cases.into_iter().enumerate() {
+    let blue = [0, 0, 255, 255];
+    let red = [255, 0, 0, 255];
+    let cases = [(Some(0), blue), (Some(1), red), (None, red)];
+    let cases = [list, indexed].map(|l| cases.map(|(count, center)| (l, count, center)));
+    for (i, (target, count, center)) in cases.into_iter().flatten().enumerate() {
         let mut push = device.buffer_handle(range).unwrap().to_le_bytes().to_vec();
-        let (handle, topology) = device.indirect_handle(list).unwrap();
-        push.extend(handle.to_le_bytes());
-        push.extend(topology.to_le_bytes());
+        for word in [list, indexed]
+            .map(|l| device.indirect_handle(l).unwrap())
+            .as_flattened()
+        {
+            push.extend(word.to_le_bytes());
+        }
         push.extend(count.unwrap_or(0u32).to_le_bytes());
         let mut c = Commands::default();
         c.begin_compute();
@@ -88,9 +110,10 @@ fn main() {
         });
         c.begin_render(n, n, 1);
         c.bind_render_pipeline(draw);
+        c.bind_index_buffer(indices, 0, index::U16);
         match count {
-            Some(_) => c.execute_indirect_count(list, range, 0),
-            None => c.execute_indirect(list, 0, 1),
+            Some(_) => c.execute_indirect_count(target, range, 0),
+            None => c.execute_indirect(target, 0, 1),
         }
         c.end_render();
         c.texture_barrier(&TextureBarrier {
@@ -129,6 +152,6 @@ fn main() {
         assert_eq!(pixels[0], [0, 0, 255, 255], "corner of case {i}");
     }
     println!(
-        "draws encoded on the GPU and executed from an indirect buffer, with and without a count"
+        "draws and indexed draws encoded on the GPU and executed from indirect buffers, with and without a count"
     );
 }

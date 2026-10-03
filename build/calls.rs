@@ -60,7 +60,7 @@ fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
 fn outs(call: &Call) -> bool {
     matches!(
         call.result.as_str(),
-        "pair" | "handles" | "pair32" | "u32x2" | "u32x3"
+        "pair" | "handles" | "pair32" | "u32x2" | "u32x3" | "u32x8"
     ) || info(&call.result) && call.result != "device"
 }
 
@@ -175,7 +175,9 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             "pair32" => format!(
                 "let r = {invoke};\n        crate::java::pair(out, (r.0 as u64, r.1 as u64));\n        Ok(())"
             ),
-            "u32x2" | "u32x3" => format!("crate::java::u32s_out(out, &{invoke});\n        Ok(())"),
+            "u32x2" | "u32x3" | "u32x8" => {
+                format!("crate::java::u32s_out(out, &{invoke});\n        Ok(())")
+            }
             "bytes" => format!(
                 "let r = {invoke};\n        env.byte_array_from_slice(&r).map_err(|e| e.to_string())"
             ),
@@ -279,7 +281,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let (java_ret, _) = result_types(call);
         let ret = match call.result.as_str() {
             "pair" | "handles" | "pair32" => "long[]".to_string(),
-            "u32x2" | "u32x3" => "int[]".into(),
+            "u32x2" | "u32x3" | "u32x8" => "int[]".into(),
             "device" => name.clone(),
             r if info(r) => r.into(),
             _ => java_ret.into(),
@@ -376,6 +378,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "pair" | "handles" | "pair32" => "16".to_string(),
                 "u32x2" => "8".into(),
                 "u32x3" => "12".into(),
+                "u32x8" => "32".into(),
                 r => format!("{r}.SIZE"),
             };
             writeln!(s, "            var out = stack.nmalloc(8, {size});").unwrap();
@@ -387,12 +390,16 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             "pair" | "handles" | "pair32" => format!(
                 "{invoke};\n{indent}return new long[] {{memGetLong(out), memGetLong(out + 8)}};"
             ),
-            "u32x2" => format!(
-                "{invoke};\n{indent}return new int[] {{memGetInt(out), memGetInt(out + 4)}};"
-            ),
-            "u32x3" => format!(
-                "{invoke};\n{indent}return new int[] {{memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)}};"
-            ),
+            r if r.starts_with("u32x") => {
+                let n: usize = r[4..].parse().unwrap();
+                let words: Vec<_> = (0..n)
+                    .map(|i| format!("memGetInt(out + {})", i * 4))
+                    .collect();
+                format!(
+                    "{invoke};\n{indent}return new int[] {{{}}};",
+                    words.join(", ")
+                )
+            }
             "device" => format!("return new {name}({invoke});"),
             r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),

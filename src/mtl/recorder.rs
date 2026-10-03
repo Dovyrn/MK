@@ -1052,7 +1052,7 @@ impl<'a> Recorder<'a> {
                     return Ok(());
                 }
                 self.prepare()?;
-                let icb = self.res.indirects.get(indirect);
+                let icb = &self.res.indirects.get(indirect).raw;
                 let range = NSRange::new(first as usize, count as usize);
                 unsafe { self.render().executeCommandsInBuffer_withRange(icb, range) };
             }
@@ -1065,7 +1065,7 @@ impl<'a> Recorder<'a> {
                     return Ok(());
                 }
                 self.prepare()?;
-                let icb = self.res.indirects.get(indirect);
+                let icb = &self.res.indirects.get(indirect).raw;
                 let range = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.render()
