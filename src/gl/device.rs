@@ -124,6 +124,9 @@ impl Device {
                 depth_clamp: true,
                 line_fill: true,
                 multi_draw: has(43, "GL_ARB_multi_draw_indirect"),
+                indirect_count: has(42, "GL_ARB_draw_indirect")
+                    && has(42, "GL_ARB_base_instance")
+                    && has(46, "GL_ARB_indirect_parameters"),
                 slots: true,
                 storage,
                 persistent: has(44, "GL_ARB_buffer_storage"),

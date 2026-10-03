@@ -578,6 +578,41 @@ impl<'a> Check<'a> {
                 }
                 self.indirect(buffer, offset, count, stride, 20);
             }
+            #[cfg(any(feature = "vk", feature = "gl"))]
+            Command::DrawIndirectCount {
+                buffer,
+                offset,
+                count,
+                count_offset,
+                max,
+                stride,
+            }
+            | Command::DrawIndexedIndirectCount {
+                buffer,
+                offset,
+                count,
+                count_offset,
+                max,
+                stride,
+            } => {
+                let indexed = matches!(c, Command::DrawIndexedIndirectCount { .. });
+                self.need(c, caps.indirect_count, "indirect_count")?;
+                self.draw(c, indexed);
+                if indexed && self.index != Some(0) {
+                    self.need(c, caps.indirect_offset, "indirect_offset")?;
+                }
+                let size = if indexed { 20 } else { 16 };
+                assert!(
+                    offset.is_multiple_of(4) && count_offset.is_multiple_of(4),
+                    "{c} offsets {offset} and {count_offset} must be multiples of 4"
+                );
+                assert!(
+                    stride == 0 || (stride.is_multiple_of(4) && stride >= size),
+                    "{c} stride {stride} must be 0 or a multiple of 4 of at least {size}"
+                );
+                self.indirect(buffer, offset, max, stride, size as u64);
+                self.range(count, count_offset, 4);
+            }
             Command::DrawMesh { .. } => {
                 self.need(c, caps.mesh, "mesh")?;
                 self.draw(c, false);

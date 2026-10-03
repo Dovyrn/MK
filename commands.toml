@@ -189,6 +189,18 @@ scope = "render"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
 [[command]]
+name = "draw_indirect_count"
+backend = "vk gl"
+scope = "render"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["count_offset", "u64"], ["max", "u32"], ["stride", "u32"]]
+
+[[command]]
+name = "draw_indexed_indirect_count"
+backend = "vk gl"
+scope = "render"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["count_offset", "u64"], ["max", "u32"], ["stride", "u32"]]
+
+[[command]]
 name = "draw_mesh"
 scope = "render"
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]

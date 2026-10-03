@@ -203,6 +203,7 @@ fields = [
     ["depth_clamp", "bool", "false"],
     ["line_fill", "bool", "false"],
     ["multi_draw", "bool", "false"],
+    ["indirect_count", "bool", "false"],
     ["sparse_textures", "bool", "false"],
     ["slots", "bool", "false"],
     ["storage", "bool", "false"],

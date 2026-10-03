@@ -95,6 +95,7 @@ pub(super) fn probe(
         depth_clamp: features.depth_clamp != 0,
         line_fill: features.fill_mode_non_solid != 0,
         multi_draw: features.multi_draw_indirect != 0,
+        indirect_count: ext.count,
         sparse_textures: sparse && features.sparse_residency_image2_d != 0,
         buffers: bindless.buffers.min(limits.max_memory_allocation_count),
         compute: true,

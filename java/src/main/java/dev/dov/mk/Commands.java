@@ -362,14 +362,14 @@ public class Commands implements AutoCloseable {
     }
 
     public void drawMesh(int x, int y, int z) {
-        var p = head(42, 12);
+        var p = head(44, 12);
         memPutInt(p, x);
         memPutInt(p + 4, y);
         memPutInt(p + 8, z);
     }
 
     public void drawMeshIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(43, 20);
+        var p = head(45, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -377,38 +377,38 @@ public class Commands implements AutoCloseable {
     }
 
     public void occlusionHeap(int heap) {
-        var p = head(44, 4);
+        var p = head(46, 4);
         memPutInt(p, heap);
     }
 
     public void resetQueries(int heap, int first, int count) {
-        var p = head(45, 12);
+        var p = head(47, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
     }
 
     public void writeTimestamp(int heap, int index, int stage) {
-        var p = head(46, 12);
+        var p = head(48, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
         memPutInt(p + 8, stage);
     }
 
     public void beginQuery(int heap, int index) {
-        var p = head(47, 8);
+        var p = head(49, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void endQuery(int heap, int index) {
-        var p = head(48, 8);
+        var p = head(50, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void resolveQueries(int heap, int first, int count, int buffer, long offset) {
-        var p = head(49, 24);
+        var p = head(51, 24);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
@@ -417,7 +417,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setViewports(Viewport[] viewports) {
-        var p = head(67, viewports.length * 24);
+        var p = head(69, viewports.length * 24);
         for (var i = 0; i < viewports.length; i++) {
             var q = p + i * 24;
             memPutFloat(q, viewports[i].x);
@@ -430,7 +430,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setScissors(Scissor[] scissors) {
-        var p = head(68, scissors.length * 16);
+        var p = head(70, scissors.length * 16);
         for (var i = 0; i < scissors.length; i++) {
             var q = p + i * 16;
             memPutInt(q, scissors[i].x);
@@ -441,7 +441,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setDepthBounds(float min, float max) {
-        var p = head(69, 8);
+        var p = head(71, 8);
         memPutFloat(p, min);
         memPutFloat(p + 4, max);
     }

@@ -3,7 +3,7 @@ cd ${0:A:h}/..
 O=$PWD/target/mk.out
 mkdir -p target
 icds=(${=MK_ICDS:-/usr/local/share/vulkan/icd.d/libkosmickrisp_icd.json $HOME/.local/mesa/share/vulkan/icd.d/lvp_icd.aarch64.json})
-examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues multiview tile native indirect generated rays functions sparse ratemap host shared surfaces boxes compact viewports predicates slots handles})
+examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues multiview tile native indirect generated rays functions sparse ratemap host shared surfaces boxes compact viewports predicates slots handles draws})
 cargo fmt --check || echo "fmt dirty"
 cargo run -q -p shade
 for f in mtl vk gl mtl,jni vk,jni gl,jni; do
@@ -26,7 +26,7 @@ done
 cargo build -q --features gl --examples
 for h in mesa apple legacy; do
     echo "== gl $h"
-    for e in slots render viewports adopt view queries native mesh cache; do
+    for e in slots render viewports adopt view queries native mesh cache draws; do
         MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
         echo "$e: $(tail -1 $O)"
     done

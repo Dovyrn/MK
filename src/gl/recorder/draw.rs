@@ -144,6 +144,7 @@ impl Recorder<'_> {
         offset: u64,
         count: u32,
         stride: u32,
+        parameter: Option<(u32, u64)>,
     ) -> Result<(), String> {
         let gl = self.gl;
         let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
@@ -165,6 +166,19 @@ impl Recorder<'_> {
             );
             let pointer = offset as usize as *const std::ffi::c_void;
             let (n, step) = (count as i32, stride as i32);
+            if let Some((buffer, at)) = parameter {
+                gl.bind_buffer(
+                    glow::PARAMETER_BUFFER,
+                    Some(self.res.buffers.get(buffer).raw),
+                );
+                let at = at as isize;
+                if indexed {
+                    extra.count_indexed.unwrap()(self.mode, kind, pointer, at, n, step);
+                } else {
+                    extra.count.unwrap()(self.mode, pointer, at, n, step);
+                }
+                return Ok(());
+            }
             match (indexed, count) {
                 (true, 1) => extra.indexed_indirect.unwrap()(self.mode, kind, pointer),
                 (false, 1) => extra.indirect.unwrap()(self.mode, pointer),

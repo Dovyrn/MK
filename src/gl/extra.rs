@@ -3,6 +3,8 @@ use std::ffi::c_void;
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
 type Multi = unsafe extern "system" fn(u32, *const c_void, i32, i32);
 type MultiIndexed = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
+type Count = unsafe extern "system" fn(u32, *const c_void, isize, i32, i32);
+type CountIndexed = unsafe extern "system" fn(u32, u32, *const c_void, isize, i32, i32);
 type Reset = unsafe extern "system" fn() -> u32;
 type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const c_void);
 type Mesh = unsafe extern "system" fn(u32, u32, u32);
@@ -45,6 +47,8 @@ pub struct Extra {
     pub view: Option<View>,
     pub multi: Option<Multi>,
     pub multi_indexed: Option<MultiIndexed>,
+    pub count: Option<Count>,
+    pub count_indexed: Option<CountIndexed>,
     pub reset: Option<Reset>,
     pub clear: Option<Clear>,
     pub mesh: Option<Mesh>,
@@ -109,6 +113,10 @@ impl Extra {
         };
         let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         let indirect = |name| get(name, 40, "GL_ARB_draw_indirect");
+        let count = |core, arb| {
+            get(core, 46, "GL_ARB_indirect_parameters")
+                .or_else(|| get(arb, 46, "GL_ARB_indirect_parameters"))
+        };
         let multisample = |name| get(name, 43, "GL_ARB_texture_storage_multisample");
         unsafe {
             Ok(Self {
@@ -123,6 +131,16 @@ impl Extra {
                     "glMultiDrawElementsIndirect",
                     43,
                     "GL_ARB_multi_draw_indirect",
+                )
+                .map(|p| cast(p)),
+                count: count(
+                    "glMultiDrawArraysIndirectCount",
+                    "glMultiDrawArraysIndirectCountARB",
+                )
+                .map(|p| cast(p)),
+                count_indexed: count(
+                    "glMultiDrawElementsIndirectCount",
+                    "glMultiDrawElementsIndirectCountARB",
                 )
                 .map(|p| cast(p)),
                 reset: get("glGetGraphicsResetStatus", 45, "GL_KHR_robustness").map(|p| cast(p)),

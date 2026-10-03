@@ -9,8 +9,28 @@ public class VkCommands extends Commands {
         memPutFloat(p, width);
     }
 
+    public void drawIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
+        var p = head(42, 32);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutLong(p + 16, countOffset);
+        memPutInt(p + 24, max);
+        memPutInt(p + 28, stride);
+    }
+
+    public void drawIndexedIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
+        var p = head(43, 32);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutLong(p + 16, countOffset);
+        memPutInt(p + 24, max);
+        memPutInt(p + 28, stride);
+    }
+
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
-        var p = head(50, 20);
+        var p = head(52, 20);
         memPutInt(p, accel);
         memPutInt(p + 4, scratch);
         memPutLong(p + 8, scratchOffset);
@@ -18,12 +38,12 @@ public class VkCommands extends Commands {
     }
 
     public void multiview(int views) {
-        var p = head(54, 4);
+        var p = head(56, 4);
         memPutInt(p, views);
     }
 
     public void executeGenerated(GeneratedInfo info) {
-        var p = head(59, 64);
+        var p = head(61, 64);
         memPutInt(p, info.layout);
         memPutInt(p + 4, info.indirect);
         memPutLong(p + 8, info.offset);
@@ -38,12 +58,12 @@ public class VkCommands extends Commands {
     }
 
     public void bindRayPipeline(int pipeline) {
-        var p = head(60, 4);
+        var p = head(62, 4);
         memPutInt(p, pipeline);
     }
 
     public void traceRays(TraceInfo info) {
-        var p = head(61, 124);
+        var p = head(63, 124);
         memPutInt(p, info.raygen);
         memPutLong(p + 4, info.raygenOffset);
         memPutLong(p + 12, info.raygenStride);
@@ -66,7 +86,7 @@ public class VkCommands extends Commands {
     }
 
     public void setShadingRate(int width, int height, int primitive, int attachment) {
-        var p = head(63, 16);
+        var p = head(65, 16);
         memPutInt(p, width);
         memPutInt(p + 4, height);
         memPutInt(p + 8, primitive);
@@ -74,7 +94,7 @@ public class VkCommands extends Commands {
     }
 
     public void rateAttachment(int texture, int layout, int texelWidth, int texelHeight) {
-        var p = head(64, 16);
+        var p = head(66, 16);
         memPutInt(p, texture);
         memPutInt(p + 4, layout);
         memPutInt(p + 8, texelWidth);
@@ -82,27 +102,27 @@ public class VkCommands extends Commands {
     }
 
     public void writeCompactedSize(int accel, int heap, int index) {
-        var p = head(65, 12);
+        var p = head(67, 12);
         memPutInt(p, accel);
         memPutInt(p + 4, heap);
         memPutInt(p + 8, index);
     }
 
     public void copyAccel(int src, int dst, int compact) {
-        var p = head(66, 12);
+        var p = head(68, 12);
         memPutInt(p, src);
         memPutInt(p + 4, dst);
         memPutInt(p + 8, compact);
     }
 
     public void beginConditional(int buffer, long offset, int inverted) {
-        var p = head(70, 16);
+        var p = head(72, 16);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, inverted);
     }
 
     public void endConditional() {
-        head(71, 0);
+        head(73, 0);
     }
 }

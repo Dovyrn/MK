@@ -838,6 +838,38 @@ impl Recorder<'_> {
                     count,
                     stride,
                 ),
+                Command::DrawIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => d.cmd_draw_indirect_count(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    self.res.buffers.get(count).raw,
+                    count_offset,
+                    max,
+                    if stride == 0 { 16 } else { stride },
+                ),
+                Command::DrawIndexedIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => d.cmd_draw_indexed_indirect_count(
+                    b,
+                    self.res.buffers.get(buffer).raw,
+                    offset,
+                    self.res.buffers.get(count).raw,
+                    count_offset,
+                    max,
+                    if stride == 0 { 20 } else { stride },
+                ),
                 Command::DrawMesh { x, y, z } => self
                     .ext
                     .mesh

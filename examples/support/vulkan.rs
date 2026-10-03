@@ -274,7 +274,8 @@ pub fn try_device(queues: usize) -> Option<Host> {
                 supported_v12.shader_storage_buffer_array_non_uniform_indexing != 0,
             )
             .shader_output_viewport_index(supported_v12.shader_output_viewport_index != 0)
-            .shader_output_layer(supported_v12.shader_output_layer != 0);
+            .shader_output_layer(supported_v12.shader_output_layer != 0)
+            .draw_indirect_count(supported_v12.draw_indirect_count != 0);
         let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
             .mutable_descriptor_type(true);
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default()

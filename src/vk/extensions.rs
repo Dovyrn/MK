@@ -20,6 +20,7 @@ pub struct Extensions {
     pub features: vk::PhysicalDeviceFeatures,
     pub multiview: bool,
     pub mirror: bool,
+    pub count: bool,
     pub buffers: bool,
     pub push: Option<push_descriptor::Device>,
 }
@@ -143,6 +144,7 @@ impl Extensions {
                 features: features.features,
                 multiview,
                 mirror: v12.is_some_and(|f| f.sampler_mirror_clamp_to_edge != 0),
+                count: v12.is_some_and(|f| f.draw_indirect_count != 0),
                 buffers,
                 push,
             })

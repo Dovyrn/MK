@@ -40,6 +40,7 @@ public class Caps {
     public boolean depthClamp = false;
     public boolean lineFill = false;
     public boolean multiDraw = false;
+    public boolean indirectCount = false;
     public boolean sparseTextures = false;
     public boolean slots = false;
     public boolean storage = false;
@@ -65,10 +66,10 @@ public class Caps {
     public boolean cubeArrays = false;
     public boolean mirrorClamp = false;
 
-    public static final int SIZE = 228;
+    public static final int SIZE = 232;
 
     int encodedSize() {
-        return 228;
+        return 232;
     }
 
     long encode(long p) {
@@ -135,6 +136,8 @@ public class Caps {
         memPutInt(p, lineFill ? 1 : 0);
         p += 4;
         memPutInt(p, multiDraw ? 1 : 0);
+        p += 4;
+        memPutInt(p, indirectCount ? 1 : 0);
         p += 4;
         memPutInt(p, sparseTextures ? 1 : 0);
         p += 4;
@@ -252,6 +255,8 @@ public class Caps {
         r.lineFill = memGetInt(p) != 0;
         p += 4;
         r.multiDraw = memGetInt(p) != 0;
+        p += 4;
+        r.indirectCount = memGetInt(p) != 0;
         p += 4;
         r.sparseTextures = memGetInt(p) != 0;
         p += 4;
