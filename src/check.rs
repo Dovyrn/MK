@@ -998,11 +998,23 @@ impl<'a> Check<'a> {
                 self.need(c, caps.conditional, "conditional")?;
                 self.range(buffer, offset, 4);
             }
-            #[cfg(feature = "vk")]
-            Command::SetShadingRate { .. } => {
+            #[cfg(any(feature = "vk", feature = "gl"))]
+            Command::SetShadingRate {
+                width,
+                height,
+                primitive,
+                attachment,
+            } => {
                 self.need(c, caps.shading_rate, "shading_rate")?;
+                assert!(
+                    matches!(width, 1 | 2 | 4) && matches!(height, 1 | 2 | 4),
+                    "shading rate {width}x{height} is not 1, 2 or 4 on each side"
+                );
+                for op in [primitive, attachment] {
+                    known("combiner", op, crate::combiner::valid(op));
+                }
             }
-            #[cfg(feature = "vk")]
+            #[cfg(any(feature = "vk", feature = "gl"))]
             Command::RateAttachment {
                 texture, layout: l, ..
             } => {

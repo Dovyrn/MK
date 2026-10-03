@@ -326,12 +326,12 @@ fields = [["map", "u32"]]
 
 [[command]]
 name = "set_shading_rate"
-backend = "vk"
+backend = "vk gl"
 fields = [["width", "u32"], ["height", "u32"], ["primitive", "u32"], ["attachment", "u32"]]
 
 [[command]]
 name = "rate_attachment"
-backend = "vk"
+backend = "vk gl"
 fields = [["texture", "u32"], ["layout", "u32"], ["texel_width", "u32"], ["texel_height", "u32"]]
 
 [[command]]

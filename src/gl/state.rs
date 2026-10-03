@@ -1,4 +1,5 @@
 use crate::gl::extra::Extra;
+use crate::gl::rates;
 use crate::{Caps, register, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
@@ -168,6 +169,8 @@ pub struct State {
     write: bool,
     clip: Option<[i32; 2]>,
     bounds: [f64; 2],
+    rate: i32,
+    palettes: Vec<(bool, [u32; rates::ENTRIES])>,
 }
 
 impl State {
@@ -339,6 +342,20 @@ impl State {
                     scissors.push(s);
                 }
             }
+            let (rate, palettes) = extra.rates.as_ref().map_or((0, Vec::new()), |r| {
+                let palettes = (0..caps.viewports.max(1))
+                    .map(|i| {
+                        let on = (extra.enabled)(rates::ENABLE, i) != 0;
+                        let entries = std::array::from_fn(|e| {
+                            let mut v = 0;
+                            (r.entry)(i, e as u32, &mut v);
+                            v
+                        });
+                        (on, entries)
+                    })
+                    .collect();
+                (int(rates::BINDING), palettes)
+            });
             let mut polygon = [0; 2];
             gl.get_parameter_i32_slice(glow::POLYGON_MODE, &mut polygon);
             let mut color = [0.0; 4];
@@ -389,6 +406,8 @@ impl State {
                     .clip
                     .map(|_| [glow::CLIP_ORIGIN, glow::CLIP_DEPTH_MODE].map(int)),
                 bounds,
+                rate,
+                palettes,
             }
         }
     }
@@ -525,6 +544,18 @@ impl State {
             }
             if let Some(bounds) = extra.bounds {
                 bounds(self.bounds[0], self.bounds[1]);
+            }
+            if let Some(r) = &extra.rates {
+                (r.bind)(self.rate as u32);
+                for (i, (on, entries)) in self.palettes.iter().enumerate() {
+                    let i = i as u32;
+                    (r.palette)(i, 0, rates::ENTRIES as i32, entries.as_ptr());
+                    if *on {
+                        gl.enable_draw_buffer(rates::ENABLE, i);
+                    } else {
+                        gl.disable_draw_buffer(rates::ENABLE, i);
+                    }
+                }
             }
         }
     }

@@ -1,4 +1,5 @@
 use super::{Recorder, integer};
+use crate::gl::rates;
 use crate::gl::state::DEPTH_BOUNDS_TEST;
 use crate::{format, load, slot, store};
 use glow::HasContext;
@@ -89,6 +90,19 @@ impl Recorder<'_> {
         let gl = self.gl;
         let res = self.res;
         self.bind(layers)?;
+        if let Some((texture, w, h)) = self.rate.take() {
+            let texel = rates::TEXEL.map(|p| unsafe { gl.get_parameter_i32(p) } as u32);
+            if [w, h] != texel {
+                return Err(format!(
+                    "rate attachment texels are {w}x{h}, GL needs {}x{}",
+                    texel[0], texel[1]
+                ));
+            }
+            let raw = res.textures.get(texture).raw.map_or(0, |t| t.0.get());
+            unsafe { (self.extra.rates.as_ref().unwrap().bind)(raw) };
+            self.rated = true;
+        }
+        self.shade();
         let default = self.default();
         unsafe {
             gl.color_mask(true, true, true, true);
@@ -146,6 +160,11 @@ impl Recorder<'_> {
         let gl = self.gl;
         let res = self.res;
         self.multiview = 0;
+        if self.rated {
+            unsafe { (self.extra.rates.as_ref().unwrap().bind)(0) };
+            self.rated = false;
+            self.shade();
+        }
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
             let mut discard: Vec<u32> = self

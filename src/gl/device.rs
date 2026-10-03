@@ -193,6 +193,7 @@ impl Device {
                     0
                 },
                 addresses: extra.addresses.is_some(),
+                shading_rate: extra.rates.is_some(),
                 sparse: extra.sparse.is_some() && extra.memory.is_some(),
                 sparse_textures: extra.sparse.is_some()
                     && extra.tiles.is_some()

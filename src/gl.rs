@@ -11,6 +11,7 @@ mod native;
 mod pipeline;
 mod program;
 mod query;
+mod rates;
 mod recorder;
 mod resolve;
 mod resources;

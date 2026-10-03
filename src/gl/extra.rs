@@ -1,6 +1,7 @@
 use crate::gl::addresses::Addresses;
 use crate::gl::bindless::Bindless;
 use crate::gl::memory::Memory;
+use crate::gl::rates::Rates;
 use crate::gl::sparse::Sparse;
 use crate::gl::tiles::Tiles;
 use std::ffi::c_void;
@@ -130,6 +131,7 @@ pub struct Extra {
     pub addresses: Option<Addresses>,
     pub sparse: Option<Sparse>,
     pub tiles: Option<Tiles>,
+    pub rates: Option<Rates>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -254,6 +256,7 @@ impl Extra {
                     .filter(|_| has(99, "GL_ARB_sparse_buffer")),
                 tiles: Tiles::load(&|name| get(name, 99, "GL_NV_memory_object_sparse"))
                     .filter(|_| has(99, "GL_ARB_sparse_texture")),
+                rates: Rates::load(&|name| get(name, 99, "GL_NV_shading_rate_image")),
             })
         }
     }

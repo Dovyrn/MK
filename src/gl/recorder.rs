@@ -9,13 +9,14 @@ use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
+use crate::gl::rates;
 use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
 use crate::gl::state::{DEPTH_BOUNDS_TEST, State, toggle};
 use crate::register;
 use crate::{
-    Caps, ColorAttachment, Command, DepthAttachment, DepthInfo, access, cull, face, format, index,
-    slot, topology,
+    Caps, ColorAttachment, Command, DepthAttachment, DepthInfo, access, combiner, cull, face,
+    format, index, slot, topology,
 };
 use glow::HasContext;
 
@@ -76,6 +77,9 @@ pub struct Recorder<'a> {
     scissors: Vec<[i32; 4]>,
     layers: u32,
     multiview: u32,
+    shading: [u32; 4],
+    rate: Option<(u32, u32, u32)>,
+    rated: bool,
     rendering: bool,
     query: Option<&'static [u32]>,
     labels: u32,
@@ -225,6 +229,9 @@ impl<'a> Recorder<'a> {
             scissors: Vec::new(),
             layers: 0,
             multiview: 0,
+            shading: [1, 1, combiner::KEEP, combiner::KEEP],
+            rate: None,
+            rated: false,
             rendering: false,
             query: None,
             labels: 0,
@@ -238,6 +245,7 @@ impl<'a> Recorder<'a> {
                 .bind_buffer_base(glow::UNIFORM_BUFFER, 0, Some(self.push))
         };
         self.reset();
+        self.shade();
         while !bytes.is_empty() {
             self.step(Command::read(&mut bytes)?)?;
         }
@@ -312,6 +320,9 @@ impl<'a> Recorder<'a> {
             }
             gl.enable(glow::MULTISAMPLE);
             gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
+            if let Some(r) = &self.extra.rates {
+                (r.bind)(0);
+            }
             (self.extra.clamp_color)(glow::CLAMP_READ_COLOR, glow::FIXED_ONLY);
             for i in 0..slot::COLORS {
                 gl.color_mask_draw_buffer(i, true, true, true, true);
@@ -340,6 +351,24 @@ impl<'a> Recorder<'a> {
             match boxes.as_slice() {
                 [b] => self.gl.scissor(b[0], b[1], b[2], b[3]),
                 _ => self.gl.scissor_slice(0, boxes.len() as i32, &boxes),
+            }
+        }
+    }
+
+    fn shade(&self) {
+        let Some(r) = &self.extra.rates else {
+            return;
+        };
+        let on = self.rated || self.shading != [1, 1, combiner::KEEP, combiner::KEEP];
+        let palette = rates::palette(self.shading);
+        for i in 0..self.caps.viewports.max(1) {
+            unsafe {
+                if on {
+                    (r.palette)(i, 0, rates::ENTRIES as i32, palette.as_ptr());
+                    self.gl.enable_draw_buffer(rates::ENABLE, i);
+                } else {
+                    self.gl.disable_draw_buffer(rates::ENABLE, i);
+                }
             }
         }
     }
@@ -600,6 +629,21 @@ impl<'a> Recorder<'a> {
                 Command::SetTopology { topology } => self.mode = mode(topology),
                 Command::Multiview { views } => self.multiview = views,
                 Command::SetLineWidth { width } => gl.line_width(width),
+                Command::SetShadingRate {
+                    width,
+                    height,
+                    primitive,
+                    attachment,
+                } => {
+                    self.shading = [width, height, primitive, attachment];
+                    self.shade();
+                }
+                Command::RateAttachment {
+                    texture,
+                    texel_width,
+                    texel_height,
+                    ..
+                } => self.rate = Some((texture, texel_width, texel_height)),
                 Command::SetDepthState { state } => {
                     let d = *res.depths.get(state);
                     toggle(
