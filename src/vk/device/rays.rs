@@ -21,7 +21,7 @@ impl Device {
             .copied()
             .filter(|name| !name.is_empty())
             .collect();
-        let module = self.module(&spirv::read(info.code, &used)?)?;
+        let module = self.module(&spirv::read(info.code, &used, self.caps.slots)?)?;
         let mut names = Vec::new();
         let mut stages = Vec::new();
         let mut stage = |name: &str, kind: vk::ShaderStageFlags| {

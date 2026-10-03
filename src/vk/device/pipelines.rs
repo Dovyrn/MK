@@ -31,7 +31,7 @@ impl Device {
             .map(|(_, name)| *name)
             .filter(|name| !name.is_empty())
             .collect();
-        let words = spirv::read(code, &used)?;
+        let words = spirv::read(code, &used, self.caps.slots)?;
         if let Some(v) = vertex {
             let inputs = spirv::inputs(&words, v.vertex);
             let missing = inputs
@@ -306,7 +306,7 @@ impl Device {
             return Err("linked functions are Metal only".into());
         }
         let (code, entry) = (info.code, info.entry);
-        let module = self.module(&spirv::read(code, &[entry])?)?;
+        let module = self.module(&spirv::read(code, &[entry], self.caps.slots)?)?;
         let name = CString::new(entry).unwrap();
         let stage = vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::COMPUTE)
