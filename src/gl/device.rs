@@ -1,3 +1,5 @@
+mod host;
+
 use crate::caps;
 use crate::check::Check;
 use crate::gl::buffer::Buffer;
@@ -275,6 +277,7 @@ impl Device {
         if !self.has(43, "GL_ARB_compute_shader") {
             return Err("compute shaders need GL 4.3".into());
         }
+        self.programs()?;
         let program = Program::new(
             &self.gl,
             info.code,
@@ -339,6 +342,7 @@ impl Device {
     }
 
     fn render(&mut self, info: &RenderInfo, stages: &[(u32, &str)]) -> Result<u32, String> {
+        self.programs()?;
         let cache = self.cache.as_mut();
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
@@ -597,6 +601,8 @@ impl Device {
     ) -> Result<(), String> {
         assert!(queue == 0, "GL has one queue");
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
+        self.programs()?;
+        self.queries()?;
         self.res.table.submit(queue, waits, signals);
         if let Some(i) = self
             .res
