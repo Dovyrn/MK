@@ -635,7 +635,7 @@ impl Device {
             )
         };
         let state = snapshot();
-        state.clear(&self.gl);
+        state.clear(&self.gl, &self.extra);
         let mut recorder = Recorder::new(
             &self.gl,
             &self.extra,

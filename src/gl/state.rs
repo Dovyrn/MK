@@ -161,6 +161,7 @@ pub struct State {
     stencil: [i32; 14],
     width: f32,
     write: bool,
+    clip: Option<[i32; 2]>,
 }
 
 impl State {
@@ -363,14 +364,20 @@ impl State {
                 stencil: STENCIL.map(int),
                 width: gl.get_parameter_f32(glow::LINE_WIDTH),
                 write: gl.get_parameter_bool(glow::DEPTH_WRITEMASK),
+                clip: extra
+                    .clip
+                    .map(|_| [glow::CLIP_ORIGIN, glow::CLIP_DEPTH_MODE].map(int)),
             }
         }
     }
 
-    pub fn clear(&self, gl: &glow::Context) {
+    pub fn clear(&self, gl: &glow::Context, extra: &Extra) {
         for &(p, _) in &self.pixels {
             let aligned = p == glow::UNPACK_ALIGNMENT || p == glow::PACK_ALIGNMENT;
             unsafe { gl.pixel_store_i32(p, aligned as i32) };
+        }
+        if let Some(clip) = extra.clip {
+            unsafe { clip(glow::LOWER_LEFT, glow::NEGATIVE_ONE_TO_ONE) };
         }
     }
 
@@ -480,6 +487,9 @@ impl State {
                 gl.stencil_op_separate(face, s[k + 4] as u32, s[k + 5] as u32, s[k + 6] as u32);
             }
             gl.line_width(self.width);
+            if let (Some(clip), Some([origin, depth])) = (extra.clip, self.clip) {
+                clip(origin as u32, depth as u32);
+            }
         }
     }
 }

@@ -29,6 +29,7 @@ type Compressed2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, 
 type Compressed3 =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
 type Clamp = unsafe extern "system" fn(f32, f32, f32);
+type Clip = unsafe extern "system" fn(u32, u32);
 type Integers = unsafe extern "system" fn(u32, u32, *mut i32);
 type Booleans = unsafe extern "system" fn(u32, u32, *mut u8);
 type Floats = unsafe extern "system" fn(u32, u32, *mut f32);
@@ -75,6 +76,7 @@ pub struct Extra {
     pub enabled: Enabled,
     pub clamp_color: ClampColor,
     pub offset_clamp: Option<Clamp>,
+    pub clip: Option<Clip>,
     pub samples2: Samples2,
     pub samples3: Samples3,
     pub storage2: Option<Samples2>,
@@ -160,6 +162,7 @@ impl Extra {
                 clamp_color: cast(need("glClampColor")?),
                 offset_clamp: get("glPolygonOffsetClamp", 46, "GL_ARB_polygon_offset_clamp")
                     .map(|p| cast(p)),
+                clip: get("glClipControl", 45, "GL_ARB_clip_control").map(|p| cast(p)),
                 samples2: cast(need("glTexImage2DMultisample")?),
                 samples3: cast(need("glTexImage3DMultisample")?),
                 storage2: multisample("glTexStorage2DMultisample").map(|p| cast(p)),
