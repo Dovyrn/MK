@@ -70,6 +70,9 @@ impl Device {
     }
 
     pub fn adopt_raw(proc: u64) -> Result<Self, String> {
+        if proc == 0 {
+            return Err("null GL loader".into());
+        }
         let get = unsafe {
             std::mem::transmute::<usize, unsafe extern "C" fn(*const c_char) -> *const c_void>(
                 proc as usize,
@@ -82,6 +85,9 @@ impl Device {
     }
 
     fn load(proc: &dyn Fn(&str) -> *const c_void) -> Result<Self, String> {
+        if proc("glGetIntegerv").is_null() {
+            return Err("the GL loader returned no glGetIntegerv".into());
+        }
         unsafe {
             let gl = glow::Context::from_loader_function(|name| proc(name));
             let major = gl.get_parameter_i32(glow::MAJOR_VERSION) as u32;
