@@ -316,6 +316,9 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.compute_pipeline else {
                     return Ok(());
                 };
+                if [x, y, z].contains(&0) {
+                    return Ok(());
+                }
                 self.flush()?;
                 self.compute()
                     .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), p.group);
@@ -337,6 +340,9 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.compute_pipeline else {
                     return Ok(());
                 };
+                if [x, y, z].contains(&0) {
+                    return Ok(());
+                }
                 self.flush()?;
                 self.compute()
                     .dispatchThreads_threadsPerThreadgroup(size(x, y, z), p.group);
@@ -731,7 +737,7 @@ impl<'a> Recorder<'a> {
                 first_vertex,
                 first_instance,
             } => {
-                if self.render_pipeline.is_none() {
+                if self.render_pipeline.is_none() || vertices == 0 || instances == 0 {
                     return Ok(());
                 }
                 self.flush()?;
@@ -758,6 +764,9 @@ impl<'a> Recorder<'a> {
                 else {
                     return Ok(());
                 };
+                if indices == 0 || instances == 0 {
+                    return Ok(());
+                }
                 self.flush()?;
                 let skip = first_index as u64 * size;
                 unsafe {
@@ -819,6 +828,9 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.render_pipeline else {
                     return Ok(());
                 };
+                if [x, y, z].contains(&0) {
+                    return Ok(());
+                }
                 self.flush()?;
                 self.render()
                     .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
@@ -969,7 +981,7 @@ impl<'a> Recorder<'a> {
                 self.pass.setThreadgroupMemoryLength(memory as usize);
             }
             Command::DispatchTile { width, height } => {
-                if self.render_pipeline.is_none() {
+                if self.render_pipeline.is_none() || width == 0 || height == 0 {
                     return Ok(());
                 }
                 self.flush()?;
@@ -1001,6 +1013,9 @@ impl<'a> Recorder<'a> {
                 start,
                 count,
             } => {
+                if count == 0 {
+                    return Ok(());
+                }
                 self.flush()?;
                 let icb = self.res.indirects.get(indirect);
                 let range = NSRange::new(start as usize, count as usize);
