@@ -231,6 +231,10 @@ impl Device {
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
         queues: usize,
     ) -> Result<Self, String> {
+        assert!(
+            (1..=32).contains(&queues),
+            "queue count {queues} is outside 1..=32"
+        );
         let compiler = raw
             .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
             .map_err(|e| e.localizedDescription().to_string())?;

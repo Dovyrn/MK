@@ -35,7 +35,7 @@ impl Device {
                 .rev()
                 .find(|&n| raw.supportsVertexAmplificationCount(n))
                 .unwrap_or(1) as u32,
-            graphics: (1 << queues) - 1,
+            graphics: u32::MAX >> (32 - queues),
             labels: true,
             rays: false,
             anisotropy: true,
