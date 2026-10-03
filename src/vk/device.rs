@@ -23,6 +23,7 @@ use crate::vk::queue::Queue;
 use crate::vk::resources::Resources;
 use crate::{Caps, TextureInfo, ViewInfo, dimension, format, memory, usage};
 use ash::vk;
+use std::cell::Cell;
 
 pub struct Device {
     pub instance: ash::Instance,
@@ -41,6 +42,7 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     garbage: Vec<(Vec<u64>, Free)>,
+    allocations: Cell<u32>,
 }
 
 type Free = Box<dyn FnOnce(&mut Device)>;
@@ -186,6 +188,7 @@ impl Device {
             res: Resources::default(),
             queues: list,
             garbage: Vec::new(),
+            allocations: Cell::new(0),
         })
     }
 
@@ -245,13 +248,32 @@ impl Device {
         info: vk::MemoryAllocateInfo,
         bind: impl FnOnce(vk::DeviceMemory) -> Result<(), vk::Result>,
     ) -> Result<vk::DeviceMemory, String> {
-        let info = info.memory_type_index(index);
-        let memory = unsafe { self.raw.allocate_memory(&info, None) }.map_err(|e| e.to_string())?;
+        let memory = self.alloc(&info.memory_type_index(index))?;
         bind(memory).map_err(|e| {
-            unsafe { self.raw.free_memory(memory, None) };
+            self.release(memory);
             e.to_string()
         })?;
         Ok(memory)
+    }
+
+    fn alloc(&self, info: &vk::MemoryAllocateInfo) -> Result<vk::DeviceMemory, String> {
+        let count = self.allocations.get();
+        let max = self.limits.max_memory_allocation_count;
+        if count >= max {
+            return Err(format!(
+                "memory allocations are at maxMemoryAllocationCount {max}"
+            ));
+        }
+        let memory = unsafe { self.raw.allocate_memory(info, None) }.map_err(|e| e.to_string())?;
+        self.allocations.set(count + 1);
+        Ok(memory)
+    }
+
+    pub(crate) fn release(&self, memory: vk::DeviceMemory) {
+        if memory != vk::DeviceMemory::null() {
+            unsafe { self.raw.free_memory(memory, None) };
+            self.allocations.set(self.allocations.get() - 1);
+        }
     }
 
     fn mapped(&self, memory: vk::DeviceMemory, index: u32) -> Result<*mut u8, String> {
@@ -391,38 +413,39 @@ impl Drop for Device {
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);
             }
-            for buffer in self.res.buffers.drain() {
-                buffer.free(&self.raw);
+            let mut res = std::mem::take(&mut self.res);
+            for buffer in res.buffers.drain() {
+                buffer.free(self);
             }
-            for texture in self.res.textures.drain() {
-                texture.free(&self.raw);
+            for texture in res.textures.drain() {
+                texture.free(self);
             }
-            for sampler in self.res.samplers.drain() {
+            for sampler in res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
             }
-            for accel in self.res.accels.drain() {
-                accel.free(&self.raw, self.ext.accel.as_ref().unwrap());
+            for accel in res.accels.drain() {
+                accel.free(self, self.ext.accel.as_ref().unwrap());
             }
-            for (layout, _) in self.res.layouts.drain() {
+            for (layout, _) in res.layouts.drain() {
                 self.ext.generated.as_ref().unwrap().free(&self.raw, layout);
             }
-            for query in self.res.queries.drain() {
+            for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
             }
-            for (pipeline, _) in self.res.rays.drain() {
+            for (pipeline, _) in res.rays.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for (pipeline, _) in self.res.renders.drain() {
+            for (pipeline, _) in res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for pipeline in self.res.pipelines.drain() {
+            for pipeline in res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for event in self.res.events.drain() {
+            for event in res.events.drain() {
                 event.free(&self.raw);
             }
-            for heap in self.res.heaps.drain() {
-                self.raw.free_memory(heap.memory, None);
+            for heap in res.heaps.drain() {
+                self.release(heap.memory);
             }
             self.raw.destroy_pipeline_cache(self.cache, None);
             self.raw.destroy_pipeline_layout(self.layout, None);

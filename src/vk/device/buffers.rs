@@ -108,7 +108,7 @@ impl Device {
         };
         buffer.data = self
             .mapped(buffer.memory, index)
-            .inspect_err(|_| buffer.free(&self.raw))?;
+            .inspect_err(|_| buffer.free(self))?;
         let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
         buffer.address = unsafe { self.raw.get_buffer_device_address(&info) };
         Ok(buffer)
@@ -131,7 +131,7 @@ impl Device {
         self.res.table.buffers.clear(buffer);
         self.defer(move |d| {
             let buffer = d.res.buffers.remove(buffer);
-            buffer.free(&d.raw);
+            buffer.free(d);
         });
     }
 

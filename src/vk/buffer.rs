@@ -1,3 +1,4 @@
+use crate::vk::Device;
 use ash::vk;
 
 pub struct Buffer {
@@ -10,14 +11,10 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn free(&self, device: &ash::Device) {
-        unsafe {
-            if self.own {
-                device.destroy_buffer(self.raw, None);
-            }
-            if self.memory != vk::DeviceMemory::null() {
-                device.free_memory(self.memory, None);
-            }
+    pub fn free(&self, d: &Device) {
+        if self.own {
+            unsafe { d.raw.destroy_buffer(self.raw, None) };
         }
+        d.release(self.memory);
     }
 }

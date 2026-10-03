@@ -52,7 +52,7 @@ impl Device {
                 .map_err(|e| e.to_string())?
         };
         let slot = self.res.samplers.insert(sampler);
-        if slot >= self.bindless.samplers {
+        if slot >= self.caps.samplers {
             self.res.samplers.remove(slot);
             unsafe { self.raw.destroy_sampler(sampler, None) };
             return Err("the bindless heap has no sampler slot left".into());

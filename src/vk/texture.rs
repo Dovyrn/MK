@@ -1,4 +1,5 @@
 use crate::format;
+use crate::vk::Device;
 use ash::vk;
 use std::rc::Rc;
 
@@ -18,14 +19,14 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn free(self, device: &ash::Device) {
+    pub fn free(self, d: &Device) {
         unsafe {
-            device.destroy_image_view(self.view, None);
-            device.destroy_image_view(self.target, None);
-            if let Some(memory) = self.owner.and_then(Rc::into_inner) {
-                device.destroy_image(self.image, None);
-                device.free_memory(memory, None);
-            }
+            d.raw.destroy_image_view(self.view, None);
+            d.raw.destroy_image_view(self.target, None);
+        }
+        if let Some(memory) = self.owner.and_then(Rc::into_inner) {
+            unsafe { d.raw.destroy_image(self.image, None) };
+            d.release(memory);
         }
     }
 }

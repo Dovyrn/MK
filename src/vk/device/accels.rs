@@ -154,7 +154,7 @@ impl Device {
             .size(size)
             .ty(kind);
         let raw = unsafe { loader.create_acceleration_structure(&create, None) }.map_err(|e| {
-            buffer.free(&self.raw);
+            buffer.free(self);
             e.to_string()
         })?;
         let info =
@@ -177,7 +177,7 @@ impl Device {
         self.res.table.accels.clear(accel);
         self.defer(move |d| {
             let accel = d.res.accels.remove(accel);
-            accel.free(&d.raw, d.ext.accel.as_ref().unwrap());
+            accel.free(d, d.ext.accel.as_ref().unwrap());
         });
     }
 

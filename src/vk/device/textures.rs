@@ -134,7 +134,7 @@ impl Device {
             Ok(())
         };
         if let Err(e) = views() {
-            t.free(&self.raw);
+            t.free(self);
             return Err(e.to_string());
         }
         let view = t.view;
@@ -142,7 +142,7 @@ impl Device {
         let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
         if bound && slot >= self.bindless.textures() {
             let t = self.res.textures.remove(slot);
-            t.free(&self.raw);
+            t.free(self);
             return Err("the bindless heap has no texture slot left".into());
         }
         self.bindless
@@ -154,7 +154,7 @@ impl Device {
         self.res.table.textures.clear(texture);
         self.defer(move |d| {
             let texture = d.res.textures.remove(texture);
-            texture.free(&d.raw);
+            texture.free(d);
         });
     }
 

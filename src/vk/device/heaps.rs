@@ -78,10 +78,10 @@ impl Device {
         } else if shared {
             info = info.push_next(&mut export);
         }
-        let memory = unsafe { self.raw.allocate_memory(&info, None) }.map_err(|e| e.to_string())?;
+        let memory = self.alloc(&info)?;
         let data = self
             .mapped(memory, index)
-            .inspect_err(|_| unsafe { self.raw.free_memory(memory, None) })?;
+            .inspect_err(|_| self.release(memory))?;
         let id = self.res.heaps.insert(Heap {
             memory,
             data,
@@ -97,7 +97,7 @@ impl Device {
         self.res.table.heaps.clear(heap);
         self.defer(move |d| {
             let heap = d.res.heaps.remove(heap);
-            unsafe { d.raw.free_memory(heap.memory, None) };
+            d.release(heap.memory);
         });
     }
 

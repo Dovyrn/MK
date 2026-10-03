@@ -1,3 +1,4 @@
+use crate::vk::Device;
 use crate::vk::buffer::Buffer;
 use ash::khr::acceleration_structure;
 use ash::vk;
@@ -15,8 +16,8 @@ pub struct Accel {
 }
 
 impl Accel {
-    pub fn free(&self, device: &ash::Device, loader: &acceleration_structure::Device) {
+    pub fn free(&self, d: &Device, loader: &acceleration_structure::Device) {
         unsafe { loader.destroy_acceleration_structure(self.raw, None) };
-        self.buffer.free(device);
+        self.buffer.free(d);
     }
 }

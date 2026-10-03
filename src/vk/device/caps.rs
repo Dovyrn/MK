@@ -40,8 +40,8 @@ pub(super) fn probe(
         mesh: ext.mesh.is_some(),
         push: limits.max_push_constants_size.min(256),
         queues: queues.len() as u32,
-        samplers: bindless.samplers,
-        textures: bindless.textures(),
+        samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
+        textures: bindless.textures().min(limits.max_memory_allocation_count),
         tick: limits.timestamp_period,
         timestamps: queues
             .iter()
@@ -96,7 +96,7 @@ pub(super) fn probe(
         line_fill: features.fill_mode_non_solid != 0,
         multi_draw: features.multi_draw_indirect != 0,
         sparse_textures: sparse && features.sparse_residency_image2_d != 0,
-        buffers: bindless.buffers,
+        buffers: bindless.buffers.min(limits.max_memory_allocation_count),
         compute: true,
         texture_views: true,
         occlusion: true,
