@@ -71,8 +71,9 @@ impl Device {
             "map of an imported buffer"
         );
         let b = self.res.buffers.get(buffer);
-        assert!(
-            b.storageMode() != MTLStorageMode::Private,
+        assert_ne!(
+            b.storageMode(),
+            MTLStorageMode::Private,
             "map of a device buffer"
         );
         b.contents().as_ptr().cast()

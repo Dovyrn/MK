@@ -24,7 +24,7 @@ pub fn call<'local, T: Default>(
 }
 
 pub fn device<'a>(handle: jlong) -> &'a mut Device {
-    assert!(handle != 0, "device used after close");
+    assert_ne!(handle, 0, "device used after close");
     unsafe { &mut *(handle as *mut Device) }
 }
 
@@ -33,7 +33,7 @@ pub fn bytes<'a>(address: jlong, length: i64) -> &'a [u8] {
     if length == 0 {
         return &[];
     }
-    assert!(address != 0, "a null pointer with {length} bytes");
+    assert_ne!(address, 0, "a null pointer with {length} bytes");
     unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) }
 }
 

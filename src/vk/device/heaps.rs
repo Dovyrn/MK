@@ -38,8 +38,9 @@ impl Device {
         shared: bool,
         fd: Option<i32>,
     ) -> Result<u32, String> {
-        assert!(
-            memory != memory::TRANSIENT,
+        assert_ne!(
+            memory,
+            memory::TRANSIENT,
             "transient memory is for textures"
         );
         let device = memory == memory::DEVICE;

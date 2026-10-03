@@ -59,7 +59,7 @@ pub(crate) fn targets(colors: &[ColorTarget], depth: u32, stencil: u32, count: u
         }
         known("blend op", c.op, op::valid(c.op));
         known("blend op", c.op_alpha, op::valid(c.op_alpha));
-        assert!(c.mask & !mask::BITS == 0, "unknown mask bits {:#x}", c.mask);
+        assert_eq!(c.mask & !mask::BITS, 0, "unknown mask bits {:#x}", c.mask);
     }
     for f in [depth, stencil] {
         assert!(f == format::NONE || real(f), "unknown format {f}");
@@ -82,8 +82,9 @@ fn face(f: &StencilFace) {
 impl Caps {
     pub(crate) fn buffer(&self, size: u64, memory: u32) -> Result<(), String> {
         known("memory", memory, memory::valid(memory));
-        assert!(
-            memory != memory::TRANSIENT,
+        assert_ne!(
+            memory,
+            memory::TRANSIENT,
             "transient memory is for textures"
         );
         assert!(size > 0, "buffer size is 0");
@@ -113,20 +114,23 @@ impl Caps {
         );
         assert!(dims.iter().all(|&d| d > 0), "tensor dimension is 0");
         known("element", info.element, crate::element::valid(info.element));
-        assert!(info.usage != 0, "tensor usage is 0");
-        assert!(
-            info.usage & !crate::tensor::BITS == 0,
+        assert_ne!(info.usage, 0, "tensor usage is 0");
+        assert_eq!(
+            info.usage & !crate::tensor::BITS,
+            0,
             "unknown tensor usage bits {:#x}",
             info.usage & !crate::tensor::BITS
         );
         known("memory", info.memory, memory::valid(info.memory));
-        assert!(
-            info.memory != memory::TRANSIENT,
+        assert_ne!(
+            info.memory,
+            memory::TRANSIENT,
             "transient memory is for textures"
         );
         if !strides.is_empty() {
-            assert!(
-                info.memory != memory::DEVICE,
+            assert_ne!(
+                info.memory,
+                memory::DEVICE,
                 "tensor strides are for mapped memory"
             );
             assert!(
@@ -172,13 +176,15 @@ impl Caps {
         );
         known("memory", info.memory, memory::valid(info.memory));
         assert!(real(info.format), "unknown format {}", info.format);
-        assert!(
-            info.usage & !usage::VIEW != 0,
+        assert_ne!(
+            info.usage & !usage::VIEW,
+            0,
             "texture usage {:#x} needs more than usage::VIEW",
             info.usage
         );
-        assert!(
-            info.usage & !usage::BITS == 0,
+        assert_eq!(
+            info.usage & !usage::BITS,
+            0,
             "unknown usage bits {:#x}",
             info.usage & !usage::BITS
         );
@@ -195,21 +201,21 @@ impl Caps {
                 h == 1 && d == 1 && info.mips == 1,
                 "a 1D texture has height 1, depth 1 and one mip"
             ),
-            dimension::D3 => assert!(l == 1, "a 3D texture has one layer"),
+            dimension::D3 => assert_eq!(l, 1, "a 3D texture has one layer"),
             dimension::CUBE | dimension::CUBE_ARRAY => assert!(
                 w == h && d == 1 && l.is_multiple_of(6),
                 "a cube texture has square faces, depth 1 and a multiple of 6 layers"
             ),
-            _ => assert!(d == 1, "a 2D texture has depth 1"),
+            _ => assert_eq!(d, 1, "a 2D texture has depth 1"),
         }
         if matches!(
             info.dimension,
             dimension::D1 | dimension::D2 | dimension::D3
         ) {
-            assert!(l == 1, "a texture without layers has one layer");
+            assert_eq!(l, 1, "a texture without layers has one layer");
         }
         if info.dimension == dimension::CUBE {
-            assert!(l == 6, "a cube texture has 6 layers");
+            assert_eq!(l, 6, "a cube texture has 6 layers");
         }
         assert!(
             info.usage & usage::HOST == 0 || info.samples == 1,
@@ -232,8 +238,9 @@ impl Caps {
             );
         }
         if info.memory == memory::TRANSIENT {
-            assert!(
-                info.usage & !(usage::COLOR | usage::DEPTH) == 0,
+            assert_eq!(
+                info.usage & !(usage::COLOR | usage::DEPTH),
+                0,
                 "transient textures are attachments only"
             );
             if !self.memoryless {

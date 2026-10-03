@@ -101,8 +101,9 @@ impl Table {
             "a view of texture {texture} in format {} needs usage::VIEW",
             info.format
         );
-        assert!(
-            format::block(info.format) == format::block(t.format),
+        assert_eq!(
+            format::block(info.format),
+            format::block(t.format),
             "format {} has a different block than format {}",
             info.format,
             t.format
@@ -114,8 +115,9 @@ impl Table {
             dimension::D3 => 3,
             _ => 2,
         };
-        assert!(
-            family(t.dimension) == family(info.dimension),
+        assert_eq!(
+            family(t.dimension),
+            family(info.dimension),
             "a view of texture {texture} cannot change dimension {} to {}",
             t.dimension,
             info.dimension
@@ -123,8 +125,8 @@ impl Table {
         let cube = matches!(t.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
         match info.dimension {
             dimension::D1 | dimension::D2 | dimension::D3 => {
-                assert!(
-                    layers == 1,
+                assert_eq!(
+                    layers, 1,
                     "a view without layers has one layer, not {layers}"
                 )
             }
@@ -166,8 +168,9 @@ impl Table {
     pub fn host(&self, c: &HostCopy, size: usize) -> (u64, u64) {
         let texture = c.texture;
         let t = self.textures.get(texture);
-        assert!(
-            t.usage & usage::HOST != 0,
+        assert_ne!(
+            t.usage & usage::HOST,
+            0,
             "texture {texture} has no usage::HOST"
         );
         assert!(

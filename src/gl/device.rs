@@ -208,8 +208,9 @@ impl Device {
     }
 
     fn thread(&self) {
-        assert!(
-            std::thread::current().id() == self.thread,
+        assert_eq!(
+            std::thread::current().id(),
+            self.thread,
             "GL device used from another thread"
         );
     }
@@ -271,7 +272,7 @@ impl Device {
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "map of an imported buffer");
-        assert!(b.memory != memory::DEVICE, "map of a device buffer");
+        assert_ne!(b.memory, memory::DEVICE, "map of a device buffer");
         if b.persistent || !b.data.get().is_null() {
             return b.data.get();
         }
@@ -670,7 +671,7 @@ impl Device {
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
         self.thread();
-        assert!(queue == 0, "GL has one queue");
+        assert_eq!(queue, 0, "GL has one queue");
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         if let Some(i) = self
             .res

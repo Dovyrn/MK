@@ -102,7 +102,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
         ),
     ];
     let foreign = bits & (stage::RESOURCE | stage::ML);
-    assert!(foreign == 0, "stage {foreign} has no Vulkan equivalent");
+    assert_eq!(foreign, 0, "stage {foreign} has no Vulkan equivalent");
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
         if bits & bit != 0 {

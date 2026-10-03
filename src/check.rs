@@ -39,7 +39,7 @@ fn known(what: &str, value: u32, valid: bool) {
 }
 
 fn bits(what: &str, value: u32, all: u32) {
-    assert!(value & !all == 0, "unknown {what} bits {:#x}", value & !all);
+    assert_eq!(value & !all, 0, "unknown {what} bits {:#x}", value & !all);
 }
 
 fn name(c: &Command) -> String {
@@ -70,7 +70,7 @@ fn slot(slot: u32, count: u32) {
 }
 
 fn span(what: &str, base: u32, count: u32, total: u32, texture: u32) {
-    assert!(count != 0, "{what} count is 0 for texture {texture}");
+    assert_ne!(count, 0, "{what} count is 0 for texture {texture}");
     let end = if count == !0 {
         total
     } else {
@@ -129,8 +129,8 @@ impl<'a> Check<'a> {
                 .unwrap_or_else(|name| panic!("{name} is not in this backend"));
             check.step(&c)?;
         }
-        assert!(
-            check.open == "outside",
+        assert_eq!(
+            check.open, "outside",
             "stream ends inside begin_{}",
             check.open
         );
@@ -176,8 +176,9 @@ impl<'a> Check<'a> {
         } else {
             0
         };
-        assert!(
-            (t.usage | copies) & needs != 0,
+        assert_ne!(
+            (t.usage | copies) & needs,
+            0,
             "texture {texture} has no usage::{what}"
         );
         t
@@ -338,7 +339,7 @@ impl<'a> Check<'a> {
                     width > 0 && height > 0 && layers > 0,
                     "begin_render size {width}x{height}x{layers} has a zero"
                 );
-                assert!(open == "outside", "{c} inside begin_{open}");
+                assert_eq!(open, "outside", "{c} inside begin_{open}");
                 let samples: Vec<u32> = self
                     .targets
                     .iter()
@@ -376,15 +377,15 @@ impl<'a> Check<'a> {
                 self.open = "render";
             }
             Command::BeginCompute => {
-                assert!(open == "outside", "{c} inside begin_{open}");
+                assert_eq!(open, "outside", "{c} inside begin_{open}");
                 self.open = "compute";
             }
             Command::EndCompute => {
-                assert!(open == "compute", "end_compute without begin_compute");
+                assert_eq!(open, "compute", "end_compute without begin_compute");
                 self.open = "outside";
             }
             Command::EndRender => {
-                assert!(open == "render", "end_render without begin_render");
+                assert_eq!(open, "render", "end_render without begin_render");
                 self.open = "outside";
                 self.targets.clear();
                 self.heap = None;
@@ -496,8 +497,9 @@ impl<'a> Check<'a> {
                 let s = self.region(src, from, [src_x, src_y, src_z], size);
                 let to = (dst_mip, dst_layer, layers);
                 let t = self.region(dst, to, [dst_x, dst_y, dst_z], size);
-                assert!(
-                    format::block(s.format) == format::block(t.format),
+                assert_eq!(
+                    format::block(s.format),
+                    format::block(t.format),
                     "copy_texture formats {} and {} have different blocks",
                     s.format,
                     t.format
@@ -508,11 +510,10 @@ impl<'a> Check<'a> {
                     s.format,
                     t.format
                 );
-                assert!(
-                    s.samples == t.samples,
+                assert_eq!(
+                    s.samples, t.samples,
                     "copy_texture sample counts {} and {} differ",
-                    s.samples,
-                    t.samples
+                    s.samples, t.samples
                 );
                 assert!(
                     src != dst
@@ -525,8 +526,9 @@ impl<'a> Check<'a> {
                 );
                 let line =
                     |t: &TextureInfo| matches!(t.dimension, dimension::D1 | dimension::D1_ARRAY);
-                assert!(
-                    line(s) == line(t),
+                assert_eq!(
+                    line(s),
+                    line(t),
                     "copy_texture cannot copy between 1D texture and 2D or 3D texture"
                 );
                 if s.format != t.format {
@@ -578,8 +580,9 @@ impl<'a> Check<'a> {
                     );
                 }
                 let kind = |f| (format::uint(f), format::sint(f));
-                assert!(
-                    kind(s.format) == kind(t.format),
+                assert_eq!(
+                    kind(s.format),
+                    kind(t.format),
                     "blit_texture formats {} and {} differ in integer kind",
                     s.format,
                     t.format
@@ -849,8 +852,9 @@ impl<'a> Check<'a> {
                 self.queries(heap, &[], first, count);
             }
             Command::WriteTimestamp { heap, index, stage } => {
-                assert!(
-                    stage.count_ones() == 1,
+                assert_eq!(
+                    stage.count_ones(),
+                    1,
                     "write_timestamp stage {stage:#x} must be one stage"
                 );
                 bits("stage", stage, stage::BITS);
@@ -862,8 +866,9 @@ impl<'a> Check<'a> {
                     query::STATISTICS => self.need(c, caps.statistics, "statistics")?,
                     _ => {
                         self.need(c, caps.occlusion, "occlusion")?;
-                        assert!(
-                            self.heap == Some(heap),
+                        assert_eq!(
+                            self.heap,
+                            Some(heap),
                             "{} needs occlusion_heap({heap}) before begin_render",
                             name(c)
                         );
@@ -1024,9 +1029,9 @@ impl<'a> Check<'a> {
             } => {
                 self.need(c, caps.rays, "rays")?;
                 assert!(self.ray, "trace_rays needs bind_ray_pipeline first");
-                assert!(raygen != !0, "trace_rays needs a raygen table");
-                assert!(
-                    raygen_stride == raygen_size,
+                assert_ne!(raygen, !0, "trace_rays needs a raygen table");
+                assert_eq!(
+                    raygen_stride, raygen_size,
                     "raygen stride {raygen_stride} must equal its size {raygen_size}"
                 );
                 for (what, buffer, offset, stride, size) in [

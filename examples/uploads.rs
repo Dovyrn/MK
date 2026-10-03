@@ -73,14 +73,14 @@ fn main() {
     device.submit(0, &c, &[], &[(event, 1)]).unwrap();
     assert!(device.wait(event, 1, 5000).unwrap());
     let seen = unsafe { std::slice::from_raw_parts(device.map(back), pixels.len()) };
-    assert!(seen == pixels, "the GPU copy differs from the host write");
+    assert_eq!(seen, pixels, "the GPU copy differs from the host write");
     let mut read = vec![0; pixels.len()];
     let moved = HostCopy {
         layout: layout::COPY_SRC,
         ..whole
     };
     device.read_texture(&moved, &mut read).unwrap();
-    assert!(read == pixels, "the host read differs from the host write");
+    assert_eq!(read, pixels, "the host read differs from the host write");
     let m = n / 2;
     let base = pattern((m * m * 4) as usize, 3);
     let mip = HostCopy {
@@ -112,7 +112,7 @@ fn main() {
             } else {
                 &base[at..at + 4]
             };
-            assert!(&level[at..at + 4] == want, "mip 1 texel {x},{y}");
+            assert_eq!(&level[at..at + 4], want, "mip 1 texel {x},{y}");
         }
     }
     let mut part = vec![0; 12 * 8 * 4];
@@ -133,7 +133,7 @@ fn main() {
         for x in 0..8 {
             let from = ((y + 3) * m as usize + x + 2) * 4;
             let to = (y * 12 + x) * 4;
-            assert!(part[to..to + 4] == level[from..from + 4], "part {x},{y}");
+            assert_eq!(part[to..to + 4], level[from..from + 4], "part {x},{y}");
         }
     }
     let layers = device
@@ -161,7 +161,7 @@ fn main() {
     for (i, s) in slices.iter().enumerate() {
         let mut out = vec![0; s.len()];
         device.read_texture(&slice(i as u32), &mut out).unwrap();
-        assert!(&out == s, "layer {i}");
+        assert_eq!(&out, s, "layer {i}");
     }
     let bc = device.format_usage(format::BC1_UNORM) & usage::HOST != 0;
     if bc {
@@ -193,8 +193,9 @@ fn main() {
         device.read_texture(&corner, &mut out).unwrap();
         for r in 0..2 {
             let from = ((2 + r) * 4 + 2) * 8;
-            assert!(
-                out[r * 16..r * 16 + 16] == data[from..from + 16],
+            assert_eq!(
+                out[r * 16..r * 16 + 16],
+                data[from..from + 16],
                 "bc1 row {r}"
             );
         }
