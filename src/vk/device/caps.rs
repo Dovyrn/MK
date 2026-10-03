@@ -126,6 +126,7 @@ pub(super) fn probe(
         persistent: true,
         matrices: ext.matrices.len() as u32,
         tensors: false,
+        networks: false,
         bind_alignment: limits
             .min_uniform_buffer_offset_alignment
             .max(limits.min_storage_buffer_offset_alignment) as u32,

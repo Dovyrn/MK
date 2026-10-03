@@ -16,13 +16,17 @@ fn main() {
         .filter(|p| {
             matches!(
                 p.extension().and_then(|e| e.to_str()),
-                Some("slang" | "metal")
+                Some("slang" | "metal" | "mlpackage")
             )
         })
         .collect();
     sources.sort();
     for src in sources {
         let name = src.file_stem().unwrap().to_str().unwrap().to_string();
+        if src.extension().unwrap() == "mlpackage" {
+            metal::package(&src, &out, &name);
+            continue;
+        }
         let slang = dir.join(format!("{name}.slang"));
         if src.extension().unwrap() == "metal" && slang.exists() {
             continue;

@@ -718,6 +718,16 @@ impl<'a> Check<'a> {
             #[cfg(feature = "mtl")]
             Command::RateMap { .. } => self.rate = true,
             #[cfg(feature = "mtl")]
+            Command::DispatchNetwork { pipeline, heap } => {
+                self.need(c, caps.networks, "networks")?;
+                let size = *self.table.networks.get(pipeline);
+                let room = *self.table.heaps.get(heap);
+                assert!(
+                    room >= size,
+                    "heap {heap} holds {room} bytes, ml pipeline {pipeline} needs {size}"
+                );
+            }
+            #[cfg(feature = "mtl")]
             Command::BindTensor { slot: i, tensor } => {
                 self.need(c, caps.tensors, "tensors")?;
                 slot(i, slot::STORAGES);

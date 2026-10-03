@@ -90,4 +90,10 @@ public class MtlCommands extends Commands {
         memPutInt(p, slot);
         memPutInt(p + 4, tensor);
     }
+
+    public void dispatchNetwork(int pipeline, int heap) {
+        var p = head(75, 8);
+        memPutInt(p, pipeline);
+        memPutInt(p + 4, heap);
+    }
 }

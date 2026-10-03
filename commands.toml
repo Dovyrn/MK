@@ -358,3 +358,9 @@ backend = "vk"
 name = "bind_tensor"
 backend = "mtl"
 fields = [["slot", "u32"], ["tensor", "u32"]]
+
+[[command]]
+name = "dispatch_network"
+scope = "outside"
+backend = "mtl"
+fields = [["pipeline", "u32"], ["heap", "u32"]]

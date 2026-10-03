@@ -7,8 +7,8 @@ use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTLAllocation, MTLBuffer, MTLDepthStencilState, MTLHeap, MTLIndirectCommandBuffer,
-    MTLRasterizationRateMap, MTLSamplerState, MTLSharedEvent, MTLTensor,
+    MTL4MachineLearningPipelineState, MTLAllocation, MTLBuffer, MTLDepthStencilState, MTLHeap,
+    MTLIndirectCommandBuffer, MTLRasterizationRateMap, MTLSamplerState, MTLSharedEvent, MTLTensor,
 };
 use std::collections::HashSet;
 
@@ -28,6 +28,7 @@ pub struct Resources {
     pub queries: Slots<Query>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
     pub tensors: Slots<Retained<ProtocolObject<dyn MTLTensor>>>,
+    pub networks: Slots<Retained<ProtocolObject<dyn MTL4MachineLearningPipelineState>>>,
     pub imports: HashSet<u32>,
     pub table: crate::table::Table,
 }

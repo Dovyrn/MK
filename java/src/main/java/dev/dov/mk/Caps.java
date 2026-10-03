@@ -69,11 +69,12 @@ public class Caps {
     public boolean hostRead = false;
     public int matrices = 0;
     public boolean tensors = false;
+    public boolean networks = false;
 
-    public static final int SIZE = 248;
+    public static final int SIZE = 252;
 
     int encodedSize() {
-        return 248;
+        return 252;
     }
 
     long encode(long p) {
@@ -198,6 +199,8 @@ public class Caps {
         memPutInt(p, matrices);
         p += 4;
         memPutInt(p, tensors ? 1 : 0);
+        p += 4;
+        memPutInt(p, networks ? 1 : 0);
         p += 4;
         return p;
     }
@@ -325,6 +328,8 @@ public class Caps {
         r.matrices = memGetInt(p);
         p += 4;
         r.tensors = memGetInt(p) != 0;
+        p += 4;
+        r.networks = memGetInt(p) != 0;
         p += 4;
         return r;
     }

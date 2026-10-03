@@ -89,6 +89,7 @@ impl Device {
             host_read: raw.hasUnifiedMemory(),
             matrices: MATRICES.len() as u32,
             tensors: true,
+            networks: true,
         }
     }
 

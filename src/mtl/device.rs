@@ -8,6 +8,7 @@ mod events;
 mod heaps;
 mod indirect;
 mod maps;
+mod networks;
 mod pipelines;
 mod queries;
 mod samplers;

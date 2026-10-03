@@ -577,6 +577,24 @@ params = [["tensor", "u32"]]
 result = "pointer"
 
 [[call]]
+name = "create_ml_pipeline"
+backend = "mtl"
+params = [["path", "str"], ["entry", "str"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_ml_pipeline"
+backend = "mtl"
+params = [["pipeline", "u32"]]
+
+[[call]]
+name = "ml_heap_size"
+backend = "mtl"
+params = [["pipeline", "u32"]]
+result = "u64"
+
+[[call]]
 name = "adopt_raw"
 backend = "gl"
 params = [["proc", "u64"]]

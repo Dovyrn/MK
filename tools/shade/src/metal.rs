@@ -38,6 +38,19 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
     library(out, name, &airs);
 }
 
+pub fn package(source: &Path, out: &Path, name: &str) {
+    let target = out.join(format!("{name}.mtlpackage"));
+    if target.exists() {
+        fs::remove_dir_all(&target).unwrap();
+    }
+    run(Command::new("xcrun")
+        .arg("metal-package-builder")
+        .arg(source)
+        .arg("-o")
+        .arg(&target)
+        .arg("-ml"));
+}
+
 fn compile(source: &Path, air: &Path) {
     run(Command::new("xcrun")
         .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])

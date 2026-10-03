@@ -15,12 +15,12 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
-    MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
-    MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
-    MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
-    MTLStoreAction, MTLTensor, MTLTexture, MTLVertexAmplificationViewMapping, MTLViewport,
-    MTLVisibilityResultMode, MTLWinding,
+    MTL4ComputeCommandEncoder, MTL4MachineLearningCommandEncoder, MTL4RenderCommandEncoder,
+    MTL4RenderPassDescriptor, MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption,
+    MTLBuffer, MTLClearColor, MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin,
+    MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize,
+    MTLStages, MTLStoreAction, MTLTensor, MTLTexture, MTLVertexAmplificationViewMapping,
+    MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 use std::ptr::NonNull;
 
@@ -29,6 +29,7 @@ pub struct Recorder<'a> {
     residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
+    ml: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     resolve: &'a Resolve,
     resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
@@ -194,6 +195,7 @@ impl<'a> Recorder<'a> {
             residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
+            ml: &queue.ml,
             resolve,
             resolves: Vec::new(),
             frame,
@@ -788,6 +790,21 @@ impl<'a> Recorder<'a> {
                 let id = self.res.tensors.get(tensor).gpuResourceID();
                 let index = (register::STORAGE + slot) as usize;
                 unsafe { self.table.setResource_atBufferIndex(id, index) };
+                unsafe { self.ml.setResource_atBufferIndex(id, slot as usize) };
+            }
+            Command::DispatchNetwork { pipeline, heap } => {
+                let encoder = self
+                    .buffer
+                    .machineLearningCommandEncoder()
+                    .ok_or("machine learning encoder allocation failed")?;
+                self.opened(
+                    ProtocolObject::from_ref(&*encoder),
+                    MTLStages::MachineLearning,
+                );
+                encoder.setArgumentTable(self.ml);
+                encoder.setPipelineState(self.res.networks.get(pipeline));
+                encoder.dispatchNetworkWithIntermediatesHeap(&self.res.heaps.get(heap).0);
+                encoder.endEncoding();
             }
             Command::BindSampler { slot, sampler } => {
                 let id = self.res.samplers.get(sampler).gpuResourceID();

@@ -484,4 +484,26 @@ public class MtlDevice extends Device {
     }
 
     private static native long nMapTensor(long device, int tensor);
+
+    public synchronized int createMlPipeline(String path, String entry) {
+        try (var stack = MemoryStack.stackPush()) {
+            var pathBytes = stack.UTF8(path, false);
+            var entryBytes = stack.UTF8(entry, false);
+            return nCreateMlPipeline(handle, memAddress(pathBytes), pathBytes.remaining(), memAddress(entryBytes), entryBytes.remaining());
+        }
+    }
+
+    private static native int nCreateMlPipeline(long device, long path, int pathLength, long entry, int entryLength);
+
+    public synchronized void destroyMlPipeline(int pipeline) {
+        nDestroyMlPipeline(handle, pipeline);
+    }
+
+    private static native void nDestroyMlPipeline(long device, int pipeline);
+
+    public synchronized long mlHeapSize(int pipeline) {
+        return nMlHeapSize(handle, pipeline);
+    }
+
+    private static native long nMlHeapSize(long device, int pipeline);
 }

@@ -26,6 +26,8 @@ pub struct Table {
     pub functions: Entries<()>,
     #[cfg(feature = "mtl")]
     pub tensors: Entries<u32>,
+    #[cfg(feature = "mtl")]
+    pub networks: Entries<u64>,
 }
 
 impl Default for Table {
@@ -55,6 +57,8 @@ impl Default for Table {
             functions: Entries::new("function table"),
             #[cfg(feature = "mtl")]
             tensors: Entries::new("tensor"),
+            #[cfg(feature = "mtl")]
+            networks: Entries::new("ml pipeline"),
         }
     }
 }

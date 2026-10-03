@@ -232,6 +232,7 @@ fields = [
     ["host_read", "bool", "false"],
     ["matrices", "u32", "0"],
     ["tensors", "bool", "false"],
+    ["networks", "bool", "false"],
 ]
 
 [[info]]
