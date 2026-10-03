@@ -10,6 +10,7 @@ use objc2_metal::MTLDevice;
 
 impl Device {
     pub fn create_shared_texture(&mut self, info: &TextureInfo) -> Result<(u32, u32), String> {
+        self.sharable(info)?;
         let [bytes, _, _] = format::block(info.format);
         let keys = unsafe { [kIOSurfaceWidth, kIOSurfaceHeight, kIOSurfaceBytesPerElement] };
         let values = [
@@ -26,15 +27,12 @@ impl Device {
     }
 
     pub fn import_shared_texture(&mut self, id: u32, info: &TextureInfo) -> Result<u32, String> {
+        self.sharable(info)?;
         let surface = IOSurfaceRef::lookup(id).ok_or("no IOSurface with that id")?;
         self.surface_texture(&surface, info)
     }
 
-    fn surface_texture(
-        &mut self,
-        surface: &IOSurfaceRef,
-        info: &TextureInfo,
-    ) -> Result<u32, String> {
+    fn sharable(&self, info: &TextureInfo) -> Result<(), String> {
         assert!(
             info.dimension == dimension::D2
                 && info.mips == 1
@@ -42,13 +40,21 @@ impl Device {
                 && info.samples == 1,
             "a shared texture is 2D with one mip, one layer and one sample"
         );
-        let [bytes, width, _] = format::block(info.format);
+        let [_, width, _] = format::block(info.format);
         assert!(
             width == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&info.format),
             "a shared texture cannot use depth, stencil or compressed format {}",
             info.format
         );
-        self.supports(info)?;
+        self.supports(info)
+    }
+
+    fn surface_texture(
+        &mut self,
+        surface: &IOSurfaceRef,
+        info: &TextureInfo,
+    ) -> Result<u32, String> {
+        let [bytes, _, _] = format::block(info.format);
         if info.width as usize > surface.width()
             || info.height as usize > surface.height()
             || (info.width * bytes) as usize > surface.bytes_per_row()
