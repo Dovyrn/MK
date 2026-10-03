@@ -191,5 +191,15 @@ fn main() {
             );
         }
     }
-    println!("host copies round-trip: mips, row lengths, layers, bc1 {bc}");
+    let budget = match device.memory_budget() {
+        Ok(b) => {
+            assert!(device.caps().budget && b.budget > 0, "budget {b:?}");
+            format!("{} of {} MB", b.usage >> 20, b.budget >> 20)
+        }
+        Err(e) => {
+            assert!(!device.caps().budget, "{e}");
+            e
+        }
+    };
+    println!("host copies round-trip: mips, row lengths, layers, bc1 {bc}; budget: {budget}");
 }

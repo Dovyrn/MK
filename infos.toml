@@ -228,6 +228,14 @@ fields = [
     ["max_queries", "u32", "0"],
     ["cube_arrays", "bool", "false"],
     ["mirror_clamp", "bool", "false"],
+    ["budget", "bool", "false"],
+]
+
+[[info]]
+name = "Budget"
+fields = [
+    ["budget", "u64", "0"],
+    ["usage", "u64", "0"],
 ]
 
 [[info]]

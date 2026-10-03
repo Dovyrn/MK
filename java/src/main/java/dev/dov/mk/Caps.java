@@ -65,11 +65,12 @@ public class Caps {
     public int maxQueries = 0;
     public boolean cubeArrays = false;
     public boolean mirrorClamp = false;
+    public boolean budget = false;
 
-    public static final int SIZE = 232;
+    public static final int SIZE = 236;
 
     int encodedSize() {
-        return 232;
+        return 236;
     }
 
     long encode(long p) {
@@ -186,6 +187,8 @@ public class Caps {
         memPutInt(p, cubeArrays ? 1 : 0);
         p += 4;
         memPutInt(p, mirrorClamp ? 1 : 0);
+        p += 4;
+        memPutInt(p, budget ? 1 : 0);
         p += 4;
         return p;
     }
@@ -305,6 +308,8 @@ public class Caps {
         r.cubeArrays = memGetInt(p) != 0;
         p += 4;
         r.mirrorClamp = memGetInt(p) != 0;
+        p += 4;
+        r.budget = memGetInt(p) != 0;
         p += 4;
         return r;
     }

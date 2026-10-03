@@ -1,7 +1,8 @@
 use crate::vk::ffi;
 use crate::vk::generated::Generated;
 use ash::ext::{
-    conditional_rendering, debug_utils, external_memory_host, host_image_copy, mesh_shader,
+    conditional_rendering, debug_utils, external_memory_host, host_image_copy, memory_budget,
+    mesh_shader,
 };
 use ash::khr::push_descriptor;
 use ash::khr::{
@@ -27,6 +28,7 @@ pub struct Extensions {
     pub push: Option<push_descriptor::Device>,
     pub copy: Option<host_image_copy::Device>,
     pub layouts: Vec<vk::ImageLayout>,
+    pub budget: bool,
 }
 
 unsafe fn chained<'a, T: vk::TaggedStructure>(
@@ -160,6 +162,11 @@ impl Extensions {
             let copy = layouts
                 .contains(&vk::ImageLayout::GENERAL)
                 .then(|| host_image_copy::Device::new(instance, raw));
+            let budget = instance
+                .enumerate_device_extension_properties(physical)
+                .unwrap_or_default()
+                .iter()
+                .any(|e| e.extension_name_as_c_str() == Ok(memory_budget::NAME));
 
             Ok(Self {
                 debug,
@@ -179,6 +186,7 @@ impl Extensions {
                 push,
                 copy,
                 layouts,
+                budget,
             })
         }
     }

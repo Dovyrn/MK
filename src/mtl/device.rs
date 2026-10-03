@@ -1,4 +1,5 @@
 mod accels;
+mod budget;
 mod buffers;
 mod cache;
 mod caps;

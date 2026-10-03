@@ -76,6 +76,11 @@ result = "u32"
 fails = true
 
 [[call]]
+name = "memory_budget"
+result = "Budget"
+fails = true
+
+[[call]]
 name = "create_pipeline"
 params = [["info", "ComputeInfo"]]
 result = "u32"

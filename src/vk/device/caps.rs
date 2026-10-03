@@ -112,6 +112,7 @@ pub(super) fn probe(
         max_queries: 65536,
         cube_arrays: features.image_cube_array != 0,
         mirror_clamp: ext.mirror,
+        budget: ext.budget,
         max_buffer: buffer.max_buffer_size,
         max_texture: limits
             .max_image_dimension1_d

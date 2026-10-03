@@ -1,3 +1,4 @@
+mod budget;
 mod copies;
 mod host;
 
@@ -157,6 +158,7 @@ impl Device {
                 max_volume: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
                 mesh: extra.mesh.is_some(),
+                budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
                 ..Default::default()
             };
             let anisotropy = if caps.anisotropy {

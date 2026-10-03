@@ -67,6 +67,7 @@ impl Device {
             max_cube: 16384,
             max_volume: 2048,
             max_layers: 2048,
+            budget: true,
         }
     }
 

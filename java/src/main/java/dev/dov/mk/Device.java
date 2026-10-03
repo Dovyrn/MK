@@ -68,6 +68,16 @@ public class Device implements AutoCloseable {
 
     private static native void nUnmap(long device, int buffer);
 
+    public synchronized Budget memoryBudget() {
+        try (var stack = MemoryStack.stackPush()) {
+            var out = stack.nmalloc(8, Budget.SIZE);
+            nMemoryBudget(handle, out);
+            return Budget.decode(out);
+        }
+    }
+
+    private static native void nMemoryBudget(long device, long out);
+
     public synchronized int createPipeline(ComputeInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = nmemAlloc(info.encodedSize());
