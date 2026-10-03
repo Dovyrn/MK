@@ -618,6 +618,7 @@ impl<'a> Recorder<'a> {
                         .objectAtIndexedSubscript(index as usize)
                 };
                 attachment.setTexture(Some(&t.raw));
+                unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
                 attachment.setLoadAction(load(l));
                 let signed = integer(t.format).filter(|_| resolve != NONE);
                 attachment.setStoreAction(match signed {
@@ -651,6 +652,7 @@ impl<'a> Recorder<'a> {
                 let t = self.res.textures.get(texture);
                 let attachment = self.pass.depthAttachment();
                 attachment.setTexture(Some(&t.raw));
+                unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
                 attachment.setLoadAction(load(l));
                 attachment.setStoreAction(store(s, false));
                 attachment.setClearDepth(depth as f64);
@@ -672,6 +674,9 @@ impl<'a> Recorder<'a> {
             } => {
                 self.pass.setRenderTargetWidth(width as usize);
                 self.pass.setRenderTargetHeight(height as usize);
+                if self.pass.defaultRasterSampleCount() == 0 {
+                    unsafe { self.pass.setDefaultRasterSampleCount(1) };
+                }
                 self.amplify = std::mem::take(&mut self.views);
                 self.pass
                     .setRenderTargetArrayLength(layers.max(self.amplify) as usize);
