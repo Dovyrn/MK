@@ -12,6 +12,7 @@ pub struct Check<'a> {
     index: Option<u64>,
     compute: bool,
     render: bool,
+    indirect: bool,
     heap: Option<u32>,
     rate: bool,
     targets: Vec<(u32, bool)>,
@@ -102,6 +103,7 @@ impl<'a> Check<'a> {
             index: None,
             compute: false,
             render: false,
+            indirect: false,
             heap: None,
             rate: false,
             targets: Vec::new(),
@@ -470,13 +472,14 @@ impl<'a> Check<'a> {
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let samples = *self.table.renders.get(pipeline);
+                let (samples, indirect) = *self.table.renders.get(pipeline);
                 assert!(
                     self.samples == 0 || samples == self.samples,
                     "render pipeline {pipeline} has {samples} samples but the pass has {}",
                     self.samples
                 );
                 self.render = true;
+                self.indirect = indirect;
             }
             Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
             Command::SetFace { face: v } => known("face", v, face::valid(v)),
@@ -583,7 +586,6 @@ impl<'a> Check<'a> {
                 }
                 self.indirect(buffer, offset, count, stride, 20);
             }
-            #[cfg(any(feature = "vk", feature = "gl"))]
             Command::DrawIndirectCount {
                 buffer,
                 offset,
@@ -603,6 +605,10 @@ impl<'a> Check<'a> {
                 let indexed = matches!(c, Command::DrawIndexedIndirectCount { .. });
                 self.need(c, caps.indirect_count, "indirect_count")?;
                 self.draw(c, indexed);
+                assert!(
+                    self.indirect,
+                    "{c} needs a render pipeline created with indirect: true"
+                );
                 if indexed && self.index != Some(0) {
                     self.need(c, caps.indirect_offset, "indirect_offset")?;
                 }

@@ -1,4 +1,5 @@
 use crate::mtl::Callback;
+use crate::mtl::count::Count;
 use crate::mtl::frame::Frame;
 use crate::mtl::recorder::{Recorder, VERTICES};
 use crate::mtl::resolve::Resolve;
@@ -74,11 +75,13 @@ impl Queue {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn submit(
         &mut self,
         device: &ProtocolObject<dyn MTLDevice>,
         res: &Resources,
         resolve: &Resolve,
+        count: &Count,
         (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
@@ -88,7 +91,7 @@ impl Queue {
         }
         let done = self.event.signaledValue();
         while let Some((mut frame, _)) = self.busy.pop_front_if(|(_, v)| *v <= done) {
-            frame.reset();
+            frame.reset(&self.residency);
             self.free.push(frame);
         }
         let mut frame = match self.free.pop() {
@@ -97,7 +100,7 @@ impl Queue {
         };
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
-        let mut recorder = Recorder::new(device, self, resolve, &mut frame, res, natives);
+        let mut recorder = Recorder::new(device, self, resolve, count, &mut frame, res, natives);
         let result = catch_unwind(AssertUnwindSafe(|| {
             recorder.run(commands)?;
             recorder.release()
@@ -110,7 +113,7 @@ impl Queue {
         }
         self.buffer.endCommandBuffer();
         if !matches!(result, Ok(Ok(()))) {
-            frame.reset();
+            frame.reset(&self.residency);
             self.free.push(frame);
             return result
                 .unwrap_or_else(|p| resume_unwind(p))

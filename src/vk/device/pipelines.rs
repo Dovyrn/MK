@@ -19,6 +19,7 @@ impl Device {
         coverage: bool,
         views: u32,
         clamp: bool,
+        indirect: bool,
     ) -> Result<u32, String> {
         if clamp && self.ext.features.depth_clamp == 0 {
             return Err("depth clamp is not supported".into());
@@ -179,7 +180,7 @@ impl Device {
             vk::PrimitiveTopology::from_raw(v.topology as i32)
         });
         let id = self.res.renders.insert((pipeline, topology));
-        self.res.table.renders.set(id, samples);
+        self.res.table.renders.set(id, (samples, indirect));
         Ok(id)
     }
 
@@ -207,6 +208,7 @@ impl Device {
             info.coverage,
             info.views,
             info.clamp,
+            info.indirect,
         )
     }
 
@@ -237,6 +239,7 @@ impl Device {
             info.coverage,
             info.views,
             info.clamp,
+            info.indirect,
         )
     }
 

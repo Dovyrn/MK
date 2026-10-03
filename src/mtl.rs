@@ -1,4 +1,5 @@
 mod accel;
+mod count;
 mod device;
 mod frame;
 mod native;

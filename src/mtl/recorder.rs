@@ -1,4 +1,6 @@
 use crate::command;
+use crate::mtl::count::Count;
+use crate::mtl::device::id;
 use crate::mtl::frame::Frame;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
@@ -17,11 +19,12 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4MachineLearningCommandEncoder, MTL4RenderCommandEncoder,
     MTL4RenderPassDescriptor, MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption,
-    MTLBuffer, MTLClearColor, MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin,
-    MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize,
-    MTLStages, MTLStoreAction, MTLTensor, MTLTexture, MTLVertexAmplificationViewMapping,
-    MTLViewport, MTLVisibilityResultMode, MTLWinding,
+    MTLBuffer, MTLClearColor, MTLCullMode, MTLDevice, MTLIndexType, MTLIndirectCommandBuffer,
+    MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLSamplerState,
+    MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTensor, MTLTexture,
+    MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
+use std::collections::VecDeque;
 use std::ptr::NonNull;
 
 pub struct Recorder<'a> {
@@ -31,6 +34,8 @@ pub struct Recorder<'a> {
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     ml: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     resolve: &'a Resolve,
+    count: &'a Count,
+    counts: VecDeque<(Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>, u64)>,
     resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
     res: &'a Resources,
@@ -186,6 +191,7 @@ impl<'a> Recorder<'a> {
         device: &'a ProtocolObject<dyn MTLDevice>,
         queue: &'a Queue,
         resolve: &'a Resolve,
+        count: &'a Count,
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
@@ -197,6 +203,8 @@ impl<'a> Recorder<'a> {
             table: &queue.table,
             ml: &queue.ml,
             resolve,
+            count,
+            counts: VecDeque::new(),
             resolves: Vec::new(),
             frame,
             res,
@@ -342,6 +350,9 @@ impl<'a> Recorder<'a> {
             let command = Command::read(&mut bytes)?;
             let kept = &at[..at.len() - bytes.len()];
             let op = u16::from_le_bytes([kept[0], kept[1]]) as u64;
+            if let Command::BeginRender { .. } = command {
+                self.scan(bytes)?;
+            }
             match command {
                 Command::BindRenderPipeline { .. }
                 | Command::SetCull { .. }
@@ -374,6 +385,134 @@ impl<'a> Recorder<'a> {
             }
             self.step(command)?;
         }
+        Ok(())
+    }
+
+    fn bound(&self, buffer: u32, offset: u64, kind: u32) -> (u64, usize, MTLIndexType, u64) {
+        let b = self.res.buffers.get(buffer);
+        let (kind, size) = match kind {
+            index::U16 => (MTLIndexType::UInt16, 2),
+            index::U32 => (MTLIndexType::UInt32, 4),
+            k => panic!("unknown index {k}"),
+        };
+        (
+            b.gpuAddress() + offset,
+            b.length().saturating_sub(offset as usize),
+            kind,
+            size,
+        )
+    }
+
+    fn scan(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+        let mut primitive = self.primitive;
+        let mut index = self.index;
+        let mut draws = Vec::new();
+        while !bytes.is_empty() {
+            let (args, count, max, stride, size) = match Command::read(&mut bytes)? {
+                Command::EndRender => break,
+                Command::BindRenderPipeline { pipeline } => {
+                    primitive = self.res.renders.get(pipeline).primitive;
+                    continue;
+                }
+                Command::SetTopology { topology } => {
+                    primitive = MTLPrimitiveType(topology as usize);
+                    continue;
+                }
+                Command::BindIndexBuffer {
+                    buffer,
+                    offset,
+                    kind,
+                } => {
+                    index = Some(self.bound(buffer, offset, kind));
+                    continue;
+                }
+                Command::DrawIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => (
+                    self.res.buffers.get(buffer).gpuAddress() + offset,
+                    self.res.buffers.get(count).gpuAddress() + count_offset,
+                    max,
+                    if stride == 0 { 16 } else { stride },
+                    0,
+                ),
+                Command::DrawIndexedIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => (
+                    self.res.buffers.get(buffer).gpuAddress() + offset,
+                    self.res.buffers.get(count).gpuAddress() + count_offset,
+                    max,
+                    if stride == 0 { 20 } else { stride },
+                    index.map_or(0, |i| i.3),
+                ),
+                _ => continue,
+            };
+            let address = if size == 0 {
+                0
+            } else {
+                index.map_or(0, |i| i.0)
+            };
+            draws.push((
+                args,
+                count,
+                address,
+                stride,
+                max,
+                primitive.0 as u32,
+                size as u32,
+            ));
+        }
+        if draws.is_empty() {
+            return Ok(());
+        }
+        let total = draws.iter().map(|d| d.4).sum();
+        let (icb, busy) = self.frame.commands(self.device, self.residency, total)?;
+        let ranges = self
+            .frame
+            .push(self.device, self.residency, &vec![0; draws.len() * 8])?;
+        let mut list = Vec::new();
+        let mut base = 0;
+        for (i, &(args, count, address, stride, max, primitive, size)) in draws.iter().enumerate() {
+            let range = ranges + i as u64 * 8;
+            for v in [args, count, range, address] {
+                list.extend(v.to_le_bytes());
+            }
+            for v in [stride, max, base, primitive, size, 0] {
+                list.extend(v.to_le_bytes());
+            }
+            self.counts.push_back((icb.clone(), range));
+            base += max;
+        }
+        let list = self.frame.push(self.device, self.residency, &list)?;
+        let mut head = id(icb.gpuResourceID()).to_le_bytes().to_vec();
+        head.extend((draws.len() as u32).to_le_bytes());
+        let head = self.frame.push(self.device, self.residency, &head)?;
+        if total == 0 {
+            return Ok(());
+        }
+        let encoder = self
+            .buffer
+            .computeCommandEncoder()
+            .ok_or("compute encoder allocation failed")?;
+        order(ProtocolObject::from_ref(&*encoder), COMPUTE, self.pending);
+        if busy {
+            encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(
+                RENDER,
+                MTLStages::Dispatch,
+                MTL4VisibilityOptions::None,
+            );
+        }
+        self.count.encode(&encoder, head, list, total, RENDER);
+        encoder.endEncoding();
         Ok(())
     }
 
@@ -825,20 +964,7 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
                 kind,
-            } => {
-                let b = self.res.buffers.get(buffer);
-                let (kind, size) = match kind {
-                    index::U16 => (MTLIndexType::UInt16, 2),
-                    index::U32 => (MTLIndexType::UInt32, 4),
-                    k => panic!("unknown index {k}"),
-                };
-                self.index = Some((
-                    b.gpuAddress() + offset,
-                    b.length().saturating_sub(offset as usize),
-                    kind,
-                    size,
-                ));
-            }
+            } => self.index = Some(self.bound(buffer, offset, kind)),
             Command::Draw {
                 vertices,
                 instances,
@@ -931,6 +1057,14 @@ impl<'a> Recorder<'a> {
                             )
                     };
                 }
+            }
+            Command::DrawIndirectCount { .. } | Command::DrawIndexedIndirectCount { .. } => {
+                let (icb, range) = self.counts.pop_front().expect("scanned at begin_render");
+                self.prepare()?;
+                unsafe {
+                    self.render()
+                        .executeCommandsInBuffer_indirectBuffer(&icb, range)
+                };
             }
             Command::DrawMesh { x, y, z } => {
                 let Some(p) = self.render_pipeline else {

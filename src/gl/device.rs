@@ -376,6 +376,7 @@ impl Device {
             coverage: info.coverage,
             views: info.views,
             clamp: info.clamp,
+            indirect: info.indirect,
             ..Default::default()
         };
         self.render(&render, &stages)
@@ -387,7 +388,10 @@ impl Device {
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
-        self.res.table.renders.set(id, info.samples);
+        self.res
+            .table
+            .renders
+            .set(id, (info.samples, info.indirect));
         Ok(id)
     }
 

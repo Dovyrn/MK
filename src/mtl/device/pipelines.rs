@@ -257,7 +257,10 @@ impl Device {
                 task: size([1, 1, 1]),
                 mesh: size([1, 1, 1]),
             });
-            self.res.table.renders.set(id, info.samples);
+            self.res
+                .table
+                .renders
+                .set(id, (info.samples, info.indirect));
             Ok(id)
         })
     }
@@ -301,7 +304,10 @@ impl Device {
                 task: size(info.task_group),
                 mesh: size(info.mesh_group),
             });
-            self.res.table.renders.set(id, info.samples);
+            self.res
+                .table
+                .renders
+                .set(id, (info.samples, info.indirect));
             Ok(id)
         })
     }
@@ -332,7 +338,7 @@ impl Device {
                 task: size([1, 1, 1]),
                 mesh: size([1, 1, 1]),
             });
-            self.res.table.renders.set(id, samples);
+            self.res.table.renders.set(id, (samples, false));
             Ok(id)
         })
     }

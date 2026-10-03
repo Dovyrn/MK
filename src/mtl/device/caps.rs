@@ -73,7 +73,7 @@ impl Device {
             bias_clamp: true,
             blends: true,
             indirect: true,
-            indirect_count: false,
+            indirect_count: true,
             indirect_ids: true,
             indirect_offset: true,
             wide_lines: false,

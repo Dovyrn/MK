@@ -9,26 +9,6 @@ public class VkCommands extends Commands {
         memPutFloat(p, width);
     }
 
-    public void drawIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
-        var p = head(42, 32);
-        memPutInt(p, buffer);
-        memPutLong(p + 4, offset);
-        memPutInt(p + 12, count);
-        memPutLong(p + 16, countOffset);
-        memPutInt(p + 24, max);
-        memPutInt(p + 28, stride);
-    }
-
-    public void drawIndexedIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
-        var p = head(43, 32);
-        memPutInt(p, buffer);
-        memPutLong(p + 4, offset);
-        memPutInt(p + 12, count);
-        memPutLong(p + 16, countOffset);
-        memPutInt(p + 24, max);
-        memPutInt(p + 28, stride);
-    }
-
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
         var p = head(52, 20);
         memPutInt(p, accel);

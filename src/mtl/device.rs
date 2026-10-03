@@ -20,6 +20,7 @@ mod textures;
 
 use crate::check::Check;
 use crate::mtl::Callback;
+use crate::mtl::count::Count;
 use crate::mtl::queue::Queue;
 use crate::mtl::recorder::integer;
 use crate::mtl::residency::Residency;
@@ -196,7 +197,7 @@ fn kind(dimension: u32, samples: u32) -> MTLTextureType {
     }
 }
 
-fn id(id: MTLResourceID) -> u64 {
+pub fn id(id: MTLResourceID) -> u64 {
     unsafe { std::mem::transmute(id) }
 }
 
@@ -216,6 +217,7 @@ pub struct Device {
     garbage: VecDeque<(Vec<u64>, Free)>,
     caps: Caps,
     resolve: Resolve,
+    count: Count,
 }
 
 impl Drop for Device {
@@ -256,6 +258,7 @@ impl Device {
                 .collect::<Result<Vec<_>, _>>()?;
             let caps = Self::detect(&raw, queues.len());
             let resolve = Resolve::new(&raw)?;
+            let count = Count::new(&raw)?;
             Ok(Self {
                 raw,
                 compiler,
@@ -270,6 +273,7 @@ impl Device {
                 garbage: VecDeque::new(),
                 caps,
                 resolve,
+                count,
             })
         })
     }
@@ -342,6 +346,7 @@ impl Device {
                 &self.raw,
                 &self.res,
                 &self.resolve,
+                &self.count,
                 (commands, natives),
                 waits,
                 signals,

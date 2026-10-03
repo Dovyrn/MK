@@ -1,4 +1,3 @@
-#[cfg(not(feature = "mtl"))]
 use mk::{
     ColorAttachment, ColorTarget, Commands, RenderInfo, TextureBarrier, TextureCopy, TextureInfo,
     VertexAttribute, VertexBuffer, access, format, index, layout, memory, stage, usage,
@@ -7,12 +6,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "mtl")]
-fn main() {
-    println!("draw counts are Vulkan and GL only");
-}
-
-#[cfg(not(feature = "mtl"))]
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
@@ -101,6 +94,7 @@ fn main() {
                     offset: 8,
                 },
             ],
+            indirect: true,
             ..Default::default()
         })
         .unwrap();
