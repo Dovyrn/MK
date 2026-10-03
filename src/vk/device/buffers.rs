@@ -114,7 +114,7 @@ impl Device {
         Ok(buffer)
     }
 
-    pub fn import_buffer(&mut self, raw: vk::Buffer) -> u32 {
+    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64) -> u32 {
         let id = self.res.buffers.insert(Buffer {
             raw,
             memory: vk::DeviceMemory::null(),
@@ -123,7 +123,7 @@ impl Device {
             own: false,
             device: false,
         });
-        self.res.table.buffers.set(id, u64::MAX);
+        self.res.table.buffers.set(id, size);
         id
     }
 
@@ -141,6 +141,7 @@ impl Device {
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
         let b = self.res.buffers.get(buffer);
+        assert!(b.own, "map of an imported buffer");
         assert!(!b.device, "map of a device buffer");
         b.data
     }
@@ -160,13 +161,16 @@ impl Device {
     }
 
     pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
-        if buffer >= self.bindless.buffers || !self.res.buffers.get(buffer).own {
+        self.address(buffer);
+        if buffer >= self.bindless.buffers {
             return Err("the bindless heap has no slot for this buffer".into());
         }
         Ok(self.bindless.buffer(buffer) as u64)
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
-        self.res.buffers.get(buffer).address
+        let b = self.res.buffers.get(buffer);
+        assert!(b.own, "imported buffers have no address on Vulkan");
+        b.address
     }
 }

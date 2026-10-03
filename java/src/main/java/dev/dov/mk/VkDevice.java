@@ -144,11 +144,11 @@ public class VkDevice extends Device {
 
     private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
-    public synchronized int importBuffer(long raw) {
-        return nImportBuffer(handle, raw);
+    public synchronized int importBuffer(long raw, long size) {
+        return nImportBuffer(handle, raw, size);
     }
 
-    private static native int nImportBuffer(long device, long raw);
+    private static native int nImportBuffer(long device, long raw, long size);
 
     public synchronized int importTexture(long image, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {

@@ -255,7 +255,7 @@ fails = true
 [[call]]
 name = "import_buffer"
 backend = "vk"
-params = [["raw", "handle"]]
+params = [["raw", "handle"], ["size", "u64"]]
 result = "u32"
 
 [[call]]
