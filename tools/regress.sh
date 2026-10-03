@@ -47,7 +47,9 @@ jar() {
 }
 CP=$(jar org.lwjgl lwjgl):$(jar org.lwjgl lwjgl -natives-macos-arm64):$(jar org.lwjgl lwjgl-vulkan):$(jar org.lwjgl lwjgl-glfw):$(jar org.lwjgl lwjgl-glfw -natives-macos-arm64)
 J=$(/usr/libexec/java_home -v 25)/bin
-cargo build -q -p mk-mtl && cargo build -q -p mk-vk && cargo build -q -p mk-gl
+for l in mtl vk gl; do
+    cargo build -q --manifest-path libs/$l/Cargo.toml --target-dir target
+done
 rm -rf target/mkjava && mkdir target/mkjava
 $J/javac -proc:full -cp $CP:$(ls $G/org.projectlombok/lombok/1.18.42/*/lombok-1.18.42.jar) -d target/mkjava java/src/main/java/dev/dov/mk/*.java java/src/test/java/dev/dov/mk/*.java 2>&1 | grep -v WARNING
 run() {
