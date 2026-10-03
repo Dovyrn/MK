@@ -176,6 +176,7 @@ fields = [
     ["queues", "u32", "0"],
     ["samplers", "u32", "0"],
     ["textures", "u32", "0"],
+    ["images", "u32", "0"],
     ["tick", "f32", "0.0"],
     ["timestamps", "bool", "false"],
     ["precise", "bool", "false"],

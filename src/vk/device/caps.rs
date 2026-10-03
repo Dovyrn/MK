@@ -43,6 +43,7 @@ pub(super) fn probe(
         queues: queues.len() as u32,
         samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
         textures: bindless.textures().min(limits.max_memory_allocation_count),
+        images: bindless.textures().min(limits.max_memory_allocation_count),
         tick: limits.timestamp_period,
         timestamps: queues
             .iter()

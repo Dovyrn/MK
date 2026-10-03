@@ -23,6 +23,7 @@ pub fn glsl(out: &Path, name: &str) {
     let meshy = entries
         .iter()
         .any(|e| e["mode"] == "task" || e["mode"] == "mesh");
+    let heaps = reflection.to_string().contains("_slang_resource_heap");
     for e in entries {
         let entry = e["name"].as_str().unwrap();
         let stage = e["mode"].as_str().unwrap();
@@ -41,7 +42,7 @@ pub fn glsl(out: &Path, name: &str) {
             }
         }
         let mut source = None;
-        if meshy {
+        if meshy || heaps {
             let output = Command::new("spirv-cross")
                 .arg(&spv)
                 .args([
@@ -60,6 +61,9 @@ pub fn glsl(out: &Path, name: &str) {
             }
             let vulkan = String::from_utf8(output.stdout).unwrap();
             let fixed = unset(&vulkan.replace("layout(push_constant, ", "layout("));
+            let Some(fixed) = bindless(&fixed) else {
+                return;
+            };
             source = Some((fixed.clone(), fixed, vulkan));
         }
         for version in ["330", "430", "450"] {
@@ -197,6 +201,59 @@ fn strip(spv: &[u8]) -> (bool, Vec<u8>) {
     }
     let bytes = kept.iter().flat_map(|w| w.to_le_bytes()).collect();
     (kept.len() < words.len(), bytes)
+}
+
+fn bindless(text: &str) -> Option<String> {
+    let mut heaps = Vec::new();
+    let mut kept = String::new();
+    for line in text.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let image = words.iter().position(|w| w.contains("image"));
+        let declared = words.last().and_then(|w| w.strip_suffix("[];"));
+        match (image, declared) {
+            (Some(i), Some(name)) if name.contains("_slang_resource_heap") => {
+                heaps.push((format!("{name}["), words[i]));
+            }
+            _ => {
+                kept += line;
+                kept += "\n";
+            }
+        }
+    }
+    if heaps.is_empty() {
+        return Some(text.to_string());
+    }
+    for (open, kind) in heaps {
+        while let Some(start) = kept.find(&open) {
+            let inner = start + open.len();
+            let mut depth = 1;
+            let close = kept[inner..].find(|c| {
+                depth += match c {
+                    '[' => 1,
+                    ']' => -1,
+                    _ => 0,
+                };
+                depth == 0
+            })? + inner;
+            let index = &kept[inner..close];
+            let index = index
+                .strip_prefix("nonuniformEXT(")
+                .and_then(|i| i.strip_suffix(')'))
+                .unwrap_or(index);
+            let handle = index.strip_suffix(".x")?;
+            kept = format!("{}{kind}({handle}){}", &kept[..start], &kept[close + 1..]);
+        }
+    }
+    if kept.contains("_slang_resource_heap") {
+        return None;
+    }
+    let kept = kept.replace("#extension GL_EXT_nonuniform_qualifier : require\n", "");
+    let line = kept.find('\n')? + 1;
+    Some(format!(
+        "{}#extension GL_ARB_bindless_texture : require\n{}",
+        &kept[..line],
+        &kept[line..]
+    ))
 }
 
 fn unset(text: &str) -> String {

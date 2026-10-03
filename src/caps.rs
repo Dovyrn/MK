@@ -152,6 +152,14 @@ impl Caps {
         Ok(())
     }
 
+    pub(crate) fn image(&self, texture: u32) {
+        assert!(
+            texture < self.images,
+            "image_handle of texture {texture} is outside caps.images {}",
+            self.images
+        );
+    }
+
     pub(crate) fn host(&self, pointer: *mut u8, size: u64) {
         let a = self.host_alignment.max(1) as u64;
         assert!(

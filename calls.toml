@@ -163,7 +163,6 @@ result = "u64"
 
 [[call]]
 name = "image_handle"
-backend = "vk mtl"
 params = [["texture", "u32"]]
 result = "u64"
 

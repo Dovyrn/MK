@@ -64,12 +64,6 @@ public class VkDevice extends Device {
 
     private static native long nTextureHandle(long device, int texture);
 
-    public synchronized long imageHandle(int texture) {
-        return nImageHandle(handle, texture);
-    }
-
-    private static native long nImageHandle(long device, int texture);
-
     public synchronized long samplerHandle(int sampler) {
         return nSamplerHandle(handle, sampler);
     }

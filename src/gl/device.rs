@@ -20,8 +20,8 @@ use crate::gl::sampler;
 use crate::gl::state::{self, State, buffer};
 use crate::gl::texture::{Texture, target};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo, format,
-    memory, query, topology, usage,
+    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo,
+    dimension, format, memory, query, topology, usage,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -183,6 +183,11 @@ impl Device {
                     4096
                 },
                 shared_memory: extra.memory.is_some(),
+                images: if extra.bindless.is_some() {
+                    u32::MAX
+                } else {
+                    0
+                },
                 views: if extra.multiview.is_some() {
                     int(MAX_VIEWS) as u32
                 } else {
@@ -483,6 +488,7 @@ impl Device {
             target: target(info.dimension, info.samples),
             format: info.format,
             own: false,
+            image: Cell::new(0),
         });
         self.res.table.textures.set(id, *info);
         Ok(id)
@@ -492,6 +498,25 @@ impl Device {
         self.thread();
         self.res.table.textures.get(texture);
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
+    }
+
+    pub fn image_handle(&self, texture: u32) -> u64 {
+        self.thread();
+        let info = self.res.table.textures.get(texture);
+        self.caps.image(texture);
+        let t = self.res.textures.get(texture);
+        if t.image.get() == 0 {
+            let b = self.extra.bindless.as_ref().unwrap();
+            let raw = t.raw.map_or(0, |r| r.0.get());
+            let layered = info.layers > 1 || info.dimension == dimension::D3;
+            let internal = format::gl(t.format)[0];
+            unsafe {
+                let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
+                (b.resident)(handle, glow::READ_WRITE);
+                t.image.set(handle);
+            }
+        }
+        t.image.get()
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {

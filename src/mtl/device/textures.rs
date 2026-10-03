@@ -151,6 +151,7 @@ impl Device {
     }
 
     pub fn image_handle(&self, texture: u32) -> u64 {
+        self.caps.image(texture);
         self.texture_handle(texture)
     }
 }

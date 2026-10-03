@@ -170,6 +170,7 @@ impl Device {
 
     pub fn image_handle(&self, texture: u32) -> u64 {
         self.res.table.textures.get(texture);
+        self.caps.image(texture);
         Bindless::image(texture) as u64
     }
 }

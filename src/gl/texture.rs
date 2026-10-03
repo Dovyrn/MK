@@ -4,12 +4,14 @@ use crate::gl::state::binding;
 use crate::gl::state::buffer;
 use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
 use glow::HasContext;
+use std::cell::Cell;
 
 pub struct Texture {
     pub raw: Option<glow::Texture>,
     pub target: u32,
     pub format: u32,
     pub own: bool,
+    pub image: Cell<u64>,
 }
 
 pub fn target(dimension: u32, samples: u32) -> u32 {
@@ -184,6 +186,7 @@ impl Texture {
                 target: kind,
                 format: info.format,
                 own: true,
+                image: Cell::new(0),
             })
         }
     }
@@ -227,6 +230,7 @@ impl Texture {
                 target: kind,
                 format: info.format,
                 own: true,
+                image: Cell::new(0),
             })
         }
     }

@@ -252,6 +252,12 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTexture(long device, int texture);
 
+    public synchronized long imageHandle(int texture) {
+        return nImageHandle(handle, texture);
+    }
+
+    private static native long nImageHandle(long device, int texture);
+
     public synchronized int createSampler(SamplerInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = nmemAlloc(info.encodedSize());

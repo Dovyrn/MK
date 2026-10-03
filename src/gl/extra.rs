@@ -1,3 +1,4 @@
+use crate::gl::bindless::Bindless;
 use crate::gl::memory::Memory;
 use std::ffi::c_void;
 
@@ -122,6 +123,7 @@ pub struct Extra {
     pub multiview: Option<Multiview>,
     pub parameters: bool,
     pub memory: Option<Memory>,
+    pub bindless: Option<Bindless>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -239,6 +241,7 @@ impl Extra {
                     .map(|p| cast(p)),
                 parameters: has(46, "GL_ARB_shader_draw_parameters"),
                 memory: Memory::load(&|name| get(name, 99, "GL_EXT_memory_object_fd")),
+                bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
             })
         }
     }

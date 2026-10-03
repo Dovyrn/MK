@@ -30,6 +30,7 @@ impl Device {
             queues: queues as u32,
             samplers: 2048,
             textures: 500_000,
+            images: 500_000,
             tick: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,
