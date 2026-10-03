@@ -228,18 +228,6 @@ fields = [
 ]
 
 [[info]]
-name = "IndirectInfo"
-fields = [
-    ["kinds", "u32", "indirect::DRAW"],
-    ["count", "u32", "1"],
-    ["inherit_pipeline", "bool", "true"],
-    ["inherit_buffers", "bool", "true"],
-    ["vertex_buffers", "u32", "0"],
-    ["fragment_buffers", "u32", "0"],
-    ["kernel_buffers", "u32", "0"],
-]
-
-[[info]]
 name = "SparseRange"
 fields = [
     ["page", "u32", "0"],

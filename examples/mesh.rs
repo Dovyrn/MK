@@ -33,6 +33,7 @@ fn main() {
         colors: &colors,
         task_group: [1, 1, 1],
         mesh_group: [3, 1, 1],
+        indirect: true,
         ..Default::default()
     }) {
         Ok(p) => p,
@@ -41,6 +42,11 @@ fn main() {
             return;
         }
     };
+    let counted = cfg!(not(feature = "mtl")) && device.caps().indirect_count;
+    let words: [u32; 7] = [1, 1, 1, 0, 0, 0, 1];
+    let args = device.create_buffer(28, memory::UPLOAD).unwrap();
+    unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), device.map(args).cast(), 7) };
+    device.unmap(args);
     let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
@@ -59,7 +65,12 @@ fn main() {
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(pipeline);
     c.push_constants(0, &0.5f32.to_le_bytes());
-    c.draw_mesh(1, 1, 1);
+    if counted {
+        #[cfg(not(feature = "mtl"))]
+        c.draw_mesh_indirect_count(args, 0, args, 24, 2, 0);
+    } else {
+        c.draw_mesh(1, 1, 1);
+    }
     c.end_render();
     c.texture_barrier(&TextureBarrier {
         texture: color,
@@ -99,5 +110,5 @@ fn main() {
         [0, 0, 255, 255],
         "upper left, outside the triangle"
     );
-    println!("task and mesh shader triangle drawn");
+    println!("task and mesh shader triangle drawn, count read from the GPU: {counted}");
 }

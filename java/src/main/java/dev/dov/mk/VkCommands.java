@@ -4,8 +4,38 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 public class VkCommands extends Commands {
 
+    public void drawIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
+        var p = head(45, 32);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutLong(p + 16, countOffset);
+        memPutInt(p + 24, max);
+        memPutInt(p + 28, stride);
+    }
+
+    public void drawIndexedIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
+        var p = head(46, 32);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutLong(p + 16, countOffset);
+        memPutInt(p + 24, max);
+        memPutInt(p + 28, stride);
+    }
+
+    public void drawMeshIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
+        var p = head(49, 32);
+        memPutInt(p, buffer);
+        memPutLong(p + 4, offset);
+        memPutInt(p + 12, count);
+        memPutLong(p + 16, countOffset);
+        memPutInt(p + 24, max);
+        memPutInt(p + 28, stride);
+    }
+
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
-        var p = head(55, 20);
+        var p = head(58, 20);
         memPutInt(p, accel);
         memPutInt(p + 4, scratch);
         memPutLong(p + 8, scratchOffset);

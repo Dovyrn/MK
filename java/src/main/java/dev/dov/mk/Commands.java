@@ -426,26 +426,6 @@ public class Commands implements AutoCloseable {
         memPutInt(p + 16, stride);
     }
 
-    public void drawIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
-        var p = head(45, 32);
-        memPutInt(p, buffer);
-        memPutLong(p + 4, offset);
-        memPutInt(p + 12, count);
-        memPutLong(p + 16, countOffset);
-        memPutInt(p + 24, max);
-        memPutInt(p + 28, stride);
-    }
-
-    public void drawIndexedIndirectCount(int buffer, long offset, int count, long countOffset, int max, int stride) {
-        var p = head(46, 32);
-        memPutInt(p, buffer);
-        memPutLong(p + 4, offset);
-        memPutInt(p + 12, count);
-        memPutLong(p + 16, countOffset);
-        memPutInt(p + 24, max);
-        memPutInt(p + 28, stride);
-    }
-
     public void drawMesh(int x, int y, int z) {
         var p = head(47, 12);
         memPutInt(p, x);
@@ -461,39 +441,53 @@ public class Commands implements AutoCloseable {
         memPutInt(p + 16, stride);
     }
 
+    public void executeIndirect(int indirect, int first, int count) {
+        var p = head(50, 12);
+        memPutInt(p, indirect);
+        memPutInt(p + 4, first);
+        memPutInt(p + 8, count);
+    }
+
+    public void executeIndirectCount(int indirect, int buffer, long offset) {
+        var p = head(51, 16);
+        memPutInt(p, indirect);
+        memPutInt(p + 4, buffer);
+        memPutLong(p + 8, offset);
+    }
+
     public void occlusionHeap(int heap) {
-        var p = head(49, 4);
+        var p = head(52, 4);
         memPutInt(p, heap);
     }
 
     public void resetQueries(int heap, int first, int count) {
-        var p = head(50, 12);
+        var p = head(53, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
     }
 
     public void writeTimestamp(int heap, int index, int stage) {
-        var p = head(51, 12);
+        var p = head(54, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
         memPutInt(p + 8, stage);
     }
 
     public void beginQuery(int heap, int index) {
-        var p = head(52, 8);
+        var p = head(55, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void endQuery(int heap, int index) {
-        var p = head(53, 8);
+        var p = head(56, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void resolveQueries(int heap, int first, int count, int buffer, long offset) {
-        var p = head(54, 24);
+        var p = head(57, 24);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);

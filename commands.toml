@@ -205,11 +205,13 @@ fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u3
 
 [[command]]
 name = "draw_indirect_count"
+backend = "vk gl"
 scope = "render"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["count_offset", "u64"], ["max", "u32"], ["stride", "u32"]]
 
 [[command]]
 name = "draw_indexed_indirect_count"
+backend = "vk gl"
 scope = "render"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["count_offset", "u64"], ["max", "u32"], ["stride", "u32"]]
 
@@ -223,6 +225,22 @@ name = "draw_mesh_indirect"
 scope = "render"
 fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
+
+[[command]]
+name = "draw_mesh_indirect_count"
+backend = "vk gl"
+scope = "render"
+fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["count_offset", "u64"], ["max", "u32"], ["stride", "u32"]]
+
+[[command]]
+name = "execute_indirect"
+scope = "render"
+fields = [["indirect", "u32"], ["first", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "execute_indirect_count"
+scope = "render"
+fields = [["indirect", "u32"], ["buffer", "u32"], ["offset", "u64"]]
 [[command]]
 name = "occlusion_heap"
 fields = [["heap", "u32"]]
@@ -261,23 +279,6 @@ fields = [["accel", "u32"], ["scratch", "u32"], ["scratch_offset", "u64"], ["upd
 name = "callback"
 backend = "rust"
 fields = [["index", "u32"]]
-
-[[command]]
-name = "execute_indirect"
-backend = "mtl"
-fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
-
-[[command]]
-name = "reset_indirect"
-scope = "compute"
-backend = "mtl"
-fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
-
-[[command]]
-name = "optimize_indirect"
-scope = "compute"
-backend = "mtl"
-fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
 
 [[command]]
 name = "set_shading_rate"

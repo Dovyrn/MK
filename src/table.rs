@@ -6,7 +6,7 @@ pub struct Table {
     pub textures: Entries<TextureInfo>,
     pub samplers: Entries<()>,
     pub pipelines: Entries<()>,
-    pub renders: Entries<(u32, bool)>,
+    pub renders: Entries<(u32, bool, u32)>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,
@@ -14,8 +14,7 @@ pub struct Table {
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub accels: Entries<(u64, u64)>,
-    #[cfg(feature = "mtl")]
-    pub indirects: Entries<()>,
+    pub indirects: Entries<(u32, u32)>,
 }
 
 impl Default for Table {
@@ -33,8 +32,7 @@ impl Default for Table {
             heaps: Entries::new("heap"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
             accels: Entries::new("acceleration structure"),
-            #[cfg(feature = "mtl")]
-            indirects: Entries::new("indirect command buffer"),
+            indirects: Entries::new("indirect buffer"),
         }
     }
 }
@@ -54,6 +52,16 @@ fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
 }
 
 impl Table {
+    pub fn indirect(&self, size: u32, pipeline: u32) -> (u32, u32) {
+        assert!(size > 0, "indirect buffer size is 0");
+        let (_, indirect, topology) = *self.renders.get(pipeline);
+        assert!(
+            indirect,
+            "an indirect buffer needs render pipeline {pipeline} created with indirect: true"
+        );
+        (size, topology)
+    }
+
     pub fn resolve(&self, texture: u32, info: &ViewInfo) -> ViewInfo {
         let t = self.textures.get(texture);
         assert!(

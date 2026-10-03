@@ -65,6 +65,26 @@ impl Device {
         id
     }
 
+    pub fn create_indirect_buffer(&mut self, size: u32, pipeline: u32) -> Result<u32, String> {
+        let entry = self.res.table.indirect(size, pipeline);
+        let buffer = self.create_buffer(16 * size as u64, memory::DEVICE)?;
+        let id = self.res.indirects.insert(buffer);
+        self.res.table.indirects.set(id, entry);
+        Ok(id)
+    }
+
+    pub fn destroy_indirect_buffer(&mut self, indirect: u32) {
+        self.res.table.indirects.clear(indirect);
+        let buffer = self.res.indirects.remove(indirect);
+        self.destroy_buffer(buffer);
+    }
+
+    pub fn indirect_handle(&self, indirect: u32) -> Result<(u64, u64), String> {
+        let (_, topology) = *self.res.table.indirects.get(indirect);
+        let handle = self.buffer_handle(*self.res.indirects.get(indirect))?;
+        Ok((handle, topology as u64))
+    }
+
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.res.table.buffers.clear(buffer);
         self.defer(move |d| {

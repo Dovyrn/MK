@@ -14,6 +14,7 @@ pub struct Check<'a> {
     compute: bool,
     render: bool,
     indirect: bool,
+    topology: u32,
     heap: Option<u32>,
     targets: Vec<(u32, bool)>,
     samples: u32,
@@ -112,6 +113,7 @@ impl<'a> Check<'a> {
             compute: false,
             render: false,
             indirect: false,
+            topology: topology::TRIANGLE,
             heap: None,
             targets: Vec::new(),
             samples: 0,
@@ -210,6 +212,20 @@ impl<'a> Check<'a> {
             let last = first.saturating_add(count - 1);
             assert!(last < total, "query {last} is outside 0..{total}");
         }
+    }
+
+    fn list(&self, c: &Command, indirect: u32) {
+        self.draw(c, false);
+        let (_, topology) = *self.table.indirects.get(indirect);
+        assert!(
+            self.indirect,
+            "{c} needs a render pipeline created with indirect: true"
+        );
+        assert_eq!(
+            self.topology, topology,
+            "{c} draws with topology {} but indirect buffer {indirect} holds topology {topology}",
+            self.topology
+        );
     }
 
     fn draw(&self, c: &Command, indexed: bool) {
@@ -667,7 +683,7 @@ impl<'a> Check<'a> {
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let (samples, indirect) = *self.table.renders.get(pipeline);
+                let (samples, indirect, shape) = *self.table.renders.get(pipeline);
                 assert!(
                     self.samples == 0 || samples == self.samples,
                     "render pipeline {pipeline} has {samples} samples but the pass has {}",
@@ -675,10 +691,14 @@ impl<'a> Check<'a> {
                 );
                 self.render = true;
                 self.indirect = indirect;
+                self.topology = shape;
             }
             Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
             Command::SetFace { face: v } => known("face", v, face::valid(v)),
-            Command::SetTopology { topology: v } => known("topology", v, topology::valid(v)),
+            Command::SetTopology { topology: v } => {
+                known("topology", v, topology::valid(v));
+                self.topology = v;
+            }
             Command::SetScissor {
                 x,
                 y,
@@ -781,6 +801,7 @@ impl<'a> Check<'a> {
                 }
                 self.indirect(buffer, offset, count, stride, 20);
             }
+            #[cfg(any(feature = "vk", feature = "gl"))]
             Command::DrawIndirectCount {
                 buffer,
                 offset,
@@ -832,6 +853,33 @@ impl<'a> Check<'a> {
                 self.need(c, caps.mesh, "mesh")?;
                 self.draw(c, false);
                 self.indirect(buffer, offset, count, stride, 12);
+            }
+            #[cfg(any(feature = "vk", feature = "gl"))]
+            Command::DrawMeshIndirectCount {
+                buffer,
+                offset,
+                count,
+                count_offset,
+                max,
+                stride,
+            } => {
+                self.need(c, caps.mesh, "mesh")?;
+                self.need(c, caps.indirect_count, "indirect_count")?;
+                self.draw(c, false);
+                assert!(
+                    self.indirect,
+                    "{c} needs a mesh pipeline created with indirect: true"
+                );
+                assert!(
+                    offset.is_multiple_of(4) && count_offset.is_multiple_of(4),
+                    "{c} offsets {offset} and {count_offset} must be multiples of 4"
+                );
+                assert!(
+                    stride == 0 || (stride.is_multiple_of(4) && stride >= 12),
+                    "{c} stride {stride} must be 0 or a multiple of 4 of at least 12"
+                );
+                self.indirect(buffer, offset, max, stride, 12);
+                self.range(count, count_offset, 4);
             }
             Command::OcclusionHeap { heap } => {
                 self.queries(heap, &[query::OCCLUSION, query::PRECISE], 0, 0);
@@ -911,6 +959,35 @@ impl<'a> Check<'a> {
                     (index as usize) < self.natives,
                     "callback {index} was recorded without its closure"
                 );
+            }
+            Command::ExecuteIndirect {
+                indirect,
+                first,
+                count,
+            } => {
+                self.list(c, indirect);
+                let (size, _) = *self.table.indirects.get(indirect);
+                assert!(
+                    first as u64 + count as u64 <= size as u64,
+                    "{c} draws {first}..{} past indirect buffer {indirect} of {size}",
+                    first as u64 + count as u64
+                );
+                if count > 1 {
+                    self.need(c, caps.multi_draw, "multi_draw")?;
+                }
+            }
+            Command::ExecuteIndirectCount {
+                indirect,
+                buffer,
+                offset,
+            } => {
+                self.list(c, indirect);
+                assert!(
+                    offset.is_multiple_of(4),
+                    "{c} range offset {offset} is not a multiple of 4"
+                );
+                self.range(buffer, offset, 8);
+                self.need(c, caps.indirect_count, "indirect_count")?;
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::BuildAccel {

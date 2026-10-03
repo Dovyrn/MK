@@ -175,7 +175,8 @@ impl Device {
             vk::PrimitiveTopology::from_raw(v.topology as i32)
         });
         let id = self.res.renders.insert((pipeline, topology));
-        self.res.table.renders.set(id, (samples, indirect));
+        let shape = vertex.map_or(topology::TRIANGLE, |v| v.topology);
+        self.res.table.renders.set(id, (samples, indirect, shape));
         Ok(id)
     }
 

@@ -61,6 +61,6 @@ pub fn slang(table: &toml::Table) -> String {
         }
         s += "\n";
     }
-    s.truncate(s.len() - 1);
+    s += "#include \"indirect.slangh\"\n";
     s
 }

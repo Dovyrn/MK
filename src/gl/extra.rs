@@ -13,6 +13,7 @@ type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const 
 type Mesh = unsafe extern "system" fn(u32, u32, u32);
 type MeshIndirect = unsafe extern "system" fn(isize);
 type MeshMulti = unsafe extern "system" fn(isize, i32, i32);
+type MeshCount = unsafe extern "system" fn(isize, isize, i32, i32);
 type Data = unsafe extern "system" fn(u32, isize, *const c_void, u32);
 type Sub = unsafe extern "system" fn(u32, isize, isize, *const c_void);
 type Map = unsafe extern "system" fn(u32, isize, isize, u32) -> *mut c_void;
@@ -80,6 +81,7 @@ pub struct Extra {
     pub mesh: Option<Mesh>,
     pub mesh_indirect: Option<MeshIndirect>,
     pub mesh_multi: Option<MeshMulti>,
+    pub mesh_count: Option<MeshCount>,
     pub data: Data,
     pub storage: Option<Data>,
     pub map: Map,
@@ -183,6 +185,7 @@ impl Extra {
                 mesh: mesh("glDrawMeshTasksEXT").map(|p| cast(p)),
                 mesh_indirect: mesh("glDrawMeshTasksIndirectEXT").map(|p| cast(p)),
                 mesh_multi: mesh("glMultiDrawMeshTasksIndirectEXT").map(|p| cast(p)),
+                mesh_count: mesh("glMultiDrawMeshTasksIndirectCountEXT").map(|p| cast(p)),
                 data: cast(need("glBufferData")?),
                 storage: get("glBufferStorage", 44, "GL_ARB_buffer_storage").map(|p| cast(p)),
                 map: cast(need("glMapBufferRange")?),

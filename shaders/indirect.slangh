@@ -1,0 +1,18 @@
+void mk_draw(uint2 commands, uint topology, uint index, uint vertices, uint instances, uint first, uint base) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "({ uint2 mk_list = $0; metal::render_command(*(thread metal::command_buffer*)&mk_list, $2).draw_primitives(metal::primitive_type($1), $5, $3, $4, $6); })";
+    default:
+        DescriptorHandle<RWStructuredBuffer<uint4>> h = DescriptorHandle<RWStructuredBuffer<uint4>>(commands);
+        h[index] = uint4(vertices, instances, first, base);
+    }
+}
+
+struct IndirectBuffer {
+    uint2 commands;
+    uint topology;
+
+    void draw(uint index, uint vertices, uint instances, uint first, uint base) {
+        mk_draw(commands, topology, index, vertices, instances, first, base);
+    }
+};

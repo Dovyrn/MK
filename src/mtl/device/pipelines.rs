@@ -249,7 +249,7 @@ impl Device {
             self.res
                 .table
                 .renders
-                .set(id, (info.samples, info.indirect));
+                .set(id, (info.samples, info.indirect, info.topology));
             Ok(id)
         })
     }
@@ -295,7 +295,7 @@ impl Device {
             self.res
                 .table
                 .renders
-                .set(id, (info.samples, info.indirect));
+                .set(id, (info.samples, info.indirect, topology::TRIANGLE));
             Ok(id)
         })
     }

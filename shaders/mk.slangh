@@ -39,3 +39,5 @@
 #define MK_SAMPLER_5 register(s5)
 #define MK_SAMPLER_6 register(s6)
 #define MK_SAMPLER_7 register(s7)
+
+#include "indirect.slangh"

@@ -12,32 +12,11 @@ public class MtlCommands extends Commands {
     }
 
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
-        var p = head(55, 20);
+        var p = head(58, 20);
         memPutInt(p, accel);
         memPutInt(p + 4, scratch);
         memPutLong(p + 8, scratchOffset);
         memPutInt(p + 16, update);
-    }
-
-    public void executeIndirect(int indirect, int start, int count) {
-        var p = head(57, 12);
-        memPutInt(p, indirect);
-        memPutInt(p + 4, start);
-        memPutInt(p + 8, count);
-    }
-
-    public void resetIndirect(int indirect, int start, int count) {
-        var p = head(58, 12);
-        memPutInt(p, indirect);
-        memPutInt(p + 4, start);
-        memPutInt(p + 8, count);
-    }
-
-    public void optimizeIndirect(int indirect, int start, int count) {
-        var p = head(59, 12);
-        memPutInt(p, indirect);
-        memPutInt(p + 4, start);
-        memPutInt(p + 8, count);
     }
 
     public void writeCompactedSize(int accel, int heap, int index) {

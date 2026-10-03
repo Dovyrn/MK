@@ -855,12 +855,53 @@ impl Recorder<'_> {
                     max,
                     if stride == 0 { 20 } else { stride },
                 ),
+                Command::ExecuteIndirect {
+                    indirect,
+                    first,
+                    count,
+                } => {
+                    let buffer = *self.res.indirects.get(indirect);
+                    let raw = self.res.buffers.get(buffer).raw;
+                    d.cmd_draw_indirect(b, raw, first as u64 * 16, count, 16)
+                }
+                Command::ExecuteIndirectCount {
+                    indirect,
+                    buffer,
+                    offset,
+                } => {
+                    let commands = *self.res.indirects.get(indirect);
+                    let raw = self.res.buffers.get(commands).raw;
+                    let range = self.res.buffers.get(buffer).raw;
+                    let (size, _) = *self.res.table.indirects.get(indirect);
+                    d.cmd_draw_indirect_count(b, raw, 0, range, offset + 4, size, 16)
+                }
                 Command::DrawMesh { x, y, z } => self
                     .ext
                     .mesh
                     .as_ref()
                     .unwrap()
                     .cmd_draw_mesh_tasks(b, x, y, z),
+                Command::DrawMeshIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => self
+                    .ext
+                    .mesh
+                    .as_ref()
+                    .unwrap()
+                    .cmd_draw_mesh_tasks_indirect_count(
+                        b,
+                        self.res.buffers.get(buffer).raw,
+                        offset,
+                        self.res.buffers.get(count).raw,
+                        count_offset,
+                        max,
+                        if stride == 0 { 12 } else { stride },
+                    ),
                 Command::DrawMeshIndirect {
                     buffer,
                     offset,

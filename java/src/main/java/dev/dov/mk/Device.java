@@ -50,6 +50,28 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyBuffer(long device, int buffer);
 
+    public synchronized int createIndirectBuffer(int size, int pipeline) {
+        return nCreateIndirectBuffer(handle, size, pipeline);
+    }
+
+    private static native int nCreateIndirectBuffer(long device, int size, int pipeline);
+
+    public synchronized void destroyIndirectBuffer(int indirect) {
+        nDestroyIndirectBuffer(handle, indirect);
+    }
+
+    private static native void nDestroyIndirectBuffer(long device, int indirect);
+
+    public synchronized long[] indirectHandle(int indirect) {
+        try (var stack = MemoryStack.stackPush()) {
+            var out = stack.nmalloc(8, 16);
+            nIndirectHandle(handle, indirect, out);
+            return new long[] {memGetLong(out), memGetLong(out + 8)};
+        }
+    }
+
+    private static native void nIndirectHandle(long device, int indirect, long out);
+
     public synchronized long map(int buffer) {
         return nMap(handle, buffer);
     }

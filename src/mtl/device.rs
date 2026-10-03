@@ -16,7 +16,6 @@ mod textures;
 use crate::check::Check;
 use crate::mtl::Callback;
 use crate::mtl::blit::Blit;
-use crate::mtl::count::Count;
 use crate::mtl::queue::Queue;
 use crate::mtl::recorder::integer;
 use crate::mtl::residency::Residency;
@@ -212,7 +211,6 @@ pub struct Device {
     garbage: VecDeque<(Vec<u64>, Free)>,
     caps: Caps,
     resolve: Resolve,
-    count: Count,
     blit: Blit,
 }
 
@@ -254,7 +252,6 @@ impl Device {
                 .collect::<Result<Vec<_>, _>>()?;
             let caps = Self::detect(&raw, queues.len());
             let resolve = Resolve::new(&raw)?;
-            let count = Count::new(&raw)?;
             let blit = Blit::new(&raw)?;
             Ok(Self {
                 raw,
@@ -270,7 +267,6 @@ impl Device {
                 garbage: VecDeque::new(),
                 caps,
                 resolve,
-                count,
                 blit,
             })
         })
@@ -343,7 +339,7 @@ impl Device {
             self.queues[queue].submit(
                 &self.raw,
                 &self.res,
-                (&self.resolve, &self.count, &self.blit),
+                (&self.resolve, &self.blit),
                 (commands, natives),
                 waits,
                 signals,

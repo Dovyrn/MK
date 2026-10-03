@@ -16,6 +16,22 @@ fails = true
 name = "destroy_buffer"
 params = [["buffer", "u32"]]
 
+
+[[call]]
+name = "create_indirect_buffer"
+params = [["size", "u32"], ["pipeline", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_indirect_buffer"
+params = [["indirect", "u32"]]
+
+[[call]]
+name = "indirect_handle"
+params = [["indirect", "u32"]]
+result = "pair"
+fails = true
 [[call]]
 name = "map"
 params = [["buffer", "u32"]]
@@ -403,24 +419,6 @@ name = "map_sparse_texture"
 backend = "vk mtl"
 params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
 fails = true
-
-[[call]]
-name = "create_indirect"
-backend = "mtl"
-params = [["info", "IndirectInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_indirect"
-backend = "mtl"
-params = [["indirect", "u32"]]
-
-[[call]]
-name = "indirect_handle"
-backend = "mtl"
-params = [["indirect", "u32"]]
-result = "u64"
 
 [[call]]
 name = "adopt_raw"

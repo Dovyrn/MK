@@ -12,9 +12,7 @@ for f in mtl vk gl mtl,jni vk,jni gl,jni; do
 done
 echo "== metal"
 for e in $examples; do
-    v=1
-    [[ $e == draws ]] && v=0
-    MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=$v cargo run -q --features mtl --example $e > $O 2>&1
+    MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 cargo run -q --features mtl --example $e > $O 2>&1
     echo "$e: $(tail -1 $O)"
 done
 cargo build -q --features vk --examples
@@ -28,7 +26,7 @@ done
 cargo build -q --features gl --examples
 for h in mesa apple legacy; do
     echo "== gl $h"
-    for e in slots render viewports adopt view queries native mesh cache draws uploads blits images handles; do
+    for e in slots render viewports adopt view queries native mesh cache draws uploads blits images handles indirect; do
         MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
         echo "$e: $(tail -1 $O)"
     done

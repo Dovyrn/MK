@@ -297,30 +297,4 @@ public class MtlDevice extends Device {
     }
 
     private static native void nMapSparseTexture(long device, int queue, int texture, int heap, long regions, int regionsLength, long waits, int waitsLength, long signals, int signalsLength);
-
-    public synchronized int createIndirect(IndirectInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
-            info.encode(infoAddress);
-            try {
-                return nCreateIndirect(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
-        }
-    }
-
-    private static native int nCreateIndirect(long device, long info, int infoLength);
-
-    public synchronized void destroyIndirect(int indirect) {
-        nDestroyIndirect(handle, indirect);
-    }
-
-    private static native void nDestroyIndirect(long device, int indirect);
-
-    public synchronized long indirectHandle(int indirect) {
-        return nIndirectHandle(handle, indirect);
-    }
-
-    private static native long nIndirectHandle(long device, int indirect);
 }

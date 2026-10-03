@@ -763,6 +763,29 @@ impl<'a> Recorder<'a> {
                         self.indirect(true, buffer, offset, max, stride, parameter)?;
                     }
                 }
+                Command::ExecuteIndirect {
+                    indirect,
+                    first,
+                    count,
+                } => {
+                    if count != 0 && self.prepare(true) {
+                        let buffer = *res.indirects.get(indirect);
+                        let offset = first as u64 * 16;
+                        self.indirect(false, buffer, offset, count, 16, None)?;
+                    }
+                }
+                Command::ExecuteIndirectCount {
+                    indirect,
+                    buffer,
+                    offset,
+                } => {
+                    if self.prepare(true) {
+                        let commands = *res.indirects.get(indirect);
+                        let (size, _) = *res.table.indirects.get(indirect);
+                        let range = Some((buffer, offset + 4));
+                        self.indirect(false, commands, 0, size, 16, range)?;
+                    }
+                }
                 Command::DrawMesh { x, y, z } => {
                     if x.min(y).min(z) != 0 && self.prepare(true) {
                         self.extra.mesh.unwrap()(x, y, z);
@@ -790,6 +813,33 @@ impl<'a> Recorder<'a> {
                             stride as i32,
                         );
                     }
+                }
+                Command::DrawMeshIndirectCount {
+                    buffer,
+                    offset,
+                    count,
+                    count_offset,
+                    max,
+                    stride,
+                } => {
+                    if max == 0 || !self.prepare(true) {
+                        return Ok(());
+                    }
+                    let draw = self
+                        .extra
+                        .mesh_count
+                        .ok_or("mesh count draws need glMultiDrawMeshTasksIndirectCountEXT")?;
+                    gl.bind_buffer(
+                        glow::DRAW_INDIRECT_BUFFER,
+                        Some(res.buffers.get(buffer).raw),
+                    );
+                    gl.bind_buffer(glow::PARAMETER_BUFFER, Some(res.buffers.get(count).raw));
+                    draw(
+                        offset as isize,
+                        count_offset as isize,
+                        max as i32,
+                        stride as i32,
+                    );
                 }
                 Command::WriteTimestamp { heap, index, .. } => {
                     let q = res.queries.get(heap);
