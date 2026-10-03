@@ -190,8 +190,13 @@ impl Device {
     }
 
     fn defer(&mut self, free: impl FnOnce(&mut Self) + 'static) {
-        let ticket = self.queues.iter().map(|q| q.count).collect();
+        let ticket = self
+            .queues
+            .iter_mut()
+            .map(|q| q.signal(&self.raw))
+            .collect();
         self.garbage.push((ticket, Box::new(free)));
+        self.collect();
     }
 
     fn collect(&mut self) {

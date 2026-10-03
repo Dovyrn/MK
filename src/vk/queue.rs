@@ -137,6 +137,20 @@ impl Queue {
         }
     }
 
+    pub fn signal(&mut self, device: &ash::Device) -> u64 {
+        let value = self.count + 1;
+        let signals = [vk::SemaphoreSubmitInfo::default()
+            .semaphore(self.semaphore)
+            .value(value)
+            .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
+        let submit = vk::SubmitInfo2::default().signal_semaphore_infos(&signals);
+        if unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }.is_err() {
+            return u64::MAX;
+        }
+        self.count = value;
+        value
+    }
+
     pub fn destroy(&mut self, device: &ash::Device) {
         for frame in self.free.drain(..) {
             frame.destroy(device);
