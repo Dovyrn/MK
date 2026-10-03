@@ -15,6 +15,7 @@ impl Device {
         functions: &[&str],
         intersection: bool,
     ) -> Result<u32, String> {
+        self.res.table.pipelines.get(pipeline);
         let state = &self.res.pipelines.get(pipeline).state;
         let handles = functions
             .iter()
@@ -60,6 +61,7 @@ impl Device {
     }
 
     pub fn function_table_handle(&self, table: u32) -> u64 {
+        self.res.table.functions.get(table);
         self.res.tables.get(table).1
     }
 }

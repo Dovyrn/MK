@@ -291,7 +291,13 @@ impl Device {
     }
 
     pub fn raw_queue(&self, queue: usize) -> &ProtocolObject<dyn MTL4CommandQueue> {
+        self.check_queue(queue);
         &self.queues[queue].raw
+    }
+
+    fn check_queue(&self, queue: usize) {
+        let count = self.queues.len();
+        assert!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
     fn healthy(&self) -> Result<(), String> {

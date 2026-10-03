@@ -51,6 +51,7 @@ impl Device {
         offset: u64,
         size: u64,
     ) -> Result<u32, String> {
+        self.res.table.heaps.get(heap);
         self.caps.buffer(size, memory::DEVICE)?;
         let (h, memory) = self.res.heaps.get(heap);
         let buffer = unsafe {
@@ -68,6 +69,7 @@ impl Device {
         offset: u64,
         info: &TextureInfo,
     ) -> Result<u32, String> {
+        self.res.table.heaps.get(heap);
         self.supports(info)?;
         let (h, memory) = self.res.heaps.get(heap);
         let desc = texture_desc(info);

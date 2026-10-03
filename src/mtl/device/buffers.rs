@@ -46,6 +46,7 @@ impl Device {
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> &ProtocolObject<dyn MTLBuffer> {
+        self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer)
     }
 
@@ -56,6 +57,7 @@ impl Device {
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
+        self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         assert!(
             b.storageMode() != MTLStorageMode::Private,
@@ -64,13 +66,17 @@ impl Device {
         b.contents().as_ptr().cast()
     }
 
-    pub fn unmap(&self, _buffer: u32) {}
+    pub fn unmap(&self, buffer: u32) {
+        self.res.table.buffers.get(buffer);
+    }
 
     pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
+        self.res.table.buffers.get(buffer);
         Ok(self.res.buffers.get(buffer).gpuAddress())
     }
 
     pub fn address(&self, buffer: u32) -> u64 {
+        self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer).gpuAddress()
     }
 }

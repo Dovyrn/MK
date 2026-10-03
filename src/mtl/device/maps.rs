@@ -40,6 +40,7 @@ impl Device {
     }
 
     pub fn rate_map_size(&self, map: u32) -> [u32; 2] {
+        self.res.table.maps.get(map);
         let s = unsafe { self.res.maps.get(map).physicalSizeForLayer(0) };
         [s.width as u32, s.height as u32]
     }

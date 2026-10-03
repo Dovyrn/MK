@@ -38,6 +38,7 @@ impl Device {
     }
 
     pub fn indirect_handle(&self, indirect: u32) -> u64 {
+        self.res.table.indirects.get(indirect);
         id(self.res.indirects.get(indirect).gpuResourceID())
     }
 }

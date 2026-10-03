@@ -16,6 +16,7 @@ use objc2_metal::{
 
 impl Device {
     fn range(&self, buffer: u32, offset: u64, length: u64) -> MTL4BufferRange {
+        self.res.table.buffers.get(buffer);
         MTL4BufferRange {
             bufferAddress: self.res.buffers.get(buffer).gpuAddress() + offset,
             length,
@@ -118,6 +119,7 @@ impl Device {
     }
 
     pub fn create_compacted(&mut self, accel: u32, size: u64) -> Result<u32, String> {
+        self.res.table.accels.get(accel);
         let raw = self
             .raw
             .newAccelerationStructureWithSize(size as usize)
@@ -141,11 +143,13 @@ impl Device {
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {
+        self.res.table.accels.get(accel);
         let a = self.res.accels.get(accel);
         (a.build, a.update)
     }
 
     pub fn accel_handle(&self, accel: u32) -> u64 {
+        self.res.table.accels.get(accel);
         id(self.res.accels.get(accel).raw.gpuResourceID())
     }
 

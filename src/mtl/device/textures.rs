@@ -85,6 +85,7 @@ impl Device {
     }
 
     pub fn raw_texture(&self, texture: u32) -> &ProtocolObject<dyn MTLTexture> {
+        self.res.table.textures.get(texture);
         &self.res.textures.get(texture).raw
     }
 
@@ -133,6 +134,7 @@ impl Device {
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
+        self.res.table.textures.get(texture);
         id(self.res.textures.get(texture).raw.gpuResourceID())
     }
 

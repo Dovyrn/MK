@@ -61,6 +61,7 @@ impl Device {
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {
+        self.res.table.samplers.get(sampler);
         id(self.res.samplers.get(sampler).gpuResourceID())
     }
 }

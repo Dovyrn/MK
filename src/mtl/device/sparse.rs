@@ -115,6 +115,11 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.check_queue(queue);
+        self.res.table.buffers.get(buffer);
+        if heap != !0 {
+            self.res.table.heaps.get(heap);
+        }
         self.res.table.submit(queue, waits, signals);
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap
@@ -157,6 +162,11 @@ impl Device {
         waits: &[(u32, u64)],
         signals: &[(u32, u64)],
     ) -> Result<(), String> {
+        self.check_queue(queue);
+        self.res.table.textures.get(texture);
+        if heap != !0 {
+            self.res.table.heaps.get(heap);
+        }
         self.res.table.submit(queue, waits, signals);
         let mode = if heap == !0 {
             MTLSparseTextureMappingMode::Unmap

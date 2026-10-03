@@ -11,6 +11,7 @@ impl Device {
     }
 
     pub fn raw_event(&self, event: u32) -> &ProtocolObject<dyn MTLSharedEvent> {
+        self.res.table.events.get(event);
         self.res.events.get(event)
     }
 
@@ -28,12 +29,14 @@ impl Device {
     }
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
+        self.res.table.events.get(event);
         self.collect();
         self.healthy()?;
         Ok(self.res.events.get(event).signaledValue())
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
+        self.res.table.events.get(event);
         let done = self
             .res
             .events
