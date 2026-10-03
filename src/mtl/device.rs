@@ -1,5 +1,6 @@
 mod accels;
 mod buffers;
+mod cache;
 mod caps;
 mod events;
 mod heaps;
