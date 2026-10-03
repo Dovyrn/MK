@@ -32,6 +32,7 @@ use objc2_metal::{
     MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -208,7 +209,7 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
-    garbage: Vec<(Vec<u64>, Free)>,
+    garbage: VecDeque<(Vec<u64>, Free)>,
     caps: Caps,
     resolve: Resolve,
 }
@@ -250,7 +251,7 @@ impl Device {
             res: Resources::default(),
             queues,
             lost,
-            garbage: Vec::new(),
+            garbage: VecDeque::new(),
             caps,
             resolve,
         })
@@ -258,18 +259,17 @@ impl Device {
 
     fn defer(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
         let counts = self.queues.iter().map(|q| q.count).collect();
-        self.garbage.push((counts, Box::new(free)));
+        self.garbage.push_back((counts, Box::new(free)));
         self.collect();
     }
 
     fn collect(&mut self) {
         let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
-        for (counts, free) in std::mem::take(&mut self.garbage) {
-            if counts.iter().zip(&done).all(|(c, d)| c <= d) {
-                free(&mut self.residency);
-            } else {
-                self.garbage.push((counts, free));
-            }
+        while let Some((_, free)) = self
+            .garbage
+            .pop_front_if(|(counts, _)| counts.iter().zip(&done).all(|(c, d)| c <= d))
+        {
+            free(&mut self.residency);
         }
     }
 
