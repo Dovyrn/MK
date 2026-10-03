@@ -762,18 +762,7 @@ impl Device {
         self.queries()?;
         self.res.table.submit(queue, waits, signals);
         self.healthy()?;
-        for &(event, value) in waits {
-            let e = self.res.events.get(event);
-            if e.value >= value {
-                continue;
-            }
-            let &(_, fence) = e
-                .fences
-                .iter()
-                .find(|(v, _)| *v >= value)
-                .expect("wait on an event value no submit signals");
-            unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
-        }
+        self.waits(waits);
         let snapshot = || {
             State::save(
                 &self.gl,
@@ -798,6 +787,25 @@ impl Device {
         recorder.finish();
         state.restore(&self.gl, &self.extra);
         result.unwrap_or_else(|p| resume_unwind(p))?;
+        self.signals(queue, signals)
+    }
+
+    fn waits(&self, waits: &[(u32, u64)]) {
+        for &(event, value) in waits {
+            let e = self.res.events.get(event);
+            if e.value >= value {
+                continue;
+            }
+            let &(_, fence) = e
+                .fences
+                .iter()
+                .find(|(v, _)| *v >= value)
+                .expect("wait on an event value no submit signals");
+            unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
+        }
+    }
+
+    fn signals(&mut self, queue: usize, signals: &[(u32, u64)]) -> Result<(), String> {
         for &(event, value) in signals {
             self.res.events.get_mut(event).signal(&self.gl, value)?;
         }
