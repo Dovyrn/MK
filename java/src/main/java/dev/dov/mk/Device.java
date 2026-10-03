@@ -52,13 +52,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createIndirectBuffer(IndirectInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateIndirectBuffer(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateIndirectBuffer(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -116,13 +112,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createPipeline(ComputeInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreatePipeline(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreatePipeline(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -136,13 +128,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createRenderPipeline(RenderInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -150,13 +138,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createMeshPipeline(MeshInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -170,13 +154,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createDepthState(DepthInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateDepthState(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateDepthState(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -190,13 +170,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateTexture(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateTexture(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -204,13 +180,9 @@ public class Device implements AutoCloseable {
 
     public synchronized void writeTexture(HostCopy copy, long data, long dataSize) {
         try (var stack = MemoryStack.stackPush()) {
-            var copyAddress = nmemAlloc(copy.encodedSize());
+            var copyAddress = stack.nmalloc(8, copy.encodedSize());
             copy.encode(copyAddress);
-            try {
-                nWriteTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
-            } finally {
-                nmemFree(copyAddress);
-            }
+            nWriteTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
         }
     }
 
@@ -218,13 +190,9 @@ public class Device implements AutoCloseable {
 
     public synchronized void readTexture(HostCopy copy, long data, long dataSize) {
         try (var stack = MemoryStack.stackPush()) {
-            var copyAddress = nmemAlloc(copy.encodedSize());
+            var copyAddress = stack.nmalloc(8, copy.encodedSize());
             copy.encode(copyAddress);
-            try {
-                nReadTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
-            } finally {
-                nmemFree(copyAddress);
-            }
+            nReadTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
         }
     }
 
@@ -244,13 +212,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createView(int texture, ViewInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateView(handle, texture, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateView(handle, texture, infoAddress, info.encodedSize());
         }
     }
 
@@ -270,13 +234,9 @@ public class Device implements AutoCloseable {
 
     public synchronized int createSampler(SamplerInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateSampler(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateSampler(handle, infoAddress, info.encodedSize());
         }
     }
 

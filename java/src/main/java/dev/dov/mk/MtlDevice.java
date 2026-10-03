@@ -34,15 +34,11 @@ public class MtlDevice extends Device {
 
     public synchronized long[] textureSize(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             var out = stack.nmalloc(8, 16);
-            try {
-                nTextureSize(handle, infoAddress, info.encodedSize(), out);
-                return new long[] {memGetLong(out), memGetLong(out + 8)};
-            } finally {
-                nmemFree(infoAddress);
-            }
+            nTextureSize(handle, infoAddress, info.encodedSize(), out);
+            return new long[] {memGetLong(out), memGetLong(out + 8)};
         }
     }
 
@@ -56,13 +52,9 @@ public class MtlDevice extends Device {
 
     public synchronized int createPlacedTexture(int heap, long offset, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
         }
     }
 
@@ -82,13 +74,9 @@ public class MtlDevice extends Device {
 
     public synchronized int createAccel(AccelInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateAccel(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateAccel(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -186,15 +174,11 @@ public class MtlDevice extends Device {
 
     public synchronized int[] sparseTile(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
             var out = stack.nmalloc(8, 12);
-            try {
-                nSparseTile(handle, infoAddress, info.encodedSize(), out);
-                return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8)};
-            } finally {
-                nmemFree(infoAddress);
-            }
+            nSparseTile(handle, infoAddress, info.encodedSize(), out);
+            return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8)};
         }
     }
 
@@ -208,13 +192,9 @@ public class MtlDevice extends Device {
 
     public synchronized int createSparseTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nCreateSparseTexture(handle, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nCreateSparseTexture(handle, infoAddress, info.encodedSize());
         }
     }
 
@@ -226,7 +206,7 @@ public class MtlDevice extends Device {
             for (var x : ranges) {
                 rangesSize += x.encodedSize();
             }
-            var rangesAddress = nmemAlloc(rangesSize);
+            var rangesAddress = stack.nmalloc(8, rangesSize);
             var rangesAt = rangesAddress;
             memPutInt(rangesAt, ranges.length);
             rangesAt += 4;
@@ -249,11 +229,7 @@ public class MtlDevice extends Device {
                 memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
                 memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
             }
-            try {
-                nMapSparseBuffer(handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
-            } finally {
-                nmemFree(rangesAddress);
-            }
+            nMapSparseBuffer(handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
         }
     }
 
@@ -265,7 +241,7 @@ public class MtlDevice extends Device {
             for (var x : regions) {
                 regionsSize += x.encodedSize();
             }
-            var regionsAddress = nmemAlloc(regionsSize);
+            var regionsAddress = stack.nmalloc(8, regionsSize);
             var regionsAt = regionsAddress;
             memPutInt(regionsAt, regions.length);
             regionsAt += 4;
@@ -288,11 +264,7 @@ public class MtlDevice extends Device {
                 memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
                 memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
             }
-            try {
-                nMapSparseTexture(handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
-            } finally {
-                nmemFree(regionsAddress);
-            }
+            nMapSparseTexture(handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
         }
     }
 

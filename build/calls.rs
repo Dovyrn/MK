@@ -304,7 +304,6 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             s += "        try (var stack = MemoryStack.stackPush()) {\n";
         }
         let mut args = Vec::new();
-        let mut frees: Vec<String> = Vec::new();
         if !statics(call) {
             args.push("handle".to_string());
         }
@@ -321,10 +320,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     list_size(&mut s, k, &n, "            ");
                     writeln!(
                         s,
-                        "            var {n}Address = nmemAlloc({n}Size);\n            var {n}At = {n}Address;"
+                        "            var {n}Address = stack.nmalloc(8, {n}Size);\n            var {n}At = {n}Address;"
                     )
                     .unwrap();
-                    frees.push(format!("{n}Address"));
                     list_put(&mut s, k, &n, &format!("{n}At"), "            ").unwrap();
                     args.push(format!("{n}Address"));
                     args.push(format!("{n}Size"));
@@ -366,8 +364,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}.length / 2"));
                 }
                 _ => {
-                    writeln!(s, "            var {n}Address = nmemAlloc({n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();
-                    frees.push(format!("{n}Address"));
+                    writeln!(s, "            var {n}Address = stack.nmalloc(8, {n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();
                     args.push(format!("{n}Address"));
                     args.push(format!("{n}.encodedSize()"));
                 }
@@ -404,20 +401,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
-        if frees.is_empty() {
-            writeln!(s, "{indent}{line}").unwrap();
-        } else {
-            let inner = line.replace(&format!("\n{indent}"), &format!("\n{indent}    "));
-            let frees: String = frees
-                .iter()
-                .map(|f| format!("{indent}    nmemFree({f});\n"))
-                .collect();
-            writeln!(
-                s,
-                "{indent}try {{\n{indent}    {inner}\n{indent}}} finally {{\n{frees}{indent}}}"
-            )
-            .unwrap();
-        }
+        writeln!(s, "{indent}{line}").unwrap();
         if stack {
             s += "        }\n";
         }

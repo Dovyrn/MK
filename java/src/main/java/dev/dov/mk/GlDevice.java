@@ -24,13 +24,9 @@ public class GlDevice extends Device {
 
     public synchronized int importTexture(int raw, TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = nmemAlloc(info.encodedSize());
+            var infoAddress = stack.nmalloc(8, info.encodedSize());
             info.encode(infoAddress);
-            try {
-                return nImportTexture(handle, raw, infoAddress, info.encodedSize());
-            } finally {
-                nmemFree(infoAddress);
-            }
+            return nImportTexture(handle, raw, infoAddress, info.encodedSize());
         }
     }
 
