@@ -56,7 +56,8 @@ fn main() {
             .unwrap()
     };
     let plain = dimension::D2;
-    let a = make(plain, format::RGBA8_UNORM, [N, N, 1], 5, usage::BLIT);
+    let view = if caps.copy_formats { usage::VIEW } else { 0 };
+    let a = make(plain, format::RGBA8_UNORM, [N, N, 1], 5, usage::BLIT | view);
     let b = make(
         plain,
         format::RGBA8_UNORM,

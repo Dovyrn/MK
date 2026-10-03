@@ -81,7 +81,7 @@ impl Device {
             max_queries: 4096,
             cube_arrays: true,
             mirror_clamp: true,
-            copy_formats: false,
+            copy_formats: true,
             texture_clear: false,
             max_buffer: raw.maxBufferLength() as u64,
             max_texture: 16384,

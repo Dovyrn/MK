@@ -97,6 +97,13 @@ impl Recorder<'_> {
             return Ok(());
         };
         let (s, d) = (self.res.textures.get(src), self.res.textures.get(dst));
+        let cast = if s.raw.pixelFormat() == d.raw.pixelFormat() {
+            None
+        } else {
+            let view = s.raw.newTextureViewWithPixelFormat(d.raw.pixelFormat());
+            Some(view.ok_or("copy view allocation failed")?)
+        };
+        let source = cast.as_deref().unwrap_or(&*s.raw);
         let extent = size(width, height, depth);
         let (from, to) = (origin(src_x, src_y, src_z), origin(dst_x, dst_y, dst_z));
         let open = self.compute.is_none();
@@ -107,7 +114,7 @@ impl Recorder<'_> {
             unsafe {
                 self.compute()
                     .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                        &s.raw,
+                        source,
                         src_layer as usize + i,
                         src_mip as usize,
                         from,
@@ -121,6 +128,9 @@ impl Recorder<'_> {
         }
         if open {
             self.step(Command::EndCompute)?;
+        }
+        if let Some(view) = cast {
+            self.frame.keep(view);
         }
         Ok(())
     }

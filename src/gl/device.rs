@@ -161,7 +161,9 @@ impl Device {
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
                 mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
-                copy_formats: has(43, "GL_ARB_copy_image"),
+                copy_formats: has(43, "GL_ARB_copy_image")
+                    && has(43, "GL_ARB_texture_view")
+                    && has(42, "GL_ARB_texture_storage"),
                 texture_clear: has(44, "GL_ARB_clear_texture"),
                 max_buffer: isize::MAX as u64,
                 max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,

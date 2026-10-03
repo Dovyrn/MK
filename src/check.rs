@@ -533,6 +533,13 @@ impl<'a> Check<'a> {
                 );
                 if s.format != t.format {
                     self.need(c, caps.copy_formats, "copy_formats")?;
+                    assert_ne!(
+                        s.usage & usage::VIEW,
+                        0,
+                        "copy_texture from format {} to {} needs usage::VIEW on texture {src}",
+                        s.format,
+                        t.format
+                    );
                 }
             }
             Command::BlitTexture {
