@@ -121,9 +121,11 @@ impl Recorder<'_> {
             self.stencil();
             gl.viewport(0, 0, width as i32, height as i32);
             gl.depth_range(0.0, 1.0);
-            gl.disable(glow::SCISSOR_TEST);
             self.rendering = true;
             self.extent = (width as i32, height as i32);
+            self.views = vec![[0.0, 0.0, width as f32, height as f32]];
+            self.scissors.clear();
+            self.clip();
             self.layers = layers;
         }
         Ok(())

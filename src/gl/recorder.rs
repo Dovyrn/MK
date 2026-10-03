@@ -71,6 +71,8 @@ pub struct Recorder<'a> {
     state: Option<DepthInfo>,
     references: (u32, u32),
     extent: (i32, i32),
+    views: Vec<[f32; 4]>,
+    scissors: Vec<[i32; 4]>,
     layers: u32,
     rendering: bool,
     query: Option<u32>,
@@ -217,6 +219,8 @@ impl<'a> Recorder<'a> {
             state: None,
             references: (0, 0),
             extent: (0, 0),
+            views: Vec::new(),
+            scissors: Vec::new(),
             layers: 0,
             rendering: false,
             query: None,
@@ -309,6 +313,30 @@ impl<'a> Recorder<'a> {
             for i in 0..slot::COLORS {
                 gl.color_mask_draw_buffer(i, true, true, true, true);
                 gl.disable_draw_buffer(glow::BLEND, i);
+            }
+        }
+    }
+
+    fn clip(&self) {
+        let (w, h) = self.extent;
+        let edge = |a: f32| (a - 0.5).ceil() as i32;
+        let boxes: Vec<[i32; 4]> = self
+            .views
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let s = self.scissors.get(i).copied().unwrap_or([0, 0, w, h]);
+                let (x, y) = (edge(v[0]).max(s[0]), edge(v[1]).max(s[1]));
+                let right = edge(v[0] + v[2]).min(s[0] + s[2]);
+                let top = edge(v[1] + v[3]).min(s[1] + s[3]);
+                [x, y, (right - x).max(0), (top - y).max(0)]
+            })
+            .collect();
+        unsafe {
+            self.gl.enable(glow::SCISSOR_TEST);
+            match boxes.as_slice() {
+                [b] => self.gl.scissor(b[0], b[1], b[2], b[3]),
+                _ => self.gl.scissor_slice(0, boxes.len() as i32, &boxes),
             }
         }
     }
@@ -525,6 +553,8 @@ impl<'a> Recorder<'a> {
                 } => {
                     gl.viewport(x as i32, y as i32, width as i32, height as i32);
                     gl.depth_range(near as f64, far as f64);
+                    self.views = vec![[x, y, width, height]];
+                    self.clip();
                 }
                 Command::SetScissor {
                     x,
@@ -532,8 +562,8 @@ impl<'a> Recorder<'a> {
                     width,
                     height,
                 } => {
-                    gl.enable(glow::SCISSOR_TEST);
-                    gl.scissor(x as i32, y as i32, width as i32, height as i32);
+                    self.scissors = vec![[x as i32, y as i32, width as i32, height as i32]];
+                    self.clip();
                 }
                 Command::SetCull { cull: c } => match c {
                     cull::NONE => gl.disable(glow::CULL_FACE),
@@ -730,17 +760,18 @@ impl<'a> Recorder<'a> {
                             gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
                         }
                     }
+                    self.views = views
+                        .iter()
+                        .map(|v| [v.x, v.y, v.width, v.height])
+                        .collect();
+                    self.clip();
                 }
                 Command::SetScissors { scissors } => {
-                    let rects: Vec<[i32; 4]> = command::scissors(scissors)
+                    self.scissors = command::scissors(scissors)
                         .iter()
                         .map(|r| [r.x as i32, r.y as i32, r.width as i32, r.height as i32])
                         .collect();
-                    gl.enable(glow::SCISSOR_TEST);
-                    match rects.as_slice() {
-                        [r] => gl.scissor(r[0], r[1], r[2], r[3]),
-                        _ => gl.scissor_slice(0, rects.len() as i32, &rects),
-                    }
+                    self.clip();
                 }
                 Command::BindUniform {
                     slot,
