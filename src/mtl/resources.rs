@@ -10,6 +10,7 @@ use objc2_metal::{
     MTLAllocation, MTLBuffer, MTLDepthStencilState, MTLHeap, MTLIndirectCommandBuffer,
     MTLRasterizationRateMap, MTLSamplerState, MTLSharedEvent,
 };
+use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Resources {
@@ -26,5 +27,6 @@ pub struct Resources {
     pub accels: Slots<Accel>,
     pub queries: Slots<Query>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    pub imports: HashSet<u32>,
     pub table: crate::table::Table,
 }

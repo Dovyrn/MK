@@ -42,6 +42,7 @@ impl Device {
         let size = raw.length() as u64;
         let id = self.res.buffers.insert(raw);
         self.res.table.buffers.set(id, size);
+        self.res.imports.insert(id);
         id
     }
 
@@ -52,12 +53,17 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.res.table.buffers.clear(buffer);
+        self.res.imports.remove(&buffer);
         let buffer = self.res.buffers.remove(buffer);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
         self.res.table.buffers.get(buffer);
+        assert!(
+            !self.res.imports.contains(&buffer),
+            "map of an imported buffer"
+        );
         let b = self.res.buffers.get(buffer);
         assert!(
             b.storageMode() != MTLStorageMode::Private,
