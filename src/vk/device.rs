@@ -120,6 +120,27 @@ impl Device {
         queues: &[(u32, u32)],
         features: &vk::PhysicalDeviceFeatures2,
     ) -> Result<Self, String> {
+        let handles = [
+            ("instance", vk::Handle::as_raw(instance.handle())),
+            ("physical", vk::Handle::as_raw(physical)),
+            ("device", vk::Handle::as_raw(raw.handle())),
+        ];
+        if let Some((name, _)) = handles.iter().find(|(_, h)| *h == 0) {
+            return Err(format!("{name} is null"));
+        }
+        let flags = unsafe { instance.get_physical_device_queue_family_properties(physical) };
+        let max: u32 = flags.iter().map(|f| f.queue_count).sum();
+        let count = queues.len();
+        assert!(
+            count > 0 && count <= max as usize,
+            "queue count {count} is outside 1..={max}"
+        );
+        for &(f, i) in queues {
+            assert!(
+                flags.get(f as usize).is_some_and(|p| i < p.queue_count),
+                "queue {i} of family {f} is not on this device"
+            );
+        }
         let ext = unsafe { Extensions::new(&instance, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
@@ -147,7 +168,6 @@ impl Device {
         let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
         families.sort();
         families.dedup();
-        let flags = unsafe { instance.get_physical_device_queue_family_properties(physical) };
         let mut list = Vec::new();
         for &(f, i) in queues {
             let graphics = flags[f as usize]
@@ -297,6 +317,15 @@ impl Device {
         queues: &[(u32, u32)],
         features: u64,
     ) -> Result<Self, String> {
+        let handles = [
+            ("proc", proc),
+            ("instance", instance),
+            ("physical", physical),
+            ("device", device),
+        ];
+        if let Some((name, _)) = handles.iter().find(|(_, h)| *h == 0) {
+            return Err(format!("{name} is null"));
+        }
         unsafe {
             let none = vk::PhysicalDeviceFeatures2::default();
             let features = (features as *const vk::PhysicalDeviceFeatures2)
