@@ -247,6 +247,7 @@ impl Device {
 
     pub fn raw_buffer(&self, buffer: u32) -> u32 {
         self.thread();
+        self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer).raw.0.get()
     }
 
@@ -258,7 +259,9 @@ impl Device {
 
     pub fn map(&self, buffer: u32) -> *mut u8 {
         self.thread();
+        self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
+        assert!(b.own, "map of an imported buffer");
         assert!(b.memory != memory::DEVICE, "map of a device buffer");
         if b.persistent || !b.data.get().is_null() {
             return b.data.get();
@@ -279,6 +282,7 @@ impl Device {
 
     pub fn unmap(&self, buffer: u32) {
         self.thread();
+        self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         if b.persistent || b.data.get().is_null() {
             return;
@@ -292,8 +296,9 @@ impl Device {
         b.data.set(std::ptr::null_mut());
     }
 
-    pub fn buffer_handle(&self, _buffer: u32) -> Result<u64, String> {
+    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
         self.thread();
+        self.res.table.buffers.get(buffer);
         Err("GL has no bindless heap".into())
     }
 
@@ -425,6 +430,7 @@ impl Device {
 
     pub fn raw_texture(&self, texture: u32) -> u32 {
         self.thread();
+        self.res.table.textures.get(texture);
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
     }
 
@@ -631,12 +637,14 @@ impl Device {
 
     pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
         self.thread();
+        self.res.table.events.get(event);
         self.healthy()?;
         Ok(self.res.events.get(event).value(&self.gl))
     }
 
     pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
         self.thread();
+        self.res.table.events.get(event);
         self.healthy()?;
         self.res.events.get(event).wait(&self.gl, value, ms)
     }
