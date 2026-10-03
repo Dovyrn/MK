@@ -12,7 +12,7 @@ impl Device {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
-            if info.usage & usage::HOST != 0 && self.raw.hasUnifiedMemory() {
+            if info.usage & usage::HOST != 0 {
                 desc.setStorageMode(MTLStorageMode::Shared);
             }
             let raw = self

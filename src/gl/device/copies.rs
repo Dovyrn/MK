@@ -32,8 +32,10 @@ impl Device {
 
     pub fn read_texture(&mut self, copy: &HostCopy, data: &mut [u8]) -> Result<(), String> {
         self.thread();
-        let (pitch, image) = self.res.table.host(copy, data.len());
-        let info = *self.res.table.textures.get(copy.texture);
+        self.res.table.host(copy, data.len());
+        if !self.caps.host_read {
+            return Err("read_texture needs caps.host_read".into());
+        }
         let t = self.res.textures.get(copy.texture);
         let raw = t.raw.map_or(0, |r| r.0.get());
         let (f, ty) = aspect(t.format);
@@ -50,63 +52,16 @@ impl Device {
         let out = data.as_mut_ptr().cast::<c_void>();
         let e = &self.extra;
         self.around(t.target, false, |gl| unsafe {
-            match (e.sub_image, e.compressed_sub) {
-                (Some(image), Some(compressed)) => {
-                    gl.pixel_store_i32(glow::PACK_ROW_LENGTH, copy.row_length as i32);
-                    gl.pixel_store_i32(glow::PACK_IMAGE_HEIGHT, copy.row_count as i32);
-                    if f == 0 {
-                        gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_WIDTH, bw as i32);
-                        gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_HEIGHT, bh as i32);
-                        gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_DEPTH, 1);
-                        gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_SIZE, bytes as i32);
-                        compressed(raw, mip, x, y, z, w, h, d, size, out);
-                    } else {
-                        image(raw, mip, x, y, z, w, h, d, f, ty, size, out);
-                    }
-                }
-                _ => {
-                    let level = |n: u32| (n >> copy.mip).max(1);
-                    let (tall, images) = match t.target {
-                        glow::TEXTURE_1D_ARRAY => (info.layers, 1),
-                        glow::TEXTURE_3D => (level(info.height), level(info.depth)),
-                        glow::TEXTURE_2D_ARRAY | glow::TEXTURE_CUBE_MAP_ARRAY => {
-                            (level(info.height), info.layers)
-                        }
-                        _ => (level(info.height), 1),
-                    };
-                    let stride = level(info.width).div_ceil(bw) as usize * bytes as usize;
-                    let slice = stride * tall.div_ceil(bh) as usize;
-                    let mut all = vec![0u8; slice * images as usize];
-                    let target = if t.target == glow::TEXTURE_CUBE_MAP {
-                        glow::TEXTURE_CUBE_MAP_POSITIVE_X + copy.layer
-                    } else {
-                        t.target
-                    };
-                    gl.bind_texture(t.target, t.raw);
-                    let at = all.as_mut_ptr().cast();
-                    if f == 0 {
-                        (e.get_compressed)(target, mip, at);
-                    } else {
-                        (e.get_image)(target, mip, f, ty, at);
-                    }
-                    let first = (y as u32 / bh) as usize * stride;
-                    let left = (copy.x / bw) as usize * bytes as usize;
-                    let wide = copy.width.div_ceil(bw) as usize * bytes as usize;
-                    for s in 0..copy.depth as usize {
-                        let source = match t.target {
-                            glow::TEXTURE_3D => copy.z as usize + s,
-                            glow::TEXTURE_2D_ARRAY | glow::TEXTURE_CUBE_MAP_ARRAY => {
-                                copy.layer as usize
-                            }
-                            _ => 0,
-                        };
-                        for r in 0..copy.height.div_ceil(bh) as usize {
-                            let from = source * slice + first + r * stride + left;
-                            let to = s * image as usize + r * pitch as usize;
-                            data[to..to + wide].copy_from_slice(&all[from..from + wide]);
-                        }
-                    }
-                }
+            gl.pixel_store_i32(glow::PACK_ROW_LENGTH, copy.row_length as i32);
+            gl.pixel_store_i32(glow::PACK_IMAGE_HEIGHT, copy.row_count as i32);
+            if f == 0 {
+                gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_WIDTH, bw as i32);
+                gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_HEIGHT, bh as i32);
+                gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_DEPTH, 1);
+                gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_SIZE, bytes as i32);
+                e.compressed_sub.unwrap()(raw, mip, x, y, z, w, h, d, size, out);
+            } else {
+                e.sub_image.unwrap()(raw, mip, x, y, z, w, h, d, f, ty, size, out);
             }
         })
     }

@@ -1,7 +1,7 @@
 use super::Device;
 use crate::HostCopy;
 use objc2::rc::autoreleasepool;
-use objc2_metal::{MTLOrigin, MTLRegion, MTLResource, MTLSize, MTLStorageMode, MTLTexture};
+use objc2_metal::{MTLOrigin, MTLRegion, MTLSize, MTLTexture};
 use std::ptr::NonNull;
 
 fn region(c: &HostCopy) -> MTLRegion {
@@ -24,9 +24,6 @@ impl Device {
         autoreleasepool(|_| {
             let (pitch, image) = self.res.table.host(copy, data.len());
             let raw = &self.res.textures.get(copy.texture).raw;
-            if raw.storageMode() == MTLStorageMode::Private {
-                return self.upload(copy, data);
-            }
             let image = if copy.depth > 1 { image } else { 0 };
             unsafe {
                 raw.replaceRegion_mipmapLevel_slice_withBytes_bytesPerRow_bytesPerImage(
@@ -46,9 +43,6 @@ impl Device {
         autoreleasepool(|_| {
             let (pitch, image) = self.res.table.host(copy, data.len());
             let raw = &self.res.textures.get(copy.texture).raw;
-            if raw.storageMode() == MTLStorageMode::Private {
-                return self.download(copy, data);
-            }
             let image = if copy.depth > 1 { image } else { 0 };
             unsafe {
                 raw.getBytes_bytesPerRow_bytesPerImage_fromRegion_mipmapLevel_slice(

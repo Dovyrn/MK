@@ -13,6 +13,14 @@ fn pattern(size: usize, seed: usize) -> Vec<u8> {
 fn main() {
     let n = 64u32;
     let mut device = host::device(1);
+    if device.format_usage(format::RGBA8_UNORM) & usage::HOST == 0 {
+        println!("no usage::HOST for RGBA8_UNORM");
+        return;
+    }
+    if !device.caps().host_read {
+        println!("read_texture needs caps.host_read");
+        return;
+    }
     let texture = device
         .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,

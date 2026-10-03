@@ -113,6 +113,7 @@ pub(super) fn probe(
         cube_arrays: features.image_cube_array != 0,
         mirror_clamp: ext.mirror,
         budget: ext.budget,
+        host_read: ext.copy.is_some(),
         max_buffer: buffer.max_buffer_size,
         max_texture: limits
             .max_image_dimension1_d
@@ -159,7 +160,7 @@ impl Device {
             (vk::FormatFeatureFlags::TRANSFER_DST, usage::COPY_DST),
             (
                 vk::FormatFeatureFlags::TRANSFER_SRC | vk::FormatFeatureFlags::TRANSFER_DST,
-                if aspect(format) == vk::ImageAspectFlags::COLOR {
+                if aspect(format) == vk::ImageAspectFlags::COLOR && self.ext.copy.is_some() {
                     usage::HOST
                 } else {
                     0

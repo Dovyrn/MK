@@ -204,10 +204,7 @@ impl Device {
         let mut external = vk::ExternalMemoryImageCreateInfo::default()
             .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
         let mut create = self.share_image(image_info(info));
-        let host = self.host_usage(info, &create);
-        if host {
-            create.usage |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
-        }
+        self.host_usage(info, &mut create)?;
         if h.shared {
             create = create.push_next(&mut external);
         }
@@ -231,7 +228,6 @@ impl Device {
             let id = self.register(image, Some(Rc::new(vk::DeviceMemory::null())), &whole(info))?;
             let t = self.res.textures.get_mut(id);
             t.heap = Some(memory);
-            t.host = host;
             self.res.table.textures.set(id, *info);
             self.prepare(id)
         }

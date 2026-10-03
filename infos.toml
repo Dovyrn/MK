@@ -229,6 +229,7 @@ fields = [
     ["cube_arrays", "bool", "false"],
     ["mirror_clamp", "bool", "false"],
     ["budget", "bool", "false"],
+    ["host_read", "bool", "false"],
 ]
 
 [[info]]

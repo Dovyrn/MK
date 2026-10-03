@@ -1,14 +1,12 @@
 use super::Device;
 use crate::vk::recorder::layout;
-use crate::{Commands, HostCopy, TextureBarrier, TextureInfo, access, usage};
+use crate::{HostCopy, TextureInfo, usage};
 use ash::vk;
 
 impl Device {
     pub fn write_texture(&mut self, copy: &HostCopy, data: &[u8]) -> Result<(), String> {
         self.res.table.host(copy, data.len());
-        let Some((image, layers)) = self.direct(copy) else {
-            return self.upload(copy, data);
-        };
+        let (image, layers) = self.direct(copy)?;
         let region = vk::MemoryToImageCopyEXT::default()
             .host_pointer(data.as_ptr().cast())
             .memory_row_length(copy.row_length)
@@ -27,9 +25,7 @@ impl Device {
 
     pub fn read_texture(&mut self, copy: &HostCopy, data: &mut [u8]) -> Result<(), String> {
         self.res.table.host(copy, data.len());
-        let Some((image, layers)) = self.direct(copy) else {
-            return self.download(copy, data);
-        };
+        let (image, layers) = self.direct(copy)?;
         let region = vk::ImageToMemoryCopyEXT::default()
             .host_pointer(data.as_mut_ptr().cast())
             .memory_row_length(copy.row_length)
@@ -46,10 +42,15 @@ impl Device {
         unsafe { ext.copy_image_to_memory(&info) }.map_err(|e| e.to_string())
     }
 
-    fn direct(&self, copy: &HostCopy) -> Option<(vk::Image, vk::ImageSubresourceLayers)> {
+    fn direct(&self, copy: &HostCopy) -> Result<(vk::Image, vk::ImageSubresourceLayers), String> {
+        if !self.ext.layouts.contains(&layout(copy.layout)) {
+            return Err(format!(
+                "layout {} does not support host copies on this device",
+                copy.layout
+            ));
+        }
         let t = self.res.textures.get(copy.texture);
-        let usable = t.host && self.ext.layouts.contains(&layout(copy.layout));
-        usable.then_some((
+        Ok((
             t.image,
             vk::ImageSubresourceLayers {
                 aspect_mask: t.aspect,
@@ -60,20 +61,27 @@ impl Device {
         ))
     }
 
-    pub(super) fn host_usage(&self, info: &TextureInfo, create: &vk::ImageCreateInfo) -> bool {
-        info.usage & usage::HOST != 0
-            && self.ext.copy.is_some()
-            && unsafe {
-                self.instance.get_physical_device_image_format_properties(
-                    self.physical,
-                    create.format,
-                    create.image_type,
-                    create.tiling,
-                    create.usage | vk::ImageUsageFlags::HOST_TRANSFER_EXT,
-                    create.flags,
-                )
-            }
-            .is_ok()
+    pub(super) fn host_usage(
+        &self,
+        info: &TextureInfo,
+        create: &mut vk::ImageCreateInfo,
+    ) -> Result<(), String> {
+        if info.usage & usage::HOST == 0 {
+            return Ok(());
+        }
+        create.usage |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+        unsafe {
+            self.instance.get_physical_device_image_format_properties(
+                self.physical,
+                create.format,
+                create.image_type,
+                create.tiling,
+                create.usage,
+                create.flags,
+            )
+        }
+        .map(|_| ())
+        .map_err(|_| format!("format {} does not support usage::HOST here", info.format))
     }
 
     pub(super) fn prepare(&mut self, id: u32) -> Result<u32, String> {
@@ -81,37 +89,23 @@ impl Device {
             return Ok(id);
         }
         let t = self.res.textures.get(id);
-        let result = match &self.ext.copy {
-            Some(ext) if t.host => {
-                let range = vk::ImageSubresourceRange {
-                    aspect_mask: t.aspect,
-                    base_mip_level: 0,
-                    level_count: vk::REMAINING_MIP_LEVELS,
-                    base_array_layer: 0,
-                    layer_count: vk::REMAINING_ARRAY_LAYERS,
-                };
-                let transition = vk::HostImageLayoutTransitionInfoEXT::default()
-                    .image(t.image)
-                    .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::GENERAL)
-                    .subresource_range(range);
-                unsafe { ext.transition_image_layout(&[transition]) }.map_err(|e| e.to_string())
-            }
-            _ => self.general(id),
+        let range = vk::ImageSubresourceRange {
+            aspect_mask: t.aspect,
+            base_mip_level: 0,
+            level_count: vk::REMAINING_MIP_LEVELS,
+            base_array_layer: 0,
+            layer_count: vk::REMAINING_ARRAY_LAYERS,
         };
-        result.map(|_| id).inspect_err(|_| self.destroy_texture(id))
-    }
-
-    fn general(&mut self, texture: u32) -> Result<(), String> {
-        let mut c = Commands::default();
-        c.texture_barrier(&TextureBarrier {
-            texture,
-            dst_stage: self.stages(),
-            dst_access: access::MEMORY_READ | access::MEMORY_WRITE,
-            after: crate::layout::GENERAL,
-            ..Default::default()
-        });
-        self.finish(&c)
+        let transition = vk::HostImageLayoutTransitionInfoEXT::default()
+            .image(t.image)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .subresource_range(range);
+        let ext = self.ext.copy.as_ref().unwrap();
+        unsafe { ext.transition_image_layout(&[transition]) }
+            .map(|_| id)
+            .map_err(|e| e.to_string())
+            .inspect_err(|_| self.destroy_texture(id))
     }
 }
 

@@ -30,8 +30,6 @@ type Read = unsafe extern "system" fn(i32, i32, i32, i32, u32, u32, *mut c_void)
 type Compressed2 = unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
 type Compressed3 =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, i32, *const c_void);
-type GetImage = unsafe extern "system" fn(u32, i32, u32, u32, *mut c_void);
-type GetCompressed = unsafe extern "system" fn(u32, i32, *mut c_void);
 type SubImage =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, i32, *mut c_void);
 type CompressedSub =
@@ -79,8 +77,6 @@ pub struct Extra {
     pub read: Read,
     pub compressed2: Compressed2,
     pub compressed3: Compressed3,
-    pub get_image: GetImage,
-    pub get_compressed: GetCompressed,
     pub sub_image: Option<SubImage>,
     pub compressed_sub: Option<CompressedSub>,
     pub provoking: Provoking,
@@ -184,8 +180,6 @@ impl Extra {
                 read: cast(need("glReadPixels")?),
                 compressed2: cast(need("glCompressedTexSubImage2D")?),
                 compressed3: cast(need("glCompressedTexSubImage3D")?),
-                get_image: cast(need("glGetTexImage")?),
-                get_compressed: cast(need("glGetCompressedTexImage")?),
                 sub_image: get("glGetTextureSubImage", 45, "GL_ARB_get_texture_sub_image")
                     .map(|p| cast(p)),
                 compressed_sub: get(

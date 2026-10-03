@@ -17,7 +17,6 @@ pub struct Texture {
     pub base_layer: u32,
     pub layers: u32,
     pub tile: vk::Extent3D,
-    pub host: bool,
 }
 
 impl Texture {

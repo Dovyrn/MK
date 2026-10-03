@@ -20,8 +20,6 @@ mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod slots;
-#[cfg(any(feature = "vk", feature = "mtl"))]
-mod staging;
 mod submit;
 mod table;
 #[cfg(feature = "vk")]

@@ -159,6 +159,7 @@ impl Device {
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
                 mesh: extra.mesh.is_some(),
                 budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
+                host_read: has(45, "GL_ARB_get_texture_sub_image"),
                 ..Default::default()
             };
             let anisotropy = if caps.anisotropy {

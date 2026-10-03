@@ -68,6 +68,7 @@ impl Device {
             max_volume: 2048,
             max_layers: 2048,
             budget: true,
+            host_read: raw.hasUnifiedMemory(),
         }
     }
 
@@ -93,7 +94,8 @@ impl Device {
         if usage == 0 {
             return 0;
         }
-        let host = if (format::D16_UNORM..=format::S8_UINT).contains(&format) {
+        let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
+        let host = if depth || !self.raw.hasUnifiedMemory() {
             0
         } else {
             usage::HOST
