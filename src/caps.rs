@@ -152,6 +152,10 @@ impl Caps {
         Ok(())
     }
 
+    pub(crate) fn address(&self) {
+        assert!(self.addresses, "address needs caps.addresses");
+    }
+
     pub(crate) fn image(&self, texture: u32) {
         assert!(
             texture < self.images,

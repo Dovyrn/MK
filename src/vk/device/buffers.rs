@@ -176,6 +176,7 @@ impl Device {
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.table.buffers.get(buffer);
+        self.caps.address();
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "imported buffers have no address on Vulkan");
         b.address

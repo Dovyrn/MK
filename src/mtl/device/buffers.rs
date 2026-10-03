@@ -90,6 +90,7 @@ impl Device {
 
     pub fn address(&self, buffer: u32) -> u64 {
         self.res.table.buffers.get(buffer);
+        self.caps.address();
         self.res.buffers.get(buffer).gpuAddress()
     }
 }

@@ -14,6 +14,7 @@ public class Caps {
     public int samplers = 0;
     public int textures = 0;
     public int images = 0;
+    public boolean addresses = false;
     public float tick = 0.0f;
     public boolean timestamps = false;
     public boolean precise = false;
@@ -74,10 +75,10 @@ public class Caps {
     public boolean copyFormats = false;
     public boolean textureClear = false;
 
-    public static final int SIZE = 264;
+    public static final int SIZE = 268;
 
     int encodedSize() {
-        return 264;
+        return 268;
     }
 
     long encode(long p) {
@@ -92,6 +93,8 @@ public class Caps {
         memPutInt(p, textures);
         p += 4;
         memPutInt(p, images);
+        p += 4;
+        memPutInt(p, addresses ? 1 : 0);
         p += 4;
         memPutFloat(p, tick);
         p += 4;
@@ -227,6 +230,8 @@ public class Caps {
         r.textures = memGetInt(p);
         p += 4;
         r.images = memGetInt(p);
+        p += 4;
+        r.addresses = memGetInt(p) != 0;
         p += 4;
         r.tick = memGetFloat(p);
         p += 4;

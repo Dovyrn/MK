@@ -44,6 +44,7 @@ pub(super) fn probe(
         samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
         textures: bindless.textures().min(limits.max_memory_allocation_count),
         images: bindless.textures().min(limits.max_memory_allocation_count),
+        addresses: true,
         tick: limits.timestamp_period,
         timestamps: queues
             .iter()

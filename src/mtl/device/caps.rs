@@ -31,6 +31,7 @@ impl Device {
             samplers: 2048,
             textures: 500_000,
             images: 500_000,
+            addresses: true,
             tick: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,

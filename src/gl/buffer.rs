@@ -14,6 +14,7 @@ pub struct Buffer {
     pub data: Cell<*mut u8>,
     pub persistent: bool,
     pub own: bool,
+    pub address: Cell<u64>,
 }
 
 impl Buffer {
@@ -67,6 +68,7 @@ impl Buffer {
                 data: Cell::new(data),
                 persistent,
                 own: true,
+                address: Cell::new(0),
             })
         }
     }
@@ -101,6 +103,7 @@ impl Buffer {
                 data: Cell::new(std::ptr::null_mut()),
                 persistent: false,
                 own: true,
+                address: Cell::new(0),
             })
         }
     }
@@ -132,6 +135,7 @@ impl Buffer {
                 data: Cell::new(pointer),
                 persistent: true,
                 own: true,
+                address: Cell::new(0),
             })
         }
     }

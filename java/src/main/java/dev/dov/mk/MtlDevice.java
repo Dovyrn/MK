@@ -10,12 +10,6 @@ public class MtlDevice extends Device {
         super(handle);
     }
 
-    public synchronized long address(int buffer) {
-        return nAddress(handle, buffer);
-    }
-
-    private static native long nAddress(long device, int buffer);
-
     public synchronized Matrix matrix(int index) {
         try (var stack = MemoryStack.stackPush()) {
             var out = stack.nmalloc(8, Matrix.SIZE);

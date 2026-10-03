@@ -23,7 +23,7 @@ pub fn glsl(out: &Path, name: &str) {
     let meshy = entries
         .iter()
         .any(|e| e["mode"] == "task" || e["mode"] == "mesh");
-    let heaps = reflection.to_string().contains("_slang_resource_heap");
+    let heaps = reflection.to_string().contains("\"set\":1");
     for e in entries {
         let entry = e["name"].as_str().unwrap();
         let stage = e["mode"].as_str().unwrap();
@@ -206,24 +206,46 @@ fn strip(spv: &[u8]) -> (bool, Vec<u8>) {
 fn bindless(text: &str) -> Option<String> {
     let mut heaps = Vec::new();
     let mut kept = String::new();
-    for line in text.lines() {
-        let words: Vec<&str> = line.split_whitespace().collect();
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let words: Vec<&str> = lines[i].split_whitespace().collect();
         let image = words.iter().position(|w| w.contains("image"));
         let declared = words.last().and_then(|w| w.strip_suffix("[];"));
-        match (image, declared) {
-            (Some(i), Some(name)) if name.contains("_slang_resource_heap") => {
-                heaps.push((format!("{name}["), words[i]));
+        let block = words.contains(&"buffer") && lines.get(i + 1) == Some(&"{");
+        let member: Vec<&str> = lines
+            .get(i + 2)
+            .map_or(Vec::new(), |l| l.split_whitespace().collect());
+        let end = lines
+            .get(i + 3)
+            .and_then(|l| l.strip_prefix("} "))
+            .and_then(|l| l.strip_suffix("[];"));
+        match (image, declared, end) {
+            (Some(w), Some(name), _) if name.contains("_slang_resource_heap") => {
+                heaps.push((format!("{name}["), format!("{}(", words[w]), String::new()));
+                i += 1;
+            }
+            (_, _, Some(name)) if block && name.contains("_slang_resource_heap") => {
+                let [kind, field] = member[..] else {
+                    return None;
+                };
+                let field = format!(".{}", field.strip_suffix("[];")?);
+                heaps.push((format!("{name}["), format!("(({kind}*)packPtr("), field));
+                i += 4;
             }
             _ => {
-                kept += line;
+                kept += lines[i];
                 kept += "\n";
+                i += 1;
             }
         }
     }
     if heaps.is_empty() {
         return Some(text.to_string());
     }
-    for (open, kind) in heaps {
+    let pointers = heaps.iter().any(|(_, _, field)| !field.is_empty());
+    let images = heaps.iter().any(|(_, _, field)| field.is_empty());
+    for (open, head, field) in heaps {
         while let Some(start) = kept.find(&open) {
             let inner = start + open.len();
             let mut depth = 1;
@@ -241,19 +263,29 @@ fn bindless(text: &str) -> Option<String> {
                 .and_then(|i| i.strip_suffix(')'))
                 .unwrap_or(index);
             let handle = index.strip_suffix(".x")?;
-            kept = format!("{}{kind}({handle}){}", &kept[..start], &kept[close + 1..]);
+            let rest = &kept[close + 1..];
+            let rest = rest.strip_prefix(field.as_str())?;
+            if !field.is_empty() && !rest.starts_with('[') {
+                return None;
+            }
+            let tail = if field.is_empty() { ")" } else { "))" };
+            kept = format!("{}{head}{handle}{tail}{rest}", &kept[..start]);
         }
     }
     if kept.contains("_slang_resource_heap") {
         return None;
     }
     let kept = kept.replace("#extension GL_EXT_nonuniform_qualifier : require\n", "");
+    let mut extensions = String::new();
+    if images {
+        extensions += "#extension GL_ARB_bindless_texture : require\n";
+    }
+    if pointers {
+        extensions += "#extension GL_NV_shader_buffer_load : require\n";
+        extensions += "#extension GL_NV_shader_buffer_store : require\n";
+    }
     let line = kept.find('\n')? + 1;
-    Some(format!(
-        "{}#extension GL_ARB_bindless_texture : require\n{}",
-        &kept[..line],
-        &kept[line..]
-    ))
+    Some(format!("{}{extensions}{}", &kept[..line], &kept[line..]))
 }
 
 fn unset(text: &str) -> String {

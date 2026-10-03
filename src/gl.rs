@@ -1,3 +1,4 @@
+mod addresses;
 mod bindless;
 mod buffer;
 mod cache;

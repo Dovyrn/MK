@@ -36,7 +36,7 @@ echo "matmul: $(grep -ciE 'validation error|panicked' $O) errors, $(tail -1 $O)"
 cargo build -q --features gl --examples
 for h in mesa apple legacy; do
     echo "== gl $h"
-    for e in slots render viewports adopt view queries native mesh cache draws uploads blits multiview predicates host shared images; do
+    for e in slots render viewports adopt view queries native mesh cache draws uploads blits multiview predicates host shared images handles; do
         MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
         echo "$e: $(tail -1 $O)"
     done

@@ -5,6 +5,7 @@ mod host;
 
 use crate::caps;
 use crate::check::Check;
+use crate::gl::addresses::GPU_ADDRESS;
 use crate::gl::buffer::Buffer;
 use crate::gl::cache::Cache;
 use crate::gl::event::Event;
@@ -185,6 +186,12 @@ impl Device {
                     4096
                 },
                 shared_memory: extra.memory.is_some(),
+                buffers: if extra.addresses.is_some() {
+                    u32::MAX
+                } else {
+                    0
+                },
+                addresses: extra.addresses.is_some(),
                 images: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
@@ -296,6 +303,7 @@ impl Device {
             data: Cell::new(std::ptr::null_mut()),
             persistent: false,
             own: false,
+            address: Cell::new(0),
         });
         self.res.table.buffers.set(id, size);
         id
@@ -355,7 +363,35 @@ impl Device {
     pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
         self.thread();
         self.res.table.buffers.get(buffer);
-        Err("GL has no bindless heap".into())
+        if self.extra.addresses.is_none() {
+            return Err("buffer handles need GL_NV_shader_buffer_load".into());
+        }
+        Ok(self.resident(buffer))
+    }
+
+    pub fn address(&self, buffer: u32) -> u64 {
+        self.thread();
+        self.res.table.buffers.get(buffer);
+        self.caps.address();
+        self.resident(buffer)
+    }
+
+    fn resident(&self, buffer: u32) -> u64 {
+        let b = self.res.buffers.get(buffer);
+        if b.address.get() == 0 {
+            let a = self.extra.addresses.as_ref().unwrap();
+            let target = glow::COPY_WRITE_BUFFER;
+            unsafe {
+                let old = state::buffer(self.gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
+                self.gl.bind_buffer(target, Some(b.raw));
+                (a.resident)(target, glow::READ_WRITE);
+                let mut address = 0;
+                (a.parameter)(target, GPU_ADDRESS, &mut address);
+                self.gl.bind_buffer(target, old);
+                b.address.set(address);
+            }
+        }
+        b.address.get()
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {

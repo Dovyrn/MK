@@ -33,7 +33,6 @@ params = [["buffer", "u32"]]
 
 [[call]]
 name = "address"
-backend = "vk mtl"
 params = [["buffer", "u32"]]
 result = "u64"
 

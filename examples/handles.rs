@@ -1,15 +1,8 @@
-#[cfg(not(feature = "gl"))]
 use mk::{Commands, ComputeInfo, access, memory, stage};
 
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "gl")]
-fn main() {
-    println!("GL has no bindless heap");
-}
-
-#[cfg(not(feature = "gl"))]
 fn main() {
     let n = 256u32;
     let mut device = host::device(1);

@@ -1,3 +1,4 @@
+use crate::gl::addresses::Addresses;
 use crate::gl::bindless::Bindless;
 use crate::gl::memory::Memory;
 use std::ffi::c_void;
@@ -124,6 +125,7 @@ pub struct Extra {
     pub parameters: bool,
     pub memory: Option<Memory>,
     pub bindless: Option<Bindless>,
+    pub addresses: Option<Addresses>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -242,6 +244,8 @@ impl Extra {
                 parameters: has(46, "GL_ARB_shader_draw_parameters"),
                 memory: Memory::load(&|name| get(name, 99, "GL_EXT_memory_object_fd")),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
+                addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
+                    .filter(|_| has(99, "GL_NV_shader_buffer_store")),
             })
         }
     }

@@ -68,6 +68,12 @@ public class Device implements AutoCloseable {
 
     private static native void nUnmap(long device, int buffer);
 
+    public synchronized long address(int buffer) {
+        return nAddress(handle, buffer);
+    }
+
+    private static native long nAddress(long device, int buffer);
+
     public synchronized void destroyHeap(int heap) {
         nDestroyHeap(handle, heap);
     }
