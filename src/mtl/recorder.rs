@@ -1114,7 +1114,7 @@ impl<'a> Recorder<'a> {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
-            Command::ResetQueries { .. } => {}
+            Command::ResetQueries { .. } | Command::SetLineWidth { .. } => {}
             Command::WriteTimestamp { heap, index, stage } => {
                 let Query::Timestamp(heap) = self.res.queries.get(heap) else {
                     unreachable!()

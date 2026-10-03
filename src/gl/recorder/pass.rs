@@ -1,4 +1,5 @@
 use super::{Recorder, integer};
+use crate::gl::state::DEPTH_BOUNDS_TEST;
 use crate::{format, load, slot, store};
 use glow::HasContext;
 
@@ -8,6 +9,11 @@ impl Recorder<'_> {
         let gl = self.gl;
         unsafe {
             match t.target {
+                _ if self.multiview > 1 => {
+                    let raw = t.raw.map_or(0, |r| r.0.get());
+                    let views = self.multiview as i32;
+                    self.extra.multiview.unwrap()(target, point, raw, 0, 0, views)
+                }
                 _ if layers > 1 => gl.framebuffer_texture(target, point, t.raw, 0),
                 glow::TEXTURE_2D | glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_1D => {
                     gl.framebuffer_texture(target, point, t.raw, 0)
@@ -121,6 +127,11 @@ impl Recorder<'_> {
             self.stencil();
             gl.viewport(0, 0, width as i32, height as i32);
             gl.depth_range(0.0, 1.0);
+            gl.line_width(1.0);
+            if let Some(bounds) = self.extra.bounds {
+                gl.disable(DEPTH_BOUNDS_TEST);
+                bounds(0.0, 1.0);
+            }
             self.rendering = true;
             self.extent = (width as i32, height as i32);
             self.views = vec![[0.0, 0.0, width as f32, height as f32]];
@@ -134,6 +145,7 @@ impl Recorder<'_> {
     pub fn end_render(&mut self) {
         let gl = self.gl;
         let res = self.res;
+        self.multiview = 0;
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
             let mut discard: Vec<u32> = self

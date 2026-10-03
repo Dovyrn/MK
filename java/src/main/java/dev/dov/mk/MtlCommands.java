@@ -40,11 +40,6 @@ public class MtlCommands extends Commands {
         memPutInt(p + 8, index);
     }
 
-    public void multiview(int views) {
-        var p = head(60, 4);
-        memPutInt(p, views);
-    }
-
     public void executeIndirect(int indirect, int start, int count) {
         var p = head(62, 12);
         memPutInt(p, indirect);

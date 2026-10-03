@@ -885,7 +885,11 @@ impl<'a> Check<'a> {
                 offset,
             } => {
                 self.queries(heap, &[], first, count);
-                self.range(buffer, offset, count as u64 * 8);
+                let size = match self.table.queries.get(heap).0 {
+                    query::STATISTICS => 56,
+                    _ => 8,
+                };
+                self.range(buffer, offset, count as u64 * size);
             }
             Command::PushConstants { offset, data } => {
                 let end = offset as usize + data.len();
@@ -947,13 +951,11 @@ impl<'a> Check<'a> {
                 slot(i, slot::STORAGES);
                 self.table.tensors.get(tensor);
             }
-            #[cfg(feature = "vk")]
             Command::SetLineWidth { width } => {
                 if width != 1.0 {
                     self.need(c, caps.wide_lines, "wide_lines")?;
                 }
             }
-            #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::Multiview { views } => {
                 if views > 1 {
                     self.need(c, views <= caps.views, "views")?;

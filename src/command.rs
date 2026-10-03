@@ -122,10 +122,10 @@ mod tests {
     #[test]
     #[cfg(not(feature = "vk"))]
     fn foreign() {
-        let bytes = [12, 0, 4, 0, 0, 0, 0, 0];
+        let bytes = [66, 0, 4, 0, 0, 0, 0, 0];
         assert_eq!(
             Command::dump(&bytes),
-            "set_line_width (not in this backend)\n"
+            "bind_ray_pipeline (not in this backend)\n"
         );
     }
 }

@@ -209,12 +209,6 @@ public class MtlDevice extends Device {
 
     private static native int nCreateCompacted(long device, int accel, long size);
 
-    public synchronized int createHostBuffer(long pointer, long size) {
-        return nCreateHostBuffer(handle, pointer, size);
-    }
-
-    private static native int nCreateHostBuffer(long device, long pointer, long size);
-
     public synchronized long sparsePage() {
         return nSparsePage(handle);
     }

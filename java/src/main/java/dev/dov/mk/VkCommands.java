@@ -4,22 +4,12 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 public class VkCommands extends Commands {
 
-    public void setLineWidth(float width) {
-        var p = head(12, 4);
-        memPutFloat(p, width);
-    }
-
     public void buildAccel(int accel, int scratch, long scratchOffset, int update) {
         var p = head(56, 20);
         memPutInt(p, accel);
         memPutInt(p + 4, scratch);
         memPutLong(p + 8, scratchOffset);
         memPutInt(p + 16, update);
-    }
-
-    public void multiview(int views) {
-        var p = head(60, 4);
-        memPutInt(p, views);
     }
 
     public void executeGenerated(GeneratedInfo info) {

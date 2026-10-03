@@ -74,6 +74,7 @@ fn main() {
     assert!(device.wait(event, 1, 5000).unwrap());
     let seen = unsafe { std::slice::from_raw_parts(device.map(back), pixels.len()) };
     assert_eq!(seen, pixels, "the GPU copy differs from the host write");
+    device.unmap(back);
     let mut read = vec![0; pixels.len()];
     let moved = HostCopy {
         layout: layout::COPY_SRC,
@@ -164,13 +165,15 @@ fn main() {
         assert_eq!(&out, s, "layer {i}");
     }
     let bc = device.format_usage(format::BC1_UNORM) & usage::HOST != 0;
+    let readable = device.format_usage(format::BC1_UNORM) & usage::COPY_SRC != 0;
     if bc {
+        let source = if readable { usage::COPY_SRC } else { 0 };
         let blocks = device
             .create_texture(&TextureInfo {
                 format: format::BC1_UNORM,
                 width: 16,
                 height: 16,
-                usage: usage::SAMPLED | usage::HOST,
+                usage: usage::SAMPLED | usage::HOST | source,
                 ..Default::default()
             })
             .unwrap();
@@ -199,6 +202,44 @@ fn main() {
                 "bc1 row {r}"
             );
         }
+        if readable {
+            let back = device.create_buffer(2 * 2 * 8, memory::READBACK).unwrap();
+            let event = device.create_event().unwrap();
+            let mut c = Commands::default();
+            c.texture_barrier(&TextureBarrier {
+                texture: blocks,
+                src_stage: stage::HOST,
+                src_access: access::HOST_WRITE,
+                dst_stage: stage::COPY,
+                dst_access: access::COPY_READ,
+                before: layout::GENERAL,
+                after: layout::COPY_SRC,
+                ..Default::default()
+            });
+            c.begin_compute();
+            c.copy_texture_to_buffer(&TextureCopy {
+                buffer: back,
+                texture: blocks,
+                layout: layout::COPY_SRC,
+                x: 8,
+                y: 8,
+                width: 8,
+                height: 8,
+                ..Default::default()
+            });
+            c.barrier(
+                stage::COPY,
+                access::COPY_WRITE,
+                stage::HOST,
+                access::HOST_READ,
+            );
+            c.end_compute();
+            device.submit(0, &c, &[], &[(event, 1)]).unwrap();
+            assert!(device.wait(event, 1, 5000).unwrap());
+            let seen = unsafe { std::slice::from_raw_parts(device.map(back), out.len()) };
+            assert_eq!(seen, out, "bc1 readback differs from the host read");
+            device.unmap(back);
+        }
     }
     let budget = match device.memory_budget() {
         Ok(b) => {
@@ -210,5 +251,7 @@ fn main() {
             e
         }
     };
-    println!("host copies round-trip: mips, row lengths, layers, bc1 {bc}; budget: {budget}");
+    println!(
+        "host copies round-trip: mips, row lengths, layers, bc1 {bc}, bc1 readback {readable}; budget: {budget}"
+    );
 }

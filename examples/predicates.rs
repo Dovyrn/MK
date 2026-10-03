@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorAttachment, ColorTarget, Commands, DepthAttachment, Device, RenderInfo, TextureBarrier,
     TextureCopy, TextureInfo, access, format, layout, memory, stage, store, usage,
@@ -9,15 +8,9 @@ mod host;
 
 #[cfg(feature = "mtl")]
 const CODE: &[u8] = host::code!("multiview");
-#[cfg(feature = "vk")]
+#[cfg(not(feature = "mtl"))]
 const CODE: &[u8] = host::code!("triangle");
 
-#[cfg(feature = "gl")]
-fn main() {
-    println!("depth bounds, conditional rendering and statistics are not on GL");
-}
-
-#[cfg(not(feature = "gl"))]
 fn draw(
     device: &mut Device,
     bounds: (f32, f32),
@@ -47,7 +40,7 @@ fn draw(
         format: format::RGBA8_UNORM,
         ..Default::default()
     }];
-    #[cfg(feature = "vk")]
+    #[cfg(not(feature = "mtl"))]
     let (buffers, attributes) = (
         vec![mk::VertexBuffer {
             stride: 20,
@@ -98,6 +91,7 @@ fn draw(
             size_of_val(&vertices),
         );
     }
+    device.unmap(vbuf);
     let back = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
@@ -135,7 +129,7 @@ fn draw(
     if let Some((buffer, inverted)) = predicate {
         c.begin_conditional(buffer, 0, inverted);
     }
-    #[cfg(feature = "mtl")]
+    #[cfg(not(feature = "vk"))]
     let _ = predicate;
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(pipeline);
@@ -186,10 +180,11 @@ fn draw(
     assert!(device.wait(event, 1, 2000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
-    pixels[(16 * n + 16) as usize]
+    let pixel = pixels[(16 * n + 16) as usize];
+    device.unmap(back);
+    pixel
 }
 
-#[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = host::device(1);
     let red = [255, 0, 0, 255];
@@ -199,8 +194,8 @@ fn main() {
         red,
         "open bounds"
     );
-    let bounds = device.caps().depth_bounds;
-    if bounds {
+    let caps = device.caps();
+    if caps.depth_bounds {
         assert_eq!(
             draw(&mut device, (0.0, 0.4), None, None),
             blue,
@@ -208,7 +203,7 @@ fn main() {
         );
     }
     #[cfg(feature = "vk")]
-    if device.caps().conditional && device.caps().statistics {
+    if caps.conditional {
         let flag = device.create_buffer(4, memory::UPLOAD).unwrap();
         unsafe { *device.map(flag).cast::<u32>() = 0 };
         assert_eq!(
@@ -221,6 +216,8 @@ fn main() {
             red,
             "inverted predicate 0"
         );
+    }
+    if caps.statistics {
         let heap = device.create_query_heap(mk::query::STATISTICS, 1).unwrap();
         let out = device.create_buffer(56, memory::READBACK).unwrap();
         assert_eq!(
@@ -241,11 +238,10 @@ fn main() {
         assert!(device.wait(event, 1, 2000).unwrap());
         let stats = unsafe { std::slice::from_raw_parts(device.map(out).cast::<u64>(), 7) };
         assert_eq!(stats[0], 3, "input assembly vertices {stats:?}");
-        println!("depth bounds {bounds}, conditional rendering, pipeline statistics {stats:?}");
-        return;
+        println!("pipeline statistics {stats:?}");
     }
-    #[allow(unreachable_code)]
-    {
-        println!("depth bounds {bounds}");
-    }
+    println!(
+        "depth bounds {}, conditional rendering {}, statistics {}",
+        caps.depth_bounds, caps.conditional, caps.statistics
+    );
 }

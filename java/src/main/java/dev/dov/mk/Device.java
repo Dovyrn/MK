@@ -329,4 +329,10 @@ public class Device implements AutoCloseable {
     }
 
     private static native void nSubmit(long device, int queue, long commands, long commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+
+    public synchronized int createHostBuffer(long pointer, long size) {
+        return nCreateHostBuffer(handle, pointer, size);
+    }
+
+    private static native int nCreateHostBuffer(long device, long pointer, long size);
 }

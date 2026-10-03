@@ -119,6 +119,11 @@ public class Commands implements AutoCloseable {
         head(10, 0);
     }
 
+    public void setLineWidth(float width) {
+        var p = head(12, 4);
+        memPutFloat(p, width);
+    }
+
     public void queueBarrier(int srcStage, int srcAccess, int dstStage, int dstAccess) {
         var p = head(13, 16);
         memPutInt(p, srcStage);
@@ -499,6 +504,11 @@ public class Commands implements AutoCloseable {
         memPutInt(p + 8, count);
         memPutInt(p + 12, buffer);
         memPutLong(p + 16, offset);
+    }
+
+    public void multiview(int views) {
+        var p = head(60, 4);
+        memPutInt(p, views);
     }
 
     public void setViewports(Viewport[] viewports) {

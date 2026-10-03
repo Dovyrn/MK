@@ -3,6 +3,10 @@ use crate::{Caps, register, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
 
+pub const DEPTH_BOUNDS_TEST: u32 = 0x8890;
+
+const DEPTH_BOUNDS: u32 = 0x8891;
+
 const TARGETS: [u32; 9] = [
     glow::TEXTURE_1D,
     glow::TEXTURE_2D,
@@ -163,6 +167,7 @@ pub struct State {
     width: f32,
     write: bool,
     clip: Option<[i32; 2]>,
+    bounds: [f64; 2],
 }
 
 impl State {
@@ -284,6 +289,11 @@ impl State {
             if has(43, "GL_ARB_ES3_compatibility") {
                 enables.push(glow::PRIMITIVE_RESTART_FIXED_INDEX);
             }
+            let mut bounds = [0.0, 1.0];
+            if extra.bounds.is_some() {
+                enables.push(DEPTH_BOUNDS_TEST);
+                (extra.double)(DEPTH_BOUNDS, bounds.as_mut_ptr());
+            }
             let enables = enables.into_iter().map(|e| (e, gl.is_enabled(e))).collect();
             let blends = (0..slot::COLORS)
                 .map(|i| (extra.enabled)(glow::BLEND, i) != 0)
@@ -378,6 +388,7 @@ impl State {
                 clip: extra
                     .clip
                     .map(|_| [glow::CLIP_ORIGIN, glow::CLIP_DEPTH_MODE].map(int)),
+                bounds,
             }
         }
     }
@@ -511,6 +522,9 @@ impl State {
             gl.line_width(self.width);
             if let (Some(clip), Some([origin, depth])) = (extra.clip, self.clip) {
                 clip(origin as u32, depth as u32);
+            }
+            if let Some(bounds) = extra.bounds {
+                bounds(self.bounds[0], self.bounds[1]);
             }
         }
     }

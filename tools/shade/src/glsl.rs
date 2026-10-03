@@ -6,9 +6,16 @@ use std::process::Command;
 
 const LOCATIONS: u32 = 16;
 
+const CAPABILITY: u32 = 17;
+
+const MULTIVIEW: u32 = 4439;
+
 pub fn glsl(out: &Path, name: &str) {
     let (textures, samplers) = crate::shifts();
     let spv = out.join(format!("{name}.spv"));
+    let (multiview, stripped) = strip(&fs::read(&spv).unwrap());
+    let single = out.join(format!("{name}.stripped.spv"));
+    fs::write(&single, stripped).unwrap();
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
     let mut container = String::new();
@@ -59,9 +66,10 @@ pub fn glsl(out: &Path, name: &str) {
             if source.is_some() {
                 break;
             }
+            let input = if stage == "vert" { &spv } else { &single };
             let base = |extra: &[&str]| {
                 Command::new("spirv-cross")
-                    .arg(&spv)
+                    .arg(input)
                     .args([
                         "--entry",
                         entry,
@@ -81,7 +89,12 @@ pub fn glsl(out: &Path, name: &str) {
                     .output()
                     .unwrap()
             };
-            let plain = base(&["--no-420pack-extension"]);
+            let views: &[&str] = if stage == "vert" && multiview {
+                &["--glsl-ovr-multiview-view-count", "1"]
+            } else {
+                &[]
+            };
+            let plain = base(&[&["--no-420pack-extension"], views].concat());
             let text = String::from_utf8_lossy(&plain.stdout);
             let modern = text.lines().any(|l| {
                 let l = l.trim_start();
@@ -89,7 +102,7 @@ pub fn glsl(out: &Path, name: &str) {
                     && (l.contains("buffer") || l.contains("image") || l.contains("local_size"))
             });
             if plain.status.success() && !(version == "330" && modern) {
-                let packed = String::from_utf8(base(&[]).stdout).unwrap();
+                let packed = String::from_utf8(base(views).stdout).unwrap();
                 let vulkan = String::from_utf8(base(&["--vulkan-semantics"]).stdout).unwrap();
                 source = Some((String::from_utf8(plain.stdout).unwrap(), packed, vulkan));
                 break;
@@ -109,14 +122,21 @@ pub fn glsl(out: &Path, name: &str) {
         } else {
             plain
         };
-        let plain = ["BaseVertex", "BaseInstance"].iter().fold(plain, |text, b| {
-            text.replace(
-                &format!(
-                    "#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_{b} gl_{b}ARB\n#else\nuniform int SPIRV_Cross_{b};\n#endif\n"
-                ),
-                &format!("uniform int SPIRV_Cross_{b};\n"),
+        let block = |b: &str| {
+            format!(
+                "#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_{b} gl_{b}ARB\n#else\nuniform int SPIRV_Cross_{b};\n#endif\n"
             )
-        });
+        };
+        let plain = plain
+            .replace(
+                &block("BaseVertex"),
+                "uniform int mk_BaseVertex;\n#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_BaseVertex (mk_BaseVertex + gl_BaseVertexARB)\n#else\n#define SPIRV_Cross_BaseVertex mk_BaseVertex\n#endif\n",
+            )
+            .replace(
+                &block("BaseInstance"),
+                "uniform int SPIRV_Cross_BaseInstance;\n",
+            )
+            .replace("layout(num_views = 1) in;\n", "");
         container += &format!("//@ entry {entry}\n{plain}");
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         let mut table = Vec::new();
@@ -159,6 +179,24 @@ pub fn glsl(out: &Path, name: &str) {
         }
     }
     fs::write(out.join(format!("{name}.gl")), container).unwrap();
+}
+
+fn strip(spv: &[u8]) -> (bool, Vec<u8>) {
+    let words: Vec<u32> = spv
+        .chunks(4)
+        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+    let mut kept = words[..5].to_vec();
+    let mut i = 5;
+    while i < words.len() {
+        let n = (words[i] >> 16) as usize;
+        if words[i] & 0xffff != CAPABILITY || words[i + 1] != MULTIVIEW {
+            kept.extend(&words[i..i + n]);
+        }
+        i += n;
+    }
+    let bytes = kept.iter().flat_map(|w| w.to_le_bytes()).collect();
+    (kept.len() < words.len(), bytes)
 }
 
 fn unset(text: &str) -> String {

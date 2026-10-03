@@ -171,5 +171,82 @@ fn main() {
     assert_eq!(at(0, 0, 0), green, "count 1 draws the first");
     assert_eq!(at(1, 32, 32), red, "count 2 draws both");
     assert_eq!(at(1, 0, 0), green, "count 2 corner");
-    println!("draw counts read from the GPU: 1 then 2");
+    device.unmap(back);
+    let ids = device
+        .create_render_pipeline(&RenderInfo {
+            code: host::code!("multiview"),
+            vertex: "vert",
+            fragment: "frag",
+            colors: &[ColorTarget {
+                format: format::RGBA8_UNORM,
+                ..Default::default()
+            }],
+            indirect: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let based = upload(&mut device, &bytes(&[3, 1, 0, 5, 0]));
+    let mut c = Commands::default();
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COPY,
+        dst_stage: stage::COLOR,
+        dst_access: access::COLOR_WRITE,
+        before: layout::COPY_SRC,
+        after: layout::COLOR,
+        ..Default::default()
+    });
+    c.color_attachment(&ColorAttachment {
+        texture: color,
+        b: 1.0,
+        a: 1.0,
+        ..Default::default()
+    });
+    c.begin_render(n, n, 1);
+    c.bind_render_pipeline(ids);
+    c.bind_index_buffer(ibuf, 0, index::U16);
+    c.draw_indexed_indirect(based, 0, 1, 0);
+    c.end_render();
+    c.texture_barrier(&TextureBarrier {
+        texture: color,
+        src_stage: stage::COLOR,
+        src_access: access::COLOR_WRITE,
+        dst_stage: stage::COPY,
+        dst_access: access::COPY_READ,
+        before: layout::COLOR,
+        after: layout::COPY_SRC,
+        ..Default::default()
+    });
+    c.begin_compute();
+    c.copy_texture_to_buffer(&TextureCopy {
+        texture: color,
+        layout: layout::COPY_SRC,
+        width: n,
+        height: n,
+        buffer: back,
+        ..Default::default()
+    });
+    c.barrier(
+        stage::COPY,
+        access::COPY_WRITE,
+        stage::HOST,
+        access::HOST_READ,
+    );
+    c.end_compute();
+    let ids = match device.submit(0, &c, &[], &[(event, 2)]) {
+        Ok(()) => {
+            assert!(device.wait(event, 2, 1000).unwrap());
+            let pixels = unsafe {
+                std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
+            };
+            assert_eq!(pixels[(32 * n + 32) as usize], red, "base vertex 5");
+            assert_eq!(pixels[0], [0, 0, 255, 255], "base vertex 5 corner");
+            true
+        }
+        Err(e) => {
+            assert!(!device.caps().indirect_ids, "{e}");
+            false
+        }
+    };
+    println!("draw counts read from the GPU: 1 then 2; SV_VertexID in indexed indirect {ids}");
 }

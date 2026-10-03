@@ -1,20 +1,13 @@
-#[cfg(not(feature = "gl"))]
 use mk::{Commands, access, stage};
 
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "gl")]
-fn main() {
-    println!("host memory import is Vulkan and Metal only");
-}
-
-#[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = host::device(1);
     let caps = device.caps();
-    if !caps.host_memory {
-        println!("no host memory import");
+    if !caps.host_memory || !caps.compute {
+        println!("no host memory import or no compute");
         return;
     }
     let n = 16384u32;
@@ -24,21 +17,29 @@ fn main() {
             .unwrap();
     let memory = unsafe { std::alloc::alloc_zeroed(layout) };
     let buffer = device.create_host_buffer(memory, size as u64).unwrap();
+    #[cfg(not(feature = "gl"))]
+    let code = host::code!("fill");
+    #[cfg(feature = "gl")]
+    let code = host::code!("count");
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
-            code: host::code!("fill"),
+            code,
             entry: "fill",
             group: [64, 1, 1],
             ..Default::default()
         })
         .unwrap();
     let event = device.create_event().unwrap();
-    let mut push = device.address(buffer).to_le_bytes().to_vec();
+    let mut push = Vec::new();
+    #[cfg(not(feature = "gl"))]
+    push.extend(device.address(buffer).to_le_bytes());
     push.extend(n.to_le_bytes());
     push.extend(9u32.to_le_bytes());
     let mut c = Commands::default();
     c.begin_compute();
     c.bind_pipeline(pipeline);
+    #[cfg(feature = "gl")]
+    c.bind_storage(0, buffer, 0, size as u64);
     c.push_constants(0, &push);
     c.dispatch(n / 64, 1, 1);
     c.barrier(

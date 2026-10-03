@@ -1,4 +1,3 @@
-#[cfg(not(feature = "gl"))]
 use mk::{
     ColorAttachment, ColorTarget, Commands, RenderInfo, TextureBarrier, TextureCopy, TextureInfo,
     access, dimension, format, layout, memory, stage, usage,
@@ -7,12 +6,6 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "gl")]
-fn main() {
-    println!("multiview is Vulkan and Metal only");
-}
-
-#[cfg(not(feature = "gl"))]
 fn main() {
     let n = 32u32;
     let mut device = host::device(1);

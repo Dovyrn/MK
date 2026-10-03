@@ -53,7 +53,6 @@ fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
 name = "set_line_width"
-backend = "vk"
 fields = [["width", "f32"]]
 
 [[command]]
@@ -281,7 +280,6 @@ fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
 
 [[command]]
 name = "multiview"
-backend = "vk mtl"
 fields = [["views", "u32"]]
 
 [[command]]

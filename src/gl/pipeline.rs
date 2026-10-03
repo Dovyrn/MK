@@ -33,10 +33,7 @@ impl Pipeline {
         if !uniform(info.colors) && !blends {
             return Err("different blend states per color target need GL 4.0".into());
         }
-        if info.views > 1 {
-            return Err("multiview is not supported on GL".into());
-        }
-        let program = Program::new(gl, info.code, stages, cache)?;
+        let program = Program::new(gl, info.code, stages, info.views, cache)?;
         let raw = program.raw;
         let missing = unsafe {
             (0..gl.get_active_attributes(raw))

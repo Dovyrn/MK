@@ -1,4 +1,5 @@
 use super::Device;
+use crate::gl::query::STATISTICS;
 use glow::HasContext;
 
 const QUERIES: [u32; 4] = [
@@ -6,15 +7,6 @@ const QUERIES: [u32; 4] = [
     glow::ANY_SAMPLES_PASSED,
     glow::PRIMITIVES_GENERATED,
     glow::TIME_ELAPSED,
-];
-
-const STATISTICS: [u32; 6] = [
-    glow::VERTICES_SUBMITTED,
-    glow::PRIMITIVES_SUBMITTED,
-    glow::VERTEX_SHADER_INVOCATIONS,
-    glow::FRAGMENT_SHADER_INVOCATIONS,
-    glow::CLIPPING_INPUT_PRIMITIVES,
-    glow::CLIPPING_OUTPUT_PRIMITIVES,
 ];
 
 impl Device {
@@ -42,10 +34,8 @@ impl Device {
             targets.push(glow::ANY_SAMPLES_PASSED_CONSERVATIVE);
         }
         if self.has(46, "GL_ARB_pipeline_statistics_query") {
-            targets.extend(STATISTICS);
-            if self.caps.compute {
-                targets.push(glow::COMPUTE_SHADER_INVOCATIONS);
-            }
+            let n = if self.caps.compute { 7 } else { 6 };
+            targets.extend(&STATISTICS[..n]);
         }
         let active = targets.into_iter().any(|t| {
             let mut name = 0;

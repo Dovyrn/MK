@@ -382,7 +382,6 @@ fails = true
 
 [[call]]
 name = "create_host_buffer"
-backend = "vk mtl"
 params = [["pointer", "pointer"], ["size", "u64"]]
 result = "u32"
 fails = true

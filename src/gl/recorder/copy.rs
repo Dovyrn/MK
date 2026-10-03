@@ -72,8 +72,48 @@ impl Recorder<'_> {
         unsafe {
             let t = res.textures.get(texture);
             let (f, ty) = aspect(t.format);
+            let raw = res.buffers.get(buffer).raw;
             if f == 0 {
-                return Err("compressed readback is not supported on GL".into());
+                let read = self
+                    .extra
+                    .compressed_sub
+                    .ok_or("compressed readback needs GL_ARB_get_texture_sub_image")?;
+                gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw));
+                let [bytes, bw, bh] = format::block(t.format);
+                let store = [
+                    (glow::PACK_ROW_LENGTH, row_length),
+                    (glow::PACK_IMAGE_HEIGHT, row_count),
+                    (glow::PACK_COMPRESSED_BLOCK_WIDTH, bw),
+                    (glow::PACK_COMPRESSED_BLOCK_HEIGHT, bh),
+                    (glow::PACK_COMPRESSED_BLOCK_DEPTH, 1),
+                    (glow::PACK_COMPRESSED_BLOCK_SIZE, bytes),
+                ];
+                for (p, v) in store {
+                    gl.pixel_store_i32(p, v as i32);
+                }
+                let (z, depth) = match t.target {
+                    glow::TEXTURE_3D => (z, depth),
+                    glow::TEXTURE_2D => (0, 1),
+                    _ => (layer, 1),
+                };
+                let size = (res.buffers.get(buffer).size - offset).min(i32::MAX as u64);
+                read(
+                    t.raw.map_or(0, |r| r.0.get()),
+                    mip as i32,
+                    x as i32,
+                    y as i32,
+                    z as i32,
+                    width as i32,
+                    height as i32,
+                    depth as i32,
+                    size as i32,
+                    offset as usize as *mut std::ffi::c_void,
+                );
+                for (p, _) in store {
+                    gl.pixel_store_i32(p, 0);
+                }
+                gl.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
+                return Ok(());
             }
             let point = match f {
                 glow::DEPTH_COMPONENT => glow::DEPTH_ATTACHMENT,
@@ -88,7 +128,7 @@ impl Recorder<'_> {
             } else {
                 glow::NONE
             });
-            gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(res.buffers.get(buffer).raw));
+            gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw));
             gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
             gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
             let texel = match f {

@@ -5,6 +5,8 @@ use crate::memory;
 use glow::HasContext;
 use std::cell::Cell;
 
+const PINNED: u32 = 0x9160;
+
 pub struct Buffer {
     pub raw: glow::Buffer,
     pub size: u64,
@@ -64,6 +66,37 @@ impl Buffer {
                 memory,
                 data: Cell::new(data),
                 persistent,
+                own: true,
+            })
+        }
+    }
+
+    pub fn pinned(
+        gl: &glow::Context,
+        extra: &Extra,
+        pointer: *mut u8,
+        size: u64,
+    ) -> Result<Self, String> {
+        unsafe {
+            let host = drain(gl);
+            let raw = gl.create_buffer()?;
+            gl.bind_buffer(PINNED, Some(raw));
+            (extra.data)(PINNED, size as isize, pointer.cast(), glow::STREAM_DRAW);
+            gl.bind_buffer(PINNED, None);
+            let error = drain(gl).first().copied();
+            if error.is_some() {
+                gl.delete_buffer(raw);
+            }
+            raise(gl, extra, &host);
+            if let Some(e) = error {
+                return Err(format!("pinning {size} bytes failed ({e:#x})"));
+            }
+            Ok(Self {
+                raw,
+                size,
+                memory: memory::UPLOAD,
+                data: Cell::new(pointer),
+                persistent: true,
                 own: true,
             })
         }

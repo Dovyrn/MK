@@ -152,7 +152,6 @@ impl Caps {
         Ok(())
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub(crate) fn host(&self, pointer: *mut u8, size: u64) {
         let a = self.host_alignment.max(1) as u64;
         assert!(

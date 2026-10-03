@@ -99,9 +99,13 @@ impl Recorder<'_> {
         };
         let native = self.extra.elements_base.is_some();
         unsafe {
-            let base = if indexed { base } else { first as i32 };
+            let shift = match indexed {
+                false => first as i32,
+                true if self.extra.parameters => 0,
+                true => base,
+            };
             if let Some(l) = &p.program.base {
-                gl.uniform_1_i32(Some(l), base);
+                gl.uniform_1_i32(Some(l), shift);
             }
             if let Some(l) = &p.program.instance {
                 gl.uniform_1_i32(Some(l), instance as i32);
@@ -150,10 +154,13 @@ impl Recorder<'_> {
         let Some(p) = self.render.filter(|_| !indexed || self.index.is_some()) else {
             return Ok(());
         };
-        if p.program.base.is_some() {
-            return Err(
-                "indirect draws of a shader that reads SV_VertexID are not supported on GL".into(),
-            );
+        if let Some(l) = &p.program.base {
+            if !indexed || !self.extra.parameters {
+                return Err("indirect draws of a shader that reads SV_VertexID need \
+                    GL_ARB_shader_draw_parameters and an index buffer"
+                    .into());
+            }
+            unsafe { gl.uniform_1_i32(Some(l), 0) };
         }
         let size = if indexed { 20 } else { 16 };
         let stride = if stride == 0 { size } else { stride };
