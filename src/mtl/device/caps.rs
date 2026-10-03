@@ -1,25 +1,7 @@
 use super::Device;
-use crate::{Caps, Matrix, TextureInfo, dimension, element, format, usage};
+use crate::{Caps, TextureInfo, dimension, format, usage};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
-
-const MATRICES: [Matrix; 3] = [
-    shape(element::F16, element::F16),
-    shape(element::F16, element::F32),
-    shape(element::F32, element::F32),
-];
-
-const fn shape(input: u32, sum: u32) -> Matrix {
-    Matrix {
-        m: 8,
-        n: 8,
-        k: 8,
-        a: input,
-        b: input,
-        c: sum,
-        result: sum,
-    }
-}
 
 impl Device {
     pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize) -> Caps {
@@ -36,28 +18,13 @@ impl Device {
             timestamps: true,
             precise: true,
             ray: raw.supportsRaytracing(),
-            generated: false,
-            handle_size: 0,
-            handle_alignment: 0,
-            table_alignment: 0,
             sparse: raw.supportsFamily(MTLGPUFamily::Apple6),
             shading_rate: false,
-            host_memory: true,
-            host_alignment: 16384,
-            shared_memory: false,
             viewports: 16,
-            depth_bounds: raw.supportsFamily(MTLGPUFamily::Apple10),
-            conditional: false,
-            statistics: false,
             instance: 72,
             memoryless: raw.supportsFamily(MTLGPUFamily::Apple2),
-            views: (1..=8)
-                .rev()
-                .find(|&n| raw.supportsVertexAmplificationCount(n))
-                .unwrap_or(1) as u32,
             graphics: u32::MAX >> (32 - queues),
             labels: true,
-            rays: false,
             anisotropy: true,
             depth_clamp: true,
             line_fill: true,
@@ -78,7 +45,6 @@ impl Device {
             indirect_count: true,
             indirect_ids: true,
             indirect_offset: true,
-            wide_lines: false,
             max_queries: 4096,
             cube_arrays: true,
             mirror_clamp: true,
@@ -91,18 +57,11 @@ impl Device {
             max_layers: 2048,
             budget: true,
             host_read: raw.hasUnifiedMemory(),
-            matrices: MATRICES.len() as u32,
-            tensors: true,
-            networks: true,
         }
     }
 
     pub fn caps(&self) -> Caps {
         self.caps
-    }
-
-    pub fn matrix(&self, index: u32) -> Matrix {
-        MATRICES[self.caps.matrix(index)]
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {

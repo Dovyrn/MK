@@ -17,7 +17,6 @@ impl Device {
         samples: u32,
         fill: u32,
         coverage: bool,
-        views: u32,
         clamp: bool,
         indirect: bool,
     ) -> Result<u32, String> {
@@ -138,9 +137,6 @@ impl Device {
             vk::DynamicState::DEPTH_BIAS,
             vk::DynamicState::DEPTH_BIAS_ENABLE,
             vk::DynamicState::BLEND_CONSTANTS,
-            vk::DynamicState::DEPTH_BOUNDS,
-            vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE,
-            vk::DynamicState::LINE_WIDTH,
         ];
         if vertex.is_some() {
             states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
@@ -151,7 +147,6 @@ impl Device {
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
         let formats: Vec<_> = colors.iter().map(|c| format::vk(c.format)).collect();
         let mut rendering = vk::PipelineRenderingCreateInfo::default()
-            .view_mask(if views > 1 { (1 << views) - 1 } else { 0 })
             .color_attachment_formats(&formats)
             .depth_attachment_format(format::vk(depth))
             .stencil_attachment_format(format::vk(stencil));
@@ -206,7 +201,6 @@ impl Device {
             info.samples,
             info.fill,
             info.coverage,
-            info.views,
             info.clamp,
             info.indirect,
         )
@@ -237,7 +231,6 @@ impl Device {
             info.samples,
             info.fill,
             info.coverage,
-            info.views,
             info.clamp,
             info.indirect,
         )
@@ -305,9 +298,6 @@ impl Device {
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
-        if !info.functions.is_empty() {
-            return Err("linked functions are Metal only".into());
-        }
         let (code, entry) = (info.code, info.entry);
         let module = self.module(&spirv::read(code, &[entry], self.caps.slots)?)?;
         let name = CString::new(entry).unwrap();

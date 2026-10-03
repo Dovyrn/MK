@@ -7,15 +7,10 @@ mod copies;
 mod events;
 mod heaps;
 mod indirect;
-mod maps;
-mod networks;
 mod pipelines;
 mod queries;
 mod samplers;
-mod shared;
 mod sparse;
-mod tables;
-mod tensors;
 mod textures;
 
 use crate::check::Check;

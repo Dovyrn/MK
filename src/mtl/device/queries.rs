@@ -20,7 +20,6 @@ impl Device {
                         .map_err(|e| e.localizedDescription().to_string())?;
                     Query::Timestamp(heap)
                 }
-                query::STATISTICS => return Err("pipeline statistics are not supported".into()),
                 query::OCCLUSION | query::PRECISE | query::COMPACTED => {
                     let options = MTLResourceOptions::StorageModePrivate
                         | MTLResourceOptions::HazardTrackingModeUntracked;

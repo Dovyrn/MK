@@ -11,77 +11,13 @@ impl Device {
         Ok(self.insert_buffer(buffer, size))
     }
 
-    pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.caps.host(pointer, size);
-        self.caps.buffer(size, memory::UPLOAD)?;
-        let host = self
-            .ext
-            .host
-            .as_ref()
-            .ok_or("VK_EXT_external_memory_host is not enabled")?;
-        let kind = vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
-        let mut properties = vk::MemoryHostPointerPropertiesEXT::default();
-        let result = unsafe {
-            (host.fp().get_memory_host_pointer_properties_ext)(
-                self.raw.handle(),
-                kind,
-                pointer.cast(),
-                &mut properties,
-            )
-        };
-        if result != vk::Result::SUCCESS {
-            return Err(result.to_string());
-        }
-        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-        let mut external = vk::ExternalMemoryBufferCreateInfo::default().handle_types(kind);
-        let info = self
-            .buffer_info(size, self.usage(), &mut wide)
-            .push_next(&mut external);
-        let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
-        let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
-        let needs = unsafe { self.raw.get_buffer_memory_requirements(raw) };
-        let bits = needs.memory_type_bits & properties.memory_type_bits;
-        let Some(index) = self.find_type(bits, vk::MemoryPropertyFlags::HOST_VISIBLE) else {
-            destroy();
-            return Err("no host visible memory type fits this pointer".into());
-        };
-        let mut import = vk::ImportMemoryHostPointerInfoEXT::default()
-            .handle_type(kind)
-            .host_pointer(pointer.cast());
-        let mut flags =
-            vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
-        let alloc = vk::MemoryAllocateInfo::default()
-            .allocation_size(size)
-            .push_next(&mut import)
-            .push_next(&mut flags);
-        let memory = self
-            .attach(index, alloc, |m| unsafe {
-                self.raw.bind_buffer_memory(raw, m, 0)
-            })
-            .inspect_err(|_| destroy())?;
-        let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
-        let address = unsafe { self.raw.get_buffer_device_address(&info) };
-        Ok(self.insert_buffer(
-            Buffer {
-                raw,
-                memory: Rc::new(memory),
-                address,
-                data: pointer,
-                own: true,
-                device: false,
-            },
-            size,
-        ))
-    }
-
     pub(super) fn allocate(
         &self,
         size: u64,
         memory: u32,
         usage: vk::BufferUsageFlags,
     ) -> Result<Buffer, String> {
-        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-        let info = self.buffer_info(size, usage, &mut wide);
+        let info = self.buffer_info(size, usage);
         let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
         let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
         let needs = unsafe { self.raw.get_buffer_memory_requirements(raw) };

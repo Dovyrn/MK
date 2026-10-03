@@ -12,7 +12,7 @@ use crate::gl::program::Program;
 use crate::gl::rates;
 use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
-use crate::gl::state::{DEPTH_BOUNDS_TEST, State, toggle};
+use crate::gl::state::{State, toggle};
 use crate::register;
 use crate::{
     Caps, ColorAttachment, Command, DepthAttachment, DepthInfo, access, combiner, cull, face,
@@ -76,12 +76,11 @@ pub struct Recorder<'a> {
     views: Vec<[f32; 4]>,
     scissors: Vec<[i32; 4]>,
     layers: u32,
-    multiview: u32,
     shading: [u32; 4],
     rate: Option<(u32, u32, u32)>,
     rated: bool,
     rendering: bool,
-    query: Option<&'static [u32]>,
+    query: Option<u32>,
     labels: u32,
     natives: &'a [Callback],
 }
@@ -228,7 +227,6 @@ impl<'a> Recorder<'a> {
             views: Vec::new(),
             scissors: Vec::new(),
             layers: 0,
-            multiview: 0,
             shading: [1, 1, combiner::KEEP, combiner::KEEP],
             rate: None,
             rated: false,
@@ -255,7 +253,7 @@ impl<'a> Recorder<'a> {
     pub fn finish(&self) {
         let gl = self.gl;
         unsafe {
-            for &target in self.query.unwrap_or_default() {
+            if let Some(target) = self.query {
                 gl.end_query(target);
             }
             for _ in 0..self.labels {
@@ -627,8 +625,6 @@ impl<'a> Recorder<'a> {
                     f => panic!("unknown face {f}"),
                 }),
                 Command::SetTopology { topology } => self.mode = mode(topology),
-                Command::Multiview { views } => self.multiview = views,
-                Command::SetLineWidth { width } => gl.line_width(width),
                 Command::SetShadingRate {
                     width,
                     height,
@@ -676,10 +672,6 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::SetBlendColor { r, g, b, a } => gl.blend_color(r, g, b, a),
-                Command::SetDepthBounds { min, max } => {
-                    toggle(gl, DEPTH_BOUNDS_TEST, min > 0.0 || max < 1.0);
-                    self.extra.bounds.unwrap()(min as f64, max as f64);
-                }
                 Command::BindVertexBuffer {
                     slot,
                     buffer,
@@ -806,19 +798,15 @@ impl<'a> Recorder<'a> {
                 }
                 Command::BeginQuery { heap, index } => {
                     let q = res.queries.get(heap);
-                    let targets = q.targets();
-                    for (i, &target) in targets.iter().enumerate() {
-                        gl.begin_query(target, q.ids[index as usize * targets.len() + i]);
-                    }
+                    let target = q.target();
+                    gl.begin_query(target, q.ids[index as usize]);
                     q.used[index as usize].set(true);
-                    self.query = Some(targets);
+                    self.query = Some(target);
                 }
                 Command::EndQuery { heap, .. } => {
-                    let targets = res.queries.get(heap).targets();
-                    if self.query.take() == Some(targets) {
-                        for &target in targets {
-                            gl.end_query(target);
-                        }
+                    let target = res.queries.get(heap).target();
+                    if self.query.take() == Some(target) {
+                        gl.end_query(target);
                     }
                 }
                 Command::ResolveQueries {
@@ -829,13 +817,12 @@ impl<'a> Recorder<'a> {
                     offset,
                 } => {
                     let q = res.queries.get(heap);
-                    let n = q.targets().len();
                     let raw = res.buffers.get(buffer).raw;
                     gl.bind_buffer(glow::QUERY_BUFFER, Some(raw));
-                    for i in 0..count as usize * n {
-                        let k = first as usize * n + i;
+                    for i in 0..count {
+                        let k = (first + i) as usize;
                         let at = (offset + i as u64 * 8) as usize;
-                        if q.used[k / n].get() {
+                        if q.used[k].get() {
                             gl.get_query_parameter_u64_with_offset(
                                 q.ids[k],
                                 glow::QUERY_RESULT,

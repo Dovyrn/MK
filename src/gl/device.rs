@@ -1,8 +1,6 @@
 mod budget;
 mod copies;
-mod heaps;
 mod host;
-mod sparse;
 
 use crate::caps;
 use crate::check::Check;
@@ -53,8 +51,6 @@ pub const PUSH: usize = 256;
 const TASK_SHADER: u32 = 0x955A;
 
 const MESH_SHADER: u32 = 0x9559;
-
-const MAX_VIEWS: u32 = 0x9631;
 
 pub fn compare(c: u32) -> u32 {
     match c {
@@ -113,7 +109,6 @@ impl Device {
             let int = |p| gl.get_parameter_i32(p);
             let storage = has(43, "GL_ARB_shader_storage_buffer_object");
             let results = has(44, "GL_ARB_query_buffer_object");
-            let pinned = has(99, "GL_AMD_pinned_memory");
             let caps = Caps {
                 push: PUSH as u32,
                 queues: 1,
@@ -154,12 +149,6 @@ impl Device {
                 indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
                 indirect_ids: false,
                 indirect_offset: false,
-                wide_lines: {
-                    let flags = int(glow::CONTEXT_FLAGS) as u32;
-                    let mut range = [0.0; 2];
-                    gl.get_parameter_f32_slice(glow::ALIASED_LINE_WIDTH_RANGE, &mut range);
-                    flags & glow::CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT == 0 && range[1] > 1.0
-                },
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
                 mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
@@ -175,18 +164,6 @@ impl Device {
                 mesh: extra.mesh.is_some(),
                 budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
                 host_read: has(45, "GL_ARB_get_texture_sub_image"),
-                statistics: has(46, "GL_ARB_pipeline_statistics_query")
-                    && has(43, "GL_ARB_compute_shader"),
-                depth_bounds: extra.bounds.is_some(),
-                host_memory: pinned,
-                host_alignment: if !pinned {
-                    0
-                } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-                    16384
-                } else {
-                    4096
-                },
-                shared_memory: extra.memory.is_some(),
                 buffers: if extra.addresses.is_some() {
                     u32::MAX
                 } else {
@@ -194,19 +171,10 @@ impl Device {
                 },
                 addresses: extra.addresses.is_some(),
                 shading_rate: extra.rates.is_some(),
-                sparse: extra.sparse.is_some() && extra.memory.is_some(),
-                sparse_textures: extra.sparse.is_some()
-                    && extra.tiles.is_some()
-                    && extra.memory.is_some(),
                 images: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
                     0
-                },
-                views: if extra.multiview.is_some() {
-                    int(MAX_VIEWS) as u32
-                } else {
-                    1
                 },
                 ..Default::default()
             };
@@ -282,19 +250,6 @@ impl Device {
             .res
             .buffers
             .insert(Buffer::new(&self.gl, &self.extra, size, memory)?);
-        self.res.table.buffers.set(id, size);
-        Ok(id)
-    }
-
-    pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        self.thread();
-        self.caps.host(pointer, size);
-        self.caps.buffer(size, memory::UPLOAD)?;
-        if !self.caps.host_memory {
-            return Err("host memory needs GL_AMD_pinned_memory".into());
-        }
-        let buffer = Buffer::pinned(&self.gl, &self.extra, pointer, size)?;
-        let id = self.res.buffers.insert(buffer);
         self.res.table.buffers.set(id, size);
         Ok(id)
     }
@@ -410,7 +365,6 @@ impl Device {
             &self.gl,
             info.code,
             &[(glow::COMPUTE_SHADER, info.entry)],
-            1,
             self.cache.as_mut(),
         )?;
         self.units = self.units.max(program.pairs.len() as u32);
@@ -466,7 +420,6 @@ impl Device {
             topology: topology::TRIANGLE,
             fill: info.fill,
             coverage: info.coverage,
-            views: info.views,
             clamp: info.clamp,
             indirect: info.indirect,
             ..Default::default()
@@ -475,12 +428,6 @@ impl Device {
     }
 
     fn render(&mut self, info: &RenderInfo, stages: &[(u32, &str)]) -> Result<u32, String> {
-        if info.views > self.caps.views {
-            return Err(format!(
-                "{} views is over caps.views {}",
-                info.views, self.caps.views
-            ));
-        }
         self.programs()?;
         let cache = self.cache.as_mut();
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
@@ -519,7 +466,7 @@ impl Device {
         let counts = self.format_samples(info.format, info.usage);
         self.caps.texture(info, usable, counts)?;
         let storage = self.has(42, "GL_ARB_texture_storage");
-        let texture = Texture::new(&self.gl, &self.extra, info, storage, None, false)?;
+        let texture = Texture::new(&self.gl, &self.extra, info, storage)?;
         let id = self.res.textures.insert(texture);
         self.res.table.textures.set(id, *info);
         Ok(id)
@@ -726,10 +673,6 @@ impl Device {
                 return Err("query results need GL 4.4".into());
             }
             query::TIMESTAMP | query::OCCLUSION | query::PRECISE => {}
-            query::STATISTICS if !self.caps.statistics => {
-                return Err("pipeline statistics need GL_ARB_pipeline_statistics_query".into());
-            }
-            query::STATISTICS => {}
             query::COMPACTED => {
                 return Err("acceleration structures are not supported on GL".into());
             }
@@ -870,11 +813,6 @@ impl Drop for Device {
             }
             for t in self.res.textures.drain() {
                 t.delete(gl);
-            }
-            if let Some(m) = &self.extra.memory {
-                for h in self.res.heaps.drain() {
-                    (m.delete)(1, &h);
-                }
             }
             for s in self.res.samplers.drain() {
                 sampler::delete(gl, s);

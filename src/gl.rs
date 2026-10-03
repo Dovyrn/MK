@@ -6,7 +6,6 @@ mod device;
 mod errors;
 mod event;
 mod extra;
-mod memory;
 mod native;
 mod pipeline;
 mod program;
@@ -16,10 +15,8 @@ mod recorder;
 mod resolve;
 mod resources;
 mod sampler;
-mod sparse;
 mod state;
 mod texture;
-mod tiles;
 
 pub use device::Device;
 pub use native::{Callback, Native};

@@ -4,11 +4,11 @@ struct Varyings {
 };
 
 [shader("vertex")]
-Varyings vert(uint vertex : SV_VertexID, uint view : SV_ViewID) {
+Varyings vert(uint vertex : SV_VertexID) {
     float2 corners[3] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(0, 0.5) };
     Varyings o;
     o.position = float4(corners[vertex], 0.5, 1);
-    o.color = view == 0 ? float3(1, 0, 0) : float3(0, 1, 0);
+    o.color = float3(1, 0, 0);
     return o;
 }
 

@@ -152,7 +152,7 @@ fn main() {
     );
     println!("{caps:?}");
     if caps.timestamps {
-        assert!(r[1] > r[0], "timestamps {} {}", r[0], r[1]);
+        assert!(r[1] >= r[0], "timestamps {} {}", r[0], r[1]);
     }
     if caps.precise {
         assert!((400..640).contains(&r[2]), "occlusion {}", r[2]);

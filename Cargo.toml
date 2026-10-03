@@ -15,7 +15,6 @@ mtl = [
     "dep:objc2-foundation",
     "dep:objc2-core-foundation",
     "dep:objc2-metal",
-    "dep:objc2-io-surface",
     "dep:dispatch2",
 ]
 gl = ["dep:glow"]
@@ -27,14 +26,12 @@ block2 = { version = "0.6", optional = true }
 objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true }
 objc2-core-foundation = { version = "0.3", optional = true }
-objc2-metal = { version = "0.3", optional = true, features = ["objc2-io-surface"] }
-objc2-io-surface = { version = "0.3", optional = true }
+objc2-metal = { version = "0.3", optional = true }
 dispatch2 = { version = "0.3", optional = true }
 glow = { version = "0.17", optional = true }
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
-ash = "0.38"
 khronos-egl = { version = "6", features = ["dynamic"] }
 
 [build-dependencies]

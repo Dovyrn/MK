@@ -3,7 +3,6 @@ mod textures;
 use crate::command;
 use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
-use crate::vk::ffi;
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, count};
 use crate::vk::{Callback, Native};
@@ -30,12 +29,10 @@ pub struct Recorder<'a> {
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
-    pub views: u32,
     pub natives: &'a [Callback],
     pub heap: vk::DescriptorSet,
     pub compute: vk::Pipeline,
     pub graphics: vk::Pipeline,
-    pub rays: vk::Pipeline,
     pub slots: BTreeMap<u32, Slot>,
     pub push: Vec<u8>,
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
@@ -82,7 +79,6 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
         ),
         (stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
         (stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
-        (stage::RAY, vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR),
         (stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
         (
             stage::DEPTH,
@@ -101,7 +97,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
             vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
         ),
     ];
-    let foreign = bits & (stage::RESOURCE | stage::ML);
+    let foreign = bits & stage::RESOURCE;
     assert_eq!(foreign, 0, "stage {foreign} has no Vulkan equivalent");
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
@@ -212,7 +208,6 @@ impl Recorder<'_> {
         let bound = [
             (vk::PipelineBindPoint::COMPUTE, self.compute),
             (vk::PipelineBindPoint::GRAPHICS, self.graphics),
-            (vk::PipelineBindPoint::RAY_TRACING_KHR, self.rays),
         ];
         for (point, pipeline) in bound {
             if pipeline != vk::Pipeline::null() {
@@ -241,14 +236,10 @@ impl Recorder<'_> {
             stage::FRAGMENT | stage::TILE => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
             stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
             stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
-            stage::RAY => (
-                vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR,
-                self.ext.rays.is_some(),
-            ),
             stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
             stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
             stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
-            stage::COMPUTE | stage::ML => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
+            stage::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
             stage::COPY | stage::RESOURCE => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             stage::ACCEL => (
                 vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
@@ -614,11 +605,6 @@ impl Recorder<'_> {
                     let mut info = vk::RenderingInfo::default()
                         .render_area(area)
                         .layer_count(layers)
-                        .view_mask(if self.views > 1 {
-                            (1 << self.views) - 1
-                        } else {
-                            0
-                        })
                         .color_attachments(&self.colors);
                     let mut rate = self.rate.take();
                     if let Some(rate) = &mut rate {
@@ -633,7 +619,6 @@ impl Recorder<'_> {
                     d.cmd_begin_rendering(b, &info);
                     self.colors.clear();
                     self.depth = None;
-                    self.views = 0;
                     let viewport = vk::Viewport {
                         x: 0.0,
                         y: 0.0,
@@ -644,7 +629,6 @@ impl Recorder<'_> {
                     };
                     d.cmd_set_viewport_with_count(b, &[viewport]);
                     d.cmd_set_scissor_with_count(b, &[area]);
-                    d.cmd_set_line_width(b, 1.0);
                     self.area = area;
                     if self.defaults {
                         return Ok(());
@@ -657,8 +641,6 @@ impl Recorder<'_> {
                     d.cmd_set_blend_constants(b, &[0.0; 4]);
                     d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
                     self.depth_state(&DepthInfo::default());
-                    d.cmd_set_depth_bounds_test_enable(b, false);
-                    d.cmd_set_depth_bounds(b, 0.0, 1.0);
                     if let Some(rates) = &self.ext.rates {
                         let size = vk::Extent2D {
                             width: 1,
@@ -933,7 +915,7 @@ impl Recorder<'_> {
                         count,
                         self.res.buffers.get(buffer).raw,
                         offset,
-                        q.stride,
+                        8,
                         vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                     )
                 }
@@ -964,106 +946,12 @@ impl Recorder<'_> {
                         .unwrap()
                         .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
                 }
-                Command::Multiview { views } => self.views = views,
                 Command::Callback { index } => {
                     self.natives[index as usize](&Native {
                         device: d,
                         buffer: b,
                     });
                     self.restore()?
-                }
-                Command::ExecuteGenerated {
-                    layout,
-                    indirect,
-                    offset,
-                    size,
-                    preprocess,
-                    preprocess_offset,
-                    preprocess_size,
-                    sequences,
-                    count,
-                    count_offset,
-                    draws,
-                } => {
-                    let (handle, stages) = *self.res.layouts.get(layout);
-                    let mut bound = ffi::PipelineInfo {
-                        s_type: ffi::PIPELINE,
-                        next: std::ptr::null_mut(),
-                        pipeline: if stages == vk::ShaderStageFlags::COMPUTE {
-                            self.compute
-                        } else {
-                            self.graphics
-                        },
-                    };
-                    let address = |buffer: u32, offset: u64| {
-                        if buffer == NONE {
-                            0
-                        } else {
-                            self.res.buffers.get(buffer).address + offset
-                        }
-                    };
-                    let info = ffi::GeneratedInfo {
-                        s_type: ffi::GENERATED,
-                        next: (&raw mut bound).cast(),
-                        stages,
-                        set: 0,
-                        layout: handle,
-                        indirect: address(indirect, offset),
-                        indirect_size: size,
-                        preprocess: address(preprocess, preprocess_offset),
-                        preprocess_size,
-                        sequences,
-                        count: address(count, count_offset),
-                        draws,
-                    };
-                    (self.ext.generated.as_ref().unwrap().execute)(b, vk::FALSE, &info);
-                }
-                Command::BindRayPipeline { pipeline } => {
-                    self.rays = self.res.rays.get(pipeline).0;
-                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::RAY_TRACING_KHR, self.rays)
-                }
-                Command::TraceRays {
-                    raygen,
-                    raygen_offset,
-                    raygen_stride,
-                    raygen_size,
-                    miss,
-                    miss_offset,
-                    miss_stride,
-                    miss_size,
-                    hit,
-                    hit_offset,
-                    hit_stride,
-                    hit_size,
-                    callable,
-                    callable_offset,
-                    callable_stride,
-                    callable_size,
-                    width,
-                    height,
-                    depth,
-                } => {
-                    let region = |buffer: u32, offset: u64, stride: u64, size: u64| {
-                        vk::StridedDeviceAddressRegionKHR {
-                            device_address: if buffer == NONE {
-                                0
-                            } else {
-                                self.res.buffers.get(buffer).address + offset
-                            },
-                            stride,
-                            size,
-                        }
-                    };
-                    self.ext.rays.as_ref().unwrap().cmd_trace_rays(
-                        b,
-                        &region(raygen, raygen_offset, raygen_stride, raygen_size),
-                        &region(miss, miss_offset, miss_stride, miss_size),
-                        &region(hit, hit_offset, hit_stride, hit_size),
-                        &region(callable, callable_offset, callable_stride, callable_size),
-                        width,
-                        height,
-                        depth,
-                    )
                 }
                 Command::SetShadingRate {
                     width,
@@ -1153,34 +1041,6 @@ impl Recorder<'_> {
                         .collect();
                     d.cmd_set_scissor_with_count(b, &rects)
                 }
-                Command::SetDepthBounds { min, max } => {
-                    d.cmd_set_depth_bounds_test_enable(b, min > 0.0 || max < 1.0);
-                    d.cmd_set_depth_bounds(b, min, max);
-                }
-                Command::BeginConditional {
-                    buffer,
-                    offset,
-                    inverted,
-                } => {
-                    let info = vk::ConditionalRenderingBeginInfoEXT::default()
-                        .buffer(self.res.buffers.get(buffer).raw)
-                        .offset(offset)
-                        .flags(if inverted != 0 {
-                            vk::ConditionalRenderingFlagsEXT::INVERTED
-                        } else {
-                            vk::ConditionalRenderingFlagsEXT::empty()
-                        });
-                    let c = self.ext.conditional.as_ref().unwrap();
-                    (c.fp().cmd_begin_conditional_rendering_ext)(b, &info)
-                }
-                Command::EndConditional => {
-                    let c = self
-                        .ext
-                        .conditional
-                        .as_ref()
-                        .ok_or("VK_EXT_conditional_rendering is not enabled")?;
-                    (c.fp().cmd_end_conditional_rendering_ext)(b)
-                }
                 Command::BeginLabel { text } => {
                     let name = CString::new(text).unwrap();
                     let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
@@ -1195,7 +1055,6 @@ impl Recorder<'_> {
                         .ok_or("VK_EXT_debug_utils is not enabled")?;
                     debug.cmd_end_debug_utils_label(b);
                 }
-                Command::SetLineWidth { width } => d.cmd_set_line_width(b, width),
             }
         }
         Ok(())

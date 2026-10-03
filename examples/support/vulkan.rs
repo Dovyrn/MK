@@ -1,26 +1,12 @@
-use mk::ash::ext::{
-    conditional_rendering, debug_utils, external_memory_host, host_image_copy, mesh_shader,
-    mutable_descriptor_type,
-};
+use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader, mutable_descriptor_type};
 use mk::ash::khr::{
-    acceleration_structure, cooperative_matrix, deferred_host_operations, external_memory_fd,
-    fragment_shading_rate, maintenance5, portability_enumeration, portability_subset,
-    push_descriptor, ray_query, ray_tracing_pipeline,
+    acceleration_structure, deferred_host_operations, fragment_shading_rate,
+    portability_enumeration, portability_subset, push_descriptor, ray_query,
 };
 use mk::ash::{self, vk};
 use std::ffi::{CStr, c_void};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
-
-const GENERATED: vk::StructureType = vk::StructureType::from_raw(1000572000);
-
-#[repr(C)]
-struct Generated {
-    s_type: vk::StructureType,
-    next: *mut c_void,
-    generated: vk::Bool32,
-    dynamic: vk::Bool32,
-}
 
 pub struct Host {
     device: ManuallyDrop<mk::Device>,
@@ -134,50 +120,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if has(&available, push_descriptor::NAME) {
             extensions.push(push_descriptor::NAME.as_ptr());
         }
-        let mut supported_generated = Generated {
-            s_type: GENERATED,
-            next: std::ptr::null_mut(),
-            generated: 0,
-            dynamic: 0,
-        };
-        let mut query = vk::PhysicalDeviceFeatures2 {
-            p_next: (&raw mut supported_generated).cast(),
-            ..Default::default()
-        };
-        instance.get_physical_device_features2(physical, &mut query);
-        let generated = has(&available, c"VK_EXT_device_generated_commands")
-            && has(&available, maintenance5::NAME)
-            && supported_generated.generated != 0;
-        let mut enabled_generated = Generated {
-            s_type: GENERATED,
-            next: std::ptr::null_mut(),
-            generated: 1,
-            dynamic: 0,
-        };
-        let mut maintenance =
-            vk::PhysicalDeviceMaintenance5FeaturesKHR::default().maintenance5(true);
-        if generated {
-            extensions.push(c"VK_EXT_device_generated_commands".as_ptr());
-            extensions.push(maintenance5::NAME.as_ptr());
-        }
-        let mut supported_conditional =
-            vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default();
-        let mut query =
-            vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_conditional);
-        instance.get_physical_device_features2(physical, &mut query);
-        let conditional = has(&available, conditional_rendering::NAME)
-            && supported_conditional.conditional_rendering != 0;
-        let mut conditions = vk::PhysicalDeviceConditionalRenderingFeaturesEXT::default()
-            .conditional_rendering(true);
-        if conditional {
-            extensions.push(conditional_rendering::NAME.as_ptr());
-        }
-        if has(&available, external_memory_fd::NAME) {
-            extensions.push(external_memory_fd::NAME.as_ptr());
-        }
-        if has(&available, external_memory_host::NAME) {
-            extensions.push(external_memory_host::NAME.as_ptr());
-        }
         let mut supported_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_copy);
         instance.get_physical_device_features2(physical, &mut query);
@@ -207,11 +149,9 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let meshes = has(&available, mesh_shader::NAME) && supported_mesh.mesh_shader != 0;
         let mut supported_accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
         let mut supported_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
-        let mut supported_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut query = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut supported_accel)
-            .push_next(&mut supported_query)
-            .push_next(&mut supported_pipeline);
+            .push_next(&mut supported_query);
         instance.get_physical_device_features2(physical, &mut query);
         let rays = has(&available, acceleration_structure::NAME)
             && has(&available, deferred_host_operations::NAME)
@@ -221,38 +161,18 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let mut accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
             .acceleration_structure(true);
         let mut rq = vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
-        let pipelines = rays
-            && has(&available, ray_tracing_pipeline::NAME)
-            && supported_pipeline.ray_tracing_pipeline != 0;
-        let mut rt =
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default().ray_tracing_pipeline(true);
         if rays {
             extensions.push(acceleration_structure::NAME.as_ptr());
             extensions.push(deferred_host_operations::NAME.as_ptr());
             extensions.push(ray_query::NAME.as_ptr());
         }
-        if pipelines {
-            extensions.push(ray_tracing_pipeline::NAME.as_ptr());
-        }
         if meshes {
             extensions.push(mesh_shader::NAME.as_ptr());
-        }
-        let mut supported_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
-        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_matrix);
-        instance.get_physical_device_features2(physical, &mut query);
-        let matrices =
-            has(&available, cooperative_matrix::NAME) && supported_matrix.cooperative_matrix != 0;
-        let mut matrix =
-            vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default().cooperative_matrix(true);
-        if matrices {
-            extensions.push(cooperative_matrix::NAME.as_ptr());
         }
         let supported = instance.get_physical_device_features(physical);
         let features = vk::PhysicalDeviceFeatures::default()
             .sampler_anisotropy(supported.sampler_anisotropy != 0)
             .multi_viewport(supported.multi_viewport != 0)
-            .depth_bounds(supported.depth_bounds != 0)
-            .pipeline_statistics_query(supported.pipeline_statistics_query != 0)
             .depth_clamp(supported.depth_clamp != 0)
             .sparse_binding(supported.sparse_binding != 0)
             .sparse_residency_buffer(supported.sparse_residency_buffer != 0)
@@ -270,9 +190,7 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .shader_storage_image_write_without_format(
                 supported.shader_storage_image_write_without_format != 0,
             );
-        let mut v11 = vk::PhysicalDeviceVulkan11Features::default()
-            .multiview(true)
-            .shader_draw_parameters(true);
+        let mut v11 = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
         let mut supported_v12 = vk::PhysicalDeviceVulkan12Features::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_v12);
         instance.get_physical_device_features2(physical, &mut query);
@@ -322,40 +240,18 @@ pub fn try_device(queues: usize) -> Option<Host> {
         } else {
             info
         };
-        let mut info = if pipelines {
-            info.push_next(&mut rt)
-        } else {
-            info
-        };
+        let mut info = info;
         if rated {
             info = info.push_next(&mut rate);
-        }
-        if conditional {
-            info = info.push_next(&mut conditions);
         }
         if copies {
             info = info.push_next(&mut copy);
         }
-        if matrices {
-            info = info.push_next(&mut matrix);
-        }
-        if generated {
-            info = info.push_next(&mut maintenance);
-            enabled_generated.next = info.p_next as *mut _;
-            info.p_next = (&raw const enabled_generated).cast();
-        }
         let raw = instance.create_device(physical, &info, None).unwrap();
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
         enabled.p_next = info.p_next as *mut _;
-        let device = mk::Device::adopt(
-            &entry,
-            instance.clone(),
-            physical,
-            raw.clone(),
-            &slots,
-            &enabled,
-        )
-        .unwrap();
+        let device =
+            mk::Device::adopt(instance.clone(), physical, raw.clone(), &slots, &enabled).unwrap();
         Some(Host {
             device: ManuallyDrop::new(device),
             raw,

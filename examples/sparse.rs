@@ -1,25 +1,18 @@
+#[cfg(not(feature = "gl"))]
 use mk::{
     Commands, SparseRange, SparseRegion, TextureBarrier, TextureCopy, TextureInfo, access, format,
     layout, memory, stage, usage,
 };
 
-#[cfg(feature = "gl")]
-#[path = "support/export.rs"]
-mod export;
 #[path = "support/host.rs"]
 mod host;
 
-fn heap(device: &mut mk::Device, size: u64) -> u32 {
-    #[cfg(feature = "gl")]
-    {
-        let data = vec![0; size as usize];
-        let fd = export::export(&device.name(), &data).expect("no Vulkan device matches GL");
-        device.import_heap(fd, size, memory::DEVICE).unwrap()
-    }
-    #[cfg(not(feature = "gl"))]
-    device.create_heap(size, memory::DEVICE).unwrap()
+#[cfg(feature = "gl")]
+fn main() {
+    println!("sparse resources are Vulkan and Metal only");
 }
 
+#[cfg(not(feature = "gl"))]
 fn main() {
     let mut device = host::device(1);
     if !device.caps().sparse {
@@ -28,7 +21,7 @@ fn main() {
     }
     let page = device.sparse_page().unwrap();
     let sparse = device.create_sparse_buffer(page * 4).unwrap();
-    let pages = heap(&mut device, page * 2);
+    let heap = device.create_heap(page * 2, memory::DEVICE).unwrap();
     let back = device.create_buffer(page * 4, memory::READBACK).unwrap();
     let event = device.create_event().unwrap();
     let ranges = [
@@ -44,7 +37,7 @@ fn main() {
         },
     ];
     device
-        .map_sparse_buffer(0, sparse, pages, &ranges, &[], &[(event, 1)])
+        .map_sparse_buffer(0, sparse, heap, &ranges, &[], &[(event, 1)])
         .unwrap();
     let mut c = Commands::default();
     c.begin_compute();
@@ -72,7 +65,6 @@ fn main() {
     assert!(bytes[..p].iter().all(|b| *b == 7), "page 0");
     assert!(bytes[2 * p..3 * p].iter().all(|b| *b == 7), "page 2");
     assert!(bytes[p..2 * p].iter().all(|b| *b == 0), "page 1 untouched");
-    device.unmap(back);
     let info = TextureInfo {
         format: format::RGBA8_UNORM,
         width: 512,
@@ -82,7 +74,7 @@ fn main() {
     };
     let [w, h, _] = device.sparse_tile(&info).unwrap();
     let texture = device.create_sparse_texture(&info).unwrap();
-    let tiles = heap(&mut device, page);
+    let tiles = device.create_heap(page, memory::DEVICE).unwrap();
     let region = SparseRegion {
         width: 1,
         height: 1,
@@ -104,7 +96,6 @@ fn main() {
             *v = i as u32;
         }
     }
-    device.unmap(upload);
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture,

@@ -9,16 +9,16 @@ use crate::{
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
-use objc2_foundation::{NSArray, NSString};
+use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
     MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTL4StaticLinkingDescriptor, MTL4TileRenderPipelineDescriptor,
-    MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState,
-    MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary,
-    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor,
-    MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
+    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
+    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
+    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 
 fn factor(f: u32) -> MTLBlendFactor {
@@ -153,16 +153,6 @@ impl Device {
             let library = self.library(info.code)?;
             let desc = MTL4ComputePipelineDescriptor::new();
             desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
-            if !info.functions.is_empty() {
-                let linked: Vec<_> = info
-                    .functions
-                    .iter()
-                    .map(|f| function(&library, f))
-                    .collect::<Result<_, _>>()?;
-                let linking = MTL4StaticLinkingDescriptor::new();
-                linking.setFunctionDescriptors(Some(&NSArray::from_retained_slice(&linked)));
-                desc.setStaticLinkingDescriptor(Some(&linking));
-            }
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
             let state = self
                 .compiler
@@ -247,7 +237,6 @@ impl Device {
             });
             desc.setAlphaToCoverageState(coverage(info.coverage));
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
-            unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
             let state = self.compile(&desc)?;
             let id = self.res.renders.insert(Render {
                 state,
@@ -290,7 +279,6 @@ impl Device {
             unsafe { desc.setRasterSampleCount(info.samples as usize) };
             desc.setAlphaToCoverageState(coverage(info.coverage));
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
-            unsafe { desc.setMaxVertexAmplificationCount(info.views.max(1) as usize) };
             let state = self.compile(&desc)?;
             threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
             if !info.task.is_empty() {

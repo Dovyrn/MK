@@ -94,64 +94,6 @@ impl Caps {
         Ok(())
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub(crate) fn matrix(&self, index: u32) -> usize {
-        assert!(
-            index < self.matrices,
-            "matrix {index} is outside 0..caps.matrices {}",
-            self.matrices
-        );
-        index as usize
-    }
-
-    #[cfg(feature = "mtl")]
-    pub(crate) fn tensor(&self, info: &crate::TensorInfo) -> Result<(), String> {
-        let (dims, strides) = (info.dimensions, info.strides);
-        assert!(
-            (1..=16).contains(&dims.len()),
-            "a tensor has 1 to 16 dimensions, not {}",
-            dims.len()
-        );
-        assert!(dims.iter().all(|&d| d > 0), "tensor dimension is 0");
-        known("element", info.element, crate::element::valid(info.element));
-        assert_ne!(info.usage, 0, "tensor usage is 0");
-        assert_eq!(
-            info.usage & !crate::tensor::BITS,
-            0,
-            "unknown tensor usage bits {:#x}",
-            info.usage & !crate::tensor::BITS
-        );
-        known("memory", info.memory, memory::valid(info.memory));
-        assert_ne!(
-            info.memory,
-            memory::TRANSIENT,
-            "transient memory is for textures"
-        );
-        if !strides.is_empty() {
-            assert_ne!(
-                info.memory,
-                memory::DEVICE,
-                "tensor strides are for mapped memory"
-            );
-            assert!(
-                strides.len() == dims.len() && strides[0] == 1,
-                "tensor strides {strides:?} need one per dimension and start at 1"
-            );
-            for i in 1..dims.len() {
-                assert!(
-                    strides[i] as u64 >= strides[i - 1] as u64 * dims[i - 1] as u64,
-                    "tensor stride {} overlaps dimension {}",
-                    strides[i],
-                    i - 1
-                );
-            }
-        }
-        if !self.tensors {
-            return Err("tensors need caps.tensors".into());
-        }
-        Ok(())
-    }
-
     pub(crate) fn address(&self) {
         assert!(self.addresses, "address needs caps.addresses");
     }
@@ -161,14 +103,6 @@ impl Caps {
             texture < self.images,
             "image_handle of texture {texture} is outside caps.images {}",
             self.images
-        );
-    }
-
-    pub(crate) fn host(&self, pointer: *mut u8, size: u64) {
-        let a = self.host_alignment.max(1) as u64;
-        assert!(
-            (pointer as u64).is_multiple_of(a) && size.is_multiple_of(a) && size > 0,
-            "host memory {pointer:?} and size {size} must be non-zero multiples of caps.host_alignment {a}"
         );
     }
 

@@ -20,12 +20,11 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
 use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4ComputeCommandEncoder, MTL4MachineLearningCommandEncoder, MTL4RenderCommandEncoder,
-    MTL4RenderPassDescriptor, MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption,
-    MTLBuffer, MTLClearColor, MTLCullMode, MTLDevice, MTLIndexType, MTLIndirectCommandBuffer,
-    MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLSamplerState,
-    MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTensor, MTLTexture,
-    MTLVertexAmplificationViewMapping, MTLViewport, MTLVisibilityResultMode, MTLWinding,
+    MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
+    MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
+    MTLCullMode, MTLDevice, MTLIndexType, MTLIndirectCommandBuffer, MTLLoadAction, MTLOrigin,
+    MTLPrimitiveType, MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize,
+    MTLStages, MTLStoreAction, MTLTexture, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 use std::collections::VecDeque;
 use std::ptr::NonNull;
@@ -35,7 +34,6 @@ pub struct Recorder<'a> {
     residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
-    ml: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     resolve: &'a Resolve,
     count: &'a Count,
     counts: VecDeque<(Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>, u64)>,
@@ -48,8 +46,6 @@ pub struct Recorder<'a> {
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
-    views: u32,
-    amplify: u32,
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
     state: Vec<(u64, &'a [u8])>,
@@ -93,14 +89,10 @@ fn stages(bits: u32) -> MTLStages {
         | stage::RESOURCE
         | stage::COMPUTE
         | stage::COPY
-        | stage::ACCEL
-        | stage::ML;
+        | stage::ACCEL;
     let mut s = bits & same;
     if bits & stage::INDIRECT != 0 {
         s |= stage::VERTEX | stage::TASK | stage::MESH | stage::COMPUTE;
-    }
-    if bits & stage::RAY != 0 {
-        s |= stage::COMPUTE;
     }
     if bits & (stage::DEPTH | stage::COLOR) != 0 {
         s |= stage::FRAGMENT;
@@ -204,7 +196,6 @@ impl<'a> Recorder<'a> {
             residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
-            ml: &queue.ml,
             resolve,
             count,
             counts: VecDeque::new(),
@@ -217,8 +208,6 @@ impl<'a> Recorder<'a> {
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
-            views: 0,
-            amplify: 0,
             compute_pipeline: None,
             render_pipeline: None,
             state: Vec::new(),
@@ -298,20 +287,6 @@ impl<'a> Recorder<'a> {
             | MTLRenderStages::Mesh;
         encoder.setArgumentTable_atStages(self.table, all);
         encoder.setFrontFacingWinding(MTLWinding::CounterClockwise);
-        if self.amplify > 1 {
-            let mappings: Vec<_> = (0..self.amplify)
-                .map(|i| MTLVertexAmplificationViewMapping {
-                    viewportArrayIndexOffset: 0,
-                    renderTargetArrayIndexOffset: i,
-                })
-                .collect();
-            unsafe {
-                encoder.setVertexAmplificationCount_viewMappings(
-                    self.amplify as usize,
-                    mappings.as_ptr(),
-                )
-            };
-        }
     }
 
     fn restore(&mut self) -> Result<(), &'static str> {
@@ -365,15 +340,13 @@ impl<'a> Recorder<'a> {
                 | Command::SetDepthState { .. }
                 | Command::SetStencilReference { .. }
                 | Command::SetDepthBias { .. }
-                | Command::SetBlendColor { .. }
-                | Command::SetDepthBounds { .. } => keep(&mut self.state, op, kept),
+                | Command::SetBlendColor { .. } => keep(&mut self.state, op, kept),
                 Command::BindUniform { slot, .. }
                 | Command::BindStorage { slot, .. }
                 | Command::BindTexture { slot, .. }
                 | Command::BindImage { slot, .. }
                 | Command::BindSampler { slot, .. }
-                | Command::BindVertexBuffer { slot, .. }
-                | Command::BindTensor { slot, .. } => {
+                | Command::BindVertexBuffer { slot, .. } => {
                     keep(&mut self.binds, op << 32 | slot as u64, kept)
                 }
                 Command::TileMemory { index, .. } => {
@@ -827,9 +800,7 @@ impl<'a> Recorder<'a> {
                 if self.pass.defaultRasterSampleCount() == 0 {
                     unsafe { self.pass.setDefaultRasterSampleCount(1) };
                 }
-                self.amplify = std::mem::take(&mut self.views);
-                self.pass
-                    .setRenderTargetArrayLength(layers.max(self.amplify) as usize);
+                self.pass.setRenderTargetArrayLength(layers as usize);
                 let encoder = self
                     .buffer
                     .renderCommandEncoderWithDescriptor(&self.pass)
@@ -932,26 +903,6 @@ impl<'a> Recorder<'a> {
                 let id = self.res.textures.get(texture).raw.gpuResourceID();
                 let index = (register::IMAGE + slot) as usize;
                 unsafe { self.table.setTexture_atIndex(id, index) };
-            }
-            Command::BindTensor { slot, tensor } => {
-                let id = self.res.tensors.get(tensor).gpuResourceID();
-                let index = (register::STORAGE + slot) as usize;
-                unsafe { self.table.setResource_atBufferIndex(id, index) };
-                unsafe { self.ml.setResource_atBufferIndex(id, slot as usize) };
-            }
-            Command::DispatchNetwork { pipeline, heap } => {
-                let encoder = self
-                    .buffer
-                    .machineLearningCommandEncoder()
-                    .ok_or("machine learning encoder allocation failed")?;
-                self.opened(
-                    ProtocolObject::from_ref(&*encoder),
-                    MTLStages::MachineLearning,
-                );
-                encoder.setArgumentTable(self.ml);
-                encoder.setPipelineState(self.res.networks.get(pipeline));
-                encoder.dispatchNetworkWithIntermediatesHeap(&self.res.heaps.get(heap).0);
-                encoder.endEncoding();
             }
             Command::BindSampler { slot, sampler } => {
                 let id = self.res.samplers.get(sampler).gpuResourceID();
@@ -1114,7 +1065,7 @@ impl<'a> Recorder<'a> {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
-            Command::ResetQueries { .. } | Command::SetLineWidth { .. } => {}
+            Command::ResetQueries { .. } => {}
             Command::WriteTimestamp { heap, index, stage } => {
                 let Query::Timestamp(heap) = self.res.queries.get(heap) else {
                     unreachable!()
@@ -1251,7 +1202,6 @@ impl<'a> Recorder<'a> {
                     index as usize,
                 )
             },
-            Command::Multiview { views } => self.views = views,
             Command::Callback { index } => {
                 self.flush()?;
                 self.release()?;
@@ -1302,9 +1252,6 @@ impl<'a> Recorder<'a> {
                     NSRange::new(start as usize, count as usize),
                 )
             },
-            Command::RateMap { map } => self
-                .pass
-                .setRasterizationRateMap(Some(self.res.maps.get(map))),
             Command::WriteCompactedSize { accel, heap, index } => {
                 let Query::Buffer(buffer) = self.res.queries.get(heap) else {
                     unreachable!()
@@ -1362,9 +1309,6 @@ impl<'a> Recorder<'a> {
                         rects.len(),
                     )
                 }
-            }
-            Command::SetDepthBounds { min, max } => {
-                self.render().setDepthTestMinBound_maxBound(min, max)
             }
             Command::BeginLabel { text } => {
                 let text = NSString::from_str(text);

@@ -10,21 +10,17 @@ public class VkDevice extends Device {
         super(handle);
     }
 
-    public synchronized Matrix matrix(int index) {
-        try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, Matrix.SIZE);
-            nMatrix(handle, index, out);
-            return Matrix.decode(out);
-        }
-    }
-
-    private static native void nMatrix(long device, int index, long out);
-
     public synchronized int createHeap(long size, int memory) {
         return nCreateHeap(handle, size, memory);
     }
 
     private static native int nCreateHeap(long device, long size, int memory);
+
+    public synchronized void destroyHeap(int heap) {
+        nDestroyHeap(handle, heap);
+    }
+
+    private static native void nDestroyHeap(long device, int heap);
 
     public synchronized long[] bufferSize(long size, int memory) {
         try (var stack = MemoryStack.stackPush()) {
@@ -51,6 +47,26 @@ public class VkDevice extends Device {
     }
 
     private static native void nTextureSize(long device, long info, int infoLength, long out);
+
+    public synchronized int createPlacedBuffer(int heap, long offset, long size) {
+        return nCreatePlacedBuffer(handle, heap, offset, size);
+    }
+
+    private static native int nCreatePlacedBuffer(long device, int heap, long offset, long size);
+
+    public synchronized int createPlacedTexture(int heap, long offset, TextureInfo info) {
+        try (var stack = MemoryStack.stackPush()) {
+            var infoAddress = nmemAlloc(info.encodedSize());
+            info.encode(infoAddress);
+            try {
+                return nCreatePlacedTexture(handle, heap, offset, infoAddress, info.encodedSize());
+            } finally {
+                nmemFree(infoAddress);
+            }
+        }
+    }
+
+    private static native int nCreatePlacedTexture(long device, int heap, long offset, long info, int infoLength);
 
     public synchronized long textureHandle(int texture) {
         return nTextureHandle(handle, texture);
@@ -176,73 +192,123 @@ public class VkDevice extends Device {
 
     private static native int nCreateCompacted(long device, int accel, long size);
 
-    public synchronized int createCommandsLayout(LayoutInfo info) {
+    public synchronized long sparsePage() {
+        return nSparsePage(handle);
+    }
+
+    private static native long nSparsePage(long device);
+
+    public synchronized int[] sparseTile(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
+            var out = stack.nmalloc(8, 12);
             try {
-                return nCreateCommandsLayout(handle, infoAddress, info.encodedSize());
+                nSparseTile(handle, infoAddress, info.encodedSize(), out);
+                return new int[] {memGetInt(out), memGetInt(out + 4), memGetInt(out + 8)};
             } finally {
                 nmemFree(infoAddress);
             }
         }
     }
 
-    private static native int nCreateCommandsLayout(long device, long info, int infoLength);
+    private static native void nSparseTile(long device, long info, int infoLength, long out);
 
-    public synchronized void destroyCommandsLayout(int layout) {
-        nDestroyCommandsLayout(handle, layout);
+    public synchronized int createSparseBuffer(long size) {
+        return nCreateSparseBuffer(handle, size);
     }
 
-    private static native void nDestroyCommandsLayout(long device, int layout);
+    private static native int nCreateSparseBuffer(long device, long size);
 
-    public synchronized long generatedSize(int layout, int pipeline, int sequences, int draws) {
-        return nGeneratedSize(handle, layout, pipeline, sequences, draws);
-    }
-
-    private static native long nGeneratedSize(long device, int layout, int pipeline, int sequences, int draws);
-
-    public synchronized int createRayPipeline(RayInfo info) {
+    public synchronized int createSparseTexture(TextureInfo info) {
         try (var stack = MemoryStack.stackPush()) {
             var infoAddress = nmemAlloc(info.encodedSize());
             info.encode(infoAddress);
             try {
-                return nCreateRayPipeline(handle, infoAddress, info.encodedSize());
+                return nCreateSparseTexture(handle, infoAddress, info.encodedSize());
             } finally {
                 nmemFree(infoAddress);
             }
         }
     }
 
-    private static native int nCreateRayPipeline(long device, long info, int infoLength);
+    private static native int nCreateSparseTexture(long device, long info, int infoLength);
 
-    public synchronized void destroyRayPipeline(int pipeline) {
-        nDestroyRayPipeline(handle, pipeline);
+    public synchronized void mapSparseBuffer(int queue, int buffer, int heap, SparseRange[] ranges, long[] waits, long[] signals) {
+        try (var stack = MemoryStack.stackPush()) {
+            var rangesSize = 4;
+            for (var x : ranges) {
+                rangesSize += x.encodedSize();
+            }
+            var rangesAddress = nmemAlloc(rangesSize);
+            var rangesAt = rangesAddress;
+            memPutInt(rangesAt, ranges.length);
+            rangesAt += 4;
+            for (var x : ranges) {
+                rangesAt = x.encode(rangesAt);
+            }
+            if (waits.length % 2 != 0) {
+                throw new IllegalArgumentException("waits holds event and value pairs");
+            }
+            var waitsAddress = stack.nmalloc(8, waits.length * 8);
+            for (var i = 0; i < waits.length / 2; i++) {
+                memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
+                memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            if (signals.length % 2 != 0) {
+                throw new IllegalArgumentException("signals holds event and value pairs");
+            }
+            var signalsAddress = stack.nmalloc(8, signals.length * 8);
+            for (var i = 0; i < signals.length / 2; i++) {
+                memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
+                memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
+            }
+            try {
+                nMapSparseBuffer(handle, queue, buffer, heap, rangesAddress, rangesSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            } finally {
+                nmemFree(rangesAddress);
+            }
+        }
     }
 
-    private static native void nDestroyRayPipeline(long device, int pipeline);
+    private static native void nMapSparseBuffer(long device, int queue, int buffer, int heap, long ranges, int rangesLength, long waits, int waitsLength, long signals, int signalsLength);
 
-    public synchronized byte[] rayHandles(int pipeline) {
-        return nRayHandles(handle, pipeline);
+    public synchronized void mapSparseTexture(int queue, int texture, int heap, SparseRegion[] regions, long[] waits, long[] signals) {
+        try (var stack = MemoryStack.stackPush()) {
+            var regionsSize = 4;
+            for (var x : regions) {
+                regionsSize += x.encodedSize();
+            }
+            var regionsAddress = nmemAlloc(regionsSize);
+            var regionsAt = regionsAddress;
+            memPutInt(regionsAt, regions.length);
+            regionsAt += 4;
+            for (var x : regions) {
+                regionsAt = x.encode(regionsAt);
+            }
+            if (waits.length % 2 != 0) {
+                throw new IllegalArgumentException("waits holds event and value pairs");
+            }
+            var waitsAddress = stack.nmalloc(8, waits.length * 8);
+            for (var i = 0; i < waits.length / 2; i++) {
+                memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
+                memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
+            }
+            if (signals.length % 2 != 0) {
+                throw new IllegalArgumentException("signals holds event and value pairs");
+            }
+            var signalsAddress = stack.nmalloc(8, signals.length * 8);
+            for (var i = 0; i < signals.length / 2; i++) {
+                memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
+                memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
+            }
+            try {
+                nMapSparseTexture(handle, queue, texture, heap, regionsAddress, regionsSize, waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            } finally {
+                nmemFree(regionsAddress);
+            }
+        }
     }
 
-    private static native byte[] nRayHandles(long device, int pipeline);
-
-    public synchronized int createSharedHeap(long size, int memory) {
-        return nCreateSharedHeap(handle, size, memory);
-    }
-
-    private static native int nCreateSharedHeap(long device, long size, int memory);
-
-    public synchronized int exportHeap(int heap) {
-        return nExportHeap(handle, heap);
-    }
-
-    private static native int nExportHeap(long device, int heap);
-
-    public synchronized int importHeap(int fd, long size, int memory) {
-        return nImportHeap(handle, fd, size, memory);
-    }
-
-    private static native int nImportHeap(long device, int fd, long size, int memory);
+    private static native void nMapSparseTexture(long device, int queue, int texture, int heap, long regions, int regionsLength, long waits, int waitsLength, long signals, int signalsLength);
 }

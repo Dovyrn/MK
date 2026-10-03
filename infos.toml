@@ -84,7 +84,6 @@ fields = [
     ["topology", "u32", "topology::TRIANGLE"],
     ["fill", "u32", "fill::FILL"],
     ["coverage", "bool", "false"],
-    ["views", "u32", "0"],
     ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
     ["buffers", "[VertexBuffer]", ""],
@@ -104,7 +103,6 @@ fields = [
     ["samples", "u32", "1"],
     ["fill", "u32", "fill::FILL"],
     ["coverage", "bool", "false"],
-    ["views", "u32", "0"],
     ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
     ["task_group", "u32x3", "[1, 1, 1]"],
@@ -182,25 +180,13 @@ fields = [
     ["timestamps", "bool", "false"],
     ["precise", "bool", "false"],
     ["ray", "bool", "false"],
-    ["generated", "bool", "false"],
-    ["handle_size", "u32", "0"],
-    ["handle_alignment", "u32", "0"],
-    ["table_alignment", "u32", "0"],
     ["sparse", "bool", "false"],
     ["shading_rate", "bool", "false"],
-    ["host_memory", "bool", "false"],
-    ["host_alignment", "u32", "0"],
-    ["shared_memory", "bool", "false"],
     ["viewports", "u32", "1"],
-    ["depth_bounds", "bool", "false"],
-    ["conditional", "bool", "false"],
-    ["statistics", "bool", "false"],
     ["instance", "u32", "0"],
     ["memoryless", "bool", "false"],
-    ["views", "u32", "0"],
     ["graphics", "u32", "0"],
     ["labels", "bool", "false"],
-    ["rays", "bool", "false"],
     ["anisotropy", "bool", "false"],
     ["depth_clamp", "bool", "false"],
     ["line_fill", "bool", "false"],
@@ -221,7 +207,6 @@ fields = [
     ["indirect", "bool", "false"],
     ["indirect_ids", "bool", "false"],
     ["indirect_offset", "bool", "false"],
-    ["wide_lines", "bool", "false"],
     ["max_buffer", "u64", "0"],
     ["max_texture", "u32", "0"],
     ["max_cube", "u32", "0"],
@@ -232,9 +217,6 @@ fields = [
     ["mirror_clamp", "bool", "false"],
     ["budget", "bool", "false"],
     ["host_read", "bool", "false"],
-    ["matrices", "u32", "0"],
-    ["tensors", "bool", "false"],
-    ["networks", "bool", "false"],
     ["copy_formats", "bool", "false"],
     ["texture_clear", "bool", "false"],
 ]
@@ -256,37 +238,6 @@ fields = [
     ["vertex_buffers", "u32", "0"],
     ["fragment_buffers", "u32", "0"],
     ["kernel_buffers", "u32", "0"],
-]
-
-[[info]]
-name = "TokenInfo"
-fields = [
-    ["kind", "u32", "token::DRAW"],
-    ["offset", "u32", "0"],
-    ["push_offset", "u32", "0"],
-    ["push_size", "u32", "0"],
-    ["binding", "u32", "0"],
-]
-
-[[info]]
-name = "LayoutInfo"
-fields = [
-    ["stride", "u32", "0"],
-    ["compute", "bool", "false"],
-    ["tokens", "[TokenInfo]", ""],
-]
-
-[[info]]
-name = "RayInfo"
-fields = [
-    ["code", "bytes", ""],
-    ["raygen", "str", ""],
-    ["misses", "[str]", ""],
-    ["closest", "[str]", ""],
-    ["any", "[str]", ""],
-    ["intersection", "[str]", ""],
-    ["callables", "[str]", ""],
-    ["depth", "u32", "1"],
 ]
 
 [[info]]
@@ -317,7 +268,6 @@ fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
     ["group", "u32x3", "[1, 1, 1]"],
-    ["functions", "[str]", ""],
     ["indirect", "bool", "false"],
 ]
 
@@ -524,24 +474,3 @@ fields = [
     ["depth", "u32", "1"],
 ]
 
-[[info]]
-name = "Matrix"
-fields = [
-    ["m", "u32", "0"],
-    ["n", "u32", "0"],
-    ["k", "u32", "0"],
-    ["a", "u32", "element::F16"],
-    ["b", "u32", "element::F16"],
-    ["c", "u32", "element::F32"],
-    ["result", "u32", "element::F32"],
-]
-
-[[info]]
-name = "TensorInfo"
-fields = [
-    ["dimensions", "[u32]", ""],
-    ["strides", "[u32]", ""],
-    ["element", "u32", "element::F32"],
-    ["usage", "u32", "tensor::COMPUTE"],
-    ["memory", "u32", "memory::DEVICE"],
-]

@@ -70,8 +70,6 @@ mod tests {
         c.end_compute();
         #[cfg(feature = "mtl")]
         c.dispatch_threads(5, 6, 7);
-        #[cfg(feature = "vk")]
-        c.set_line_width(1.5);
         let expected = vec![
             Command::BeginCompute,
             Command::BindPipeline { pipeline: 7 },
@@ -108,8 +106,6 @@ mod tests {
             Command::EndCompute,
             #[cfg(feature = "mtl")]
             Command::DispatchThreads { x: 5, y: 6, z: 7 },
-            #[cfg(feature = "vk")]
-            Command::SetLineWidth { width: 1.5 },
         ];
         let mut bytes = c.bytes();
         let mut read = Vec::new();
@@ -120,12 +116,12 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "vk"))]
+    #[cfg(not(feature = "mtl"))]
     fn foreign() {
-        let bytes = [66, 0, 4, 0, 0, 0, 0, 0];
+        let bytes = [11, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         assert_eq!(
             Command::dump(&bytes),
-            "bind_ray_pipeline (not in this backend)\n"
+            "dispatch_threads (not in this backend)\n"
         );
     }
 }

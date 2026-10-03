@@ -1,9 +1,7 @@
 use super::{Device, options};
-use crate::memory;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
-use std::ptr::NonNull;
 
 impl Device {
     pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
@@ -13,27 +11,6 @@ impl Device {
                 .raw
                 .newBufferWithLength_options(size as usize, options(memory))
                 .ok_or("buffer allocation failed")?;
-            self.residency.add(ProtocolObject::from_ref(&*buffer));
-            let id = self.res.buffers.insert(buffer);
-            self.res.table.buffers.set(id, size);
-            Ok(id)
-        })
-    }
-
-    pub fn create_host_buffer(&mut self, pointer: *mut u8, size: u64) -> Result<u32, String> {
-        autoreleasepool(|_| {
-            self.caps.host(pointer, size);
-            self.caps.buffer(size, memory::UPLOAD)?;
-            let buffer = unsafe {
-                self.raw
-                    .newBufferWithBytesNoCopy_length_options_deallocator(
-                        NonNull::new(pointer.cast()).ok_or("null pointer")?,
-                        size as usize,
-                        options(memory::READBACK),
-                        None,
-                    )
-                    .ok_or("host buffer allocation failed")?
-            };
             self.residency.add(ProtocolObject::from_ref(&*buffer));
             let id = self.res.buffers.insert(buffer);
             self.res.table.buffers.set(id, size);

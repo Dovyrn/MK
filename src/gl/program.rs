@@ -28,23 +28,11 @@ fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     Ok(&text[start..end])
 }
 
-fn multiview(text: &str, views: u32) -> String {
-    let line = text.find('\n').map_or(0, |i| i + 1);
-    let main = text.find("void main()").unwrap_or(text.len());
-    format!(
-        "{}#extension GL_OVR_multiview2 : require\n{}layout(num_views = {views}) in;\n{}",
-        &text[..line],
-        &text[line..main],
-        &text[main..]
-    )
-}
-
 pub unsafe fn link(
     gl: &glow::Context,
     raw: glow::Program,
     text: &str,
     stages: &[(u32, &str)],
-    views: u32,
 ) -> Result<(), String> {
     unsafe {
         let mut shaders = Vec::new();
@@ -53,14 +41,7 @@ pub unsafe fn link(
             let shader = gl.create_shader(kind)?;
             shaders.push(shader);
             match section(text, entry) {
-                Ok(s) => {
-                    let s = &s[..s.find("//@ ").unwrap_or(s.len())];
-                    if kind == glow::VERTEX_SHADER && views > 1 {
-                        gl.shader_source(shader, &multiview(s, views));
-                    } else {
-                        gl.shader_source(shader, s);
-                    }
-                }
+                Ok(s) => gl.shader_source(shader, &s[..s.find("//@ ").unwrap_or(s.len())]),
                 Err(e) => {
                     failure = Some(e);
                     break;
@@ -91,11 +72,10 @@ impl Program {
         gl: &glow::Context,
         code: &[u8],
         stages: &[(u32, &str)],
-        views: u32,
         cache: Option<&mut Cache>,
     ) -> Result<Self, String> {
         let text = std::str::from_utf8(code).map_err(|e| e.to_string())?;
-        let key = key(code, stages, views);
+        let key = key(code, stages);
         unsafe {
             let raw = gl.create_program()?;
             let loaded = match cache.as_ref().and_then(|c| c.programs.get(&key)) {
@@ -109,7 +89,7 @@ impl Program {
                 if cache.is_some() {
                     gl.program_binary_retrievable_hint(raw, true);
                 }
-                if let Err(e) = link(gl, raw, text, stages, views) {
+                if let Err(e) = link(gl, raw, text, stages) {
                     gl.delete_program(raw);
                     return Err(e);
                 }

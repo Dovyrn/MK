@@ -52,10 +52,6 @@ backend = "mtl"
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
-name = "set_line_width"
-fields = [["width", "f32"]]
-
-[[command]]
 name = "queue_barrier"
 scope = "compute outside"
 fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
@@ -279,10 +275,6 @@ backend = "mtl"
 fields = [["length", "u32"], ["offset", "u32"], ["index", "u32"]]
 
 [[command]]
-name = "multiview"
-fields = [["views", "u32"]]
-
-[[command]]
 name = "callback"
 backend = "rust"
 fields = [["index", "u32"]]
@@ -303,26 +295,6 @@ name = "optimize_indirect"
 scope = "compute"
 backend = "mtl"
 fields = [["indirect", "u32"], ["start", "u32"], ["count", "u32"]]
-
-[[command]]
-name = "execute_generated"
-backend = "vk"
-info = "GeneratedInfo"
-
-[[command]]
-name = "bind_ray_pipeline"
-backend = "vk"
-fields = [["pipeline", "u32"]]
-
-[[command]]
-name = "trace_rays"
-backend = "vk"
-info = "TraceInfo"
-
-[[command]]
-name = "rate_map"
-backend = "mtl"
-fields = [["map", "u32"]]
 
 [[command]]
 name = "set_shading_rate"
@@ -356,27 +328,3 @@ name = "set_scissors"
 scope = "render"
 fields = [["scissors", "[Scissor]"]]
 
-[[command]]
-name = "set_depth_bounds"
-scope = "render"
-fields = [["min", "f32"], ["max", "f32"]]
-
-[[command]]
-name = "begin_conditional"
-backend = "vk"
-fields = [["buffer", "u32"], ["offset", "u64"], ["inverted", "u32"]]
-
-[[command]]
-name = "end_conditional"
-backend = "vk"
-
-[[command]]
-name = "bind_tensor"
-backend = "mtl"
-fields = [["slot", "u32"], ["tensor", "u32"]]
-
-[[command]]
-name = "dispatch_network"
-scope = "outside"
-backend = "mtl"
-fields = [["pipeline", "u32"], ["heap", "u32"]]

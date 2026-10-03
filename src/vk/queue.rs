@@ -69,9 +69,6 @@ impl Queue {
         if self.graphics {
             points.push(vk::PipelineBindPoint::GRAPHICS);
         }
-        if ext.rays.is_some() {
-            points.push(vk::PipelineBindPoint::RAY_TRACING_KHR);
-        }
         let run = || -> Result<(), String> {
             let begin = vk::CommandBufferBeginInfo::default()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -87,12 +84,10 @@ impl Queue {
                 colors: Vec::new(),
                 depth: None,
                 stencil: vk::RenderingAttachmentInfo::default(),
-                views: 0,
                 natives,
                 heap,
                 compute: vk::Pipeline::null(),
                 graphics: vk::Pipeline::null(),
-                rays: vk::Pipeline::null(),
                 slots: BTreeMap::new(),
                 push: Vec::new(),
                 rate: None,

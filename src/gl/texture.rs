@@ -2,7 +2,6 @@ use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::binding;
 use crate::gl::state::buffer;
-use crate::gl::tiles;
 use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
 use glow::HasContext;
 use std::cell::Cell;
@@ -47,8 +46,6 @@ impl Texture {
         extra: &Extra,
         info: &TextureInfo,
         storage: bool,
-        place: Option<(u32, u64)>,
-        sparse: bool,
     ) -> Result<Self, String> {
         let [internal, layout, kind_of] = format::gl(info.format);
         let kind = target(info.dimension, info.samples);
@@ -66,32 +63,7 @@ impl Texture {
                 kind,
                 glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
             );
-            if sparse {
-                gl.tex_parameter_i32(kind, tiles::SPARSE, 1);
-                gl.tex_parameter_i32(kind, tiles::INDEX, 0);
-            }
-            if let Some((memory, offset)) = place {
-                let m = extra.memory.as_ref().unwrap();
-                let fixed = 1;
-                match kind {
-                    glow::TEXTURE_1D => (m.texture1)(kind, mips, internal, w, memory, offset),
-                    glow::TEXTURE_1D_ARRAY => {
-                        (m.texture2)(kind, mips, internal, w, layers, memory, offset)
-                    }
-                    glow::TEXTURE_2D | glow::TEXTURE_CUBE_MAP => {
-                        (m.texture2)(kind, mips, internal, w, h, memory, offset)
-                    }
-                    glow::TEXTURE_2D_MULTISAMPLE => {
-                        (m.samples2)(kind, samples, internal, w, h, fixed, memory, offset)
-                    }
-                    glow::TEXTURE_2D_MULTISAMPLE_ARRAY => {
-                        let f = m.samples3;
-                        f(kind, samples, internal, w, h, layers, fixed, memory, offset)
-                    }
-                    glow::TEXTURE_3D => (m.texture3)(kind, mips, internal, w, h, d, memory, offset),
-                    _ => (m.texture3)(kind, mips, internal, w, h, layers, memory, offset),
-                }
-            } else if !storage && !multisample && !sparse {
+            if !storage && !multisample {
                 let [bytes, bw, bh] = format::block(info.format);
                 let internal = internal as i32;
                 for m in 0..mips {

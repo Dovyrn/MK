@@ -1,9 +1,6 @@
 use crate::gl::addresses::Addresses;
 use crate::gl::bindless::Bindless;
-use crate::gl::memory::Memory;
 use crate::gl::rates::Rates;
-use crate::gl::sparse::Sparse;
-use crate::gl::tiles::Tiles;
 use std::ffi::c_void;
 
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
@@ -71,8 +68,6 @@ type ClearImage =
     unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
-type Bounds = unsafe extern "system" fn(f64, f64);
-type Multiview = unsafe extern "system" fn(u32, u32, u32, i32, i32, i32);
 
 pub struct Extra {
     pub view: Option<View>,
@@ -123,14 +118,9 @@ pub struct Extra {
     pub storage3: Option<Samples3>,
     pub copy_image: Option<CopyImage>,
     pub clear_image: Option<ClearImage>,
-    pub bounds: Option<Bounds>,
-    pub multiview: Option<Multiview>,
     pub parameters: bool,
-    pub memory: Option<Memory>,
     pub bindless: Option<Bindless>,
     pub addresses: Option<Addresses>,
-    pub sparse: Option<Sparse>,
-    pub tiles: Option<Tiles>,
     pub rates: Option<Rates>,
 }
 
@@ -244,18 +234,10 @@ impl Extra {
                 storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
                 copy_image: get("glCopyImageSubData", 43, "GL_ARB_copy_image").map(|p| cast(p)),
                 clear_image: get("glClearTexSubImage", 44, "GL_ARB_clear_texture").map(|p| cast(p)),
-                bounds: get("glDepthBoundsEXT", 99, "GL_EXT_depth_bounds_test").map(|p| cast(p)),
-                multiview: get("glFramebufferTextureMultiviewOVR", 99, "GL_OVR_multiview2")
-                    .map(|p| cast(p)),
                 parameters: has(46, "GL_ARB_shader_draw_parameters"),
-                memory: Memory::load(&|name| get(name, 99, "GL_EXT_memory_object_fd")),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
                 addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
                     .filter(|_| has(99, "GL_NV_shader_buffer_store")),
-                sparse: Sparse::load(&|name| get(name, 99, "GL_NV_memory_object_sparse"))
-                    .filter(|_| has(99, "GL_ARB_sparse_buffer")),
-                tiles: Tiles::load(&|name| get(name, 99, "GL_NV_memory_object_sparse"))
-                    .filter(|_| has(99, "GL_ARB_sparse_texture")),
                 rates: Rates::load(&|name| get(name, 99, "GL_NV_shading_rate_image")),
             })
         }

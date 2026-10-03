@@ -7,11 +7,10 @@ pub struct Cache {
     pub programs: BTreeMap<u64, ProgramBinary>,
 }
 
-pub fn key(code: &[u8], stages: &[(u32, &str)], views: u32) -> u64 {
+pub fn key(code: &[u8], stages: &[(u32, &str)]) -> u64 {
     let mut h = DefaultHasher::new();
     code.hash(&mut h);
     stages.hash(&mut h);
-    views.hash(&mut h);
     h.finish()
 }
 

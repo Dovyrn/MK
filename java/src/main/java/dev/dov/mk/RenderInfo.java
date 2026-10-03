@@ -20,7 +20,6 @@ public class RenderInfo {
     public int topology = Topology.TRIANGLE;
     public int fill = Fill.FILL;
     public boolean coverage = false;
-    public int views = 0;
     public boolean indirect = false;
     public boolean clamp = false;
     public VertexBuffer[] buffers = new VertexBuffer[0];
@@ -39,7 +38,7 @@ public class RenderInfo {
         for (var x : attributes) {
             attributesSize += x.encodedSize();
         }
-        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
+        return 56 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
     }
 
     long encode(long p) {
@@ -70,8 +69,6 @@ public class RenderInfo {
         memPutInt(p, fill);
         p += 4;
         memPutInt(p, coverage ? 1 : 0);
-        p += 4;
-        memPutInt(p, views);
         p += 4;
         memPutInt(p, indirect ? 1 : 0);
         p += 4;

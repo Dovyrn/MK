@@ -5,10 +5,8 @@ mod caps;
 mod copies;
 mod events;
 mod heaps;
-mod layouts;
 mod pipelines;
 mod queries;
-mod rays;
 mod samplers;
 mod sparse;
 mod textures;
@@ -20,7 +18,6 @@ use crate::vk::Callback;
 use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
-use crate::vk::ffi;
 use crate::vk::queue::Queue;
 use crate::vk::resources::Resources;
 use crate::{Caps, TextureInfo, ViewInfo, dimension, format, memory, usage};
@@ -125,7 +122,6 @@ fn whole(info: &TextureInfo) -> ViewInfo {
 
 impl Device {
     pub fn adopt(
-        entry: &ash::Entry,
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -153,7 +149,7 @@ impl Device {
                 "queue {i} of family {f} is not on this device"
             );
         }
-        let ext = unsafe { Extensions::new(entry, &instance, physical, &raw, features) }?;
+        let ext = unsafe { Extensions::new(&instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
         let range = vk::PushConstantRange::default()
@@ -350,7 +346,6 @@ impl Device {
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
             Self::adopt(
-                &entry,
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,
@@ -364,22 +359,12 @@ impl Device {
         self.name.clone()
     }
 
-    fn buffer_info<'a>(
-        &'a self,
-        size: u64,
-        usage: vk::BufferUsageFlags,
-        wide: &'a mut vk::BufferUsageFlags2CreateInfoKHR<'a>,
-    ) -> vk::BufferCreateInfo<'a> {
+    fn buffer_info(&self, size: u64, usage: vk::BufferUsageFlags) -> vk::BufferCreateInfo<'_> {
         let mut info = vk::BufferCreateInfo::default().size(size).usage(usage);
         if self.families.len() > 1 {
             info = info
                 .sharing_mode(vk::SharingMode::CONCURRENT)
                 .queue_family_indices(&self.families);
-        }
-        if self.ext.generated.is_some() {
-            wide.usage =
-                vk::BufferUsageFlags2KHR::from_raw(usage.as_raw() as u64 | ffi::PREPROCESS);
-            info = info.push_next(wide);
         }
         info
     }
@@ -404,12 +389,6 @@ impl Device {
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
         if self.ext.accel.is_some() {
             usage |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
-        }
-        if self.ext.rays.is_some() {
-            usage |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
-        }
-        if self.ext.conditional.is_some() {
-            usage |= vk::BufferUsageFlags::CONDITIONAL_RENDERING_EXT;
         }
         usage
     }
@@ -470,14 +449,8 @@ impl Drop for Device {
             for accel in res.accels.drain() {
                 accel.free(self, self.ext.accel.as_ref().unwrap());
             }
-            for (layout, _) in res.layouts.drain() {
-                self.ext.generated.as_ref().unwrap().free(&self.raw, layout);
-            }
             for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
-            }
-            for (pipeline, _) in res.rays.drain() {
-                self.raw.destroy_pipeline(pipeline, None);
             }
             for (pipeline, _) in res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);

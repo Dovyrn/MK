@@ -41,7 +41,6 @@ impl Resolve {
                     (glow::VERTEX_SHADER, "vert"),
                     (glow::FRAGMENT_SHADER, "sint"),
                 ],
-                1,
             )?;
             let uint = gl.create_program()?;
             link(
@@ -52,7 +51,6 @@ impl Resolve {
                     (glow::VERTEX_SHADER, "vert"),
                     (glow::FRAGMENT_SHADER, "uint"),
                 ],
-                1,
             )?;
             Ok(Self {
                 sint,

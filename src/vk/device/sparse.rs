@@ -9,9 +9,8 @@ impl Device {
         if !self.caps.sparse {
             return Err("sparse residency is not supported".into());
         }
-        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
         let info = self
-            .buffer_info(1, self.usage(), &mut wide)
+            .buffer_info(1, self.usage())
             .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
         unsafe {
             let probe = self
@@ -69,9 +68,8 @@ impl Device {
         if !self.caps.sparse {
             return Err("sparse residency is not supported".into());
         }
-        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
         let info = self
-            .buffer_info(size, self.usage(), &mut wide)
+            .buffer_info(size, self.usage())
             .flags(vk::BufferCreateFlags::SPARSE_BINDING | vk::BufferCreateFlags::SPARSE_RESIDENCY);
         unsafe {
             let raw = self

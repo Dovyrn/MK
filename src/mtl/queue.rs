@@ -25,7 +25,6 @@ pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
     pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
-    pub ml: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
     pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     pub count: u64,
@@ -55,18 +54,12 @@ impl Queue {
         let table = device
             .newArgumentTableWithDescriptor_error(&desc)
             .map_err(|e| e.localizedDescription().to_string())?;
-        let desc = MTL4ArgumentTableDescriptor::new();
-        desc.setMaxBufferBindCount(slot::STORAGES as usize);
-        let ml = device
-            .newArgumentTableWithDescriptor_error(&desc)
-            .map_err(|e| e.localizedDescription().to_string())?;
         Ok(Self {
             raw,
             buffer: device
                 .newCommandBuffer()
                 .ok_or("command buffer allocation failed")?,
             table,
-            ml,
             residency,
             event: device.newSharedEvent().ok_or("event allocation failed")?,
             count: 0,

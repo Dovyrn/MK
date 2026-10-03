@@ -14,10 +14,6 @@ impl Device {
                 return Err("timestamps are not supported".into());
             }
             query::TIMESTAMP => (vk::QueryType::TIMESTAMP, none),
-            query::STATISTICS if !caps.statistics => {
-                return Err("pipeline statistics are not supported".into());
-            }
-            query::STATISTICS => (vk::QueryType::PIPELINE_STATISTICS, none),
             query::COMPACTED if !caps.ray => {
                 return Err("VK_KHR_acceleration_structure is not enabled".into());
             }
@@ -32,32 +28,15 @@ impl Device {
             query::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
             k => panic!("unknown query kind {k}"),
         };
-        let statistics = if kind == vk::QueryType::PIPELINE_STATISTICS {
-            vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
-                | vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
-                | vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
-                | vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
-                | vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
-                | vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS
-                | vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS
-        } else {
-            vk::QueryPipelineStatisticFlags::empty()
-        };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
-            .query_count(count)
-            .pipeline_statistics(statistics);
+            .query_count(count);
         let pool = unsafe {
             self.raw
                 .create_query_pool(&info, None)
                 .map_err(|e| e.to_string())?
         };
-        let stride = statistics.as_raw().count_ones().max(1) as u64 * 8;
-        let id = self.res.queries.insert(Query {
-            pool,
-            flags,
-            stride,
-        });
+        let id = self.res.queries.insert(Query { pool, flags });
         self.res.table.queries.set(id, (wanted, count));
         Ok(id)
     }

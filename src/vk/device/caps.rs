@@ -3,7 +3,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, Matrix, TextureInfo, caps, format, usage};
+use crate::{Caps, TextureInfo, caps, format, usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -15,16 +15,6 @@ pub(super) fn probe(
     memory: &vk::PhysicalDeviceMemoryProperties,
     limits: &vk::PhysicalDeviceLimits,
 ) -> Caps {
-    let mut host = vk::PhysicalDeviceExternalMemoryHostPropertiesEXT::default();
-    if ext.host.is_some() {
-        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut host);
-        unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
-    }
-    let mut rays = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-    if ext.rays.is_some() {
-        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut rays);
-        unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
-    }
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
     let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut buffer);
     unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
@@ -51,32 +41,14 @@ pub(super) fn probe(
             .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
         precise: features.occlusion_query_precise != 0,
         ray: ext.accel.is_some(),
-        generated: ext.generated.is_some(),
-        handle_size: rays.shader_group_handle_size,
-        handle_alignment: rays.shader_group_handle_alignment,
-        table_alignment: rays.shader_group_base_alignment,
         shading_rate: ext.rates.is_some(),
-        host_memory: ext.host.is_some(),
-        shared_memory: ext.fd.is_some(),
-        depth_bounds: features.depth_bounds != 0,
-        conditional: ext.conditional.is_some(),
-        statistics: features.pipeline_statistics_query != 0,
         viewports: if features.multi_viewport != 0 {
             limits.max_viewports
         } else {
             1
         },
-        host_alignment: host.min_imported_host_pointer_alignment as u32,
         sparse,
         instance: 64,
-        views: if ext.multiview {
-            let mut multiview = vk::PhysicalDeviceMultiviewProperties::default();
-            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut multiview);
-            unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
-            multiview.max_multiview_view_count
-        } else {
-            1
-        },
         memoryless: memory.memory_types[..memory.memory_type_count as usize]
             .iter()
             .any(|t| {
@@ -93,7 +65,6 @@ pub(super) fn probe(
             })
             .fold(0, |mask, (i, _)| mask | 1 << i),
         labels: ext.debug.is_some(),
-        rays: ext.rays.is_some(),
         anisotropy: features.sampler_anisotropy != 0,
         depth_clamp: features.depth_clamp != 0,
         line_fill: features.fill_mode_non_solid != 0,
@@ -110,7 +81,6 @@ pub(super) fn probe(
         indirect: true,
         indirect_ids: true,
         indirect_offset: true,
-        wide_lines: features.wide_lines != 0,
         max_queries: 65536,
         cube_arrays: features.image_cube_array != 0,
         mirror_clamp: ext.mirror,
@@ -128,9 +98,6 @@ pub(super) fn probe(
         slots: ext.push.is_some(),
         storage: ext.push.is_some(),
         persistent: true,
-        matrices: ext.matrices.len() as u32,
-        tensors: false,
-        networks: false,
         bind_alignment: limits
             .min_uniform_buffer_offset_alignment
             .max(limits.min_storage_buffer_offset_alignment) as u32,
@@ -140,10 +107,6 @@ pub(super) fn probe(
 impl Device {
     pub fn caps(&self) -> Caps {
         self.caps
-    }
-
-    pub fn matrix(&self, index: u32) -> Matrix {
-        self.ext.matrices[self.caps.matrix(index)]
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {

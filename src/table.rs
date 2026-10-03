@@ -10,23 +10,12 @@ pub struct Table {
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub accels: Entries<(u64, u64)>,
-    #[cfg(feature = "vk")]
-    pub rays: Entries<()>,
-    #[cfg(feature = "vk")]
-    pub layouts: Entries<()>,
     #[cfg(feature = "mtl")]
     pub indirects: Entries<()>,
-    #[cfg(feature = "mtl")]
-    pub maps: Entries<()>,
-    #[cfg(feature = "mtl")]
-    pub functions: Entries<()>,
-    #[cfg(feature = "mtl")]
-    pub tensors: Entries<u32>,
-    #[cfg(feature = "mtl")]
-    pub networks: Entries<u64>,
 }
 
 impl Default for Table {
@@ -40,23 +29,12 @@ impl Default for Table {
             states: Entries::new("depth state"),
             queries: Entries::new("query heap"),
             events: Entries::new("event"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
             heaps: Entries::new("heap"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
             accels: Entries::new("acceleration structure"),
-            #[cfg(feature = "vk")]
-            rays: Entries::new("ray pipeline"),
-            #[cfg(feature = "vk")]
-            layouts: Entries::new("commands layout"),
             #[cfg(feature = "mtl")]
             indirects: Entries::new("indirect command buffer"),
-            #[cfg(feature = "mtl")]
-            maps: Entries::new("rate map"),
-            #[cfg(feature = "mtl")]
-            functions: Entries::new("function table"),
-            #[cfg(feature = "mtl")]
-            tensors: Entries::new("tensor"),
-            #[cfg(feature = "mtl")]
-            networks: Entries::new("ml pipeline"),
         }
     }
 }

@@ -13,15 +13,10 @@ public class ComputeInfo {
     public long codeSize = 0;
     public String entry = "";
     public int[] group = new int[] {1, 1, 1};
-    public String[] functions = new String[0];
     public boolean indirect = false;
 
     int encodedSize() {
-        var functionsSize = 4;
-        for (var x : functions) {
-            functionsSize += 4 + x.getBytes(StandardCharsets.UTF_8).length;
-        }
-        return 36 + entry.getBytes(StandardCharsets.UTF_8).length + functionsSize;
+        return 36 + entry.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -38,14 +33,6 @@ public class ComputeInfo {
         for (var x : group) {
             memPutInt(p, x);
             p += 4;
-        }
-        memPutInt(p, functions.length);
-        p += 4;
-        for (var x : functions) {
-            var b = x.getBytes(StandardCharsets.UTF_8);
-            memPutInt(p, b.length);
-            memByteBuffer(p + 4, b.length).put(b);
-            p += 4 + b.length;
         }
         memPutInt(p, indirect ? 1 : 0);
         p += 4;

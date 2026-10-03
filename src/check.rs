@@ -15,12 +15,8 @@ pub struct Check<'a> {
     render: bool,
     indirect: bool,
     heap: Option<u32>,
-    rate: bool,
     targets: Vec<(u32, bool)>,
-    views: u32,
     samples: u32,
-    #[cfg(feature = "vk")]
-    ray: bool,
 }
 
 fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
@@ -117,12 +113,8 @@ impl<'a> Check<'a> {
             render: false,
             indirect: false,
             heap: None,
-            rate: false,
             targets: Vec::new(),
-            views: 0,
             samples: 0,
-            #[cfg(feature = "vk")]
-            ray: false,
         };
         while !bytes.is_empty() {
             let c = Command::read(&mut bytes)
@@ -350,15 +342,7 @@ impl<'a> Check<'a> {
                     "begin_render attachments have different sample counts {samples:?}"
                 );
                 self.samples = samples.first().copied().unwrap_or(0);
-                for &(texture, _) in &self.targets {
-                    let t = self.table.textures.get(texture).layers;
-                    assert!(
-                        self.views <= t,
-                        "multiview {} is more than texture {texture} has layers ({t})",
-                        self.views
-                    );
-                }
-                for &(texture, clear) in self.targets.iter().filter(|_| !self.rate) {
+                for &(texture, clear) in &self.targets {
                     let t = self.table.textures.get(texture);
                     assert!(
                         width <= t.width && height <= t.height && layers <= t.layers,
@@ -389,8 +373,6 @@ impl<'a> Check<'a> {
                 self.open = "outside";
                 self.targets.clear();
                 self.heap = None;
-                self.rate = false;
-                self.views = 0;
             }
             Command::BindPipeline { pipeline } => {
                 self.need(c, caps.compute, "compute")?;
@@ -869,19 +851,14 @@ impl<'a> Check<'a> {
                 self.queries(heap, &[query::TIMESTAMP], index, 1);
             }
             Command::BeginQuery { heap, index } | Command::EndQuery { heap, index } => {
-                match self.table.queries.get(heap).0 {
-                    query::STATISTICS => self.need(c, caps.statistics, "statistics")?,
-                    _ => {
-                        self.need(c, caps.occlusion, "occlusion")?;
-                        assert_eq!(
-                            self.heap,
-                            Some(heap),
-                            "{} needs occlusion_heap({heap}) before begin_render",
-                            name(c)
-                        );
-                    }
-                }
-                let kinds = [query::OCCLUSION, query::PRECISE, query::STATISTICS];
+                self.need(c, caps.occlusion, "occlusion")?;
+                assert_eq!(
+                    self.heap,
+                    Some(heap),
+                    "{} needs occlusion_heap({heap}) before begin_render",
+                    name(c)
+                );
+                let kinds = [query::OCCLUSION, query::PRECISE];
                 self.queries(heap, &kinds, index, 1);
             }
             Command::ResolveQueries {
@@ -892,11 +869,7 @@ impl<'a> Check<'a> {
                 offset,
             } => {
                 self.queries(heap, &[], first, count);
-                let size = match self.table.queries.get(heap).0 {
-                    query::STATISTICS => 56,
-                    _ => 8,
-                };
-                self.range(buffer, offset, count as u64 * size);
+                self.range(buffer, offset, count as u64 * 8);
             }
             Command::PushConstants { offset, data } => {
                 let end = offset as usize + data.len();
@@ -933,41 +906,11 @@ impl<'a> Check<'a> {
                     assert!(end <= i32::MAX as u64, "scissor {r:?} is too large");
                 }
             }
-            Command::SetDepthBounds { .. } => self.need(c, caps.depth_bounds, "depth_bounds")?,
             Command::Callback { index } => {
                 assert!(
                     (index as usize) < self.natives,
                     "callback {index} was recorded without its closure"
                 );
-            }
-            #[cfg(feature = "mtl")]
-            Command::RateMap { .. } => self.rate = true,
-            #[cfg(feature = "mtl")]
-            Command::DispatchNetwork { pipeline, heap } => {
-                self.need(c, caps.networks, "networks")?;
-                let size = *self.table.networks.get(pipeline);
-                let room = *self.table.heaps.get(heap);
-                assert!(
-                    room >= size,
-                    "heap {heap} holds {room} bytes, ml pipeline {pipeline} needs {size}"
-                );
-            }
-            #[cfg(feature = "mtl")]
-            Command::BindTensor { slot: i, tensor } => {
-                self.need(c, caps.tensors, "tensors")?;
-                slot(i, slot::STORAGES);
-                self.table.tensors.get(tensor);
-            }
-            Command::SetLineWidth { width } => {
-                if width != 1.0 {
-                    self.need(c, caps.wide_lines, "wide_lines")?;
-                }
-            }
-            Command::Multiview { views } => {
-                if views > 1 {
-                    self.need(c, views <= caps.views, "views")?;
-                }
-                self.views = views;
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::BuildAccel {
@@ -993,11 +936,6 @@ impl<'a> Check<'a> {
                 self.need(c, caps.ray, "ray")?;
                 self.queries(heap, &[query::COMPACTED], index, 1);
             }
-            #[cfg(feature = "vk")]
-            Command::BeginConditional { buffer, offset, .. } => {
-                self.need(c, caps.conditional, "conditional")?;
-                self.range(buffer, offset, 4);
-            }
             #[cfg(any(feature = "vk", feature = "gl"))]
             Command::SetShadingRate {
                 width,
@@ -1021,90 +959,6 @@ impl<'a> Check<'a> {
                 self.need(c, caps.shading_rate, "shading_rate")?;
                 known("layout", l, layout::valid(l));
                 self.table.textures.get(texture);
-            }
-            #[cfg(feature = "vk")]
-            Command::BindRayPipeline { pipeline } => {
-                self.need(c, caps.rays, "rays")?;
-                self.table.rays.get(pipeline);
-                self.ray = true;
-            }
-            #[cfg(feature = "vk")]
-            Command::TraceRays {
-                raygen,
-                raygen_offset,
-                raygen_stride,
-                raygen_size,
-                miss,
-                miss_offset,
-                miss_stride,
-                miss_size,
-                hit,
-                hit_offset,
-                hit_stride,
-                hit_size,
-                callable,
-                callable_offset,
-                callable_stride,
-                callable_size,
-                ..
-            } => {
-                self.need(c, caps.rays, "rays")?;
-                assert!(self.ray, "trace_rays needs bind_ray_pipeline first");
-                assert_ne!(raygen, !0, "trace_rays needs a raygen table");
-                assert_eq!(
-                    raygen_stride, raygen_size,
-                    "raygen stride {raygen_stride} must equal its size {raygen_size}"
-                );
-                for (what, buffer, offset, stride, size) in [
-                    ("raygen", raygen, raygen_offset, raygen_stride, raygen_size),
-                    ("miss", miss, miss_offset, miss_stride, miss_size),
-                    ("hit", hit, hit_offset, hit_stride, hit_size),
-                    (
-                        "callable",
-                        callable,
-                        callable_offset,
-                        callable_stride,
-                        callable_size,
-                    ),
-                ] {
-                    if buffer == !0 {
-                        continue;
-                    }
-                    let base = caps.table_alignment.max(1) as u64;
-                    let handle = caps.handle_alignment.max(1) as u64;
-                    assert!(
-                        offset.is_multiple_of(base),
-                        "{what} offset {offset} is not a multiple of caps.table_alignment {base}"
-                    );
-                    assert!(
-                        stride.is_multiple_of(handle) && stride >= caps.handle_size as u64,
-                        "{what} stride {stride} must be a multiple of caps.handle_alignment {handle} and at least caps.handle_size"
-                    );
-                    self.range(buffer, offset, size);
-                }
-            }
-            #[cfg(feature = "vk")]
-            Command::ExecuteGenerated {
-                layout,
-                indirect,
-                offset,
-                size,
-                preprocess,
-                preprocess_offset,
-                preprocess_size,
-                count,
-                count_offset,
-                ..
-            } => {
-                self.need(c, caps.generated, "generated")?;
-                self.table.layouts.get(layout);
-                self.filled(c, indirect, offset, size);
-                if preprocess != !0 {
-                    self.range(preprocess, preprocess_offset, preprocess_size);
-                }
-                if count != !0 {
-                    self.range(count, count_offset, 4);
-                }
             }
             _ => {}
         }

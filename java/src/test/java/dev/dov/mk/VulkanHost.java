@@ -93,7 +93,6 @@ public class VulkanHost {
             var v11 = VkPhysicalDeviceVulkan11Features.calloc(stack)
                     .sType$Default()
                     .pNext(v12.address())
-                    .multiview(true)
                     .shaderDrawParameters(true);
             var features = VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(v11.address());
             var queues = VkDeviceQueueCreateInfo.calloc(1, stack);

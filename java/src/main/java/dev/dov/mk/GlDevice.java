@@ -10,12 +10,6 @@ public class GlDevice extends Device {
         super(handle);
     }
 
-    public synchronized int importHeap(int fd, long size, int memory) {
-        return nImportHeap(handle, fd, size, memory);
-    }
-
-    private static native int nImportHeap(long device, int fd, long size, int memory);
-
     public static GlDevice adoptRaw(long proc) {
         return new GlDevice(nAdoptRaw(proc));
     }

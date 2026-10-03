@@ -18,8 +18,6 @@ pub struct Resources {
     pub depths: Slots<DepthInfo>,
     pub heaps: Slots<Heap>,
     pub accels: Slots<Accel>,
-    pub layouts: Slots<(u64, vk::ShaderStageFlags)>,
-    pub rays: Slots<(vk::Pipeline, u32)>,
     pub queries: Slots<Query>,
     pub events: Slots<Event>,
     pub table: crate::table::Table,

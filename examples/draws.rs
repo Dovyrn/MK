@@ -174,7 +174,7 @@ fn main() {
     device.unmap(back);
     let ids = device
         .create_render_pipeline(&RenderInfo {
-            code: host::code!("multiview"),
+            code: host::code!("corners"),
             vertex: "vert",
             fragment: "frag",
             colors: &[ColorTarget {

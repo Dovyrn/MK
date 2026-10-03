@@ -5,39 +5,12 @@ use crate::{TextureInfo, format, memory, usage};
 use ash::vk;
 use std::rc::Rc;
 
-const FD: &str = "VK_KHR_external_memory_fd is not enabled";
-
 impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.heap(size, memory, false, None)
+        self.heap(size, memory)
     }
 
-    pub fn create_shared_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.ext.fd.as_ref().ok_or(FD)?;
-        self.heap(size, memory, true, None)
-    }
-
-    pub fn import_heap(&mut self, fd: i32, size: u64, memory: u32) -> Result<u32, String> {
-        self.ext.fd.as_ref().ok_or(FD)?;
-        self.heap(size, memory, true, Some(fd))
-    }
-
-    pub fn export_heap(&self, heap: u32) -> Result<i32, String> {
-        self.res.table.heaps.get(heap);
-        let fd = self.ext.fd.as_ref().ok_or(FD)?;
-        let info = vk::MemoryGetFdInfoKHR::default()
-            .memory(*self.res.heaps.get(heap).memory)
-            .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
-        unsafe { fd.get_memory_fd(&info).map_err(|e| e.to_string()) }
-    }
-
-    fn heap(
-        &mut self,
-        size: u64,
-        memory: u32,
-        shared: bool,
-        fd: Option<i32>,
-    ) -> Result<u32, String> {
+    fn heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
         assert_ne!(
             memory,
             memory::TRANSIENT,
@@ -64,22 +37,12 @@ impl Device {
         let index = self
             .memory_type(bits, memory)
             .or_else(|_| self.memory_type(!0, memory))?;
-        let kind = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         let mut flags =
             vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
-        let mut export = vk::ExportMemoryAllocateInfo::default().handle_types(kind);
-        let mut import = vk::ImportMemoryFdInfoKHR::default()
-            .handle_type(kind)
-            .fd(fd.unwrap_or(-1));
-        let mut info = vk::MemoryAllocateInfo::default()
+        let info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
             .memory_type_index(index)
             .push_next(&mut flags);
-        if fd.is_some() {
-            info = info.push_next(&mut import);
-        } else if shared {
-            info = info.push_next(&mut export);
-        }
         let memory = self.alloc(&info)?;
         let data = self
             .mapped(memory, index)
@@ -87,7 +50,6 @@ impl Device {
         let id = self.res.heaps.insert(Heap {
             memory: Rc::new(memory),
             data,
-            shared,
             device,
             index,
         });
@@ -106,8 +68,7 @@ impl Device {
     }
 
     fn buffer_needs(&self, size: u64) -> vk::MemoryRequirements {
-        let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-        let info = self.buffer_info(size, self.usage(), &mut wide);
+        let info = self.buffer_info(size, self.usage());
         let query = vk::DeviceBufferMemoryRequirements::default().create_info(&info);
         let mut needs = vk::MemoryRequirements2::default();
         unsafe {
@@ -148,13 +109,7 @@ impl Device {
         self.caps.buffer(size, memory::DEVICE)?;
         let h = self.res.heaps.get(heap);
         unsafe {
-            let mut wide = vk::BufferUsageFlags2CreateInfoKHR::default();
-            let mut external = vk::ExternalMemoryBufferCreateInfo::default()
-                .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
-            let mut info = self.buffer_info(size, self.usage(), &mut wide);
-            if h.shared {
-                info = info.push_next(&mut external);
-            }
+            let info = self.buffer_info(size, self.usage());
             let raw = self
                 .raw
                 .create_buffer(&info, None)
@@ -202,13 +157,8 @@ impl Device {
         self.texture(info)?;
         let h = self.res.heaps.get(heap);
         let (memory, index) = (h.memory.clone(), h.index);
-        let mut external = vk::ExternalMemoryImageCreateInfo::default()
-            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
         let mut create = self.share_image(image_info(info));
         self.host_usage(info, &mut create)?;
-        if h.shared {
-            create = create.push_next(&mut external);
-        }
         unsafe {
             let image = self
                 .raw

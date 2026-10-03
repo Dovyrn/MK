@@ -34,7 +34,7 @@ fn main() {
     }];
     let draw = device
         .create_render_pipeline(&RenderInfo {
-            code: host::code!("multiview"),
+            code: host::code!("corners"),
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
@@ -134,7 +134,6 @@ fn main() {
             entry: "fill",
             group: [64, 1, 1],
             indirect: true,
-            ..Default::default()
         })
         .unwrap();
     let encode = device
