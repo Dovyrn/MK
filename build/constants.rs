@@ -5,8 +5,24 @@ pub fn rust(table: &toml::Table) -> String {
     let mut s = String::new();
     for (module, values) in table {
         writeln!(s, "pub mod {module} {{").unwrap();
-        for (name, value) in values.as_table().unwrap() {
+        let values = values.as_table().unwrap();
+        for (name, value) in values {
             writeln!(s, "    pub const {name}: u32 = {value};").unwrap();
+        }
+        if !matches!(module.as_str(), "slot" | "register") {
+            let names: Vec<_> = values.keys().map(String::as_str).collect();
+            writeln!(
+                s,
+                "\n    #[allow(dead_code)]\n    pub(crate) const BITS: u32 = {};",
+                names.join(" | ")
+            )
+            .unwrap();
+            writeln!(
+                s,
+                "\n    #[allow(dead_code)]\n    pub(crate) fn valid(v: u32) -> bool {{\n        matches!(v, {})\n    }}",
+                names.join(" | ")
+            )
+            .unwrap();
         }
         s += "}\n\n";
     }
