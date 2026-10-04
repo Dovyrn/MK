@@ -11,6 +11,7 @@ impl Device {
             .accel
             .as_ref()
             .ok_or("VK_KHR_acceleration_structure is not enabled")?;
+        self.caps.accel(info);
         let (kind, geometry, ranges) = if !info.boxes.is_empty() {
             let mut geometry = Vec::new();
             let mut ranges = Vec::new();
@@ -40,16 +41,18 @@ impl Device {
                 ranges,
             )
         } else if info.triangles.is_empty() {
+            let (count, _) = *self.res.table.rays.get(info.ray_instances);
+            let buffer = *self.res.rays.get(info.ray_instances);
             let instances = vk::AccelerationStructureGeometryInstancesDataKHR::default().data(
                 vk::DeviceOrHostAddressConstKHR {
-                    device_address: self.address(info.instances) + info.instance_offset,
+                    device_address: self.address(buffer),
                 },
             );
             let geometry = vk::AccelerationStructureGeometryKHR::default()
                 .geometry_type(vk::GeometryTypeKHR::INSTANCES)
                 .geometry(vk::AccelerationStructureGeometryDataKHR { instances });
-            let range = vk::AccelerationStructureBuildRangeInfoKHR::default()
-                .primitive_count(info.instance_count);
+            let range =
+                vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(count);
             (
                 vk::AccelerationStructureTypeKHR::TOP_LEVEL,
                 vec![geometry],
@@ -121,10 +124,12 @@ impl Device {
             ..self.new_accel(ray, sizes.acceleration_structure_size, kind, flags)?
         };
         let id = self.res.accels.insert(accel);
-        self.res
-            .table
-            .accels
-            .set(id, (sizes.build_scratch_size, sizes.update_scratch_size));
+        let scratch = (sizes.build_scratch_size, sizes.update_scratch_size);
+        let mut buffers = crate::table::geometry(info);
+        if info.ray_instances != !0 {
+            buffers.push(*self.res.rays.get(info.ray_instances));
+        }
+        self.res.table.accel(id, scratch, buffers);
         Ok(id)
     }
 
@@ -138,7 +143,7 @@ impl Device {
         let source = self.res.accels.get(accel);
         let accel = self.new_accel(ray, size, source.kind, source.flags)?;
         let id = self.res.accels.insert(accel);
-        self.res.table.accels.set(id, (0, 0));
+        self.res.table.accel(id, (0, 0), Vec::new());
         Ok(id)
     }
 
@@ -177,7 +182,7 @@ impl Device {
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {
-        self.res.table.accels.clear(accel);
+        self.res.table.drop_accel(accel);
         self.defer(move |d| {
             let accel = d.res.accels.remove(accel);
             accel.free(d, d.ext.accel.as_ref().unwrap());
@@ -195,15 +200,42 @@ impl Device {
         self.res.accels.get(accel).address
     }
 
-    pub fn write_instance(
+    pub fn create_ray_instances(&mut self, count: u32, memory: u32) -> Result<u32, String> {
+        assert!(count > 0, "ray instances count is 0");
+        if self.ext.accel.is_none() {
+            return Err("VK_KHR_acceleration_structure is not enabled".into());
+        }
+        let buffer = self.create_buffer(count as u64 * 64, memory)?;
+        let id = self.res.rays.insert(buffer);
+        self.res.table.rays.set(id, (count, memory));
+        Ok(id)
+    }
+
+    pub fn destroy_ray_instances(&mut self, instances: u32) {
+        self.res.table.rays.clear(instances);
+        let buffer = self.res.rays.remove(instances);
+        self.destroy_buffer(buffer);
+    }
+
+    pub fn ray_instances_handle(&self, instances: u32) -> Result<u64, String> {
+        self.res.table.rays.get(instances);
+        self.buffer_handle(*self.res.rays.get(instances))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_ray_instance(
         &self,
-        out: &mut [u8],
+        instances: u32,
+        index: u32,
         accel: u32,
         transform: &[f32; 12],
         id: u32,
         mask: u32,
         flags: u32,
     ) {
+        self.res.table.ray_write(instances, index, id, mask, flags);
+        let data = self.res.buffers.get(*self.res.rays.get(instances)).data;
+        let out = unsafe { std::slice::from_raw_parts_mut(data.add(index as usize * 64), 64) };
         for (i, v) in transform.iter().enumerate() {
             out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }

@@ -8,7 +8,7 @@ pub struct Table {
     pub textures: Entries<TextureInfo>,
     pub samplers: Entries<()>,
     pub pipelines: Entries<()>,
-    pub renders: Entries<(u32, bool, u32, bool)>,
+    pub renders: Entries<(u32, bool, u32, bool, u32)>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub events: Entries<(u64, usize)>,
@@ -16,6 +16,19 @@ pub struct Table {
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub accels: Entries<(u64, u64)>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub geometry: Entries<(Vec<u32>, bool)>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub buffer_heaps: Entries<u32>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub texture_heaps: Entries<u32>,
+    pub parents: Entries<u32>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub rays: Entries<(u32, u32)>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub pages: Entries<()>,
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub tiles: Entries<[u32; 3]>,
     pub indirects: Entries<(IndirectInfo, u32, bool)>,
 }
 
@@ -34,6 +47,19 @@ impl Default for Table {
             heaps: Entries::new("heap"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
             accels: Entries::new("acceleration structure"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            geometry: Entries::new("acceleration structure"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            buffer_heaps: Entries::new("placed buffer"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            texture_heaps: Entries::new("placed texture"),
+            parents: Entries::new("view"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            rays: Entries::new("ray instances"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            pages: Entries::new("sparse buffer"),
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            tiles: Entries::new("sparse texture"),
             indirects: Entries::new("indirect buffer"),
         }
     }
@@ -62,7 +88,154 @@ fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
     count
 }
 
+#[cfg(any(feature = "vk", feature = "mtl"))]
+pub fn geometry(info: &crate::AccelInfo) -> Vec<u32> {
+    let mut buffers = Vec::new();
+    for t in info.triangles {
+        buffers.push(t.vertices);
+        if t.indices != !0 {
+            buffers.push(t.indices);
+        }
+    }
+    buffers.extend(info.boxes.iter().map(|b| b.buffer));
+    buffers
+}
+
+pub fn vertices(info: &crate::RenderInfo) -> u32 {
+    info.attributes.iter().fold(0, |m, a| m | 1 << a.buffer)
+}
+
 impl Table {
+    pub fn drop_buffer(&mut self, buffer: u32) {
+        self.buffers.clear(buffer);
+        #[cfg(any(feature = "vk", feature = "mtl"))]
+        {
+            self.pages.forget(buffer);
+            self.buffer_heaps.forget(buffer);
+            for (buffers, intact) in self.geometry.values_mut() {
+                if buffers.contains(&buffer) {
+                    *intact = false;
+                }
+            }
+        }
+    }
+
+    pub fn drop_texture(&mut self, texture: u32) {
+        assert!(
+            !self.parents.values().any(|&p| p == texture),
+            "texture {texture} is destroyed while views of it live"
+        );
+        self.textures.clear(texture);
+        self.parents.forget(texture);
+        #[cfg(any(feature = "vk", feature = "mtl"))]
+        {
+            self.tiles.forget(texture);
+            self.texture_heaps.forget(texture);
+        }
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn drop_heap(&mut self, heap: u32) {
+        let placed = self
+            .buffer_heaps
+            .values()
+            .chain(self.texture_heaps.values());
+        assert!(
+            !placed.into_iter().any(|&h| h == heap),
+            "heap {heap} is destroyed while resources placed in it live"
+        );
+        self.heaps.clear(heap);
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn ray_write(&self, instances: u32, index: u32, id: u32, mask: u32, flags: u32) {
+        let (count, memory) = *self.rays.get(instances);
+        assert!(index < count, "ray instance {index} is outside 0..{count}");
+        assert_eq!(
+            memory,
+            crate::memory::UPLOAD,
+            "write_ray_instance needs ray instances created with memory::UPLOAD"
+        );
+        assert!(id < 1 << 24, "ray instance id {id} is over 24 bits");
+        assert!(
+            mask < 256 && flags & !crate::instance::BITS == 0,
+            "ray instance mask {mask} is over 8 bits or flags {flags:#x} are unknown"
+        );
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn accel(&mut self, id: u32, sizes: (u64, u64), buffers: Vec<u32>) {
+        self.accels.set(id, sizes);
+        self.geometry.set(id, (buffers, true));
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn drop_accel(&mut self, accel: u32) {
+        self.accels.clear(accel);
+        self.geometry.forget(accel);
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    fn heap_pages(&self, heap: u32, page: u64) -> u64 {
+        if heap == !0 {
+            u64::MAX
+        } else {
+            *self.heaps.get(heap) / page
+        }
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn map_buffer(&self, buffer: u32, heap: u32, page: u64, ranges: &[crate::SparseRange]) {
+        self.pages.get(buffer);
+        let pages = self.buffers.get(buffer).div_ceil(page);
+        let room = self.heap_pages(heap, page);
+        for r in ranges {
+            let end = r.page as u64 + r.count as u64;
+            assert!(
+                r.count > 0 && end <= pages,
+                "sparse pages {}..{end} are outside the {pages} pages of buffer {buffer}",
+                r.page
+            );
+            assert!(
+                r.heap_page as u64 + r.count as u64 <= room,
+                "heap pages {}..{} are outside heap {heap}",
+                r.heap_page,
+                r.heap_page as u64 + r.count as u64
+            );
+        }
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn map_texture(&self, texture: u32, heap: u32, page: u64, regions: &[crate::SparseRegion]) {
+        let tile = *self.tiles.get(texture);
+        let t = self.textures.get(texture);
+        let room = self.heap_pages(heap, page);
+        for r in regions {
+            assert!(
+                r.mip < t.mips && r.layer < t.layers,
+                "sparse region mip {} layer {} is outside texture {texture}",
+                r.mip,
+                r.layer
+            );
+            let size = [t.width, t.height, t.depth].map(|n| (n >> r.mip).max(1));
+            let grid: Vec<u64> = (0..3).map(|i| size[i].div_ceil(tile[i]) as u64).collect();
+            let at = [r.x, r.y, r.z];
+            let span = [r.width, r.height, r.depth];
+            assert!(
+                (0..3).all(|i| span[i] > 0 && at[i] as u64 + span[i] as u64 <= grid[i]),
+                "sparse region {at:?} {span:?} is outside the {grid:?} tiles of mip {} of texture {texture}",
+                r.mip
+            );
+            let count = span.iter().map(|&n| n as u64).product::<u64>();
+            assert!(
+                r.heap_page as u64 + count <= room,
+                "heap pages {}..{} are outside heap {heap}",
+                r.heap_page,
+                r.heap_page as u64 + count
+            );
+        }
+    }
+
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub fn place(&self, heap: u32, offset: u64, (size, align): (u64, u64)) {
         let total = *self.heaps.get(heap);
@@ -79,7 +252,7 @@ impl Table {
     pub fn indirect(&self, info: &IndirectInfo) -> (IndirectInfo, u32, bool) {
         assert!(info.size > 0, "indirect buffer size is 0");
         let pipeline = info.pipeline;
-        let (_, indirect, topology, mesh) = *self.renders.get(pipeline);
+        let (_, indirect, topology, mesh, _) = *self.renders.get(pipeline);
         assert!(
             indirect,
             "an indirect buffer needs render pipeline {pipeline} created with indirect: true"
@@ -90,6 +263,12 @@ impl Table {
                 "an indirect buffer of mesh pipeline {pipeline} is not indexed"
             );
             assert!(index::valid(info.kind), "unknown index kind {}", info.kind);
+            let size = if info.kind == index::U16 { 2 } else { 4 };
+            assert!(
+                info.offset.is_multiple_of(size),
+                "index offset {} is not a multiple of {size}",
+                info.offset
+            );
             let total = *self.buffers.get(info.indices);
             assert!(
                 info.offset < total,
@@ -186,6 +365,7 @@ impl Table {
 
     pub fn view(&mut self, id: u32, texture: u32, info: &ViewInfo) {
         let t = *self.textures.get(texture);
+        self.parents.set(id, texture);
         self.textures.set(
             id,
             TextureInfo {
@@ -267,10 +447,12 @@ impl Table {
         );
         let pitch = row.div_ceil(bw) as u64 * format::block(t.format)[0] as u64;
         let image = pitch * rows.div_ceil(bh) as u64;
+        let need = image
+            .checked_mul(d as u64)
+            .expect("host copy size overflows");
         assert!(
-            size as u64 >= image * d as u64,
-            "host copy needs {} bytes, not {size}",
-            image * d as u64
+            size as u64 >= need,
+            "host copy needs {need} bytes, not {size}"
         );
         (pitch, image)
     }

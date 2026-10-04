@@ -10,3 +10,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 mk = { path = "../..", features = ["vk", "jni"] }
+
+[profile.dev]
+split-debuginfo = "packed"

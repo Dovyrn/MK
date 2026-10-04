@@ -20,10 +20,6 @@ pub fn bool(b: &mut &[u8]) -> bool {
     u32(b) != 0
 }
 
-pub fn u32x3(b: &mut &[u8]) -> [u32; 3] {
-    [u32(b), u32(b), u32(b)]
-}
-
 pub fn bytes<'a>(b: &mut &[u8]) -> &'a [u8] {
     let address = u64(b) as i64;
     crate::java::bytes(address, u64(b) as i64)

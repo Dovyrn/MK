@@ -24,7 +24,6 @@ fn build(device: &mut Device) -> f64 {
             .create_pipeline(&mk::ComputeInfo {
                 code: &fill,
                 entry: "fill",
-                group: [64, 1, 1],
                 ..Default::default()
             })
             .unwrap();

@@ -372,7 +372,7 @@ pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
             let n = camel(&f.name);
             writeln!(
                 s,
-                "        if ({n}Size < 0 || {n}Size > 0xffff) {{\n            throw new IllegalArgumentException(\"{n}Size \" + {n}Size + \" is outside 0..65535\");\n        }}"
+                "        if ({n}Size < 0 || {n}Size > 0xffff) {{\n            throw new IllegalArgumentException(\"{n}Size \" + {n}Size + \" is outside 0..65535\");\n        }}\n        if ({n} == NULL && {n}Size != 0) {{\n            throw new IllegalArgumentException(\"{n} is null\");\n        }}"
             )
             .unwrap();
         }

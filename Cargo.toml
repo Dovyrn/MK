@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "tools/shade"]
+members = [".", "tools/compiler"]
 default-members = ["."]
 
 [features]
@@ -37,3 +37,6 @@ khronos-egl = { version = "6", features = ["dynamic"] }
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", features = ["preserve_order"] }
+
+[profile.dev]
+split-debuginfo = "packed"

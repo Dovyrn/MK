@@ -54,7 +54,6 @@ fn main() {
         .create_pipeline(&mk::ComputeInfo {
             code: host::code!("blit"),
             entry: "blit",
-            group: [8, 8, 1],
             ..Default::default()
         })
         .unwrap();

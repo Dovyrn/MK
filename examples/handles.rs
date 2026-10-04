@@ -18,7 +18,6 @@ fn main() {
         .create_pipeline(&ComputeInfo {
             code: host::code!("handles"),
             entry: "fill",
-            group: [64, 1, 1],
             ..Default::default()
         })
         .unwrap();

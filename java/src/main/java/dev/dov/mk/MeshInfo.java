@@ -22,15 +22,13 @@ public class MeshInfo {
     public boolean coverage = false;
     public boolean indirect = false;
     public boolean clamp = false;
-    public int[] taskGroup = new int[] {1, 1, 1};
-    public int[] meshGroup = new int[] {1, 1, 1};
 
     int encodedSize() {
         var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 80 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 56 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
     }
 
     long encode(long p) {
@@ -68,20 +66,6 @@ public class MeshInfo {
         p += 4;
         memPutInt(p, clamp ? 1 : 0);
         p += 4;
-        if (taskGroup.length != 3) {
-            throw new IllegalArgumentException("taskGroup has 3 values");
-        }
-        for (var x : taskGroup) {
-            memPutInt(p, x);
-            p += 4;
-        }
-        if (meshGroup.length != 3) {
-            throw new IllegalArgumentException("meshGroup has 3 values");
-        }
-        for (var x : meshGroup) {
-            memPutInt(p, x);
-            p += 4;
-        }
         return p;
     }
 }

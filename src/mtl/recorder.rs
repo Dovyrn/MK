@@ -143,8 +143,8 @@ fn pitch(
     };
     let length = if length == 0 { width } else { length };
     let count = if count == 0 { height } else { count };
-    let row = length.div_ceil(w) * bytes;
-    (row as usize, (count.div_ceil(h) * row) as usize, option)
+    let row = length.div_ceil(w) as usize * bytes as usize;
+    (row, count.div_ceil(h) as usize * row, option)
 }
 
 fn load(l: u32) -> MTLLoadAction {
@@ -423,17 +423,6 @@ impl<'a> Recorder<'a> {
                             address, p.group,
                         )
                 };
-            }
-            Command::DispatchThreads { x, y, z } => {
-                let Some(p) = self.compute_pipeline else {
-                    return Ok(());
-                };
-                if [x, y, z].contains(&0) {
-                    return Ok(());
-                }
-                self.flush()?;
-                self.compute()
-                    .dispatchThreads_threadsPerThreadgroup(size(x, y, z), p.group);
             }
             Command::CopyBuffer {
                 src,
@@ -854,9 +843,10 @@ impl<'a> Recorder<'a> {
                 }
                 self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let stride = if stride == 0 { 16 } else { stride as u64 };
                 for i in 0..count as u64 {
                     self.render()
-                        .drawPrimitives_indirectBuffer(self.primitive, address + i * stride as u64);
+                        .drawPrimitives_indirectBuffer(self.primitive, address + i * stride);
                 }
             }
             Command::DrawIndexedIndirect {
@@ -871,6 +861,7 @@ impl<'a> Recorder<'a> {
                 };
                 self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let stride = if stride == 0 { 20 } else { stride as u64 };
                 for i in 0..count as u64 {
                     unsafe {
                         self.render()
@@ -879,7 +870,7 @@ impl<'a> Recorder<'a> {
                                 kind,
                                 index,
                                 length,
-                                address + i * stride as u64,
+                                address + i * stride,
                             )
                     };
                 }
@@ -910,10 +901,11 @@ impl<'a> Recorder<'a> {
                 };
                 self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let stride = if stride == 0 { 12 } else { stride as u64 };
                 for i in 0..count as u64 {
                     self.render()
                         .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
-                            address + i * stride as u64,
+                            address + i * stride,
                             p.task,
                             p.mesh,
                         );

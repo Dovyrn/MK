@@ -17,7 +17,6 @@ use crate::check::Check;
 use crate::mtl::Callback;
 use crate::mtl::blit::Blit;
 use crate::mtl::queue::Queue;
-use crate::mtl::recorder::integer;
 use crate::mtl::residency::Residency;
 use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
@@ -152,13 +151,6 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     }
     if info.usage & usage::BLIT != 0 {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget;
-    }
-    if integer(info.format).is_some() && info.usage & usage::COLOR != 0 {
-        flags |= if info.samples > 1 {
-            MTLTextureUsage::ShaderRead
-        } else {
-            MTLTextureUsage::ShaderWrite
-        };
     }
     let desc = MTLTextureDescriptor::new();
     desc.setTextureType(kind(info.dimension, info.samples));

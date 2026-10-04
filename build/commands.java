@@ -32,7 +32,11 @@ public class Commands implements AutoCloseable {
         }
         if (needed > capacity) {
             capacity = (int) Math.min(Integer.MAX_VALUE, Math.max(2L * capacity, needed));
-            block.address = nmemRealloc(block.address, capacity);
+            var grown = nmemRealloc(block.address, capacity);
+            if (grown == NULL) {
+                throw new OutOfMemoryError("command stream of " + capacity + " bytes");
+            }
+            block.address = grown;
         }
         var p = block.address + size;
         memPutShort(p, (short) op);

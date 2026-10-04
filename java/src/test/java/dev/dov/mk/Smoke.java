@@ -25,7 +25,7 @@ public class Smoke {
                     .code(code)
                     .codeSize(bytes.length)
                     .entry("fill")
-                    .group(new int[] {64, 1, 1});
+                    ;
             var pipeline = device.createPipeline(info);
             var event = device.createEvent();
             var push = nmemAlloc(8);

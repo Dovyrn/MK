@@ -89,6 +89,31 @@ impl Caps {
         Ok(())
     }
 
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub(crate) fn accel(&self, info: &crate::AccelInfo) {
+        let vertex = [
+            format::RG32_FLOAT,
+            format::RGB32_FLOAT,
+            format::RG16_FLOAT,
+            format::RGBA16_FLOAT,
+            format::RG16_SNORM,
+            format::RGBA16_SNORM,
+        ];
+        for t in info.triangles {
+            assert!(
+                vertex.contains(&t.format),
+                "accel vertex format {} is not one every backend builds from",
+                t.format
+            );
+        }
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub(crate) fn heap(&self, size: u64, memory: u32) {
+        known("memory", memory, memory::valid(memory));
+        assert!(size > 0, "heap size is 0");
+    }
+
     pub(crate) fn address(&self) {
         assert!(self.addresses, "address needs caps.addresses");
     }

@@ -7,17 +7,12 @@ use std::process::Command;
 pub fn metal(dir: &Path, out: &Path, name: &str) {
     let slang = dir.join(format!("{name}.slang"));
     let metal = dir.join(format!("{name}.metal"));
-    if metal.exists() {
-        let air = out.join(format!("{name}.air"));
-        compile(&metal, &air);
-        library(out, name, &[air]);
-        return;
-    }
-    let text = fs::read_to_string(&slang).unwrap();
+    let text = fs::read_to_string(&slang).unwrap_or_default();
     if text.contains("shader(\"raygeneration\")") {
         return;
     }
     let mut airs = Vec::new();
+    let groups = sizes(out, name);
     for entry in entries(&text) {
         let msl = out.join(format!("{name}.{entry}.metal"));
         let json = out.join(format!("{name}.{entry}.json"));
@@ -32,11 +27,37 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         pin(&msl, &json);
         bases(&msl);
         fs::remove_file(&json).unwrap();
-        let air = out.join(format!("{name}.{entry}.air"));
-        compile(&msl, &air);
+        if !metal.exists() {
+            let air = out.join(format!("{name}.{entry}.air"));
+            compile(&msl, &air);
+            airs.push(air);
+        }
+    }
+    if metal.exists() {
+        let air = out.join(format!("{name}.air"));
+        compile(&metal, &air);
         airs.push(air);
     }
-    library(out, name, &airs);
+    library(out, name, &airs, &groups);
+}
+
+fn sizes(out: &Path, name: &str) -> Vec<(String, [u32; 3])> {
+    let spv = out.join(format!("{name}.spv"));
+    if !spv.exists() {
+        return Vec::new();
+    }
+    let reflection: Value =
+        serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
+    reflection["entryPoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| {
+            let size = e["workgroup_size"].as_array()?;
+            let size: Vec<u32> = size.iter().map(|n| n.as_u64().unwrap() as u32).collect();
+            Some((e["name"].as_str()?.to_string(), [size[0], size[1], size[2]]))
+        })
+        .collect()
 }
 
 fn compile(source: &Path, air: &Path) {
@@ -47,15 +68,26 @@ fn compile(source: &Path, air: &Path) {
         .arg(air));
 }
 
-fn library(out: &Path, name: &str, airs: &[PathBuf]) {
+fn library(out: &Path, name: &str, airs: &[PathBuf], groups: &[(String, [u32; 3])]) {
+    let path = out.join(format!("{name}.metallib"));
     run(Command::new("xcrun")
         .args(["-sdk", "macosx", "metallib"])
         .args(airs)
         .arg("-o")
-        .arg(out.join(format!("{name}.metallib"))));
+        .arg(&path));
     for air in airs {
         fs::remove_file(air).unwrap();
     }
+    let mut bytes = (groups.len() as u32).to_le_bytes().to_vec();
+    for (entry, size) in groups {
+        bytes.extend((entry.len() as u32).to_le_bytes());
+        bytes.extend(entry.as_bytes());
+        for n in size {
+            bytes.extend(n.to_le_bytes());
+        }
+    }
+    bytes.extend(fs::read(&path).unwrap());
+    fs::write(&path, bytes).unwrap();
 }
 
 fn entries(text: &str) -> Vec<String> {

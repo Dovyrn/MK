@@ -35,7 +35,6 @@ fn main() {
         .create_pipeline(&ComputeInfo {
             code: host::code!("images"),
             entry: "fill",
-            group: [8, 8, 1],
             ..Default::default()
         })
         .unwrap();

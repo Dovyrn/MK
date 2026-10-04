@@ -57,7 +57,10 @@ impl Queue {
         let done = unsafe { device.get_semaphore_counter_value(self.semaphore) }
             .map_err(|e| e.to_string())?;
         while let Some((frame, _)) = self.busy.pop_front_if(|(_, v)| *v <= done) {
-            frame.reset(device).map_err(|e| e.to_string())?;
+            if let Err(e) = frame.reset(device) {
+                frame.destroy(device);
+                return Err(e.to_string());
+            }
             self.free.push(frame);
         }
         let frame = match self.free.pop() {
@@ -135,20 +138,6 @@ impl Queue {
                 std::panic::resume_unwind(panic)
             }
         }
-    }
-
-    pub fn signal(&mut self, device: &ash::Device) -> u64 {
-        let value = self.count + 1;
-        let signals = [vk::SemaphoreSubmitInfo::default()
-            .semaphore(self.semaphore)
-            .value(value)
-            .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
-        let submit = vk::SubmitInfo2::default().signal_semaphore_infos(&signals);
-        if unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }.is_err() {
-            return u64::MAX;
-        }
-        self.count = value;
-        value
     }
 
     pub fn destroy(&mut self, device: &ash::Device) {

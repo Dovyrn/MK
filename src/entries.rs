@@ -24,6 +24,21 @@ impl<T> Entries<T> {
         self.items[id as usize] = None;
     }
 
+    pub fn forget(&mut self, id: u32) {
+        if let Some(item) = self.items.get_mut(id as usize) {
+            *item = None;
+        }
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &T> {
+        self.items.iter().flatten()
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.items.iter_mut().flatten()
+    }
+
     pub fn get(&self, id: u32) -> &T {
         self.items
             .get(id as usize)

@@ -1,21 +1,7 @@
 use super::Device;
 use glow::HasContext;
 
-const QUERIES: [u32; 4] = [
-    glow::SAMPLES_PASSED,
-    glow::ANY_SAMPLES_PASSED,
-    glow::PRIMITIVES_GENERATED,
-    glow::TIME_ELAPSED,
-];
-
-const STATISTICS: [u32; 6] = [
-    glow::VERTICES_SUBMITTED,
-    glow::PRIMITIVES_SUBMITTED,
-    glow::VERTEX_SHADER_INVOCATIONS,
-    glow::FRAGMENT_SHADER_INVOCATIONS,
-    glow::CLIPPING_INPUT_PRIMITIVES,
-    glow::CLIPPING_OUTPUT_PRIMITIVES,
-];
+const QUERIES: [u32; 2] = [glow::SAMPLES_PASSED, glow::ANY_SAMPLES_PASSED];
 
 impl Device {
     pub(super) fn programs(&self) -> Result<(), String> {
@@ -41,19 +27,13 @@ impl Device {
         if self.has(43, "GL_ARB_ES3_compatibility") {
             targets.push(glow::ANY_SAMPLES_PASSED_CONSERVATIVE);
         }
-        if self.has(46, "GL_ARB_pipeline_statistics_query") {
-            targets.extend(STATISTICS);
-            if self.caps.compute {
-                targets.push(glow::COMPUTE_SHADER_INVOCATIONS);
-            }
-        }
         let active = targets.into_iter().any(|t| {
             let mut name = 0;
             unsafe { (self.extra.query)(t, glow::CURRENT_QUERY, &mut name) };
             name != 0
         });
         if active {
-            return Err("the host has an active query".into());
+            return Err("the host has an active occlusion query".into());
         }
         Ok(())
     }

@@ -40,7 +40,11 @@ public class Commands implements AutoCloseable {
         }
         if (needed > capacity) {
             capacity = (int) Math.min(Integer.MAX_VALUE, Math.max(2L * capacity, needed));
-            block.address = nmemRealloc(block.address, capacity);
+            var grown = nmemRealloc(block.address, capacity);
+            if (grown == NULL) {
+                throw new OutOfMemoryError("command stream of " + capacity + " bytes");
+            }
+            block.address = grown;
         }
         var p = block.address + size;
         memPutShort(p, (short) op);
@@ -65,6 +69,9 @@ public class Commands implements AutoCloseable {
     public void pushConstants(int offset, long data, long dataSize) {
         if (dataSize < 0 || dataSize > 0xffff) {
             throw new IllegalArgumentException("dataSize " + dataSize + " is outside 0..65535");
+        }
+        if (data == NULL && dataSize != 0) {
+            throw new IllegalArgumentException("data is null");
         }
         var p = head(3, 4 + (int) dataSize);
         memPutInt(p, offset);
@@ -120,7 +127,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void queueBarrier(int srcStage, int srcAccess, int dstStage, int dstAccess) {
-        var p = head(12, 16);
+        var p = head(11, 16);
         memPutInt(p, srcStage);
         memPutInt(p + 4, srcAccess);
         memPutInt(p + 8, dstStage);
@@ -128,7 +135,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void textureBarrier(TextureBarrier info) {
-        var p = head(13, 44);
+        var p = head(12, 44);
         memPutInt(p, info.texture);
         memPutInt(p + 4, info.srcStage);
         memPutInt(p + 8, info.srcAccess);
@@ -143,7 +150,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void copyBufferToTexture(TextureCopy info) {
-        var p = head(14, 60);
+        var p = head(13, 60);
         memPutInt(p, info.buffer);
         memPutLong(p + 4, info.offset);
         memPutInt(p + 12, info.rowLength);
@@ -161,7 +168,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void copyTextureToBuffer(TextureCopy info) {
-        var p = head(15, 60);
+        var p = head(14, 60);
         memPutInt(p, info.buffer);
         memPutLong(p + 4, info.offset);
         memPutInt(p + 12, info.rowLength);
@@ -179,7 +186,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void copyTexture(CopyInfo info) {
-        var p = head(16, 72);
+        var p = head(15, 72);
         memPutInt(p, info.src);
         memPutInt(p + 4, info.srcLayout);
         memPutInt(p + 8, info.srcMip);
@@ -201,7 +208,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void blitTexture(BlitInfo info) {
-        var p = head(17, 68);
+        var p = head(16, 68);
         memPutInt(p, info.src);
         memPutInt(p + 4, info.srcLayout);
         memPutInt(p + 8, info.srcMip);
@@ -222,13 +229,13 @@ public class Commands implements AutoCloseable {
     }
 
     public void generateMips(int texture, int layout) {
-        var p = head(18, 8);
+        var p = head(17, 8);
         memPutInt(p, texture);
         memPutInt(p + 4, layout);
     }
 
     public void clearTexture(ClearInfo info) {
-        var p = head(19, 48);
+        var p = head(18, 48);
         memPutInt(p, info.texture);
         memPutInt(p + 4, info.layout);
         memPutInt(p + 8, info.baseMip);
@@ -244,7 +251,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void colorAttachment(ColorAttachment info) {
-        var p = head(20, 44);
+        var p = head(19, 44);
         memPutInt(p, info.index);
         memPutInt(p + 4, info.texture);
         memPutInt(p + 8, info.layout);
@@ -259,7 +266,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void depthAttachment(DepthAttachment info) {
-        var p = head(21, 32);
+        var p = head(20, 32);
         memPutInt(p, info.texture);
         memPutInt(p + 4, info.layout);
         memPutInt(p + 8, info.load);
@@ -271,23 +278,23 @@ public class Commands implements AutoCloseable {
     }
 
     public void beginRender(int width, int height, int layers) {
-        var p = head(22, 12);
+        var p = head(21, 12);
         memPutInt(p, width);
         memPutInt(p + 4, height);
         memPutInt(p + 8, layers);
     }
 
     public void endRender() {
-        head(23, 0);
+        head(22, 0);
     }
 
     public void bindRenderPipeline(int pipeline) {
-        var p = head(24, 4);
+        var p = head(23, 4);
         memPutInt(p, pipeline);
     }
 
     public void setViewport(Viewport info) {
-        var p = head(25, 24);
+        var p = head(24, 24);
         memPutFloat(p, info.x);
         memPutFloat(p + 4, info.y);
         memPutFloat(p + 8, info.width);
@@ -297,7 +304,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setScissor(int x, int y, int width, int height) {
-        var p = head(26, 16);
+        var p = head(25, 16);
         memPutInt(p, x);
         memPutInt(p + 4, y);
         memPutInt(p + 8, width);
@@ -305,40 +312,40 @@ public class Commands implements AutoCloseable {
     }
 
     public void setCull(int cull) {
-        var p = head(27, 4);
+        var p = head(26, 4);
         memPutInt(p, cull);
     }
 
     public void setFace(int face) {
-        var p = head(28, 4);
+        var p = head(27, 4);
         memPutInt(p, face);
     }
 
     public void setTopology(int topology) {
-        var p = head(29, 4);
+        var p = head(28, 4);
         memPutInt(p, topology);
     }
 
     public void setDepthState(int state) {
-        var p = head(30, 4);
+        var p = head(29, 4);
         memPutInt(p, state);
     }
 
     public void setStencilReference(int front, int back) {
-        var p = head(31, 8);
+        var p = head(30, 8);
         memPutInt(p, front);
         memPutInt(p + 4, back);
     }
 
     public void setDepthBias(float constant, float slope, float clamp) {
-        var p = head(32, 12);
+        var p = head(31, 12);
         memPutFloat(p, constant);
         memPutFloat(p + 4, slope);
         memPutFloat(p + 8, clamp);
     }
 
     public void setBlendColor(float r, float g, float b, float a) {
-        var p = head(33, 16);
+        var p = head(32, 16);
         memPutFloat(p, r);
         memPutFloat(p + 4, g);
         memPutFloat(p + 8, b);
@@ -346,7 +353,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void bindUniform(int slot, int buffer, long offset, long size) {
-        var p = head(34, 24);
+        var p = head(33, 24);
         memPutInt(p, slot);
         memPutInt(p + 4, buffer);
         memPutLong(p + 8, offset);
@@ -354,7 +361,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void bindStorage(int slot, int buffer, long offset, long size) {
-        var p = head(35, 24);
+        var p = head(34, 24);
         memPutInt(p, slot);
         memPutInt(p + 4, buffer);
         memPutLong(p + 8, offset);
@@ -362,39 +369,39 @@ public class Commands implements AutoCloseable {
     }
 
     public void bindTexture(int slot, int texture) {
-        var p = head(36, 8);
+        var p = head(35, 8);
         memPutInt(p, slot);
         memPutInt(p + 4, texture);
     }
 
     public void bindImage(int slot, int texture) {
-        var p = head(37, 8);
+        var p = head(36, 8);
         memPutInt(p, slot);
         memPutInt(p + 4, texture);
     }
 
     public void bindSampler(int slot, int sampler) {
-        var p = head(38, 8);
+        var p = head(37, 8);
         memPutInt(p, slot);
         memPutInt(p + 4, sampler);
     }
 
     public void bindVertexBuffer(int slot, int buffer, long offset) {
-        var p = head(39, 16);
+        var p = head(38, 16);
         memPutInt(p, slot);
         memPutInt(p + 4, buffer);
         memPutLong(p + 8, offset);
     }
 
     public void bindIndexBuffer(int buffer, long offset, int kind) {
-        var p = head(40, 16);
+        var p = head(39, 16);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, kind);
     }
 
     public void draw(int vertices, int instances, int firstVertex, int firstInstance) {
-        var p = head(41, 16);
+        var p = head(40, 16);
         memPutInt(p, vertices);
         memPutInt(p + 4, instances);
         memPutInt(p + 8, firstVertex);
@@ -402,7 +409,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void drawIndexed(int indices, int instances, int firstIndex, int baseVertex, int firstInstance) {
-        var p = head(42, 20);
+        var p = head(41, 20);
         memPutInt(p, indices);
         memPutInt(p + 4, instances);
         memPutInt(p + 8, firstIndex);
@@ -411,7 +418,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void drawIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(43, 20);
+        var p = head(42, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -419,7 +426,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void drawIndexedIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(44, 20);
+        var p = head(43, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -427,14 +434,14 @@ public class Commands implements AutoCloseable {
     }
 
     public void drawMesh(int x, int y, int z) {
-        var p = head(45, 12);
+        var p = head(44, 12);
         memPutInt(p, x);
         memPutInt(p + 4, y);
         memPutInt(p + 8, z);
     }
 
     public void drawMeshIndirect(int buffer, long offset, int count, int stride) {
-        var p = head(46, 20);
+        var p = head(45, 20);
         memPutInt(p, buffer);
         memPutLong(p + 4, offset);
         memPutInt(p + 12, count);
@@ -442,52 +449,52 @@ public class Commands implements AutoCloseable {
     }
 
     public void executeIndirect(int indirect, int first, int count) {
-        var p = head(47, 12);
+        var p = head(46, 12);
         memPutInt(p, indirect);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
     }
 
     public void executeIndirectCount(int indirect, int buffer, long offset) {
-        var p = head(48, 16);
+        var p = head(47, 16);
         memPutInt(p, indirect);
         memPutInt(p + 4, buffer);
         memPutLong(p + 8, offset);
     }
 
     public void occlusionHeap(int heap) {
-        var p = head(49, 4);
+        var p = head(48, 4);
         memPutInt(p, heap);
     }
 
     public void resetQueries(int heap, int first, int count) {
-        var p = head(50, 12);
+        var p = head(49, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
     }
 
     public void writeTimestamp(int heap, int index, int stage) {
-        var p = head(51, 12);
+        var p = head(50, 12);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
         memPutInt(p + 8, stage);
     }
 
     public void beginQuery(int heap, int index) {
-        var p = head(52, 8);
+        var p = head(51, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void endQuery(int heap, int index) {
-        var p = head(53, 8);
+        var p = head(52, 8);
         memPutInt(p, heap);
         memPutInt(p + 4, index);
     }
 
     public void resolveQueries(int heap, int first, int count, int buffer, long offset) {
-        var p = head(54, 24);
+        var p = head(53, 24);
         memPutInt(p, heap);
         memPutInt(p + 4, first);
         memPutInt(p + 8, count);
@@ -496,7 +503,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setViewports(Viewport[] viewports) {
-        var p = head(61, viewports.length * 24);
+        var p = head(60, viewports.length * 24);
         for (var i = 0; i < viewports.length; i++) {
             var q = p + i * 24;
             memPutFloat(q, viewports[i].x);
@@ -509,7 +516,7 @@ public class Commands implements AutoCloseable {
     }
 
     public void setScissors(Scissor[] scissors) {
-        var p = head(62, scissors.length * 16);
+        var p = head(61, scissors.length * 16);
         for (var i = 0; i < scissors.length; i++) {
             var q = p + i * 16;
             memPutInt(q, scissors[i].x);

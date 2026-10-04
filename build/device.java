@@ -6,7 +6,7 @@ public class Device implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (handle != 0) {
             nFree(handle);
             handle = 0;

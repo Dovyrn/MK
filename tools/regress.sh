@@ -3,39 +3,55 @@ cd ${0:A:h}/..
 O=$PWD/target/mk.out
 mkdir -p target
 icds=(${=MK_ICDS:-/usr/local/share/vulkan/icd.d/libkosmickrisp_icd.json $HOME/.local/mesa/share/vulkan/icd.d/lvp_icd.aarch64.json})
-examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues native indirect sparse compact viewports slots handles uploads blits images})
+examples=(${=1:-compute texture render mesh view adopt queries raytrace heap queues native indirect sparse compact viewports slots handles uploads blits images resolve})
+configs=(mtl vk gl)
+[ -z "$QUICK" ] && configs+=(mtl,jni vk,jni gl,jni)
+check=(MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1)
+layers=(VK_LOADER_LAYERS_ENABLE='*validation' VK_LAYER_VALIDATE_SYNC=1)
+[ -n "$QUICK" ] && check=() && layers=()
+each() {
+    local tag=$1 count=$2
+    shift 2
+    mkdir -p target/out
+    local script="${(j: :)${(q)@}} ./target/debug/examples/\$1 > target/out/$tag.\$1 2>&1"
+    print -l $examples | xargs -P 8 -n 1 zsh -c "$script" _
+    for e in $examples; do
+        local o=target/out/$tag.$e
+        if [ -n "$count" ]; then
+            echo "$e: $(grep -ciE 'validation error|panicked' $o) errors, $(tail -1 $o)"
+        else
+            echo "$e: $(tail -1 $o)"
+        fi
+    done
+}
 cargo fmt --check || echo "fmt dirty"
-cargo run -q -p shade
-for f in mtl vk gl mtl,jni vk,jni gl,jni; do
+cargo run -q -p compiler
+for f in $configs; do
     cargo clippy -q --features $f --all-targets -- -D warnings 2>&1 | grep -E '^(error|warning)' -A6 | head
     cargo test -q --features $f 2>&1 | grep -E 'FAIL|panicked'
 done
+cargo build -q --features mtl --examples
 echo "== metal"
-for e in $examples; do
-    MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 cargo run -q --features mtl --example $e > $O 2>&1
-    echo "$e: $(tail -1 $O)"
-done
+each metal "" $check
 cargo build -q --features vk --examples
 for d in $icds; do
     echo "== ${d:t}"
-    for e in $examples; do
-        DYLD_FALLBACK_LIBRARY_PATH=/usr/local/lib VK_LOADER_LAYERS_ENABLE='*validation' VK_LAYER_VALIDATE_SYNC=1 VK_DRIVER_FILES=$d ./target/debug/examples/$e > $O 2>&1
-        echo "$e: $(grep -ciE 'validation error|panicked' $O) errors, $(tail -1 $O)"
-    done
+    each ${d:t:r} 1 DYLD_FALLBACK_LIBRARY_PATH=/usr/local/lib $layers VK_DRIVER_FILES=$d
 done
 cargo build -q --features gl --examples
+all=($examples)
+examples=(slots render viewports adopt view queries native mesh cache uploads blits images handles indirect resolve)
 for h in mesa apple legacy; do
     echo "== gl $h"
-    for e in slots render viewports adopt view queries native mesh cache uploads blits images handles indirect; do
-        MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
-        echo "$e: $(tail -1 $O)"
-    done
+    each gl-$h "" MK_HOST=$h DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
 done
+examples=($all)
 echo "== gl zink"
 for e in images; do
     GALLIUM_DRIVER=zink LIBGL_ALWAYS_SOFTWARE=1 VK_DRIVER_FILES=/opt/homebrew/share/vulkan/icd.d/lvp_icd.aarch64.json DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib ./target/debug/examples/$e > $O 2>&1
     echo "$e: $(tail -1 $O)"
 done
+[ -n "$QUICK" ] && exit 0
 G=~/.gradle/caches/modules-2/files-2.1
 jar() {
     ls $G/$1/$2/3.3.6/*/$2-3.3.6$3.jar

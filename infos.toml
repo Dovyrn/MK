@@ -116,8 +116,6 @@ fields = [
     ["coverage", "bool", "false"],
     ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
-    ["task_group", "u32x3", "[1, 1, 1]"],
-    ["mesh_group", "u32x3", "[1, 1, 1]"],
 ]
 
 [[info]]
@@ -171,9 +169,7 @@ name = "AccelInfo"
 fields = [
     ["triangles", "[Triangles]", ""],
     ["boxes", "[Boxes]", ""],
-    ["instances", "u32", "!0"],
-    ["instance_offset", "u64", "0"],
-    ["instance_count", "u32", "0"],
+    ["ray_instances", "u32", "!0"],
     ["flags", "u32", "0"],
 ]
 
@@ -193,8 +189,8 @@ fields = [
     ["ray", "bool", "false"],
     ["sparse", "bool", "false"],
     ["shading_rate", "bool", "false"],
+    ["rate_images", "bool", "false"],
     ["viewports", "u32", "1"],
-    ["instance", "u32", "0"],
     ["graphics", "u32", "0"],
     ["labels", "bool", "false"],
     ["anisotropy", "bool", "false"],
@@ -228,6 +224,8 @@ fields = [
     ["host_read", "bool", "false"],
     ["copy_formats", "bool", "false"],
     ["texture_clear", "bool", "false"],
+    ["buffer_clear", "bool", "false"],
+    ["partial_resolve", "bool", "false"],
 ]
 
 [[info]]
@@ -264,7 +262,6 @@ name = "ComputeInfo"
 fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
-    ["group", "u32x3", "[1, 1, 1]"],
     ["indirect", "bool", "false"],
 ]
 
@@ -430,44 +427,3 @@ fields = [
     ["width", "u32", "0"],
     ["height", "u32", "0"],
 ]
-
-[[info]]
-name = "GeneratedInfo"
-fields = [
-    ["layout", "u32", "0"],
-    ["indirect", "u32", "0"],
-    ["offset", "u64", "0"],
-    ["size", "u64", "0"],
-    ["preprocess", "u32", "!0"],
-    ["preprocess_offset", "u64", "0"],
-    ["preprocess_size", "u64", "0"],
-    ["sequences", "u32", "0"],
-    ["count", "u32", "!0"],
-    ["count_offset", "u64", "0"],
-    ["draws", "u32", "0"],
-]
-
-[[info]]
-name = "TraceInfo"
-fields = [
-    ["raygen", "u32", "0"],
-    ["raygen_offset", "u64", "0"],
-    ["raygen_stride", "u64", "0"],
-    ["raygen_size", "u64", "0"],
-    ["miss", "u32", "0"],
-    ["miss_offset", "u64", "0"],
-    ["miss_stride", "u64", "0"],
-    ["miss_size", "u64", "0"],
-    ["hit", "u32", "0"],
-    ["hit_offset", "u64", "0"],
-    ["hit_stride", "u64", "0"],
-    ["hit_size", "u64", "0"],
-    ["callable", "u32", "0"],
-    ["callable_offset", "u64", "0"],
-    ["callable_stride", "u64", "0"],
-    ["callable_size", "u64", "0"],
-    ["width", "u32", "1"],
-    ["height", "u32", "1"],
-    ["depth", "u32", "1"],
-]
-

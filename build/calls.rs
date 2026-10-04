@@ -108,9 +108,9 @@ fn rust_arg(p: &Field) -> String {
 
 pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     let mut s = String::from(
-        "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(_: JNIEnv, _: JClass, device: jlong) {\n",
+        "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(mut env: JNIEnv, _: JClass, device: jlong) {\n",
     );
-    s += "    drop(unsafe { Box::from_raw(device as *mut crate::Device) });\n}\n";
+    s += "    crate::java::call(&mut env, |_| {\n        drop(unsafe { Box::from_raw(device as *mut crate::Device) });\n        Ok(())\n    })\n}\n";
     for call in calls {
         let mut params = vec![
             "mut env: JNIEnv<'local>".to_string(),
@@ -341,6 +341,13 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}.getSize()"));
                 }
                 "u32s" | "pairs" => {
+                    if p.kind == "pairs" {
+                        writeln!(
+                            s,
+                            "            if ({n}.length % 2 != 0) {{\n                throw new IllegalArgumentException(\"{n} holds pairs\");\n            }}"
+                        )
+                        .unwrap();
+                    }
                     args.push(format!("memAddress(stack.ints({n}))"));
                     args.push(if p.kind == "pairs" {
                         format!("{n}.length / 2")
@@ -348,7 +355,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                         format!("{n}.length")
                     });
                 }
-                "f32x12" => args.push(format!("memAddress(stack.floats({n}))")),
+                "f32x12" => {
+                    writeln!(
+                        s,
+                        "            if ({n}.length != 12) {{\n                throw new IllegalArgumentException(\"{n} has 12 values\");\n            }}"
+                    )
+                    .unwrap();
+                    args.push(format!("memAddress(stack.floats({n}))"));
+                }
                 "waits" => {
                     writeln!(
                         s,
@@ -401,7 +415,26 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
-        writeln!(s, "{indent}{line}").unwrap();
+        let kept: Vec<String> = call
+            .params
+            .iter()
+            .filter(|p| p.kind == "commands")
+            .map(|p| camel(&p.name))
+            .collect();
+        if kept.is_empty() {
+            writeln!(s, "{indent}{line}").unwrap();
+        } else {
+            let inner = line.replace(&format!("\n{indent}"), &format!("\n{indent}    "));
+            let fences: String = kept
+                .iter()
+                .map(|n| format!("{indent}    java.lang.ref.Reference.reachabilityFence({n});\n"))
+                .collect();
+            writeln!(
+                s,
+                "{indent}try {{\n{indent}    {inner}\n{indent}}} finally {{\n{fences}{indent}}}"
+            )
+            .unwrap();
+        }
         if stack {
             s += "        }\n";
         }

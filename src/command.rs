@@ -68,8 +68,6 @@ mod tests {
         c.begin_label("frame");
         c.end_label();
         c.end_compute();
-        #[cfg(feature = "mtl")]
-        c.dispatch_threads(5, 6, 7);
         let expected = vec![
             Command::BeginCompute,
             Command::BindPipeline { pipeline: 7 },
@@ -104,8 +102,6 @@ mod tests {
             Command::BeginLabel { text: "frame" },
             Command::EndLabel,
             Command::EndCompute,
-            #[cfg(feature = "mtl")]
-            Command::DispatchThreads { x: 5, y: 6, z: 7 },
         ];
         let mut bytes = c.bytes();
         let mut read = Vec::new();
@@ -116,12 +112,13 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "mtl"))]
+    #[cfg(feature = "mtl")]
     fn foreign() {
-        let bytes = [11, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut bytes = vec![56, 0, 16, 0];
+        bytes.extend([0; 16]);
         assert_eq!(
             Command::dump(&bytes),
-            "dispatch_threads (not in this backend)\n"
+            "set_shading_rate (not in this backend)\n"
         );
     }
 }

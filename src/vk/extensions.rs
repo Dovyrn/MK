@@ -8,6 +8,7 @@ pub struct Extensions {
     pub mesh: Option<mesh_shader::Device>,
     pub accel: Option<acceleration_structure::Device>,
     pub rates: Option<fragment_shading_rate::Device>,
+    pub images: bool,
     pub features: vk::PhysicalDeviceFeatures,
     pub mirror: bool,
     pub count: bool,
@@ -100,6 +101,9 @@ impl Extensions {
             let rates = chained::<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>(features)
                 .is_some_and(|f| f.pipeline_fragment_shading_rate != 0)
                 && has(c"vkCmdSetFragmentShadingRateKHR");
+            let images = rates
+                && chained::<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>(features)
+                    .is_some_and(|f| f.attachment_fragment_shading_rate != 0);
             let rates = rates.then(|| fragment_shading_rate::Device::new(instance, raw));
             let push = has(c"vkCmdPushDescriptorSetKHR")
                 .then(|| push_descriptor::Device::new(instance, raw));
@@ -140,6 +144,7 @@ impl Extensions {
                 mesh,
                 accel,
                 rates,
+                images,
                 features: features.features,
                 mirror: v12.is_some_and(|f| f.sampler_mirror_clamp_to_edge != 0),
                 count: v12.is_some_and(|f| f.draw_indirect_count != 0),

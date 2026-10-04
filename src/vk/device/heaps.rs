@@ -11,6 +11,7 @@ impl Device {
     }
 
     fn heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.caps.heap(size, memory);
         let device = memory == memory::DEVICE;
         let color = TextureInfo {
             format: format::RGBA8_UNORM,
@@ -29,9 +30,7 @@ impl Device {
         let bits = self.buffer_needs(4096).memory_type_bits
             & self.texture_needs(&color).memory_type_bits
             & self.texture_needs(&depth).memory_type_bits;
-        let index = self
-            .memory_type(bits, memory)
-            .or_else(|_| self.memory_type(!0, memory))?;
+        let index = self.memory_type(bits, memory)?;
         let mut flags =
             vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
         let info = vk::MemoryAllocateInfo::default()
@@ -53,7 +52,7 @@ impl Device {
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
-        self.res.table.heaps.clear(heap);
+        self.res.table.drop_heap(heap);
         self.defer(move |d| {
             let heap = d.res.heaps.remove(heap);
             if Rc::strong_count(&heap.memory) == 1 {
@@ -74,7 +73,10 @@ impl Device {
     }
 
     fn texture_needs(&self, info: &TextureInfo) -> vk::MemoryRequirements {
-        let image = self.share_image(image_info(info));
+        let mut image = self.share_image(image_info(info));
+        if info.usage & usage::HOST != 0 {
+            image.usage |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+        }
         let query = vk::DeviceImageMemoryRequirements::default().create_info(&image);
         let mut needs = vk::MemoryRequirements2::default();
         unsafe {
@@ -131,7 +133,7 @@ impl Device {
             } else {
                 h.data.add(offset as usize)
             };
-            Ok(self.insert_buffer(
+            let id = self.insert_buffer(
                 Buffer {
                     raw,
                     memory: h.memory.clone(),
@@ -141,7 +143,9 @@ impl Device {
                     device: h.device,
                 },
                 size,
-            ))
+            );
+            self.res.table.buffer_heaps.set(id, heap);
+            Ok(id)
         }
     }
 
@@ -179,6 +183,7 @@ impl Device {
             let t = self.res.textures.get_mut(id);
             t.heap = Some(memory);
             self.res.table.textures.set(id, *info);
+            self.res.table.texture_heaps.set(id, heap);
             self.prepare(id)
         }
     }

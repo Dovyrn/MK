@@ -40,22 +40,17 @@ fn main() {
             ..Default::default()
         })
         .unwrap();
-    let size = caps.instance as usize;
-    let instances = device
-        .create_buffer((size * 2) as u64, memory::UPLOAD)
-        .unwrap();
-    let mut bytes = vec![0u8; size * 2];
+    let instances = device.create_ray_instances(2, memory::UPLOAD).unwrap();
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-    let shifted = [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5];
-    device.write_instance(&mut bytes[..size], blas, &identity, 0, 0xff, 0);
-    device.write_instance(&mut bytes[size..], blas, &shifted, 1, 0xff, 0);
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), device.map(instances), bytes.len());
+    device.write_ray_instance(instances, 0, blas, &identity, 0, 0xff, 0);
+    let gpu = caps.buffers > 0;
+    if !gpu {
+        let shifted = [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5];
+        device.write_ray_instance(instances, 1, blas, &shifted, 1, 0xff, 0);
     }
     let tlas = device
         .create_accel(&AccelInfo {
-            instances,
-            instance_count: 2,
+            ray_instances: instances,
             ..Default::default()
         })
         .unwrap();
@@ -70,7 +65,6 @@ fn main() {
         .create_pipeline(&mk::ComputeInfo {
             code: host::code!("trace"),
             entry: "trace",
-            group: [8, 8, 1],
             ..Default::default()
         })
         .unwrap();
@@ -80,6 +74,30 @@ fn main() {
     let event = device.create_event().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
+    if gpu {
+        let place = device
+            .create_pipeline(&mk::ComputeInfo {
+                code: host::code!("place"),
+                entry: "place",
+                ..Default::default()
+            })
+            .unwrap();
+        let mut words = device
+            .ray_instances_handle(instances)
+            .unwrap()
+            .to_le_bytes()
+            .to_vec();
+        words.extend(device.accel_handle(blas).to_le_bytes());
+        c.bind_pipeline(place);
+        c.push_constants(0, &words);
+        c.dispatch(1, 1, 1);
+        c.barrier(
+            stage::COMPUTE,
+            access::SHADER_WRITE,
+            stage::ACCEL,
+            access::ACCEL_READ,
+        );
+    }
     c.build_accel(blas, bottom, 0, 0);
     c.barrier(
         stage::ACCEL,
@@ -115,5 +133,5 @@ fn main() {
         at(14, 6)
     );
     assert_eq!(at(0, 0), -1.0, "corner");
-    println!("ray query hit both instances");
+    println!("ray query hit both instances, the second written by the GPU: {gpu}");
 }

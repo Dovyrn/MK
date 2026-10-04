@@ -104,13 +104,34 @@ public class MtlDevice extends Device {
 
     private static native long nAccelHandle(long device, int accel);
 
-    public synchronized void writeInstance(long out, long outSize, int accel, float[] transform, int id, int mask, int flags) {
+    public synchronized int createRayInstances(int count, int memory) {
+        return nCreateRayInstances(handle, count, memory);
+    }
+
+    private static native int nCreateRayInstances(long device, int count, int memory);
+
+    public synchronized void destroyRayInstances(int instances) {
+        nDestroyRayInstances(handle, instances);
+    }
+
+    private static native void nDestroyRayInstances(long device, int instances);
+
+    public synchronized void writeRayInstance(int instances, int index, int accel, float[] transform, int id, int mask, int flags) {
         try (var stack = MemoryStack.stackPush()) {
-            nWriteInstance(handle, out, outSize, accel, memAddress(stack.floats(transform)), id, mask, flags);
+            if (transform.length != 12) {
+                throw new IllegalArgumentException("transform has 12 values");
+            }
+            nWriteRayInstance(handle, instances, index, accel, memAddress(stack.floats(transform)), id, mask, flags);
         }
     }
 
-    private static native void nWriteInstance(long device, long out, long outLength, int accel, long transform, int id, int mask, int flags);
+    private static native void nWriteRayInstance(long device, int instances, int index, int accel, long transform, int id, int mask, int flags);
+
+    public synchronized long rayInstancesHandle(int instances) {
+        return nRayInstancesHandle(handle, instances);
+    }
+
+    private static native long nRayInstancesHandle(long device, int instances);
 
     public static MtlDevice adoptRaw(long device, int queues) {
         return new MtlDevice(nAdoptRaw(device, queues));

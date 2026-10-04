@@ -10,4 +10,5 @@ public interface Usage {
     int VIEW = 64;
     int HOST = 128;
     int BLIT = 256;
+    int RATE = 512;
 }

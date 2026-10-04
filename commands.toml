@@ -46,12 +46,6 @@ fields = [["text", "str"]]
 name = "end_label"
 
 [[command]]
-name = "dispatch_threads"
-scope = "compute"
-backend = "mtl"
-fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
-
-[[command]]
 name = "queue_barrier"
 scope = "compute outside"
 fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]

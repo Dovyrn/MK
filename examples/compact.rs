@@ -75,18 +75,12 @@ fn main() {
     assert!(device.wait(event, 1, 5000).unwrap());
     let size = unsafe { *device.map(out).cast::<u64>() };
     let compacted = device.create_compacted(blas, size).unwrap();
-    let bytes = caps.instance as usize;
-    let instances = device.create_buffer(bytes as u64, memory::UPLOAD).unwrap();
-    let mut record = vec![0u8; bytes];
+    let instances = device.create_ray_instances(1, memory::UPLOAD).unwrap();
     let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-    device.write_instance(&mut record, compacted, &identity, 0, 0xff, 0);
-    unsafe {
-        std::ptr::copy_nonoverlapping(record.as_ptr(), device.map(instances), bytes);
-    }
+    device.write_ray_instance(instances, 0, compacted, &identity, 0, 0xff, 0);
     let tlas = device
         .create_accel(&AccelInfo {
-            instances,
-            instance_count: 1,
+            ray_instances: instances,
             ..Default::default()
         })
         .unwrap();
@@ -99,7 +93,6 @@ fn main() {
         .create_pipeline(&mk::ComputeInfo {
             code: host::code!("trace"),
             entry: "trace",
-            group: [8, 8, 1],
             ..Default::default()
         })
         .unwrap();

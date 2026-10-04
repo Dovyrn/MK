@@ -10,9 +10,7 @@ import lombok.experimental.Accessors;
 public class AccelInfo {
     public Triangles[] triangles = new Triangles[0];
     public Boxes[] boxes = new Boxes[0];
-    public int instances = -1;
-    public long instanceOffset = 0;
-    public int instanceCount = 0;
+    public int rayInstances = -1;
     public int flags = 0;
 
     int encodedSize() {
@@ -24,7 +22,7 @@ public class AccelInfo {
         for (var x : boxes) {
             boxesSize += x.encodedSize();
         }
-        return 20 + trianglesSize + boxesSize;
+        return 8 + trianglesSize + boxesSize;
     }
 
     long encode(long p) {
@@ -38,11 +36,7 @@ public class AccelInfo {
         for (var x : boxes) {
             p = x.encode(p);
         }
-        memPutInt(p, instances);
-        p += 4;
-        memPutLong(p, instanceOffset);
-        p += 8;
-        memPutInt(p, instanceCount);
+        memPutInt(p, rayInstances);
         p += 4;
         memPutInt(p, flags);
         p += 4;

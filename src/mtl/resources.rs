@@ -21,6 +21,7 @@ pub struct Resources {
     pub heaps: Slots<(Retained<ProtocolObject<dyn MTLHeap>>, u32)>,
     pub indirects: Slots<Indirect>,
     pub accels: Slots<Accel>,
+    pub rays: Slots<u32>,
     pub queries: Slots<Query>,
     pub events: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
     pub imports: HashSet<u32>,

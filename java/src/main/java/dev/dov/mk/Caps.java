@@ -21,8 +21,8 @@ public class Caps {
     public boolean ray = false;
     public boolean sparse = false;
     public boolean shadingRate = false;
+    public boolean rateImages = false;
     public int viewports = 1;
-    public int instance = 0;
     public int graphics = 0;
     public boolean labels = false;
     public boolean anisotropy = false;
@@ -56,11 +56,13 @@ public class Caps {
     public boolean hostRead = false;
     public boolean copyFormats = false;
     public boolean textureClear = false;
+    public boolean bufferClear = false;
+    public boolean partialResolve = false;
 
-    public static final int SIZE = 196;
+    public static final int SIZE = 204;
 
     int encodedSize() {
-        return 196;
+        return 204;
     }
 
     long encode(long p) {
@@ -90,9 +92,9 @@ public class Caps {
         p += 4;
         memPutInt(p, shadingRate ? 1 : 0);
         p += 4;
-        memPutInt(p, viewports);
+        memPutInt(p, rateImages ? 1 : 0);
         p += 4;
-        memPutInt(p, instance);
+        memPutInt(p, viewports);
         p += 4;
         memPutInt(p, graphics);
         p += 4;
@@ -160,6 +162,10 @@ public class Caps {
         p += 4;
         memPutInt(p, textureClear ? 1 : 0);
         p += 4;
+        memPutInt(p, bufferClear ? 1 : 0);
+        p += 4;
+        memPutInt(p, partialResolve ? 1 : 0);
+        p += 4;
         return p;
     }
 
@@ -191,9 +197,9 @@ public class Caps {
         p += 4;
         r.shadingRate = memGetInt(p) != 0;
         p += 4;
-        r.viewports = memGetInt(p);
+        r.rateImages = memGetInt(p) != 0;
         p += 4;
-        r.instance = memGetInt(p);
+        r.viewports = memGetInt(p);
         p += 4;
         r.graphics = memGetInt(p);
         p += 4;
@@ -260,6 +266,10 @@ public class Caps {
         r.copyFormats = memGetInt(p) != 0;
         p += 4;
         r.textureClear = memGetInt(p) != 0;
+        p += 4;
+        r.bufferClear = memGetInt(p) != 0;
+        p += 4;
+        r.partialResolve = memGetInt(p) != 0;
         p += 4;
         return r;
     }

@@ -5,7 +5,9 @@ use crate::{TextureInfo, ViewInfo, dimension, format, usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
-use objc2_metal::{MTLDevice, MTLStorageMode, MTLTexture, MTLTextureType, MTLTextureUsage};
+use objc2_metal::{
+    MTLDevice, MTLResource, MTLStorageMode, MTLTexture, MTLTextureType, MTLTextureUsage,
+};
 
 impl Device {
     pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
@@ -55,7 +57,7 @@ impl Device {
             let flags = raw.usage();
             let mut usage = usage::COPY_SRC | usage::COPY_DST;
             let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
-            if !depth && raw.sampleCount() == 1 {
+            if !depth && raw.sampleCount() == 1 && raw.storageMode() != MTLStorageMode::Private {
                 usage |= usage::HOST;
             }
             if flags.contains(MTLTextureUsage::ShaderRead) {
@@ -138,7 +140,7 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
-        self.res.table.textures.clear(texture);
+        self.res.table.drop_texture(texture);
         let texture = self.res.textures.remove(texture);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*texture.raw)));
     }

@@ -5,7 +5,7 @@ use crate::gl::pipeline::Pipeline;
 use glow::HasContext;
 
 impl Recorder<'_> {
-    pub fn prepare(&mut self, render: bool) -> bool {
+    pub fn prepare(&mut self, render: bool) -> Result<bool, String> {
         let gl = self.gl;
         let program = if render {
             self.render.map(|p| &p.program)
@@ -13,7 +13,7 @@ impl Recorder<'_> {
             self.program
         };
         let Some(program) = program else {
-            return false;
+            return Ok(false);
         };
         unsafe {
             if self.used != Some(program.raw) {
@@ -33,6 +33,10 @@ impl Recorder<'_> {
                     | glow::MAP_UNSYNCHRONIZED_BIT
                     | glow::MAP_INVALIDATE_RANGE_BIT;
                 let to = gl.map_buffer_range(glow::UNIFORM_BUFFER, at as i32, PUSH as i32, bits);
+                if to.is_null() {
+                    gl.bind_buffer(glow::UNIFORM_BUFFER, None);
+                    return Err("mapping the push constant ring failed".into());
+                }
                 std::ptr::copy_nonoverlapping(self.data.as_ptr(), to, self.size);
                 gl.unmap_buffer(glow::UNIFORM_BUFFER);
                 gl.bind_buffer(glow::UNIFORM_BUFFER, None);
@@ -61,10 +65,10 @@ impl Recorder<'_> {
                 gl.bind_sampler(unit as u32, sampler);
             }
             let Some(p) = self.render.filter(|_| render) else {
-                return true;
+                return Ok(true);
             };
             if self.fed == Some(p.vao) {
-                return true;
+                return Ok(true);
             }
             self.fed = Some(p.vao);
             gl.bind_vertex_array(Some(p.vao));
@@ -76,7 +80,7 @@ impl Recorder<'_> {
                 );
             }
         }
-        true
+        Ok(true)
     }
 
     fn attributes(&self, p: &Pipeline, instance: u32) {

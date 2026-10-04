@@ -97,7 +97,10 @@ impl Device {
         let attach =
             vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
         let bits = image_usage(info.usage)
-            & (vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE | attach);
+            & (vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR
+                | attach);
         let make = |kind, aspect, mips, usage| {
             let mut usage = vk::ImageViewUsageCreateInfo::default().usage(usage);
             let create = vk::ImageViewCreateInfo::default()
@@ -156,7 +159,7 @@ impl Device {
     }
 
     pub fn destroy_texture(&mut self, texture: u32) {
-        self.res.table.textures.clear(texture);
+        self.res.table.drop_texture(texture);
         self.defer(move |d| {
             let texture = d.res.textures.remove(texture);
             texture.free(d);

@@ -61,13 +61,14 @@ impl Device {
             self.residency.add(ProtocolObject::from_ref(&*buffer));
             let id = self.res.buffers.insert(buffer);
             self.res.table.buffers.set(id, size);
+            self.res.table.pages.set(id, ());
             Ok(id)
         })
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
         autoreleasepool(|_| {
-            self.sparse_tile(info)?;
+            let tile = self.sparse_tile(info)?;
             let desc = texture_desc(info);
             desc.setPlacementSparsePageSize(MTLSparsePageSize::Size64);
             let raw = self
@@ -80,6 +81,7 @@ impl Device {
                 format: info.format,
             });
             self.res.table.textures.set(id, *info);
+            self.res.table.tiles.set(id, tile);
             Ok(id)
         })
     }
@@ -123,9 +125,8 @@ impl Device {
         autoreleasepool(|_| {
             self.check_queue(queue);
             self.res.table.buffers.get(buffer);
-            if heap != !0 {
-                self.res.table.heaps.get(heap);
-            }
+            let page = self.sparse_page()?;
+            self.res.table.map_buffer(buffer, heap, page, ranges);
             self.res.table.submit(queue, waits, signals);
             let mode = if heap == !0 {
                 MTLSparseTextureMappingMode::Unmap
@@ -173,9 +174,8 @@ impl Device {
         autoreleasepool(|_| {
             self.check_queue(queue);
             self.res.table.textures.get(texture);
-            if heap != !0 {
-                self.res.table.heaps.get(heap);
-            }
+            let page = self.sparse_page()?;
+            self.res.table.map_texture(texture, heap, page, regions);
             self.res.table.submit(queue, waits, signals);
             let mode = if heap == !0 {
                 MTLSparseTextureMappingMode::Unmap

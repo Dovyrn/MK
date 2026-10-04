@@ -157,6 +157,8 @@ impl Device {
                     && has(43, "GL_ARB_texture_view")
                     && has(42, "GL_ARB_texture_storage"),
                 texture_clear: has(44, "GL_ARB_clear_texture"),
+                buffer_clear: extra.clear.is_some(),
+                partial_resolve: true,
                 max_buffer: isize::MAX as u64,
                 max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
                 max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
@@ -172,6 +174,7 @@ impl Device {
                 },
                 addresses: extra.addresses.is_some(),
                 shading_rate: extra.rates.is_some(),
+                rate_images: extra.rates.is_some(),
                 images: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
@@ -299,7 +302,7 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.thread();
-        self.res.table.buffers.clear(buffer);
+        self.res.table.drop_buffer(buffer);
         self.res.buffers.remove(buffer).delete(&self.gl);
     }
 
@@ -455,10 +458,16 @@ impl Device {
         self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
         let mesh = stages.iter().any(|s| s.0 == MESH_SHADER);
-        self.res
-            .table
-            .renders
-            .set(id, (info.samples, info.indirect, info.topology, mesh));
+        self.res.table.renders.set(
+            id,
+            (
+                info.samples,
+                info.indirect,
+                info.topology,
+                mesh,
+                crate::table::vertices(info),
+            ),
+        );
         Ok(id)
     }
 
@@ -642,7 +651,7 @@ impl Device {
 
     pub fn destroy_texture(&mut self, texture: u32) {
         self.thread();
-        self.res.table.textures.clear(texture);
+        self.res.table.drop_texture(texture);
         self.res.textures.remove(texture).delete(&self.gl);
     }
 
@@ -779,6 +788,7 @@ impl Device {
                 self.units.max(1),
             )
         };
+        let host = crate::gl::errors::drain(&self.gl);
         let state = snapshot();
         state.clear(&self.gl, &self.extra);
         let mut recorder = Recorder::new(
@@ -793,7 +803,12 @@ impl Device {
         let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
         recorder.finish();
         state.restore(&self.gl, &self.extra);
+        let mine = crate::gl::errors::drain(&self.gl);
+        crate::gl::errors::raise(&self.gl, &self.extra, &host);
         result.unwrap_or_else(|p| resume_unwind(p))?;
+        if !mine.is_empty() {
+            return Err(format!("submit raised GL errors {mine:#x?}"));
+        }
         self.signals(queue, signals)
     }
 

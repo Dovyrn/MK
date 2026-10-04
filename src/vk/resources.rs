@@ -19,6 +19,7 @@ pub struct Resources {
     pub depths: Slots<DepthInfo>,
     pub heaps: Slots<Heap>,
     pub accels: Slots<Accel>,
+    pub rays: Slots<u32>,
     pub queries: Slots<Query>,
     pub events: Slots<Event>,
     pub table: crate::table::Table,

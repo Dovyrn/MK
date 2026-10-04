@@ -27,7 +27,7 @@ pub struct Recorder<'a> {
     pub points: &'a [vk::PipelineBindPoint],
     pub res: &'a Resources,
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
-    pub depth: Option<(vk::RenderingAttachmentInfo<'static>, bool)>,
+    pub depth: Option<(vk::RenderingAttachmentInfo<'static>, vk::ImageAspectFlags)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub natives: &'a [Callback],
     pub heap: vk::DescriptorSet,
@@ -623,14 +623,9 @@ impl Recorder<'_> {
                         depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
                     };
                     let info = self.attachment(texture, l, load, store, clear);
-                    let has = self
-                        .res
-                        .textures
-                        .get(texture)
-                        .aspect
-                        .contains(vk::ImageAspectFlags::STENCIL);
+                    let aspect = self.res.textures.get(texture).aspect;
                     self.stencil = self.attachment(texture, l, stencil_load, stencil_store, clear);
-                    self.depth = Some((info, has));
+                    self.depth = Some((info, aspect));
                 }
                 Command::BeginRender {
                     width,
@@ -649,9 +644,11 @@ impl Recorder<'_> {
                     if let Some(rate) = &mut rate {
                         info = info.push_next(rate);
                     }
-                    if let Some((depth, has)) = &self.depth {
-                        info = info.depth_attachment(depth);
-                        if *has {
+                    if let Some((depth, aspect)) = &self.depth {
+                        if aspect.contains(vk::ImageAspectFlags::DEPTH) {
+                            info = info.depth_attachment(depth);
+                        }
+                        if aspect.contains(vk::ImageAspectFlags::STENCIL) {
                             info = info.stencil_attachment(&self.stencil);
                         }
                     }
@@ -851,6 +848,7 @@ impl Recorder<'_> {
                     count,
                     stride,
                 } => {
+                    let stride = if stride == 0 { 16 } else { stride };
                     d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, count, stride)
                 }
                 Command::DrawIndexedIndirect {
@@ -863,7 +861,7 @@ impl Recorder<'_> {
                     self.res.buffers.get(buffer).raw,
                     offset,
                     count,
-                    stride,
+                    if stride == 0 { 20 } else { stride },
                 ),
                 Command::ExecuteIndirect {
                     indirect,
@@ -920,22 +918,18 @@ impl Recorder<'_> {
                     offset,
                     count,
                     stride,
-                } => {
-                    if count > 1 && self.ext.features.multi_draw_indirect == 0 {
-                        return Err("multi draw indirect is not supported");
-                    }
-                    self.ext
-                        .mesh
-                        .as_ref()
-                        .unwrap()
-                        .cmd_draw_mesh_tasks_indirect(
-                            b,
-                            self.res.buffers.get(buffer).raw,
-                            offset,
-                            count,
-                            stride,
-                        )
-                }
+                } => self
+                    .ext
+                    .mesh
+                    .as_ref()
+                    .unwrap()
+                    .cmd_draw_mesh_tasks_indirect(
+                        b,
+                        self.res.buffers.get(buffer).raw,
+                        offset,
+                        count,
+                        if stride == 0 { 12 } else { stride },
+                    ),
                 Command::OcclusionHeap { .. } => {}
                 Command::ResetQueries { heap, first, count } => {
                     d.cmd_reset_query_pool(b, self.res.queries.get(heap).pool, first, count)

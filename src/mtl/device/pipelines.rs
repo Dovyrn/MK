@@ -57,6 +57,34 @@ fn stencil(face: &StencilFace) -> Retained<MTLStencilDescriptor> {
     desc
 }
 
+type Groups = Vec<(String, [u32; 3])>;
+
+fn word(rest: &mut &[u8]) -> Option<u32> {
+    let (head, tail) = rest.split_first_chunk::<4>()?;
+    *rest = tail;
+    Some(u32::from_le_bytes(*head))
+}
+
+fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
+    let rest = &mut code;
+    let mut groups = Vec::new();
+    for _ in 0..word(rest)? {
+        let length = word(rest)? as usize;
+        let name = String::from_utf8(rest.get(..length)?.to_vec()).ok()?;
+        *rest = &rest[length..];
+        groups.push((name, [word(rest)?, word(rest)?, word(rest)?]));
+    }
+    Some((groups, code))
+}
+
+fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], String> {
+    groups
+        .iter()
+        .find(|(name, _)| name == entry)
+        .map(|&(_, size)| size)
+        .ok_or_else(|| format!("entry {entry} has no thread group size in its code"))
+}
+
 fn threads(group: [u32; 3], max: usize) -> Result<(), String> {
     let count = group.iter().map(|&g| g as usize).product::<usize>();
     if count > max {
@@ -142,15 +170,22 @@ impl Device {
             .map_err(|e| e.localizedDescription().to_string())
     }
 
-    fn library(&self, code: &[u8]) -> Result<Retained<ProtocolObject<dyn MTLLibrary>>, String> {
-        self.raw
-            .newLibraryWithData_error(&DispatchData::from_bytes(code))
-            .map_err(|e| e.localizedDescription().to_string())
+    fn library(
+        &self,
+        code: &[u8],
+    ) -> Result<(Retained<ProtocolObject<dyn MTLLibrary>>, Groups), String> {
+        let (groups, lib) = split(code).ok_or("code was not built by the MK compiler")?;
+        let library = self
+            .raw
+            .newLibraryWithData_error(&DispatchData::from_bytes(lib))
+            .map_err(|e| e.localizedDescription().to_string())?;
+        Ok((library, groups))
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
         autoreleasepool(|_| {
-            let library = self.library(info.code)?;
+            let (library, groups) = self.library(info.code)?;
+            let shape = group(&groups, info.entry)?;
             let desc = MTL4ComputePipelineDescriptor::new();
             desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
@@ -161,8 +196,8 @@ impl Device {
                     Some(&self.options),
                 )
                 .map_err(|e| e.localizedDescription().to_string())?;
-            threads(info.group, state.maxTotalThreadsPerThreadgroup())?;
-            let group = size(info.group);
+            threads(shape, state.maxTotalThreadsPerThreadgroup())?;
+            let group = size(shape);
             let id = self.res.pipelines.insert(Pipeline { state, group });
             self.res.table.pipelines.set(id, ());
             Ok(id)
@@ -185,7 +220,7 @@ impl Device {
                 info.fill,
             );
             crate::caps::primitive(info.topology);
-            let library = self.library(info.code)?;
+            let (library, _) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
             desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
             let inputs = library
@@ -246,10 +281,16 @@ impl Device {
                 task: size([1, 1, 1]),
                 mesh: size([1, 1, 1]),
             });
-            self.res
-                .table
-                .renders
-                .set(id, (info.samples, info.indirect, info.topology, false));
+            self.res.table.renders.set(
+                id,
+                (
+                    info.samples,
+                    info.indirect,
+                    info.topology,
+                    false,
+                    crate::table::vertices(info),
+                ),
+            );
             Ok(id)
         })
     }
@@ -266,7 +307,13 @@ impl Device {
             if !self.caps.mesh {
                 return Err("create_mesh_pipeline needs caps.mesh".into());
             }
-            let library = self.library(info.code)?;
+            let (library, groups) = self.library(info.code)?;
+            let mesh = group(&groups, info.mesh)?;
+            let task = if info.task.is_empty() {
+                [1, 1, 1]
+            } else {
+                group(&groups, info.task)?
+            };
             let desc = MTL4MeshRenderPipelineDescriptor::new();
             if !info.task.is_empty() {
                 desc.setObjectFunctionDescriptor(Some(&*function(&library, info.task)?));
@@ -280,22 +327,22 @@ impl Device {
             desc.setAlphaToCoverageState(coverage(info.coverage));
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
             let state = self.compile(&desc)?;
-            threads(info.mesh_group, state.maxTotalThreadsPerMeshThreadgroup())?;
+            threads(mesh, state.maxTotalThreadsPerMeshThreadgroup())?;
             if !info.task.is_empty() {
-                threads(info.task_group, state.maxTotalThreadsPerObjectThreadgroup())?;
+                threads(task, state.maxTotalThreadsPerObjectThreadgroup())?;
             }
             let id = self.res.renders.insert(Render {
                 state,
                 fill: fill(info.fill),
                 clip: clip(info.clamp),
                 primitive: MTLPrimitiveType::Triangle,
-                task: size(info.task_group),
-                mesh: size(info.mesh_group),
+                task: size(task),
+                mesh: size(mesh),
             });
-            self.res
-                .table
-                .renders
-                .set(id, (info.samples, info.indirect, topology::TRIANGLE, true));
+            self.res.table.renders.set(
+                id,
+                (info.samples, info.indirect, topology::TRIANGLE, true, 0),
+            );
             Ok(id)
         })
     }

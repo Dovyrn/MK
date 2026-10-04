@@ -24,6 +24,7 @@ impl Device {
     }
 
     pub fn create_accel(&mut self, info: &AccelInfo) -> Result<u32, String> {
+        self.caps.accel(info);
         autoreleasepool(|_| {
             let desc: Retained<MTL4AccelerationStructureDescriptor> = if !info.boxes.is_empty() {
                 let geometry: Vec<Retained<MTL4AccelerationStructureGeometryDescriptor>> = info
@@ -44,15 +45,13 @@ impl Device {
                 d.setGeometryDescriptors(Some(&NSArray::from_retained_slice(&geometry)));
                 Retained::into_super(d)
             } else if info.triangles.is_empty() {
+                let (count, _) = *self.res.table.rays.get(info.ray_instances);
+                let buffer = *self.res.rays.get(info.ray_instances);
                 let d = MTL4InstanceAccelerationStructureDescriptor::new();
                 unsafe {
-                    d.setInstanceDescriptorBuffer(self.range(
-                        info.instances,
-                        info.instance_offset,
-                        info.instance_count as u64 * self.caps.instance as u64,
-                    ));
-                    d.setInstanceDescriptorStride(self.caps.instance as usize);
-                    d.setInstanceCount(info.instance_count as usize);
+                    d.setInstanceDescriptorBuffer(self.range(buffer, 0, count as u64 * 72));
+                    d.setInstanceDescriptorStride(72);
+                    d.setInstanceCount(count as usize);
                 }
                 d.setInstanceDescriptorType(
                     MTLAccelerationStructureInstanceDescriptorType::Indirect,
@@ -121,7 +120,11 @@ impl Device {
                 sizes.buildScratchBufferSize as u64,
                 sizes.refitScratchBufferSize as u64,
             );
-            self.res.table.accels.set(id, scratch);
+            let mut buffers = crate::table::geometry(info);
+            if info.ray_instances != !0 {
+                buffers.push(*self.res.rays.get(info.ray_instances));
+            }
+            self.res.table.accel(id, scratch, buffers);
             Ok(id)
         })
     }
@@ -141,13 +144,13 @@ impl Device {
                 build: 0,
                 update: 0,
             });
-            self.res.table.accels.set(id, (0, 0));
+            self.res.table.accel(id, (0, 0), Vec::new());
             Ok(id)
         })
     }
 
     pub fn destroy_accel(&mut self, accel: u32) {
-        self.res.table.accels.clear(accel);
+        self.res.table.drop_accel(accel);
         let a = self.res.accels.remove(accel);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*a.raw)));
     }
@@ -163,15 +166,47 @@ impl Device {
         id(self.res.accels.get(accel).raw.gpuResourceID())
     }
 
-    pub fn write_instance(
+    pub fn create_ray_instances(&mut self, count: u32, memory: u32) -> Result<u32, String> {
+        assert!(count > 0, "ray instances count is 0");
+        if !self.caps.ray {
+            return Err("ray tracing is not supported".into());
+        }
+        let buffer = self.create_buffer(count as u64 * 72, memory)?;
+        let id = self.res.rays.insert(buffer);
+        self.res.table.rays.set(id, (count, memory));
+        Ok(id)
+    }
+
+    pub fn destroy_ray_instances(&mut self, instances: u32) {
+        self.res.table.rays.clear(instances);
+        let buffer = self.res.rays.remove(instances);
+        self.destroy_buffer(buffer);
+    }
+
+    pub fn ray_instances_handle(&self, instances: u32) -> Result<u64, String> {
+        self.res.table.rays.get(instances);
+        self.buffer_handle(*self.res.rays.get(instances))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_ray_instance(
         &self,
-        out: &mut [u8],
+        instances: u32,
+        index: u32,
         accel: u32,
         transform: &[f32; 12],
         id: u32,
         mask: u32,
         flags: u32,
     ) {
+        self.res.table.ray_write(instances, index, id, mask, flags);
+        let data = self
+            .res
+            .buffers
+            .get(*self.res.rays.get(instances))
+            .contents();
+        let at = unsafe { data.as_ptr().cast::<u8>().add(index as usize * 72) };
+        let out = unsafe { std::slice::from_raw_parts_mut(at, 72) };
         for (i, v) in transform.iter().enumerate() {
             out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }

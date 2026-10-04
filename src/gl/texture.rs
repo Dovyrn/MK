@@ -1,7 +1,7 @@
 use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
-use crate::gl::state::binding;
 use crate::gl::state::buffer;
+use crate::gl::state::{PIXELS, binding};
 use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
 use glow::HasContext;
 use std::cell::Cell;
@@ -64,6 +64,11 @@ impl Texture {
                 glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
             );
             if !storage && !multisample {
+                let unpack = &PIXELS[..8];
+                let host: Vec<i32> = unpack.iter().map(|&p| gl.get_parameter_i32(p)).collect();
+                for &p in unpack {
+                    gl.pixel_store_i32(p, (p == glow::UNPACK_ALIGNMENT) as i32);
+                }
                 let [bytes, bw, bh] = format::block(info.format);
                 let internal = internal as i32;
                 for m in 0..mips {
@@ -127,6 +132,9 @@ impl Texture {
                     }
                 }
                 gl.tex_parameter_i32(kind, glow::TEXTURE_MAX_LEVEL, mips - 1);
+                for (&p, &v) in unpack.iter().zip(&host) {
+                    gl.pixel_store_i32(p, v);
+                }
             } else {
                 match kind {
                     glow::TEXTURE_1D => gl.tex_storage_1d(kind, mips, internal, w),

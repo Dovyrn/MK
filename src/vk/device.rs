@@ -63,6 +63,10 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
             usage::BLIT,
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
         ),
+        (
+            usage::RATE,
+            vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
+        ),
     ];
     let mut bits = vk::ImageUsageFlags::empty();
     for (u, f) in map {
@@ -216,11 +220,7 @@ impl Device {
     }
 
     fn defer(&mut self, free: impl FnOnce(&mut Self) + 'static) {
-        let ticket = self
-            .queues
-            .iter_mut()
-            .map(|q| q.signal(&self.raw))
-            .collect();
+        let ticket = self.queues.iter_mut().map(|q| q.count).collect();
         self.garbage.push((ticket, Box::new(free)));
         self.collect();
     }

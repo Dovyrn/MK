@@ -1,5 +1,6 @@
 use super::{Recorder, integer};
 use crate::gl::rates;
+use crate::gl::state::toggle;
 use crate::{format, load, slot, store};
 use glow::HasContext;
 
@@ -36,6 +37,12 @@ impl Recorder<'_> {
         let res = self.res;
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
+            let srgb = self.colors.iter().all(|c| {
+                let t = res.textures.get(c.texture);
+                t.raw.is_some()
+                    || matches!(format::gl(t.format)[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
+            });
+            toggle(gl, glow::FRAMEBUFFER_SRGB, srgb);
             if self.default() {
                 gl.bind_framebuffer(target, None);
             } else {

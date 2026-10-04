@@ -4,6 +4,10 @@ use crate::{Caps, register, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
 
+const ALPHA_TEST: u32 = 0x0BC0;
+const CLAMP_FRAGMENT: u32 = 0x891B;
+const COMPATIBILITY: i32 = 0x2;
+
 const TARGETS: [u32; 9] = [
     glow::TEXTURE_1D,
     glow::TEXTURE_2D,
@@ -158,6 +162,9 @@ pub struct State {
     tests: Vec<bool>,
     values: [i32; 5],
     polygon: [i32; 2],
+    compat: bool,
+    origin: i32,
+    fragment: i32,
     offset: [f32; 3],
     color: [f32; 4],
     stencil: [i32; 14],
@@ -283,9 +290,16 @@ impl State {
                 pixels.extend(BLOCKS);
             }
             let pixels = pixels.into_iter().map(|p| (p, int(p))).collect();
+            let compat = int(glow::CONTEXT_PROFILE_MASK) & COMPATIBILITY != 0;
             let mut enables = ENABLES.to_vec();
             if has(43, "GL_ARB_ES3_compatibility") {
                 enables.push(glow::PRIMITIVE_RESTART_FIXED_INDEX);
+            }
+            if has(40, "GL_ARB_sample_shading") {
+                enables.push(glow::SAMPLE_SHADING);
+            }
+            if compat {
+                enables.push(ALPHA_TEST);
             }
             let enables = enables.into_iter().map(|e| (e, gl.is_enabled(e))).collect();
             let blends = (0..slot::COLORS)
@@ -383,6 +397,9 @@ impl State {
                 ]
                 .map(int),
                 polygon,
+                compat,
+                origin: int(glow::POINT_SPRITE_COORD_ORIGIN),
+                fragment: if compat { int(CLAMP_FRAGMENT) } else { 0 },
                 offset: [
                     gl.get_parameter_f32(glow::POLYGON_OFFSET_FACTOR),
                     gl.get_parameter_f32(glow::POLYGON_OFFSET_UNITS),
@@ -409,9 +426,17 @@ impl State {
         if let Some(clip) = extra.clip {
             unsafe { clip(glow::LOWER_LEFT, glow::NEGATIVE_ONE_TO_ONE) };
         }
-        let fixed = glow::PRIMITIVE_RESTART_FIXED_INDEX;
-        if self.enables.iter().any(|&(e, _)| e == fixed) {
-            unsafe { gl.disable(fixed) };
+        for &(e, _) in &self.enables {
+            if matches!(
+                e,
+                glow::PRIMITIVE_RESTART_FIXED_INDEX | glow::SAMPLE_SHADING | ALPHA_TEST
+            ) {
+                unsafe { gl.disable(e) };
+            }
+        }
+        unsafe { (extra.point)(glow::POINT_SPRITE_COORD_ORIGIN, glow::UPPER_LEFT as i32) };
+        if self.compat {
+            unsafe { (extra.clamp_color)(CLAMP_FRAGMENT, glow::FALSE as u32) };
         }
     }
 
@@ -513,7 +538,17 @@ impl State {
             gl.depth_func(func);
             gl.depth_mask(self.write);
             (extra.clamp_color)(glow::CLAMP_READ_COLOR, clamp);
-            gl.polygon_mode(glow::FRONT_AND_BACK, self.polygon[0] as u32);
+            let [front, back] = self.polygon.map(|p| p as u32);
+            if front == back {
+                gl.polygon_mode(glow::FRONT_AND_BACK, front);
+            } else {
+                gl.polygon_mode(glow::FRONT, front);
+                gl.polygon_mode(glow::BACK, back);
+            }
+            (extra.point)(glow::POINT_SPRITE_COORD_ORIGIN, self.origin);
+            if self.compat {
+                (extra.clamp_color)(CLAMP_FRAGMENT, self.fragment as u32);
+            }
             let [factor, units, limit] = self.offset;
             match extra.offset_clamp {
                 Some(offset) => offset(factor, units, limit),

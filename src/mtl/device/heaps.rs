@@ -7,6 +7,7 @@ use objc2_metal::{MTLDevice, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLSparseP
 
 impl Device {
     pub fn create_heap(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+        self.caps.heap(size, memory);
         autoreleasepool(|_| {
             let desc = MTLHeapDescriptor::new();
             desc.setType(MTLHeapType::Placement);
@@ -25,7 +26,7 @@ impl Device {
     }
 
     pub fn destroy_heap(&mut self, heap: u32) {
-        self.res.table.heaps.clear(heap);
+        self.res.table.drop_heap(heap);
         let (heap, _) = self.res.heaps.remove(heap);
         self.defer(move |r| r.remove(ProtocolObject::from_ref(&*heap)));
     }
@@ -67,6 +68,7 @@ impl Device {
             };
             let id = self.res.buffers.insert(buffer);
             self.res.table.buffers.set(id, size);
+            self.res.table.buffer_heaps.set(id, heap);
             Ok(id)
         })
     }
@@ -93,6 +95,7 @@ impl Device {
                 format: info.format,
             });
             self.res.table.textures.set(id, *info);
+            self.res.table.texture_heaps.set(id, heap);
             Ok(id)
         })
     }

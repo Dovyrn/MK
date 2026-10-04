@@ -65,7 +65,6 @@ fn main() {
         .create_pipeline(&ComputeInfo {
             code: host::code!("encode"),
             entry: "encode",
-            group: [1, 1, 1],
             ..Default::default()
         })
         .unwrap();

@@ -19,6 +19,11 @@ pub struct Check<'a> {
     heap: Option<u32>,
     targets: Vec<(u32, bool)>,
     samples: u32,
+    bound: u32,
+    labels: Vec<&'static str>,
+    needs: u32,
+    vertices: u32,
+    resolves: Vec<u32>,
 }
 
 fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
@@ -119,6 +124,11 @@ impl<'a> Check<'a> {
             heap: None,
             targets: Vec::new(),
             samples: 0,
+            bound: 0,
+            labels: Vec::new(),
+            needs: 0,
+            vertices: 0,
+            resolves: Vec::new(),
         };
         while !bytes.is_empty() {
             let c = Command::read(&mut bytes)
@@ -218,6 +228,7 @@ impl<'a> Check<'a> {
 
     fn list(&self, c: &Command, indirect: u32) -> Result<u32, String> {
         let (info, topology, mesh) = *self.table.indirects.get(indirect);
+        self.need(c, self.caps.indirect, "indirect")?;
         self.draw(c, info.indexed);
         assert!(
             self.indirect,
@@ -252,6 +263,20 @@ impl<'a> Check<'a> {
     fn draw(&self, c: &Command, indexed: bool) {
         assert!(self.render, "{} needs bind_render_pipeline first", name(c));
         assert!(
+            self.samples == 0 || self.bound == self.samples,
+            "{} draws with a {}-sample pipeline in a {}-sample pass",
+            name(c),
+            self.bound,
+            self.samples
+        );
+        let missing = self.needs & !self.vertices;
+        assert_eq!(
+            missing,
+            0,
+            "{} needs vertex buffers {missing:#b} bound for the pipeline's attributes",
+            name(c)
+        );
+        assert!(
             !indexed || self.index.is_some(),
             "{} needs bind_index_buffer first",
             name(c)
@@ -259,6 +284,14 @@ impl<'a> Check<'a> {
     }
 
     fn indirect(&self, buffer: u32, offset: u64, count: u32, stride: u32, size: u64) {
+        assert!(
+            offset.is_multiple_of(4),
+            "indirect offset {offset} is not a multiple of 4"
+        );
+        assert!(
+            stride == 0 || (stride.is_multiple_of(4) && stride as u64 >= size),
+            "indirect stride {stride} must be 0 or a multiple of 4 of at least {size}"
+        );
         let stride = if stride == 0 { size } else { stride as u64 };
         let span = stride * count.saturating_sub(1) as u64 + size;
         self.range(buffer, offset, if count == 0 { 0 } else { span });
@@ -333,6 +366,19 @@ impl<'a> Check<'a> {
             size[2]
         );
         let [_, bw, bh] = format::block(t.format);
+        let edge = |at: u32, n: u32, b: u32, end: u32| {
+            at.is_multiple_of(b) && (n.is_multiple_of(b) || at + n == end)
+        };
+        assert!(
+            edge(x, w, bw, size[0]) && edge(y, h, bh, size[1]),
+            "{} region {x},{y} {w}x{h} is not aligned to the {bw}x{bh} blocks of texture {texture}",
+            name(c)
+        );
+        assert!(
+            row_length.is_multiple_of(bw) && row_count.is_multiple_of(bh),
+            "{} rows {row_length}x{row_count} are not multiples of the {bw}x{bh} blocks",
+            name(c)
+        );
         let texel = copied(t.format).max(4) as u64;
         assert!(
             offset.is_multiple_of(texel),
@@ -347,7 +393,11 @@ impl<'a> Check<'a> {
             name(c)
         );
         let bytes = row.div_ceil(bw) as u64 * copied(t.format) as u64;
-        self.range(buffer, offset, bytes * rows.div_ceil(bh) as u64 * d as u64);
+        let total = bytes
+            .checked_mul(rows.div_ceil(bh) as u64)
+            .and_then(|n| n.checked_mul(d as u64))
+            .unwrap_or_else(|| panic!("{} region size overflows", name(c)));
+        self.range(buffer, offset, total);
     }
 
     fn step(&mut self, c: &Command) -> Result<(), String> {
@@ -395,6 +445,12 @@ impl<'a> Check<'a> {
                         t.height
                     );
                 }
+                for &r in &self.resolves {
+                    let t = self.table.textures.get(r);
+                    if width < t.width || height < t.height {
+                        self.need(c, caps.partial_resolve, "partial_resolve")?;
+                    }
+                }
                 self.open = "render";
             }
             Command::BeginCompute => {
@@ -403,12 +459,23 @@ impl<'a> Check<'a> {
             }
             Command::EndCompute => {
                 assert_eq!(open, "compute", "end_compute without begin_compute");
+                assert_ne!(
+                    self.labels.last(),
+                    Some(&"compute"),
+                    "end_compute with a label still open inside it"
+                );
                 self.open = "outside";
             }
             Command::EndRender => {
                 assert_eq!(open, "render", "end_render without begin_render");
+                assert_ne!(
+                    self.labels.last(),
+                    Some(&"render"),
+                    "end_render with a label still open inside it"
+                );
                 self.open = "outside";
                 self.targets.clear();
+                self.resolves.clear();
                 self.heap = None;
             }
             Command::BindPipeline { pipeline } => {
@@ -423,6 +490,10 @@ impl<'a> Check<'a> {
             Command::DispatchIndirect { buffer, offset } => {
                 self.need(c, caps.compute, "compute")?;
                 assert!(self.compute, "dispatch_indirect needs bind_pipeline first");
+                assert!(
+                    offset.is_multiple_of(4),
+                    "dispatch_indirect offset {offset} is not a multiple of 4"
+                );
                 self.range(buffer, offset, 12);
             }
             Command::CopyBuffer {
@@ -442,6 +513,7 @@ impl<'a> Check<'a> {
                 size,
                 ..
             } => {
+                self.need(c, caps.buffer_clear, "buffer_clear")?;
                 assert!(
                     offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
@@ -677,7 +749,23 @@ impl<'a> Check<'a> {
                 self.targets.push((texture, ld == load::CLEAR));
                 if resolve != !0 {
                     known("layout", resolve_layout, layout::valid(resolve_layout));
-                    self.texture(resolve, usage::COLOR, "COLOR");
+                    self.resolves.push(resolve);
+                    let r = self.texture(resolve, usage::COLOR, "COLOR");
+                    let s = self.table.textures.get(texture);
+                    assert!(
+                        s.samples > 1 && r.samples == 1,
+                        "resolve needs multisampled texture {texture} and single-sample target {resolve}"
+                    );
+                    assert!(
+                        s.format == r.format && s.width == r.width && s.height == r.height,
+                        "resolve target {resolve} differs in format or size from texture {texture}"
+                    );
+                    if format::uint(s.format) || format::sint(s.format) {
+                        assert!(
+                            s.usage & usage::SAMPLED != 0 && r.usage & usage::STORAGE != 0,
+                            "an integer resolve needs usage::SAMPLED on texture {texture} and usage::STORAGE on target {resolve}"
+                        );
+                    }
                 }
             }
             Command::DepthAttachment {
@@ -704,13 +792,15 @@ impl<'a> Check<'a> {
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let (samples, indirect, shape, mesh) = *self.table.renders.get(pipeline);
+                let (samples, indirect, shape, mesh, needs) = *self.table.renders.get(pipeline);
                 assert!(
                     self.samples == 0 || samples == self.samples,
                     "render pipeline {pipeline} has {samples} samples but the pass has {}",
                     self.samples
                 );
                 self.render = true;
+                self.bound = samples;
+                self.needs = needs;
                 self.indirect = indirect;
                 self.topology = shape;
                 self.mesh = mesh;
@@ -749,6 +839,7 @@ impl<'a> Check<'a> {
                 offset,
                 size,
             } => {
+                self.need(c, caps.slots, "slots")?;
                 slot(i, slot::UNIFORMS);
                 aligned(offset, caps.bind_alignment);
                 self.filled(c, buffer, offset, size);
@@ -759,21 +850,25 @@ impl<'a> Check<'a> {
                 offset,
                 size,
             } => {
+                self.need(c, caps.slots, "slots")?;
                 self.need(c, caps.storage, "storage")?;
                 slot(i, slot::STORAGES);
                 aligned(offset, caps.bind_alignment);
                 self.filled(c, buffer, offset, size);
             }
             Command::BindTexture { slot: i, texture } => {
+                self.need(c, caps.slots, "slots")?;
                 slot(i, slot::TEXTURES);
                 self.texture(texture, usage::SAMPLED, "SAMPLED");
             }
             Command::BindImage { slot: i, texture } => {
+                self.need(c, caps.slots, "slots")?;
                 self.need(c, caps.storage, "storage")?;
                 slot(i, slot::IMAGES);
                 self.texture(texture, usage::STORAGE, "STORAGE");
             }
             Command::BindSampler { slot: i, sampler } => {
+                self.need(c, caps.slots, "slots")?;
                 slot(i, slot::SAMPLERS);
                 self.table.samplers.get(sampler);
             }
@@ -784,6 +879,7 @@ impl<'a> Check<'a> {
             } => {
                 slot(i, slot::VERTICES);
                 self.range(buffer, offset, 0);
+                self.vertices |= 1 << i;
             }
             Command::BindIndexBuffer {
                 buffer,
@@ -791,6 +887,11 @@ impl<'a> Check<'a> {
                 kind,
             } => {
                 known("index kind", kind, index::valid(kind));
+                let size = if kind == index::U16 { 2 } else { 4 };
+                assert!(
+                    offset.is_multiple_of(size),
+                    "index buffer offset {offset} is not a multiple of {size}"
+                );
                 self.range(buffer, offset, 0);
                 self.index = Some((buffer, offset, kind));
             }
@@ -834,6 +935,9 @@ impl<'a> Check<'a> {
                 stride,
             } => {
                 self.need(c, caps.mesh, "mesh")?;
+                if count > 1 {
+                    self.need(c, caps.multi_draw, "multi_draw")?;
+                }
                 self.draw(c, false);
                 self.indirect(buffer, offset, count, stride, 12);
             }
@@ -873,6 +977,10 @@ impl<'a> Check<'a> {
                 offset,
             } => {
                 self.queries(heap, &[], first, count);
+                assert!(
+                    offset.is_multiple_of(8),
+                    "resolve_queries offset {offset} is not a multiple of 8"
+                );
                 self.range(buffer, offset, count as u64 * 8);
             }
             Command::PushConstants { offset, data } => {
@@ -888,7 +996,17 @@ impl<'a> Check<'a> {
                     caps.push
                 );
             }
-            Command::BeginLabel { .. } => self.need(c, caps.labels, "labels")?,
+            Command::BeginLabel { .. } => {
+                self.need(c, caps.labels, "labels")?;
+                self.labels.push(open);
+            }
+            Command::EndLabel => {
+                assert_eq!(
+                    self.labels.pop(),
+                    Some(open),
+                    "end_label must close a label begun in the same scope"
+                );
+            }
             Command::SetViewports { viewports } => {
                 rects(viewports, 24, caps.viewports);
                 for v in crate::command::viewports(viewports) {
@@ -953,8 +1071,16 @@ impl<'a> Check<'a> {
             } => {
                 self.need(c, caps.ray, "ray")?;
                 let (build, refit) = *self.table.accels.get(accel);
+                assert!(
+                    self.table.geometry.get(accel).1,
+                    "accel {accel} builds from a buffer that was destroyed"
+                );
                 let size = if update != 0 { refit } else { build };
                 assert!(size > 0, "accel {accel} is compacted and cannot be built");
+                assert!(
+                    scratch_offset.is_multiple_of(256),
+                    "build_accel scratch offset {scratch_offset} is not a multiple of 256"
+                );
                 self.range(scratch, scratch_offset, size);
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
@@ -964,8 +1090,9 @@ impl<'a> Check<'a> {
                 self.table.accels.get(dst);
             }
             #[cfg(any(feature = "vk", feature = "mtl"))]
-            Command::WriteCompactedSize { heap, index, .. } => {
+            Command::WriteCompactedSize { accel, heap, index } => {
                 self.need(c, caps.ray, "ray")?;
+                self.table.accels.get(accel);
                 self.queries(heap, &[query::COMPACTED], index, 1);
             }
             #[cfg(any(feature = "vk", feature = "gl"))]
@@ -988,9 +1115,14 @@ impl<'a> Check<'a> {
             Command::RateAttachment {
                 texture, layout: l, ..
             } => {
-                self.need(c, caps.shading_rate, "shading_rate")?;
+                self.need(c, caps.rate_images, "rate_images")?;
                 known("layout", l, layout::valid(l));
-                self.table.textures.get(texture);
+                let t = self.texture(texture, usage::RATE, "RATE");
+                assert_eq!(
+                    t.format,
+                    format::R8_UINT,
+                    "rate_attachment texture {texture} must be R8_UINT"
+                );
             }
             _ => {}
         }

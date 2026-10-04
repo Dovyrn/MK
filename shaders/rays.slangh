@@ -1,0 +1,33 @@
+struct RayInstances {
+    DescriptorHandle<RWStructuredBuffer<uint>> records;
+
+    void write(uint index, float3x4 transform, uint id, uint mask, uint flags, uint2 accel) {
+        bool metal = layout();
+        uint at = index * (metal ? 18 : 16);
+        for (uint i = 0; i < 12; i++) {
+            records[at + i] = asuint(transform[i / 4][i % 4]);
+        }
+        if (metal) {
+            records[at + 12] = flags;
+            records[at + 13] = mask;
+            records[at + 14] = 0;
+            records[at + 15] = id;
+            records[at + 16] = accel.x;
+            records[at + 17] = accel.y;
+        } else {
+            records[at + 12] = id | mask << 24;
+            records[at + 13] = flags << 24;
+            records[at + 14] = accel.x;
+            records[at + 15] = accel.y;
+        }
+    }
+
+    private static bool layout() {
+        __target_switch {
+        case metal:
+            return true;
+        default:
+            return false;
+        }
+    }
+};

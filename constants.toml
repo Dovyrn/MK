@@ -54,6 +54,7 @@ COPY_DST = 32
 VIEW = 64
 HOST = 128
 BLIT = 256
+RATE = 512
 
 [memory]
 DEVICE = 0

@@ -29,7 +29,6 @@ fn main() {
         .create_pipeline(&mk::ComputeInfo {
             code: host::code!("count"),
             entry: "fill",
-            group: [64, 1, 1],
             ..Default::default()
         })
         .unwrap();

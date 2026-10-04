@@ -31,13 +31,12 @@ fn main() {
         mesh: "mesh",
         fragment: "frag",
         colors: &colors,
-        task_group: [1, 1, 1],
-        mesh_group: [3, 1, 1],
         indirect: true,
         ..Default::default()
     }) {
         Ok(p) => p,
         Err(e) => {
+            assert!(!device.caps().mesh, "{e}");
             println!("no mesh shaders: {e}");
             return;
         }
@@ -48,7 +47,6 @@ fn main() {
             mesh: "single",
             fragment: "frag",
             colors: &colors,
-            mesh_group: [3, 1, 1],
             ..Default::default()
         })
         .unwrap();
@@ -70,7 +68,6 @@ fn main() {
                 .create_pipeline(&ComputeInfo {
                     code: host::code!("encode_mesh"),
                     entry: "encode",
-                    group: [1, 1, 1],
                     ..Default::default()
                 })
                 .unwrap();

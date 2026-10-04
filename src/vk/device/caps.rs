@@ -41,13 +41,13 @@ pub(super) fn probe(
         precise: features.occlusion_query_precise != 0,
         ray: ext.accel.is_some(),
         shading_rate: ext.rates.is_some(),
+        rate_images: ext.images,
         viewports: if features.multi_viewport != 0 {
             limits.max_viewports
         } else {
             1
         },
         sparse,
-        instance: 64,
         graphics: queues
             .iter()
             .enumerate()
@@ -80,6 +80,8 @@ pub(super) fn probe(
         host_read: ext.copy.is_some(),
         copy_formats: true,
         texture_clear: true,
+        buffer_clear: true,
+        partial_resolve: true,
         max_buffer: buffer.max_buffer_size,
         max_texture: limits
             .max_image_dimension1_d

@@ -48,6 +48,7 @@ type Double = unsafe extern "system" fn(u32, *mut f64);
 type Enabled = unsafe extern "system" fn(u32, u32) -> u8;
 type ClampColor = unsafe extern "system" fn(u32, u32);
 type Provoking = unsafe extern "system" fn(u32);
+type Point = unsafe extern "system" fn(u32, i32);
 type CopyImage = unsafe extern "system" fn(
     u32,
     u32,
@@ -104,6 +105,7 @@ pub struct Extra {
     pub sub_image: Option<SubImage>,
     pub compressed_sub: Option<CompressedSub>,
     pub provoking: Provoking,
+    pub point: Point,
     pub integers: Integers,
     pub query: Integers,
     pub booleans: Booleans,
@@ -219,6 +221,7 @@ impl Extra {
                 )
                 .map(|p| cast(p)),
                 provoking: cast(need("glProvokingVertex")?),
+                point: cast(need("glPointParameteri")?),
                 integers: cast(need("glGetIntegeri_v")?),
                 query: cast(need("glGetQueryiv")?),
                 booleans: cast(need("glGetBooleani_v")?),

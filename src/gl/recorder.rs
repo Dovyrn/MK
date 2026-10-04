@@ -417,12 +417,12 @@ impl<'a> Recorder<'a> {
                     self.dirty = true;
                 }
                 Command::Dispatch { x, y, z } => {
-                    if x.min(y).min(z) != 0 && self.prepare(false) {
+                    if x.min(y).min(z) != 0 && self.prepare(false)? {
                         gl.dispatch_compute(x, y, z);
                     }
                 }
                 Command::DispatchIndirect { buffer, offset } => {
-                    if self.prepare(false) {
+                    if self.prepare(false)? {
                         gl.bind_buffer(
                             glow::DISPATCH_INDIRECT_BUFFER,
                             Some(res.buffers.get(buffer).raw),
@@ -457,22 +457,15 @@ impl<'a> Recorder<'a> {
                     let size = if size == !0 { b.size - offset } else { size };
                     let target = glow::COPY_WRITE_BUFFER;
                     gl.bind_buffer(target, Some(b.raw));
-                    match self.extra.clear {
-                        Some(clear) => clear(
-                            target,
-                            glow::R8UI,
-                            offset as isize,
-                            size as isize,
-                            glow::RED_INTEGER,
-                            glow::UNSIGNED_BYTE,
-                            (&raw const value).cast(),
-                        ),
-                        None => {
-                            let data = vec![value; size as usize];
-                            let (at, size) = (offset as isize, size as isize);
-                            (self.extra.sub)(target, at, size, data.as_ptr().cast());
-                        }
-                    }
+                    self.extra.clear.unwrap()(
+                        target,
+                        glow::R8UI,
+                        offset as isize,
+                        size as isize,
+                        glow::RED_INTEGER,
+                        glow::UNSIGNED_BYTE,
+                        (&raw const value).cast(),
+                    );
                 }
                 Command::Barrier {
                     src_access,
@@ -496,6 +489,10 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::BeginLabel { text } => {
+                    let depth = gl.get_parameter_i32(glow::DEBUG_GROUP_STACK_DEPTH);
+                    if depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH) {
+                        return Err("the debug group stack is full".into());
+                    }
                     gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
                     self.labels += 1;
                 }
@@ -707,7 +704,7 @@ impl<'a> Recorder<'a> {
                     first_vertex,
                     first_instance,
                 } => {
-                    if vertices.min(instances) != 0 && self.prepare(true) {
+                    if vertices.min(instances) != 0 && self.prepare(true)? {
                         self.direct(false, vertices, instances, first_vertex, 0, first_instance);
                     }
                 }
@@ -718,7 +715,7 @@ impl<'a> Recorder<'a> {
                     base_vertex,
                     first_instance,
                 } => {
-                    if indices.min(instances) != 0 && self.prepare(true) {
+                    if indices.min(instances) != 0 && self.prepare(true)? {
                         self.direct(
                             true,
                             indices,
@@ -735,7 +732,7 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true) {
+                    if count != 0 && self.prepare(true)? {
                         self.indirect(false, buffer, offset, count, stride, None);
                     }
                 }
@@ -745,7 +742,7 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true) {
+                    if count != 0 && self.prepare(true)? {
                         self.indirect(true, buffer, offset, count, stride, None);
                     }
                 }
@@ -754,7 +751,7 @@ impl<'a> Recorder<'a> {
                     first,
                     count,
                 } => {
-                    if count != 0 && self.prepare(true) {
+                    if count != 0 && self.prepare(true)? {
                         let (info, _, mesh) = *res.table.indirects.get(indirect);
                         let stride = crate::table::stride(mesh, info.indexed);
                         let buffer = *res.indirects.get(indirect);
@@ -771,7 +768,7 @@ impl<'a> Recorder<'a> {
                     buffer,
                     offset,
                 } => {
-                    if self.prepare(true) {
+                    if self.prepare(true)? {
                         let (info, _, mesh) = *res.table.indirects.get(indirect);
                         let size = info.size;
                         let stride = crate::table::stride(mesh, info.indexed);
@@ -786,7 +783,7 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::DrawMesh { x, y, z } => {
-                    if x.min(y).min(z) != 0 && self.prepare(true) {
+                    if x.min(y).min(z) != 0 && self.prepare(true)? {
                         self.extra.mesh.unwrap()(x, y, z);
                     }
                 }
@@ -796,7 +793,7 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true) {
+                    if count != 0 && self.prepare(true)? {
                         self.mesh(buffer, offset, count, stride, None)?;
                     }
                 }
@@ -922,10 +919,11 @@ impl<'a> Recorder<'a> {
                     self.samplers[slot as usize] = Some(sampler)
                 }
                 Command::Callback { index } => {
-                    self.prepare(self.rendering);
+                    self.prepare(self.rendering)?;
                     let state = (self.snapshot)();
                     self.natives[index as usize](&Native { gl });
                     state.restore(gl, self.extra);
+                    self.fed = None;
                     if self.rendering {
                         self.bind(self.layers)?;
                     }

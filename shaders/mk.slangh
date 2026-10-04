@@ -41,3 +41,4 @@
 #define MK_SAMPLER_7 register(s7)
 
 #include "indirect.slangh"
+#include "rays.slangh"

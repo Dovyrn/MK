@@ -13,7 +13,7 @@ public class Device implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (handle != 0) {
             nFree(handle);
             handle = 0;
@@ -326,7 +326,11 @@ public class Device implements AutoCloseable {
                 memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
                 memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
             }
-            nSubmit(handle, queue, commands.getAddress(), commands.getSize(), waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            try {
+                nSubmit(handle, queue, commands.getAddress(), commands.getSize(), waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+            } finally {
+                java.lang.ref.Reference.reachabilityFence(commands);
+            }
         }
     }
 

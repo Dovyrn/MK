@@ -86,11 +86,12 @@ impl Device {
                     address,
                     data: std::ptr::null_mut(),
                     own: true,
-                    device: false,
+                    device: true,
                 },
                 size,
             ))
         }
+        .inspect(|&id| self.res.table.pages.set(id, ()))
     }
 
     pub fn create_sparse_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
@@ -108,6 +109,7 @@ impl Device {
         };
         let slot = self.register(image, Some(Rc::new(vk::DeviceMemory::null())), &whole(info))?;
         self.res.table.textures.set(slot, *info);
+        self.res.table.tiles.set(slot, [width, height, depth]);
         self.res.textures.get_mut(slot).tile = vk::Extent3D {
             width,
             height,
@@ -166,6 +168,7 @@ impl Device {
     ) -> Result<(), String> {
         self.res.table.buffers.get(buffer);
         let page = self.sparse_page()?;
+        self.res.table.map_buffer(buffer, heap, page, ranges);
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {
@@ -199,6 +202,7 @@ impl Device {
     ) -> Result<(), String> {
         self.res.table.textures.get(texture);
         let page = self.sparse_page()?;
+        self.res.table.map_texture(texture, heap, page, regions);
         let memory = if heap == !0 {
             vk::DeviceMemory::null()
         } else {

@@ -19,7 +19,9 @@ pub fn call<'local, T: Default>(
                 .unwrap_or_else(|| "panic".into()),
         ),
     };
-    let _ = env.throw_new(class, message);
+    if !env.exception_check().unwrap_or(false) {
+        let _ = env.throw_new(class, message);
+    }
     T::default()
 }
 

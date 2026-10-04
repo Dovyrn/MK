@@ -219,9 +219,28 @@ params = [["accel", "u32"]]
 result = "u64"
 
 [[call]]
-name = "write_instance"
+name = "create_ray_instances"
 backend = "vk mtl"
-params = [["out", "mutbytes"], ["accel", "u32"], ["transform", "f32x12"], ["id", "u32"], ["mask", "u32"], ["flags", "u32"]]
+params = [["count", "u32"], ["memory", "u32"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_ray_instances"
+backend = "vk mtl"
+params = [["instances", "u32"]]
+
+[[call]]
+name = "write_ray_instance"
+backend = "vk mtl"
+params = [["instances", "u32"], ["index", "u32"], ["accel", "u32"], ["transform", "f32x12"], ["id", "u32"], ["mask", "u32"], ["flags", "u32"]]
+
+[[call]]
+name = "ray_instances_handle"
+backend = "vk mtl"
+params = [["instances", "u32"]]
+result = "u64"
+fails = true
 
 [[call]]
 name = "create_query_heap"
