@@ -245,8 +245,8 @@ impl Device {
             let queues = (0..queues)
                 .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
-            let caps = Self::detect(&raw, queues.len());
             let resolve = Resolve::new(&raw)?;
+            let caps = Self::detect(&raw, queues.len(), resolve.width());
             let blit = Blit::new(&raw)?;
             Ok(Self {
                 raw,

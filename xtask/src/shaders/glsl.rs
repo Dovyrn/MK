@@ -30,6 +30,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
         .iter()
         .any(|e| e["mode"] == "task" || e["mode"] == "mesh");
     let heaps = reflection.to_string().contains("\"set\":1");
+    let groups = subgroups(&fs::read(&spv).unwrap());
     for e in entries {
         let entry = e["name"].as_str().unwrap();
         let stage = e["mode"].as_str().unwrap();
@@ -48,7 +49,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
             }
         }
         let mut source = None;
-        if meshy || heaps {
+        if meshy || heaps || groups {
             let output = Command::new("spirv-cross")
                 .arg(&spv)
                 .args([
@@ -193,6 +194,22 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
         }
     }
     Ok(container)
+}
+
+fn subgroups(spv: &[u8]) -> bool {
+    let words: Vec<u32> = spv
+        .chunks(4)
+        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+    let mut i = 5;
+    while i < words.len() {
+        let n = (words[i] >> 16) as usize;
+        if words[i] & 0xffff == 17 && matches!(words[i + 1], 61..=68 | 6026) {
+            return true;
+        }
+        i += n;
+    }
+    false
 }
 
 fn std430(types: &Value, ty: &str) -> Option<(u64, u64)> {

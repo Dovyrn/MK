@@ -63,11 +63,19 @@ public class Caps {
     public boolean textureClear = false;
     public boolean bufferClear = false;
     public boolean partialResolve = false;
+    public int subgroup = 0;
+    public int subgroupSizes = 0;
+    public int subgroupOps = 0;
+    public int subgroupStages = 0;
+    public boolean fullSubgroups = false;
+    public int maxThreads = 0;
+    public int maxShared = 0;
+    public int atomics64 = 0;
 
-    public static final int SIZE = 232;
+    public static final int SIZE = 264;
 
     int encodedSize() {
-        return 232;
+        return 264;
     }
 
     long encode(long p) {
@@ -180,6 +188,22 @@ public class Caps {
         memPutInt(p, bufferClear ? 1 : 0);
         p += 4;
         memPutInt(p, partialResolve ? 1 : 0);
+        p += 4;
+        memPutInt(p, subgroup);
+        p += 4;
+        memPutInt(p, subgroupSizes);
+        p += 4;
+        memPutInt(p, subgroupOps);
+        p += 4;
+        memPutInt(p, subgroupStages);
+        p += 4;
+        memPutInt(p, fullSubgroups ? 1 : 0);
+        p += 4;
+        memPutInt(p, maxThreads);
+        p += 4;
+        memPutInt(p, maxShared);
+        p += 4;
+        memPutInt(p, atomics64);
         p += 4;
         return p;
     }
@@ -295,6 +319,22 @@ public class Caps {
         r.bufferClear = memGetInt(p) != 0;
         p += 4;
         r.partialResolve = memGetInt(p) != 0;
+        p += 4;
+        r.subgroup = memGetInt(p);
+        p += 4;
+        r.subgroupSizes = memGetInt(p);
+        p += 4;
+        r.subgroupOps = memGetInt(p);
+        p += 4;
+        r.subgroupStages = memGetInt(p);
+        p += 4;
+        r.fullSubgroups = memGetInt(p) != 0;
+        p += 4;
+        r.maxThreads = memGetInt(p);
+        p += 4;
+        r.maxShared = memGetInt(p);
+        p += 4;
+        r.atomics64 = memGetInt(p);
         p += 4;
         return r;
     }

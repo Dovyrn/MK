@@ -80,6 +80,56 @@ fn face(f: &StencilFace) {
 }
 
 impl Caps {
+    pub(crate) fn compute(&self, info: &crate::ComputeInfo) -> Result<(), String> {
+        let n = info.subgroup;
+        assert!(
+            n == 0 || n.is_power_of_two(),
+            "subgroup size {n} is not a power of two"
+        );
+        if n != 0 && self.subgroup_sizes & n == 0 {
+            return Err(format!("subgroup size {n} is not in caps.subgroup_sizes"));
+        }
+        if info.full && !self.full_subgroups {
+            return Err("full subgroups need caps.full_subgroups".into());
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "vk")]
+    pub(crate) fn subgroups(&self, ops: u32, stage: u32) -> Result<(), String> {
+        let missing = ops & !self.subgroup_ops;
+        if missing != 0 {
+            return Err(format!(
+                "the shader uses subgroup ops {missing:#x} outside caps.subgroup_ops"
+            ));
+        }
+        if ops != 0 && self.subgroup_stages & stage == 0 {
+            return Err(format!(
+                "the shader uses subgroup ops in stage {stage:#x}, outside caps.subgroup_stages"
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "vk")]
+    pub(crate) fn atomics(&self, needed: u32) -> Result<(), String> {
+        let missing = needed & !self.atomics64;
+        if missing != 0 {
+            return Err(format!(
+                "the shader uses 64-bit atomics {missing:#x} outside caps.atomics64"
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "vk")]
+    pub(crate) fn full(&self, width: u32, size: u32) {
+        assert!(
+            width.is_multiple_of(size),
+            "full subgroups need a thread-group width that is a multiple of {size}, not {width}"
+        );
+    }
+
     pub(crate) fn buffer(&self, size: u64, memory: u32) -> Result<(), String> {
         known("memory", memory, memory::valid(memory));
         assert!(size > 0, "buffer size is 0");

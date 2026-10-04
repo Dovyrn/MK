@@ -3,7 +3,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, TextureInfo, caps, format, usage};
+use crate::{Caps, TextureInfo, caps, format, stage, subgroup, usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -15,8 +15,11 @@ pub(super) fn probe(
     limits: &vk::PhysicalDeviceLimits,
 ) -> Caps {
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
+    let mut groups = vk::PhysicalDeviceVulkan11Properties::default();
     let mut mesh = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
-    let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut buffer);
+    let mut properties = vk::PhysicalDeviceProperties2::default()
+        .push_next(&mut buffer)
+        .push_next(&mut groups);
     if ext.mesh.is_some() {
         properties = properties.push_next(&mut mesh);
     }
@@ -30,7 +33,37 @@ pub(super) fn probe(
                 .queue_flags
                 .contains(vk::QueueFlags::SPARSE_BINDING)
         });
+    let sizes = if ext.sizes
+        && buffer
+            .required_subgroup_size_stages
+            .contains(vk::ShaderStageFlags::COMPUTE)
+    {
+        (0..32)
+            .map(|i| 1u32 << i)
+            .filter(|n| (buffer.min_subgroup_size..=buffer.max_subgroup_size).contains(n))
+            .fold(0, |m, n| m | n)
+    } else {
+        groups.subgroup_size
+    };
+    let stages = [
+        (vk::ShaderStageFlags::VERTEX, stage::VERTEX),
+        (vk::ShaderStageFlags::FRAGMENT, stage::FRAGMENT),
+        (vk::ShaderStageFlags::COMPUTE, stage::COMPUTE),
+        (vk::ShaderStageFlags::TASK_EXT, stage::TASK),
+        (vk::ShaderStageFlags::MESH_EXT, stage::MESH),
+    ]
+    .into_iter()
+    .filter(|(v, _)| groups.subgroup_supported_stages.contains(*v))
+    .fold(0, |m, (_, s)| m | s);
     Caps {
+        subgroup: groups.subgroup_size,
+        subgroup_sizes: sizes,
+        subgroup_ops: groups.subgroup_supported_operations.as_raw() & subgroup::BITS,
+        subgroup_stages: stages,
+        full_subgroups: ext.full,
+        max_threads: limits.max_compute_work_group_invocations,
+        max_shared: limits.max_compute_shared_memory_size,
+        atomics64: ext.atomics,
         mesh: ext.mesh.is_some(),
         mesh_indirect: ext.mesh.is_some(),
         mesh_groups: mesh

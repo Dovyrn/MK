@@ -1,6 +1,10 @@
+use crate::{atomic, subgroup};
 use std::io::Cursor;
 
 const ENTRY: u32 = 15;
+const MODE: u32 = 16;
+const CAPABILITY: u32 = 17;
+const LOCAL_SIZE: u32 = 17;
 const VARIABLE: u32 = 59;
 const DECORATE: u32 = 71;
 const VERTEX: u32 = 0;
@@ -19,7 +23,7 @@ fn instructions(words: &[u32]) -> impl Iterator<Item = (u32, &[u32])> {
     })
 }
 
-fn entries(words: &[u32]) -> impl Iterator<Item = (u32, String, &[u32])> {
+fn entries(words: &[u32]) -> impl Iterator<Item = (u32, u32, String, &[u32])> {
     instructions(words)
         .filter(|(op, args)| *op == ENTRY && args.len() > 2)
         .map(|(_, args)| {
@@ -27,14 +31,14 @@ fn entries(words: &[u32]) -> impl Iterator<Item = (u32, String, &[u32])> {
             let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
             let name = String::from_utf8_lossy(&bytes[..end]).into_owned();
             let interface = args.get(3 + end / 4..).unwrap_or_default();
-            (args[0], name, interface)
+            (args[0], args[1], name, interface)
         })
 }
 
 pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String> {
     let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
     let mut list: Vec<String> = Vec::new();
-    for (_, name, _) in entries(&words) {
+    for (_, _, name, _) in entries(&words) {
         if !list.contains(&name) {
             list.push(name);
         }
@@ -47,8 +51,8 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String
     }
     let old = words.get(1).is_some_and(|&v| v < 0x10400);
     let used: Vec<u32> = entries(&words)
-        .filter(|(_, name, _)| names.contains(&name.as_str()))
-        .flat_map(|(_, _, interface)| interface.to_vec())
+        .filter(|(_, _, name, _)| names.contains(&name.as_str()))
+        .flat_map(|(_, _, _, interface)| interface.to_vec())
         .collect();
     let zero = instructions(&words).any(|(op, args)| {
         op == DECORATE
@@ -63,9 +67,41 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String
     Ok(words)
 }
 
+pub fn subgroups(words: &[u32]) -> u32 {
+    instructions(words)
+        .filter(|(op, _)| *op == CAPABILITY)
+        .map(|(_, args)| match args[0] {
+            61 => subgroup::BASIC,
+            62 => subgroup::VOTE,
+            63 => subgroup::ARITHMETIC,
+            64 => subgroup::BALLOT,
+            65 => subgroup::SHUFFLE,
+            66 => subgroup::RELATIVE,
+            67 => subgroup::CLUSTERED,
+            68 => subgroup::QUAD,
+            6026 => subgroup::ROTATE,
+            _ => 0,
+        })
+        .fold(0, |a, b| a | b)
+}
+
+pub fn atomics(words: &[u32]) -> u32 {
+    let declared = instructions(words).any(|(op, args)| op == CAPABILITY && args[0] == 12);
+    if declared { atomic::ALL } else { 0 }
+}
+
+pub fn width(words: &[u32], entry: &str) -> u32 {
+    let Some((_, function, _, _)) = entries(words).find(|(_, _, name, _)| name == entry) else {
+        return 0;
+    };
+    instructions(words)
+        .find(|(op, args)| *op == MODE && args[0] == function && args[1] == LOCAL_SIZE)
+        .map_or(0, |(_, args)| args[2])
+}
+
 pub fn inputs(words: &[u32], entry: &str) -> Vec<u32> {
-    let Some((_, _, interface)) =
-        entries(words).find(|(model, name, _)| *model == VERTEX && name == entry)
+    let Some((_, _, _, interface)) =
+        entries(words).find(|(model, _, name, _)| *model == VERTEX && name == entry)
     else {
         return Vec::new();
     };

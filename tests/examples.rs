@@ -2,6 +2,8 @@
 
 #[path = "../examples/adopt.rs"]
 mod adopt;
+#[path = "../examples/atomics.rs"]
+mod atomics;
 #[path = "../examples/blits.rs"]
 mod blits;
 #[path = "../examples/cache.rs"]
@@ -36,6 +38,8 @@ mod resolve;
 mod slots;
 #[path = "../examples/sparse.rs"]
 mod sparse;
+#[path = "../examples/subgroups.rs"]
+mod subgroups;
 #[path = "../examples/texture.rs"]
 mod texture;
 #[path = "../examples/uploads.rs"]
@@ -57,6 +61,7 @@ macro_rules! examples {
 }
 
 examples!(
-    adopt, blits, cache, compact, compute, handles, heap, images, indirect, mesh, native, queries,
-    queues, raytrace, render, resolve, slots, sparse, texture, uploads, view, viewports
+    adopt, atomics, blits, cache, compact, compute, handles, heap, images, indirect, mesh, native,
+    queries, queues, raytrace, render, resolve, slots, sparse, subgroups, texture, uploads, view,
+    viewports
 );

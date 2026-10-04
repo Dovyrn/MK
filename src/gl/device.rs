@@ -22,7 +22,7 @@ use crate::gl::state::{self, State, buffer};
 use crate::gl::texture::{Texture, target};
 use crate::{
     Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, Timeline,
-    ViewInfo, dimension, format, memory, query, topology, usage,
+    ViewInfo, atomic, dimension, format, memory, query, stage, subgroup, topology, usage,
 };
 use glow::HasContext;
 use std::cell::{Cell, RefCell};
@@ -62,6 +62,16 @@ const MAX_MESH_TOTAL: u32 = 0x9741;
 const MAX_TASK_COUNT: u32 = 0x9751;
 
 const MAX_MESH_COUNT: u32 = 0x9752;
+
+const SUBGROUP_SIZE: u32 = 0x9532;
+
+const SUBGROUP_STAGES: u32 = 0x9533;
+
+const SUBGROUP_FEATURES: u32 = 0x9534;
+
+const MESH_SHADER_BIT: u32 = 0x40;
+
+const TASK_SHADER_BIT: u32 = 0x80;
 
 pub fn compare(c: u32) -> u32 {
     match c {
@@ -128,6 +138,19 @@ impl Device {
             let int = |p| gl.get_parameter_i32(p);
             let storage = has(43, "GL_ARB_shader_storage_buffer_object");
             let results = has(44, "GL_ARB_query_buffer_object");
+            let compute = has(43, "GL_ARB_compute_shader");
+            let groups = has(99, "GL_KHR_shader_subgroup");
+            let group = |p| if groups { int(p) as u32 } else { 0 };
+            let stages = [
+                (glow::VERTEX_SHADER_BIT, stage::VERTEX),
+                (glow::FRAGMENT_SHADER_BIT, stage::FRAGMENT),
+                (glow::COMPUTE_SHADER_BIT, stage::COMPUTE),
+                (MESH_SHADER_BIT, stage::MESH),
+                (TASK_SHADER_BIT, stage::TASK),
+            ]
+            .into_iter()
+            .filter(|(g, _)| group(SUBGROUP_STAGES) & g != 0)
+            .fold(0, |m, (_, s)| m | s);
             let caps = Caps {
                 push: PUSH as u32,
                 queues: 1,
@@ -159,7 +182,7 @@ impl Device {
                 } else {
                     int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT) as u32
                 },
-                compute: has(43, "GL_ARB_compute_shader"),
+                compute,
                 texture_views: has(43, "GL_ARB_texture_view"),
                 occlusion: results,
                 cache: has(41, "GL_ARB_get_program_binary")
@@ -188,6 +211,25 @@ impl Device {
                 max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
                 max_volume: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
+                subgroup: group(SUBGROUP_SIZE),
+                subgroup_sizes: group(SUBGROUP_SIZE),
+                subgroup_ops: group(SUBGROUP_FEATURES) & subgroup::BITS,
+                subgroup_stages: stages,
+                max_threads: if compute {
+                    int(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS) as u32
+                } else {
+                    0
+                },
+                max_shared: if compute {
+                    int(glow::MAX_COMPUTE_SHARED_MEMORY_SIZE) as u32
+                } else {
+                    0
+                },
+                atomics64: if has(99, "GL_NV_shader_atomic_int64") {
+                    atomic::MIN_MAX | atomic::ALL | atomic::SHARED
+                } else {
+                    0
+                },
                 mesh: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
                 mesh_groups: if extra.mesh.is_some() {
@@ -421,6 +463,7 @@ impl Device {
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
         self.thread();
+        self.caps.compute(info)?;
         if !self.has(43, "GL_ARB_compute_shader") {
             return Err("compute shaders need GL 4.3".into());
         }

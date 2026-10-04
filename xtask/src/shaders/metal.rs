@@ -32,8 +32,20 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         fs::remove_file(&json).unwrap();
         if !metal.exists() {
             let air = out.join(format!("{name}.{entry}.air"));
-            compile(&msl, &air);
-            airs.push(air);
+            let built = Command::new("xcrun")
+                .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
+                .arg(&msl)
+                .arg("-o")
+                .arg(&air)
+                .output()
+                .unwrap();
+            if built.status.success() {
+                airs.push(air);
+            } else {
+                let error = String::from_utf8_lossy(&built.stderr);
+                let first = error.lines().find(|l| l.contains("error")).unwrap_or("");
+                eprintln!("{name}.metallib skips entry {entry}: {first}");
+            }
         }
     }
     if metal.exists() {

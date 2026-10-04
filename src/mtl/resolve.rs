@@ -57,6 +57,10 @@ impl Resolve {
         })
     }
 
+    pub fn width(&self) -> u32 {
+        self.kernels[0].threadExecutionWidth() as u32
+    }
+
     pub fn encode(
         &self,
         encoder: &ProtocolObject<dyn MTL4ComputeCommandEncoder>,

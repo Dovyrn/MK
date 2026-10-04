@@ -231,6 +231,14 @@ fields = [
     ["texture_clear", "bool", "false"],
     ["buffer_clear", "bool", "false"],
     ["partial_resolve", "bool", "false"],
+    ["subgroup", "u32", "0"],
+    ["subgroup_sizes", "u32", "0"],
+    ["subgroup_ops", "u32", "0"],
+    ["subgroup_stages", "u32", "0"],
+    ["full_subgroups", "bool", "false"],
+    ["max_threads", "u32", "0"],
+    ["max_shared", "u32", "0"],
+    ["atomics64", "u32", "0"],
 ]
 
 [[info]]
@@ -268,6 +276,8 @@ fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
     ["indirect", "bool", "false"],
+    ["subgroup", "u32", "0"],
+    ["full", "bool", "false"],
 ]
 
 [[info]]

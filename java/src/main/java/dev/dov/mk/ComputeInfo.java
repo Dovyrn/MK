@@ -13,9 +13,11 @@ public class ComputeInfo {
     public long codeSize = 0;
     public String entry = "";
     public boolean indirect = false;
+    public int subgroup = 0;
+    public boolean full = false;
 
     int encodedSize() {
-        return 24 + entry.getBytes(StandardCharsets.UTF_8).length;
+        return 32 + entry.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -27,6 +29,10 @@ public class ComputeInfo {
         memByteBuffer(p + 4, entryBytes.length).put(entryBytes);
         p += 4 + entryBytes.length;
         memPutInt(p, indirect ? 1 : 0);
+        p += 4;
+        memPutInt(p, subgroup);
+        p += 4;
+        memPutInt(p, full ? 1 : 0);
         p += 4;
         return p;
     }

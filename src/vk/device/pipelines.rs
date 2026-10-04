@@ -1,6 +1,8 @@
 use super::Device;
 use crate::vk::spirv;
-use crate::{ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, fill, format, topology};
+use crate::{
+    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, fill, format, stage, topology,
+};
 use ash::vk;
 use std::ffi::CString;
 
@@ -32,6 +34,22 @@ impl Device {
             .filter(|name| !name.is_empty())
             .collect();
         let words = spirv::read(code, &used, self.caps.slots)?;
+        let ops = spirv::subgroups(&words);
+        self.caps.atomics(spirv::atomics(&words))?;
+        for (flag, name) in entries {
+            let stage = [
+                (vk::ShaderStageFlags::VERTEX, stage::VERTEX),
+                (vk::ShaderStageFlags::FRAGMENT, stage::FRAGMENT),
+                (vk::ShaderStageFlags::TASK_EXT, stage::TASK),
+                (vk::ShaderStageFlags::MESH_EXT, stage::MESH),
+            ]
+            .into_iter()
+            .find(|(f, _)| f == flag)
+            .map_or(0, |(_, s)| s);
+            if !name.is_empty() {
+                self.caps.subgroups(ops, stage)?;
+            }
+        }
         if let Some(v) = vertex {
             let inputs = spirv::inputs(&words, v.vertex);
             let missing = inputs
@@ -309,13 +327,37 @@ impl Device {
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
+        self.caps.compute(info)?;
         let (code, entry) = (info.code, info.entry);
-        let module = self.module(&spirv::read(code, &[entry], self.caps.slots)?)?;
+        let words = spirv::read(code, &[entry], self.caps.slots)?;
+        self.caps
+            .subgroups(spirv::subgroups(&words), stage::COMPUTE)?;
+        self.caps.atomics(spirv::atomics(&words))?;
+        if info.full {
+            let size = if info.subgroup == 0 {
+                1 << (31 - self.caps.subgroup_sizes.leading_zeros())
+            } else {
+                info.subgroup
+            };
+            self.caps.full(spirv::width(&words, entry), size);
+        }
+        let module = self.module(&words)?;
         let name = CString::new(entry).unwrap();
-        let stage = vk::PipelineShaderStageCreateInfo::default()
+        let mut required = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default()
+            .required_subgroup_size(info.subgroup);
+        let flags = if info.full {
+            vk::PipelineShaderStageCreateFlags::REQUIRE_FULL_SUBGROUPS
+        } else {
+            vk::PipelineShaderStageCreateFlags::empty()
+        };
+        let mut stage = vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::COMPUTE)
+            .flags(flags)
             .module(module)
             .name(&name);
+        if info.subgroup != 0 && self.ext.sizes {
+            stage = stage.push_next(&mut required);
+        }
         let info = vk::ComputePipelineCreateInfo::default()
             .stage(stage)
             .layout(self.layout);

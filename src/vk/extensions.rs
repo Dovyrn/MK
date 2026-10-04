@@ -1,3 +1,4 @@
+use crate::atomic;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
 use ash::khr::push_descriptor;
 use ash::khr::{acceleration_structure, fragment_shading_rate};
@@ -7,6 +8,9 @@ pub struct Extensions {
     pub debug: Option<debug_utils::Device>,
     pub mesh: Option<mesh_shader::Device>,
     pub task: bool,
+    pub sizes: bool,
+    pub full: bool,
+    pub atomics: u32,
     pub accel: Option<acceleration_structure::Device>,
     pub rates: Option<fragment_shading_rate::Device>,
     pub images: bool,
@@ -142,6 +146,21 @@ impl Extensions {
                 debug,
                 mesh,
                 task,
+                sizes: v13.is_some_and(|f| f.subgroup_size_control != 0),
+                full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
+                atomics: v12.map_or(0, |f| {
+                    let buffer = if f.shader_buffer_int64_atomics != 0 {
+                        atomic::MIN_MAX | atomic::ALL
+                    } else {
+                        0
+                    };
+                    let shared = if f.shader_shared_int64_atomics != 0 {
+                        atomic::SHARED
+                    } else {
+                        0
+                    };
+                    buffer | shared
+                }),
                 accel,
                 rates,
                 images,

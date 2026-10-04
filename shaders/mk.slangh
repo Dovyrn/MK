@@ -40,6 +40,24 @@
 #define MK_SAMPLER_6 register(s6)
 #define MK_SAMPLER_7 register(s7)
 
+void atomic_max(RWStructuredBuffer<uint64_t> buffer, uint index, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "atomic_max_explicit((device atomic_ulong*)&$0[$1], $2, memory_order_relaxed)";
+    default:
+        InterlockedMax(buffer[index], value);
+    }
+}
+
+void atomic_min(RWStructuredBuffer<uint64_t> buffer, uint index, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "atomic_min_explicit((device atomic_ulong*)&$0[$1], $2, memory_order_relaxed)";
+    default:
+        InterlockedMin(buffer[index], value);
+    }
+}
+
 #include "indirect.slangh"
 #include "rays.slangh"
 

@@ -183,6 +183,7 @@ impl Device {
     }
 
     pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
+        self.caps.compute(info)?;
         autoreleasepool(|_| {
             let (library, groups) = self.library(info.code)?;
             let shape = group(&groups, info.entry)?;

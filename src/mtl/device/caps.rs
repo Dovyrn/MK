@@ -1,10 +1,10 @@
 use super::Device;
-use crate::{Caps, TextureInfo, dimension, format, usage};
+use crate::{Caps, TextureInfo, atomic, dimension, format, stage, subgroup, usage};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
 
 impl Device {
-    pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize) -> Caps {
+    pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize, width: u32) -> Caps {
         let apple9 = raw.supportsFamily(MTLGPUFamily::Apple9);
         let apple10 = raw.supportsFamily(MTLGPUFamily::Apple10);
         let groups = if apple10 {
@@ -17,6 +17,20 @@ impl Device {
         let size = if apple10 { 32768 } else { 16384 };
         let sparse = cfg!(target_os = "macos") || raw.supportsFamily(MTLGPUFamily::Apple8);
         Caps {
+            subgroup: width,
+            subgroup_sizes: width,
+            subgroup_ops: subgroup::BITS & !subgroup::CLUSTERED,
+            subgroup_stages: stage::COMPUTE | stage::FRAGMENT,
+            full_subgroups: false,
+            max_threads: raw.maxThreadsPerThreadgroup().width as u32,
+            max_shared: raw.maxThreadgroupMemoryLength() as u32,
+            atomics64: if apple9
+                || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
+            {
+                atomic::MIN_MAX
+            } else {
+                0
+            },
             mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
             mesh_groups: groups,
