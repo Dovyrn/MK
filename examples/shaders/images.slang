@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Push {
     DescriptorHandle<RWTexture2D<float4>> image;
     uint size;

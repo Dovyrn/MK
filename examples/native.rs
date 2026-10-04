@@ -40,7 +40,7 @@ pub fn main() {
     let mut device = host::device(1);
     let data = device.create_buffer(n, memory::DEVICE).unwrap();
     let back = device.create_buffer(n, memory::READBACK).unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     fill(&device, &mut c, data, n);
@@ -59,8 +59,8 @@ pub fn main() {
     );
     c.end_compute();
     print!("{}", mk::Command::dump(c.bytes()));
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), n as usize) };
     assert!(bytes.iter().all(|b| *b == 7), "first byte {}", bytes[0]);
     device.unmap(back);

@@ -42,3 +42,15 @@
 
 #include "indirect.slangh"
 #include "rays.slangh"
+
+export T getDescriptorFromHandle<T>(DescriptorHandle<T> handle)
+    where T : IOpaqueDescriptor
+{
+    __target_switch
+    {
+    case spirv:
+        return defaultGetDescriptorFromHandle(handle, BindlessDescriptorOptions.None);
+    default:
+        return defaultGetDescriptorFromHandle(handle);
+    }
+}

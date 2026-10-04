@@ -1,22 +1,26 @@
-#[cfg(not(feature = "gl"))]
 use mk::{Command, Commands, access, memory, stage};
 
 #[path = "support/host.rs"]
 mod host;
 
-#[cfg(feature = "gl")]
-pub fn main() {
-    println!("needs device addresses, which GL lacks");
-}
-
-#[cfg(not(feature = "gl"))]
 pub fn main() {
     let mut device = host::device(1);
     println!("{:?}", device.caps());
+    if !device.caps().compute {
+        println!("no compute shaders");
+        return;
+    }
     let n = 1024u32;
     let buffer = device
         .create_buffer(n as u64 * 4, memory::READBACK)
         .unwrap();
+    let handle = match device.buffer_handle(buffer) {
+        Ok(h) => h,
+        Err(e) => {
+            println!("{e}");
+            return;
+        }
+    };
     let pipeline = device
         .create_pipeline(&mk::ComputeInfo {
             code: host::code!("fill"),
@@ -24,8 +28,8 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event().unwrap();
-    let mut push = device.address(buffer).to_le_bytes().to_vec();
+    let timeline = device.create_timeline().unwrap();
+    let mut push = handle.to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(100u32.to_le_bytes());
     let mut c = Commands::default();
@@ -50,11 +54,19 @@ pub fn main() {
     c.end_compute();
     c.end_label();
     print!("{}", Command::dump(c.bytes()));
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    #[cfg(not(feature = "gl"))]
+    let (waited, name) = std::thread::scope(|s| {
+        let waiter = s.spawn(|| timeline.wait(1, 1000).unwrap());
+        let name = device.name();
+        (waiter.join().unwrap(), name)
+    });
+    #[cfg(feature = "gl")]
+    let (waited, name) = (timeline.wait(1, 1000).unwrap(), device.name());
+    assert!(waited, "the wait timed out");
     let data = unsafe { std::slice::from_raw_parts(device.map(buffer).cast::<u32>(), n as usize) };
     for (i, v) in data.iter().enumerate() {
         assert_eq!(*v, 100 + i as u32);
     }
-    println!("{n} values match");
+    println!("{n} values match on {name}");
 }

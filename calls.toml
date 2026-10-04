@@ -267,25 +267,13 @@ params = [["path", "str"]]
 fails = true
 
 [[call]]
-name = "create_event"
-result = "u32"
+name = "create_timeline"
+result = "timeline"
 fails = true
 
 [[call]]
-name = "destroy_event"
-params = [["event", "u32"]]
-
-[[call]]
-name = "event_value"
-params = [["event", "u32"]]
-result = "u64"
-fails = true
-
-[[call]]
-name = "wait"
-params = [["event", "u32"], ["value", "u64"], ["ms", "u64"]]
-result = "bool"
-fails = true
+name = "destroy_timeline"
+params = [["timeline", "taken"]]
 
 [[call]]
 name = "submit"
@@ -314,10 +302,10 @@ result = "u32"
 fails = true
 
 [[call]]
-name = "import_event"
+name = "import_timeline"
 backend = "vk"
 params = [["raw", "handle"]]
-result = "u32"
+result = "timeline"
 
 [[call]]
 name = "raw_buffer"
@@ -330,12 +318,6 @@ name = "raw_texture"
 backend = "vk"
 params = [["texture", "u32"]]
 result = "handles"
-
-[[call]]
-name = "raw_event"
-backend = "vk"
-params = [["event", "u32"]]
-result = "handle"
 
 [[call]]
 name = "raw_queue"
@@ -364,10 +346,10 @@ result = "u32"
 fails = true
 
 [[call]]
-name = "import_event"
+name = "import_timeline"
 backend = "mtl"
 params = [["raw", "object"]]
-result = "u32"
+result = "timeline"
 
 [[call]]
 name = "raw_buffer"
@@ -379,12 +361,6 @@ result = "object"
 name = "raw_texture"
 backend = "mtl"
 params = [["texture", "u32"]]
-result = "object"
-
-[[call]]
-name = "raw_event"
-backend = "mtl"
-params = [["event", "u32"]]
 result = "object"
 
 [[call]]

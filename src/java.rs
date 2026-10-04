@@ -1,4 +1,4 @@
-use crate::Device;
+use crate::{Device, Timeline};
 use jni::JNIEnv;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jint, jlong};
@@ -56,15 +56,24 @@ pub fn f32x12<'a>(address: jlong) -> &'a [f32; 12] {
     unsafe { &*(address as *const [f32; 12]) }
 }
 
-pub fn waits(address: jlong, count: i64) -> Vec<(u32, u64)> {
+pub fn waits<'a>(address: jlong, count: i64) -> Vec<(&'a Timeline, u64)> {
     let mut b = bytes(address, count * 16);
     (0..count)
         .map(|_| {
-            let event = crate::wire::u32(&mut b);
-            crate::wire::u32(&mut b);
-            (event, crate::wire::u64(&mut b))
+            let t = timeline(crate::wire::u64(&mut b) as jlong);
+            (t, crate::wire::u64(&mut b))
         })
         .collect()
+}
+
+pub fn timeline<'a>(handle: jlong) -> &'a Timeline {
+    assert_ne!(handle, 0, "timeline used after destroy");
+    unsafe { &*(handle as *const Timeline) }
+}
+
+pub fn take(handle: jlong) -> Timeline {
+    assert_ne!(handle, 0, "timeline used after destroy");
+    *unsafe { Box::from_raw(handle as *mut Timeline) }
 }
 
 #[cfg(feature = "vk")]

@@ -112,7 +112,7 @@ impl Queue {
                 .map_err(String::from);
         }
         for &(event, value) in waits {
-            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
+            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.timelines.get(event));
             self.raw.waitForEvent_value(event, value);
         }
         let lost = self.lost.clone();
@@ -132,7 +132,7 @@ impl Queue {
                 .commit_count_options(NonNull::from(&mut buffer), 1, &options)
         };
         for &(event, value) in signals {
-            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.events.get(event));
+            let event = ProtocolObject::<dyn MTLEvent>::from_ref(&**res.timelines.get(event));
             self.raw.signalEvent_value(event, value);
         }
         self.signal();

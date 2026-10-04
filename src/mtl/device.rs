@@ -4,7 +4,6 @@ mod buffers;
 mod cache;
 mod caps;
 mod copies;
-mod events;
 mod heaps;
 mod indirect;
 mod pipelines;
@@ -12,6 +11,7 @@ mod queries;
 mod samplers;
 mod sparse;
 mod textures;
+mod timelines;
 
 use crate::check::Check;
 use crate::mtl::Callback;
@@ -20,15 +20,15 @@ use crate::mtl::queue::Queue;
 use crate::mtl::residency::Residency;
 use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
-use crate::{Caps, TextureInfo, dimension, format, memory, usage};
+use crate::{Caps, TextureInfo, Timeline, dimension, format, memory, usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor, MTL4CompilerTaskOptions,
     MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor, MTL4PipelineDataSetSerializer,
-    MTLCompareFunction, MTLDevice, MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize,
-    MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLVertexFormat,
+    MTLCompareFunction, MTLDevice, MTLGPUFamily, MTLLibrary, MTLResourceID, MTLResourceOptions,
+    MTLSize, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -234,6 +234,9 @@ impl Device {
                 (1..=32).contains(&queues),
                 "queue count {queues} is outside 1..=32"
             );
+            if !raw.supportsFamily(MTLGPUFamily::Metal4) {
+                return Err("the device does not support Metal 4".into());
+            }
             let compiler = raw
                 .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
                 .map_err(|e| e.localizedDescription().to_string())?;
@@ -310,23 +313,18 @@ impl Device {
         assert!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
-    fn healthy(&self) -> Result<(), String> {
-        match self.lost.lock().unwrap().clone() {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
-    }
-
     pub(crate) fn replay(
         &mut self,
         queue: usize,
         (commands, natives): (&[u8], &[Callback]),
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         autoreleasepool(|_| {
+            let waits = &self.res.table.points(waits);
+            let signals = &self.res.table.points(signals);
             Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-            self.res.table.submit(queue, waits, signals);
+            self.res.table.submit(queue, signals);
             self.collect();
             self.queues[queue].submit(
                 &self.raw,

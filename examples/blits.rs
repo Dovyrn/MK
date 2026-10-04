@@ -110,7 +110,7 @@ pub fn main() {
         total += (s.3 * s.4 * 4) as u64;
     }
     let back = device.create_buffer(total, memory::READBACK).unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let all = (0, !0);
     let (fresh, written, read) = (
         (layout::UNDEFINED, layout::COPY_DST),
@@ -267,8 +267,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let data = unsafe { std::slice::from_raw_parts(device.map(back), total as usize) };
     let texel = |slot: usize, x: u32, y: u32| {
         let at = (offsets[slot] + ((y * slots[slot].3 + x) * 4) as u64) as usize;

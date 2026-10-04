@@ -91,7 +91,7 @@ pub fn main() {
     let count = 1u32 << 18;
     let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     if let Some(times) = times {
         c.reset_queries(times, 0, 2);
@@ -140,8 +140,8 @@ pub fn main() {
         c.resolve_queries(times, 0, 2, out, 0);
     }
     c.resolve_queries(samples, 0, 1, out, 16);
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let r = unsafe { std::slice::from_raw_parts(device.map(out).cast::<u64>(), 3) };
     let ns = (r[1] - r[0]) as f32 * caps.tick;
     println!(
@@ -155,7 +155,7 @@ pub fn main() {
         "{}",
         host::report(&[
             "GL_NV_shader_buffer_load",
-            "GL_NV_shader_buffer_store",
+            "GL_NV_gpu_shader5",
             "GL_ARB_bindless_texture",
             "GL_EXT_mesh_shader",
             "GL_NV_mesh_shader",

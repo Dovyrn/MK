@@ -80,7 +80,7 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     barrier(
@@ -147,8 +147,8 @@ pub fn main() {
     );
     c.end_compute();
     print!("{}", Command::dump(c.bytes()));
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let pixels = unsafe { std::slice::from_raw_parts(device.map(back), 64) }.to_vec();
     device.unmap(back);
     for (i, p) in pixels.chunks(4).enumerate() {
@@ -219,8 +219,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 2)]).unwrap();
+    assert!(timeline.wait(2, 1000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(out), 64 * 4 + 64) }.to_vec();
     device.unmap(out);
     let words: Vec<u32> = bytes[..256]

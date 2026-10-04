@@ -50,6 +50,12 @@ fn main() {
     fs::write(out.join("format.rs"), formats::rust(&table)).unwrap();
     save(&dir.join("Format.java"), &formats::java(&table));
     save(&dir.join("Block.java"), include_str!("build/block.java"));
+    save(&dir.join("Arena.java"), include_str!("build/arena.java"));
+    save(
+        &dir.join("Timeline.java"),
+        include_str!("build/timeline.java"),
+    );
+    save(&dir.join("Point.java"), include_str!("build/point.java"));
     let borrowing: Vec<String> = infos
         .iter()
         .filter(|i| infos::borrows(i))

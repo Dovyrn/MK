@@ -90,12 +90,14 @@ impl Device {
 
     pub fn buffer_size(&self, size: u64, _memory: u32) -> (u64, u64) {
         let needs = self.buffer_needs(size);
-        (needs.size, needs.alignment)
+        let scratch = if self.caps.ray { 256 } else { 1 };
+        (needs.size, needs.alignment.max(scratch))
     }
 
     pub fn texture_size(&self, info: &TextureInfo) -> (u64, u64) {
         let needs = self.texture_needs(info);
-        (needs.size, needs.alignment)
+        let page = self.limits.buffer_image_granularity;
+        (needs.size.next_multiple_of(page), needs.alignment.max(page))
     }
 
     pub fn create_placed_buffer(

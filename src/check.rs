@@ -165,9 +165,23 @@ impl<'a> Check<'a> {
         end - offset
     }
 
-    fn filled(&self, c: &Command, buffer: u32, offset: u64, size: u64) {
+    fn filled(
+        &self,
+        c: &Command,
+        buffer: u32,
+        offset: u64,
+        size: u64,
+        max: u64,
+    ) -> Result<(), String> {
         let size = self.range(buffer, offset, size);
         assert!(size > 0, "{} covers 0 bytes", name(c));
+        if size > max {
+            return Err(format!(
+                "{} binds {size} bytes, over the limit of {max}",
+                name(c)
+            ));
+        }
+        Ok(())
     }
 
     fn barrier(&self, src_stage: u32, src_access: u32, dst_stage: u32, dst_access: u32) {
@@ -229,6 +243,9 @@ impl<'a> Check<'a> {
     fn list(&self, c: &Command, indirect: u32) -> Result<u32, String> {
         let (info, topology, mesh) = *self.table.indirects.get(indirect);
         self.need(c, self.caps.indirect, "indirect")?;
+        if mesh {
+            self.need(c, self.caps.mesh_indirect, "mesh_indirect")?;
+        }
         self.draw(c, info.indexed);
         assert!(
             self.indirect,
@@ -518,7 +535,7 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
                 );
-                self.filled(c, buffer, offset, size);
+                self.filled(c, buffer, offset, size, !0)?;
             }
             Command::Barrier {
                 src_stage,
@@ -842,7 +859,7 @@ impl<'a> Check<'a> {
                 self.need(c, caps.slots, "slots")?;
                 slot(i, slot::UNIFORMS);
                 aligned(offset, caps.bind_alignment);
-                self.filled(c, buffer, offset, size);
+                self.filled(c, buffer, offset, size, caps.max_uniform)?;
             }
             Command::BindStorage {
                 slot: i,
@@ -854,7 +871,7 @@ impl<'a> Check<'a> {
                 self.need(c, caps.storage, "storage")?;
                 slot(i, slot::STORAGES);
                 aligned(offset, caps.bind_alignment);
-                self.filled(c, buffer, offset, size);
+                self.filled(c, buffer, offset, size, caps.max_storage)?;
             }
             Command::BindTexture { slot: i, texture } => {
                 self.need(c, caps.slots, "slots")?;
@@ -924,9 +941,16 @@ impl<'a> Check<'a> {
                 }
                 self.indirect(buffer, offset, count, stride, 20);
             }
-            Command::DrawMesh { .. } => {
+            Command::DrawMesh { x, y, z } => {
                 self.need(c, caps.mesh, "mesh")?;
                 self.draw(c, false);
+                let total = x as u64 * y as u64 * z as u64;
+                if x.max(y).max(z) > caps.mesh_axis || total > caps.mesh_groups as u64 {
+                    return Err(format!(
+                        "{c} grid {x}x{y}x{z} is over caps.mesh_axis {} or caps.mesh_groups {}",
+                        caps.mesh_axis, caps.mesh_groups
+                    ));
+                }
             }
             Command::DrawMeshIndirect {
                 buffer,
@@ -934,7 +958,7 @@ impl<'a> Check<'a> {
                 count,
                 stride,
             } => {
-                self.need(c, caps.mesh, "mesh")?;
+                self.need(c, caps.mesh_indirect, "mesh_indirect")?;
                 if count > 1 {
                     self.need(c, caps.multi_draw, "multi_draw")?;
                 }

@@ -1,5 +1,7 @@
+#include "mk.slangh"
+
 struct Push {
-    uint* data;
+    DescriptorHandle<RWStructuredBuffer<uint>> data;
     uint count;
     uint value;
 };

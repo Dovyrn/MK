@@ -1,4 +1,4 @@
-use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader, mutable_descriptor_type};
+use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader};
 use mk::ash::khr::{
     acceleration_structure, deferred_host_operations, fragment_shading_rate,
     portability_enumeration, portability_subset, push_descriptor, ray_query,
@@ -121,20 +121,13 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let available = instance
             .enumerate_device_extension_properties(physical)
             .unwrap();
-        let mut supported_mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default();
         let mut supported_v11 = vk::PhysicalDeviceVulkan11Features::default();
         let mut supported_v13 = vk::PhysicalDeviceVulkan13Features::default();
         let mut query = vk::PhysicalDeviceFeatures2::default()
-            .push_next(&mut supported_mutable)
             .push_next(&mut supported_v11)
             .push_next(&mut supported_v13);
         instance.get_physical_device_features2(physical, &mut query);
-        let mutables = has(&available, mutable_descriptor_type::NAME)
-            && supported_mutable.mutable_descriptor_type != 0;
         let mut extensions = Vec::new();
-        if mutables {
-            extensions.push(mutable_descriptor_type::NAME.as_ptr());
-        }
         if has(&available, portability_subset::NAME) {
             extensions.push(portability_subset::NAME.as_ptr());
         }
@@ -249,8 +242,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .shader_float16(supported_v12.shader_float16 != 0)
             .shader_int8(supported_v12.shader_int8 != 0)
             .sampler_mirror_clamp_to_edge(supported_v12.sampler_mirror_clamp_to_edge != 0);
-        let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
-            .mutable_descriptor_type(mutables);
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
             .synchronization2(supported_v13.synchronization2 != 0)
             .dynamic_rendering(supported_v13.dynamic_rendering != 0)
@@ -262,11 +253,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .push_next(&mut v11)
             .push_next(&mut v12)
             .push_next(&mut v13);
-        let info = if mutables {
-            info.push_next(&mut mutable)
-        } else {
-            info
-        };
         let info = if meshes {
             info.push_next(&mut mesh)
         } else {

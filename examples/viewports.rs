@@ -66,7 +66,7 @@ pub fn main() {
             ..Default::default()
         },
     ];
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture: color,
@@ -113,8 +113,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (w * h) as usize) };
     let at = |x: u32, y: u32| pixels[(y * w + x) as usize];

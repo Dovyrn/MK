@@ -15,7 +15,11 @@ pub(super) fn probe(
     limits: &vk::PhysicalDeviceLimits,
 ) -> Caps {
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
+    let mut mesh = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
     let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut buffer);
+    if ext.mesh.is_some() {
+        properties = properties.push_next(&mut mesh);
+    }
     unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
     let features = &ext.features;
     let families = unsafe { instance.get_physical_device_queue_family_properties(physical) };
@@ -28,11 +32,21 @@ pub(super) fn probe(
         });
     Caps {
         mesh: ext.mesh.is_some(),
+        mesh_indirect: ext.mesh.is_some(),
+        mesh_groups: mesh
+            .max_task_work_group_total_count
+            .min(mesh.max_mesh_work_group_total_count),
+        mesh_axis: mesh
+            .max_task_work_group_count
+            .into_iter()
+            .chain(mesh.max_mesh_work_group_count)
+            .min()
+            .unwrap(),
         push: limits.max_push_constants_size.min(256),
         queues: queues.len() as u32,
         samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
-        textures: bindless.textures().min(limits.max_memory_allocation_count),
-        images: bindless.textures().min(limits.max_memory_allocation_count),
+        textures: bindless.textures,
+        images: bindless.textures,
         addresses: true,
         tick: limits.timestamp_period,
         timestamps: queues
@@ -64,7 +78,7 @@ pub(super) fn probe(
         multi_draw: features.multi_draw_indirect != 0,
         indirect_count: ext.count,
         sparse_textures: sparse && features.sparse_residency_image2_d != 0,
-        buffers: bindless.buffers.min(limits.max_memory_allocation_count),
+        buffers: bindless.buffers,
         compute: true,
         texture_views: true,
         occlusion: true,
@@ -83,6 +97,8 @@ pub(super) fn probe(
         buffer_clear: true,
         partial_resolve: true,
         max_buffer: buffer.max_buffer_size,
+        max_uniform: limits.max_uniform_buffer_range as u64,
+        max_storage: limits.max_storage_buffer_range as u64,
         max_texture: limits
             .max_image_dimension1_d
             .min(limits.max_image_dimension2_d),
@@ -135,19 +151,33 @@ impl Device {
             ),
             (vk::FormatFeatureFlags::TRANSFER_SRC, usage::COPY_SRC),
             (vk::FormatFeatureFlags::TRANSFER_DST, usage::COPY_DST),
-            (
-                vk::FormatFeatureFlags::TRANSFER_SRC | vk::FormatFeatureFlags::TRANSFER_DST,
-                if aspect(format) == vk::ImageAspectFlags::COLOR && self.ext.copy.is_some() {
-                    usage::HOST
-                } else {
-                    0
-                },
-            ),
         ]
         .into_iter()
         .filter(|(f, _)| features.contains(*f))
         .fold(usage::VIEW, |u, (_, b)| u | b)
             | blit
+            | self.host(format, raw)
+    }
+
+    fn host(&self, format: u32, raw: vk::Format) -> u32 {
+        if self.ext.copy.is_none() || aspect(format) != vk::ImageAspectFlags::COLOR {
+            return 0;
+        }
+        let mut three = vk::FormatProperties3::default();
+        let mut properties = vk::FormatProperties2::default().push_next(&mut three);
+        unsafe {
+            self.instance.get_physical_device_format_properties2(
+                self.physical,
+                raw,
+                &mut properties,
+            )
+        };
+        let host = vk::FormatFeatureFlags2::HOST_IMAGE_TRANSFER_EXT;
+        if three.optimal_tiling_features.contains(host) {
+            usage::HOST
+        } else {
+            0
+        }
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {

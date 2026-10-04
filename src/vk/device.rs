@@ -3,16 +3,17 @@ mod budget;
 mod buffers;
 mod caps;
 mod copies;
-mod events;
 mod heaps;
 mod pipelines;
 mod queries;
 mod samplers;
 mod sparse;
 mod textures;
+mod timelines;
 
 use caps::probe;
 
+use crate::Timeline;
 use crate::check::Check;
 use crate::vk::Callback;
 use crate::vk::bindings;
@@ -394,11 +395,13 @@ impl Device {
         &mut self,
         queue: usize,
         (commands, natives): (&[u8], &[Callback]),
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
+        let waits = &self.res.table.points(waits);
+        let signals = &self.res.table.points(signals);
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-        self.res.table.submit(queue, waits, signals);
+        self.res.table.submit(queue, signals);
         self.collect();
         self.queues[queue].submit(
             &self.raw,
@@ -449,8 +452,8 @@ impl Drop for Device {
             for pipeline in res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
             }
-            for event in res.events.drain() {
-                event.free(&self.raw);
+            for semaphore in res.timelines.drain() {
+                semaphore.free(&self.raw);
             }
             for heap in res.heaps.drain() {
                 if Rc::strong_count(&heap.memory) == 1 {

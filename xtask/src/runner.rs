@@ -20,7 +20,7 @@ pub struct Case {
     pub name: String,
     pub backend: &'static str,
     pub env: Vec<(String, String)>,
-    pub filter: Option<&'static str>,
+    pub filter: &'static [&'static str],
 }
 
 pub fn drivers() -> Vec<(String, String)> {
@@ -45,7 +45,7 @@ pub fn cases(full: bool) -> Vec<Case> {
             .iter()
             .map(|&(k, v)| (k.to_string(), v.to_string()))
             .collect(),
-        filter: None,
+        filter: &[],
     };
     let sdk = std::env::var_os("VULKAN_SDK").is_some() || cfg!(target_os = "macos");
     let layers: &[(&str, &str)] = if full && sdk {
@@ -63,7 +63,14 @@ pub fn cases(full: bool) -> Vec<Case> {
         } else {
             &[]
         };
-        list.push(case("metal".into(), "mtl", check));
+        let mut metal = case("metal".into(), "mtl", check);
+        if full {
+            metal.filter = &["--skip", "mesh"];
+            let mut mesh = case("metal mesh".into(), "mtl", &[("MTL_DEBUG_LAYER", "1")]);
+            mesh.filter = &["mesh"];
+            list.push(mesh);
+        }
+        list.push(metal);
         for (name, file) in drivers() {
             let env = [
                 ("DYLD_FALLBACK_LIBRARY_PATH", "/usr/local/lib"),
@@ -101,7 +108,7 @@ pub fn cases(full: bool) -> Vec<Case> {
             ("DYLD_FALLBACK_LIBRARY_PATH", "/opt/homebrew/lib"),
         ];
         let mut zink = case("gl zink".into(), "gl", &env);
-        zink.filter = Some("images");
+        zink.filter = &["images"];
         list.push(zink);
     } else {
         list.push(case("vulkan".into(), "vk", layers));
@@ -117,9 +124,7 @@ pub fn run(case: &Case, mut command: Command, cwd: &Path, out: &mut String) -> u
         .current_dir(cwd)
         .envs(case.env.iter().map(|(k, v)| (k, v)))
         .arg("--show-output");
-    if let Some(f) = case.filter {
-        command.arg(f);
-    }
+    command.args(case.filter);
     writeln!(out, "== {}", case.name).unwrap();
     let (text, finished) = match timed(command) {
         Ok(r) => r,

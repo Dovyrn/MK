@@ -4,8 +4,8 @@ mod buffer;
 mod cache;
 mod device;
 mod errors;
-mod event;
 mod extra;
+mod fences;
 mod native;
 mod pipeline;
 mod program;
@@ -17,6 +17,8 @@ mod resources;
 mod sampler;
 mod state;
 mod texture;
+mod timeline;
 
 pub use device::Device;
 pub use native::{Callback, Native};
+pub use timeline::Timeline;

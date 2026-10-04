@@ -57,7 +57,7 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let pattern: Vec<[u8; 4]> = (0..texels as u32)
         .map(|i| {
             [
@@ -140,8 +140,8 @@ pub fn main() {
     );
     c.end_compute();
     print!("{}", Command::dump(c.bytes()));
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let sampled = unsafe { std::slice::from_raw_parts(device.map(out).cast::<[f32; 4]>(), texels) };
     let written = unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), texels) };
     for i in 0..texels {

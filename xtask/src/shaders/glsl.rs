@@ -7,6 +7,19 @@ use std::process::Command;
 const LOCATIONS: u32 = 16;
 
 pub fn glsl(out: &Path, name: &str) {
+    let path = out.join(format!("{name}.gl"));
+    match container(out, name) {
+        Ok(text) => fs::write(&path, text).unwrap(),
+        Err(entry) => {
+            eprintln!("{name}.gl skipped: entry {entry} has no GL translation");
+            if path.exists() {
+                fs::remove_file(&path).unwrap();
+            }
+        }
+    }
+}
+
+fn container(out: &Path, name: &str) -> Result<String, String> {
     let (textures, samplers) = super::shifts();
     let spv = out.join(format!("{name}.spv"));
     let reflection: Value =
@@ -50,12 +63,24 @@ pub fn glsl(out: &Path, name: &str) {
                 .output()
                 .unwrap();
             if !output.status.success() {
-                return;
+                return Err(entry.to_string());
             }
             let vulkan = String::from_utf8(output.stdout).unwrap();
             let fixed = unset(&vulkan.replace("layout(push_constant, ", "layout("));
-            let Some(fixed) = bindless(&fixed) else {
-                return;
+            let fixed = bindless(&fixed).ok_or(entry)?;
+            let fixed = if fixed.contains("layout(scalar) uniform") {
+                let push = reflection["push_constants"][0]["type"]
+                    .as_str()
+                    .ok_or(entry)?;
+                std430(&reflection["types"], push).ok_or(entry)?;
+                fixed
+                    .replace(
+                        "#extension GL_EXT_scalar_block_layout : require",
+                        "#extension GL_NV_uniform_buffer_std430_layout : require",
+                    )
+                    .replace("layout(scalar) uniform", "layout(std430) uniform")
+            } else {
+                fixed
             };
             source = Some((fixed.clone(), fixed, vulkan));
         }
@@ -99,17 +124,17 @@ pub fn glsl(out: &Path, name: &str) {
                 break;
             }
         }
-        let Some((plain, packed, vulkan)) = source else {
-            return;
-        };
+        let (plain, packed, vulkan) = source.ok_or(entry)?;
         let routed = plain.contains("gl_ViewportIndex") || plain.contains("gl_Layer");
         let plain = if stage == "vert" && routed {
             let line = plain.find('\n').unwrap() + 1;
+            let version = plain[..line].replace("#version 330", "#version 410");
             format!(
-                "{}#extension GL_ARB_shader_viewport_layer_array : enable\n{}",
-                &plain[..line],
+                "{version}#extension GL_ARB_shader_viewport_layer_array : enable\n{}",
                 &plain[line..]
             )
+        } else if stage == "mesh" {
+            depth(&plain)
         } else {
             plain
         };
@@ -167,7 +192,74 @@ pub fn glsl(out: &Path, name: &str) {
             container += &format!("//@ {b}\n");
         }
     }
-    fs::write(out.join(format!("{name}.gl")), container).unwrap();
+    Ok(container)
+}
+
+fn std430(types: &Value, ty: &str) -> Option<(u64, u64)> {
+    let vector = |prefix: &str, scalar: u64| {
+        let n: u64 = ty.strip_prefix(prefix)?.parse().ok()?;
+        Some((if n == 2 { 2 } else { 4 } * scalar, n * scalar))
+    };
+    let simple = match ty {
+        "float" | "int" | "uint" | "bool" => Some((4, 4)),
+        "double" | "int64_t" | "uint64_t" => Some((8, 8)),
+        _ => ["vec", "ivec", "uvec", "bvec"]
+            .iter()
+            .find_map(|p| vector(p, 4))
+            .or_else(|| {
+                ["dvec", "i64vec", "u64vec"]
+                    .iter()
+                    .find_map(|p| vector(p, 8))
+            }),
+    };
+    if simple.is_some() {
+        return simple;
+    }
+    let mut cursor = 0u64;
+    let mut align = 1;
+    for m in types[ty]["members"].as_array()? {
+        let (a, mut size) = std430(types, m["type"].as_str()?)?;
+        if let Some(lengths) = m["array"].as_array() {
+            let stride = size.next_multiple_of(a);
+            if m["array_stride"].as_u64()? != stride {
+                return None;
+            }
+            size = lengths
+                .iter()
+                .try_fold(stride, |s, n| Some(s * n.as_u64()?))?;
+        }
+        let offset = cursor.next_multiple_of(a);
+        if m["offset"].as_u64()? != offset {
+            return None;
+        }
+        cursor = offset + size;
+        align = align.max(a);
+    }
+    Some((align, cursor.next_multiple_of(align)))
+}
+
+fn depth(text: &str) -> String {
+    let mut out = String::new();
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let write = trimmed
+            .starts_with("gl_MeshVerticesEXT[")
+            .then(|| trimmed.split_once(".gl_Position = "))
+            .flatten();
+        let Some((target, value)) = write else {
+            out += line;
+            out += "\n";
+            continue;
+        };
+        let indent = &line[..line.len() - trimmed.len()];
+        let value = value.strip_suffix(';').unwrap();
+        out += &format!("{indent}{{\n");
+        out += &format!("{indent}    vec4 mk_position = {value};\n");
+        out += &format!("{indent}    mk_position.z = 2.0 * mk_position.z - mk_position.w;\n");
+        out += &format!("{indent}    {target}.gl_Position = mk_position;\n");
+        out += &format!("{indent}}}\n");
+    }
+    out
 }
 
 fn bindless(text: &str) -> Option<String> {
@@ -249,7 +341,7 @@ fn bindless(text: &str) -> Option<String> {
     }
     if pointers {
         extensions += "#extension GL_NV_shader_buffer_load : require\n";
-        extensions += "#extension GL_NV_shader_buffer_store : require\n";
+        extensions += "#extension GL_NV_gpu_shader5 : require\n";
     }
     let line = kept.find('\n')? + 1;
     Some(format!("{}{extensions}{}", &kept[..line], &kept[line..]))

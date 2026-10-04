@@ -9,6 +9,9 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class Caps {
     public boolean mesh = false;
+    public boolean meshIndirect = false;
+    public int meshGroups = 0;
+    public int meshAxis = 0;
     public int push = 0;
     public int queues = 0;
     public int samplers = 0;
@@ -45,6 +48,8 @@ public class Caps {
     public boolean indirect = false;
     public boolean indirectOffset = false;
     public long maxBuffer = 0;
+    public long maxUniform = 0;
+    public long maxStorage = 0;
     public int maxTexture = 0;
     public int maxCube = 0;
     public int maxVolume = 0;
@@ -59,14 +64,20 @@ public class Caps {
     public boolean bufferClear = false;
     public boolean partialResolve = false;
 
-    public static final int SIZE = 204;
+    public static final int SIZE = 232;
 
     int encodedSize() {
-        return 204;
+        return 232;
     }
 
     long encode(long p) {
         memPutInt(p, mesh ? 1 : 0);
+        p += 4;
+        memPutInt(p, meshIndirect ? 1 : 0);
+        p += 4;
+        memPutInt(p, meshGroups);
+        p += 4;
+        memPutInt(p, meshAxis);
         p += 4;
         memPutInt(p, push);
         p += 4;
@@ -140,6 +151,10 @@ public class Caps {
         p += 4;
         memPutLong(p, maxBuffer);
         p += 8;
+        memPutLong(p, maxUniform);
+        p += 8;
+        memPutLong(p, maxStorage);
+        p += 8;
         memPutInt(p, maxTexture);
         p += 4;
         memPutInt(p, maxCube);
@@ -172,6 +187,12 @@ public class Caps {
     static Caps decode(long p) {
         var r = new Caps();
         r.mesh = memGetInt(p) != 0;
+        p += 4;
+        r.meshIndirect = memGetInt(p) != 0;
+        p += 4;
+        r.meshGroups = memGetInt(p);
+        p += 4;
+        r.meshAxis = memGetInt(p);
         p += 4;
         r.push = memGetInt(p);
         p += 4;
@@ -244,6 +265,10 @@ public class Caps {
         r.indirectOffset = memGetInt(p) != 0;
         p += 4;
         r.maxBuffer = memGetLong(p);
+        p += 8;
+        r.maxUniform = memGetLong(p);
+        p += 8;
+        r.maxStorage = memGetLong(p);
         p += 8;
         r.maxTexture = memGetInt(p);
         p += 4;

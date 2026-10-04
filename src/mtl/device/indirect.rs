@@ -11,6 +11,9 @@ use objc2_metal::{
 impl Device {
     pub fn create_indirect_buffer(&mut self, info: &IndirectInfo) -> Result<u32, String> {
         let entry = self.res.table.indirect(info);
+        if entry.2 && !self.caps.mesh_indirect {
+            return Err("indirect mesh draws need caps.mesh_indirect".into());
+        }
         let render = self.res.renders.get(info.pipeline);
         let (task, mesh) = (render.task, render.mesh);
         let groups = [

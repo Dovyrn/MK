@@ -45,7 +45,7 @@ pub fn main() {
     let scratch = device.create_buffer(size, memory::DEVICE).unwrap();
     let sizes = device.create_query_heap(query::COMPACTED, 1).unwrap();
     let out = device.create_buffer(8, memory::READBACK).unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.reset_queries(sizes, 0, 1);
     c.begin_compute();
@@ -71,8 +71,8 @@ pub fn main() {
         stage::HOST,
         access::HOST_READ,
     );
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 5000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 5000).unwrap());
     let size = unsafe { *device.map(out).cast::<u64>() };
     let compacted = device.create_compacted(blas, size).unwrap();
     let instances = device.create_ray_instances(1, memory::UPLOAD).unwrap();
@@ -125,8 +125,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 5000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 2)]).unwrap();
+    assert!(timeline.wait(2, 5000).unwrap());
     device.destroy_accel(blas);
     let t = unsafe { std::slice::from_raw_parts(device.map(hits).cast::<f32>(), (n * n) as usize) };
     assert!(

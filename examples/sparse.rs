@@ -23,7 +23,7 @@ pub fn main() {
     let sparse = device.create_sparse_buffer(page * 4).unwrap();
     let heap = device.create_heap(page * 2, memory::DEVICE).unwrap();
     let back = device.create_buffer(page * 4, memory::READBACK).unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let ranges = [
         SparseRange {
             page: 0,
@@ -37,7 +37,7 @@ pub fn main() {
         },
     ];
     device
-        .map_sparse_buffer(0, sparse, heap, &ranges, &[], &[(event, 1)])
+        .map_sparse_buffer(0, sparse, heap, &ranges, &[], &[(&timeline, 1)])
         .unwrap();
     let mut c = Commands::default();
     c.begin_compute();
@@ -58,8 +58,10 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[(event, 1)], &[(event, 2)]).unwrap();
-    assert!(device.wait(event, 2, 2000).unwrap());
+    device
+        .submit(0, &c, &[(&timeline, 1)], &[(&timeline, 2)])
+        .unwrap();
+    assert!(timeline.wait(2, 2000).unwrap());
     let bytes = unsafe { std::slice::from_raw_parts(device.map(back), (page * 4) as usize) };
     let p = page as usize;
     assert!(bytes[..p].iter().all(|b| *b == 7), "page 0");
@@ -81,7 +83,14 @@ pub fn main() {
         ..Default::default()
     };
     device
-        .map_sparse_texture(0, texture, tiles, &[region], &[(event, 2)], &[(event, 3)])
+        .map_sparse_texture(
+            0,
+            texture,
+            tiles,
+            &[region],
+            &[(&timeline, 2)],
+            &[(&timeline, 3)],
+        )
         .unwrap();
     let texels = (w * h) as usize;
     let upload = device
@@ -138,8 +147,10 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[(event, 3)], &[(event, 4)]).unwrap();
-    assert!(device.wait(event, 4, 2000).unwrap());
+    device
+        .submit(0, &c, &[(&timeline, 3)], &[(&timeline, 4)])
+        .unwrap();
+    assert!(timeline.wait(4, 2000).unwrap());
     let values = unsafe { std::slice::from_raw_parts(device.map(readback).cast::<u32>(), texels) };
     assert!(
         values.iter().enumerate().all(|(i, v)| *v == i as u32),

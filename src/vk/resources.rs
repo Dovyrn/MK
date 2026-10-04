@@ -2,9 +2,9 @@ use crate::DepthInfo;
 use crate::slots::Slots;
 use crate::vk::accel::Accel;
 use crate::vk::buffer::Buffer;
-use crate::vk::event::Event;
 use crate::vk::heap::Heap;
 use crate::vk::query::Query;
+use crate::vk::semaphore::Semaphore;
 use crate::vk::texture::Texture;
 use ash::vk;
 
@@ -21,6 +21,6 @@ pub struct Resources {
     pub accels: Slots<Accel>,
     pub rays: Slots<u32>,
     pub queries: Slots<Query>,
-    pub events: Slots<Event>,
+    pub timelines: Slots<Semaphore>,
     pub table: crate::table::Table,
 }

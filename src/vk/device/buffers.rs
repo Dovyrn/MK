@@ -127,7 +127,7 @@ impl Device {
         if buffer >= self.bindless.buffers {
             return Err("the bindless heap has no slot for this buffer".into());
         }
-        Ok(self.bindless.buffer(buffer) as u64)
+        Ok(buffer as u64)
     }
 
     pub fn address(&self, buffer: u32) -> u64 {

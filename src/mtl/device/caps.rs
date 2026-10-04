@@ -5,20 +5,37 @@ use objc2_metal::{MTLDevice, MTLGPUFamily};
 
 impl Device {
     pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize) -> Caps {
+        let apple9 = raw.supportsFamily(MTLGPUFamily::Apple9);
+        let apple10 = raw.supportsFamily(MTLGPUFamily::Apple10);
+        let groups = if apple10 {
+            4_194_303
+        } else if apple9 {
+            1_048_575
+        } else {
+            1024
+        };
+        let size = if apple10 { 32768 } else { 16384 };
+        let sparse = cfg!(target_os = "macos") || raw.supportsFamily(MTLGPUFamily::Apple8);
         Caps {
-            mesh: raw.supportsFamily(MTLGPUFamily::Apple7)
-                || raw.supportsFamily(MTLGPUFamily::Mac2),
+            mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
+            mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
+            mesh_groups: groups,
+            mesh_axis: groups,
             push: 256,
             queues: queues as u32,
-            samplers: 2048,
+            samplers: (raw.maxArgumentBufferSamplerCount() as u32).min(if apple9 {
+                500_000
+            } else {
+                996
+            }),
             textures: 500_000,
             images: 500_000,
             addresses: true,
             tick: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,
-            ray: raw.supportsRaytracing(),
-            sparse: raw.supportsFamily(MTLGPUFamily::Apple6),
+            ray: raw.supportsRaytracing() && apple9,
+            sparse,
             shading_rate: false,
             rate_images: false,
             viewports: 16,
@@ -28,7 +45,7 @@ impl Device {
             depth_clamp: true,
             line_fill: true,
             multi_draw: true,
-            sparse_textures: raw.supportsFamily(MTLGPUFamily::Apple6),
+            sparse_textures: sparse,
             slots: true,
             storage: true,
             persistent: true,
@@ -51,8 +68,10 @@ impl Device {
             buffer_clear: true,
             partial_resolve: false,
             max_buffer: raw.maxBufferLength() as u64,
-            max_texture: 16384,
-            max_cube: 16384,
+            max_uniform: raw.maxBufferLength() as u64,
+            max_storage: raw.maxBufferLength() as u64,
+            max_texture: size,
+            max_cube: size,
             max_volume: 2048,
             max_layers: 2048,
             budget: true,
@@ -70,9 +89,25 @@ impl Device {
             | format::A1BGR5_UNORM
             | format::ABGR4_UNORM
             | format::BGR5A1_UNORM => usage::SAMPLED | usage::COLOR,
-            format::A8_UNORM..=format::RGBA32_FLOAT => {
-                usage::SAMPLED | usage::STORAGE | usage::COLOR
-            }
+            format::R8_UNORM
+            | format::R8_UINT
+            | format::R8_SINT
+            | format::R16_FLOAT
+            | format::R16_UINT
+            | format::R16_SINT
+            | format::R32_FLOAT
+            | format::R32_UINT
+            | format::R32_SINT
+            | format::RGBA8_UNORM
+            | format::RGBA8_UINT
+            | format::RGBA8_SINT
+            | format::RGBA16_FLOAT
+            | format::RGBA16_UINT
+            | format::RGBA16_SINT
+            | format::RGBA32_FLOAT
+            | format::RGBA32_UINT
+            | format::RGBA32_SINT => usage::SAMPLED | usage::STORAGE | usage::COLOR,
+            format::A8_UNORM..=format::RGBA32_FLOAT => usage::SAMPLED | usage::COLOR,
             format::D24_UNORM_S8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => 0,
             format::D16_UNORM..=format::S8_UINT => usage::SAMPLED | usage::DEPTH,
             format::BC1_UNORM..=format::BC7_SRGB if !self.raw.supportsBCTextureCompression() => 0,
@@ -110,6 +145,9 @@ impl Device {
                 format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
                 format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
                     self.raw.supports32BitMSAA()
+                }
+                format::R32_FLOAT | format::RG32_FLOAT | format::RGBA32_FLOAT => {
+                    self.raw.supports32BitMSAA() && self.raw.supports32BitFloatFiltering()
                 }
                 _ => true,
             };

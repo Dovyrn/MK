@@ -1,6 +1,6 @@
 use super::{Device, image_info, whole};
 use crate::vk::buffer::Buffer;
-use crate::{SparseRange, SparseRegion, TextureInfo, dimension, memory};
+use crate::{SparseRange, SparseRegion, TextureInfo, Timeline, dimension, memory};
 use ash::vk;
 use std::rc::Rc;
 
@@ -121,19 +121,24 @@ impl Device {
     fn bind_sparse(
         &mut self,
         queue: usize,
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
         buffers: &[vk::SparseBufferMemoryBindInfo],
         images: &[vk::SparseImageMemoryBindInfo],
     ) -> Result<(), String> {
-        self.res.table.submit(queue, waits, signals);
+        let waits = &self.res.table.points(waits);
+        let signals = &self.res.table.points(signals);
+        self.res.table.submit(queue, signals);
         let q = &self.queues[queue];
         let value = q.count + 1;
-        let wait: Vec<_> = waits.iter().map(|w| self.res.events.get(w.0).raw).collect();
+        let wait: Vec<_> = waits
+            .iter()
+            .map(|w| self.res.timelines.get(w.0).raw)
+            .collect();
         let wait_values: Vec<_> = waits.iter().map(|w| w.1).collect();
         let mut signal: Vec<_> = signals
             .iter()
-            .map(|s| self.res.events.get(s.0).raw)
+            .map(|s| self.res.timelines.get(s.0).raw)
             .collect();
         let mut signal_values: Vec<_> = signals.iter().map(|s| s.1).collect();
         signal.push(q.semaphore);
@@ -157,24 +162,33 @@ impl Device {
         Ok(())
     }
 
+    fn sparse_memory(&self, heap: u32, bits: u32) -> Result<vk::DeviceMemory, String> {
+        if heap == !0 {
+            return Ok(vk::DeviceMemory::null());
+        }
+        self.res.table.heaps.get(heap);
+        let h = self.res.heaps.get(heap);
+        if bits & (1 << h.index) == 0 {
+            return Err("the heap's memory type does not fit this sparse resource".into());
+        }
+        Ok(*h.memory)
+    }
+
     pub fn map_sparse_buffer(
         &mut self,
         queue: usize,
         buffer: u32,
         heap: u32,
         ranges: &[SparseRange],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         self.res.table.buffers.get(buffer);
         let page = self.sparse_page()?;
         self.res.table.map_buffer(buffer, heap, page, ranges);
-        let memory = if heap == !0 {
-            vk::DeviceMemory::null()
-        } else {
-            self.res.table.heaps.get(heap);
-            *self.res.heaps.get(heap).memory
-        };
+        let raw = self.res.buffers.get(buffer).raw;
+        let bits = unsafe { self.raw.get_buffer_memory_requirements(raw) }.memory_type_bits;
+        let memory = self.sparse_memory(heap, bits)?;
         let binds: Vec<_> = ranges
             .iter()
             .map(|r| vk::SparseMemoryBind {
@@ -186,7 +200,7 @@ impl Device {
             })
             .collect();
         let infos = [vk::SparseBufferMemoryBindInfo::default()
-            .buffer(self.res.buffers.get(buffer).raw)
+            .buffer(raw)
             .binds(&binds)];
         self.bind_sparse(queue, waits, signals, &infos, &[])
     }
@@ -197,19 +211,21 @@ impl Device {
         texture: u32,
         heap: u32,
         regions: &[SparseRegion],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         self.res.table.textures.get(texture);
         let page = self.sparse_page()?;
         self.res.table.map_texture(texture, heap, page, regions);
-        let memory = if heap == !0 {
-            vk::DeviceMemory::null()
-        } else {
-            self.res.table.heaps.get(heap);
-            *self.res.heaps.get(heap).memory
-        };
         let t = self.res.textures.get(texture);
+        let needs = unsafe { self.raw.get_image_memory_requirements(t.image) };
+        if needs.alignment != page {
+            return Err(format!(
+                "texture {texture} has {} byte sparse pages, not the {page} of sparse_page",
+                needs.alignment
+            ));
+        }
+        let memory = self.sparse_memory(heap, needs.memory_type_bits)?;
         let binds: Vec<_> = regions
             .iter()
             .map(|r| vk::SparseImageMemoryBind {

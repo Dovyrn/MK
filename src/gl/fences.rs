@@ -1,11 +1,11 @@
 use glow::HasContext;
 
-pub struct Event {
+pub struct Fences {
     pub fences: Vec<(u64, glow::Fence)>,
     pub value: u64,
 }
 
-impl Event {
+impl Fences {
     pub fn value(&self, gl: &glow::Context) -> u64 {
         let mut value = self.value;
         for &(v, f) in &self.fences {

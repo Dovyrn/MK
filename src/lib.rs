@@ -32,11 +32,11 @@ pub use ash;
 pub use command::Command;
 pub use commands::Commands;
 #[cfg(feature = "gl")]
-pub use gl::Device;
+pub use gl::{Device, Timeline};
 #[cfg(feature = "gl")]
 pub use glow;
 #[cfg(feature = "mtl")]
-pub use mtl::Device;
+pub use mtl::{Device, Timeline};
 #[cfg(feature = "mtl")]
 pub use objc2;
 #[cfg(feature = "mtl")]
@@ -44,7 +44,7 @@ pub use objc2_foundation;
 #[cfg(feature = "mtl")]
 pub use objc2_metal;
 #[cfg(feature = "vk")]
-pub use vk::Device;
+pub use vk::{Device, Timeline};
 
 include!(concat!(env!("OUT_DIR"), "/constants.rs"));
 include!(concat!(env!("OUT_DIR"), "/format.rs"));

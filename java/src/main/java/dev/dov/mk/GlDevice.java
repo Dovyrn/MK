@@ -3,7 +3,6 @@ package dev.dov.mk;
 import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.charset.StandardCharsets;
-import org.lwjgl.system.MemoryStack;
 
 public class GlDevice extends Device {
     public GlDevice(long handle) {
@@ -23,8 +22,8 @@ public class GlDevice extends Device {
     private static native int nImportBuffer(long device, int raw, long size);
 
     public synchronized int importTexture(int raw, TextureInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nImportTexture(handle, raw, infoAddress, info.encodedSize());
         }

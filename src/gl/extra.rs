@@ -8,7 +8,7 @@ type Multi = unsafe extern "system" fn(u32, *const c_void, i32, i32);
 type MultiIndexed = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
 type Count = unsafe extern "system" fn(u32, *const c_void, isize, i32, i32);
 type CountIndexed = unsafe extern "system" fn(u32, u32, *const c_void, isize, i32, i32);
-type Reset = unsafe extern "system" fn() -> u32;
+pub type Reset = unsafe extern "system" fn() -> u32;
 type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const c_void);
 type Mesh = unsafe extern "system" fn(u32, u32, u32);
 type MeshIndirect = unsafe extern "system" fn(isize);
@@ -249,7 +249,7 @@ impl Extra {
                 clear_image: get("glClearTexSubImage", 44, "GL_ARB_clear_texture").map(|p| cast(p)),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
                 addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
-                    .filter(|_| has(99, "GL_NV_shader_buffer_store")),
+                    .filter(|_| has(99, "GL_NV_gpu_shader5")),
                 rates: Rates::load(&|name| get(name, 99, "GL_NV_shading_rate_image")),
             })
         }

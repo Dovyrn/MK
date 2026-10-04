@@ -1,12 +1,12 @@
-use crate::{Commands, Device};
+use crate::{Commands, Device, Timeline};
 
 impl Device {
     pub fn submit(
         &mut self,
         queue: usize,
         commands: &Commands,
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         self.queue(queue);
         let commands = (commands.bytes(), commands.natives());
@@ -17,8 +17,8 @@ impl Device {
         &mut self,
         queue: usize,
         commands: &[u8],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         self.queue(queue);
         self.replay(queue, (commands, &[]), waits, signals)

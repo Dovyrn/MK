@@ -27,8 +27,8 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event().unwrap();
-    let mut push = device.address(data).to_le_bytes().to_vec();
+    let timeline = device.create_timeline().unwrap();
+    let mut push = device.buffer_handle(data).unwrap().to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(3u32.to_le_bytes());
     let mut compute = Commands::default();
@@ -48,10 +48,10 @@ pub fn main() {
     );
     copy.end_compute();
     device
-        .submit(0, &copy, &[(event, 1)], &[(event, 2)])
+        .submit(0, &copy, &[(&timeline, 1)], &[(&timeline, 2)])
         .unwrap();
-    device.submit(1, &compute, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 2, 5000).unwrap());
+    device.submit(1, &compute, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(2, 5000).unwrap());
     let values = unsafe { std::slice::from_raw_parts(device.map(back).cast::<u32>(), n as usize) };
     for (i, v) in values.iter().enumerate() {
         assert_eq!(*v, 3 + i as u32, "value {i}");

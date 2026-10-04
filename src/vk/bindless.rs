@@ -6,14 +6,16 @@ pub struct Bindless {
     pub pool: vk::DescriptorPool,
     pub set: vk::DescriptorSet,
     pub samplers: u32,
-    pub images: u32,
+    pub textures: u32,
     pub buffers: u32,
 }
 
 const SAMPLER: u32 = 0;
-const HEAP: u32 = 2;
+const TEXTURE: u32 = 2;
+const IMAGE: u32 = 3;
+const BUFFER: u32 = 7;
 const SAMPLERS: u32 = 4096;
-const IMAGES: u32 = 1 << 17;
+const TEXTURES: u32 = 1 << 16;
 const BUFFERS: u32 = 1 << 16;
 
 impl Bindless {
@@ -22,65 +24,76 @@ impl Bindless {
         limits: &vk::PhysicalDeviceVulkan12Properties,
         buffers: bool,
     ) -> Result<Self, vk::Result> {
-        let samplers = SAMPLERS.min(limits.max_descriptor_set_update_after_bind_samplers);
-        let images = IMAGES
+        let samplers = SAMPLERS
+            .min(limits.max_descriptor_set_update_after_bind_samplers)
+            .min(limits.max_per_stage_descriptor_update_after_bind_samplers);
+        let mut textures = TEXTURES
             .min(limits.max_descriptor_set_update_after_bind_sampled_images)
-            .min(limits.max_descriptor_set_update_after_bind_storage_images);
-        let buffers = if buffers {
-            BUFFERS.min(limits.max_descriptor_set_update_after_bind_storage_buffers)
+            .min(limits.max_descriptor_set_update_after_bind_storage_images)
+            .min(limits.max_per_stage_descriptor_update_after_bind_sampled_images)
+            .min(limits.max_per_stage_descriptor_update_after_bind_storage_images);
+        let mut buffers = if buffers {
+            BUFFERS
+                .min(limits.max_descriptor_set_update_after_bind_storage_buffers)
+                .min(limits.max_per_stage_descriptor_update_after_bind_storage_buffers)
         } else {
             0
         };
-        let types = [
-            vk::DescriptorType::SAMPLED_IMAGE,
-            vk::DescriptorType::STORAGE_IMAGE,
-            vk::DescriptorType::STORAGE_BUFFER,
-        ];
-        let used = if buffers > 0 { 3 } else { 2 };
-        let lists = [
-            vk::MutableDescriptorTypeListEXT::default(),
-            vk::MutableDescriptorTypeListEXT::default().descriptor_types(&types[..used]),
-        ];
-        let bindings = [
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(SAMPLER)
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .descriptor_count(samplers)
-                .stage_flags(vk::ShaderStageFlags::ALL),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(HEAP)
-                .descriptor_type(vk::DescriptorType::MUTABLE_EXT)
-                .descriptor_count(images + buffers)
-                .stage_flags(vk::ShaderStageFlags::ALL),
-        ];
+        let room = limits
+            .max_per_stage_update_after_bind_resources
+            .saturating_sub(samplers);
+        while textures * 2 + buffers > room {
+            textures /= 2;
+            buffers /= 2;
+        }
         let flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
-            | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND; 2];
+            | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND; 4];
+        let binding = |slot, kind, count| {
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(slot)
+                .descriptor_type(kind)
+                .descriptor_count(count)
+                .stage_flags(vk::ShaderStageFlags::ALL)
+        };
+        let bindings = |textures, buffers: u32| {
+            [
+                binding(SAMPLER, vk::DescriptorType::SAMPLER, samplers),
+                binding(TEXTURE, vk::DescriptorType::SAMPLED_IMAGE, textures),
+                binding(IMAGE, vk::DescriptorType::STORAGE_IMAGE, textures),
+                binding(BUFFER, vk::DescriptorType::STORAGE_BUFFER, buffers.max(1)),
+            ]
+        };
+        let fits = |textures, buffers| {
+            let bindings = bindings(textures, buffers);
+            let mut binding_flags =
+                vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&flags);
+            let info = vk::DescriptorSetLayoutCreateInfo::default()
+                .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                .bindings(&bindings)
+                .push_next(&mut binding_flags);
+            let mut support = vk::DescriptorSetLayoutSupport::default();
+            unsafe { device.get_descriptor_set_layout_support(&info, &mut support) };
+            support.supported != 0
+        };
+        while textures > 0 && !fits(textures, buffers) {
+            textures /= 2;
+            buffers /= 2;
+        }
+        let bindings = bindings(textures, buffers);
         let mut binding_flags =
             vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&flags);
-        let mut mutable =
-            vk::MutableDescriptorTypeCreateInfoEXT::default().mutable_descriptor_type_lists(&lists);
         let info = vk::DescriptorSetLayoutCreateInfo::default()
             .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
             .bindings(&bindings)
-            .push_next(&mut binding_flags)
-            .push_next(&mut mutable);
-        let sizes = [
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::SAMPLER,
-                descriptor_count: samplers,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::MUTABLE_EXT,
-                descriptor_count: images + buffers,
-            },
-        ];
-        let mut mutable =
-            vk::MutableDescriptorTypeCreateInfoEXT::default().mutable_descriptor_type_lists(&lists);
+            .push_next(&mut binding_flags);
+        let sizes = bindings.map(|b| vk::DescriptorPoolSize {
+            ty: b.descriptor_type,
+            descriptor_count: b.descriptor_count,
+        });
         let pool_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .max_sets(1)
-            .pool_sizes(&sizes)
-            .push_next(&mut mutable);
+            .pool_sizes(&sizes);
         unsafe {
             let layout = device.create_descriptor_set_layout(&info, None)?;
             let pool = match device.create_descriptor_pool(&pool_info, None) {
@@ -107,26 +120,10 @@ impl Bindless {
                 pool,
                 set,
                 samplers,
-                images,
+                textures,
                 buffers,
             })
         }
-    }
-
-    pub fn textures(&self) -> u32 {
-        self.images / 2
-    }
-
-    pub fn texture(slot: u32) -> u32 {
-        slot * 2
-    }
-
-    pub fn image(slot: u32) -> u32 {
-        slot * 2 + 1
-    }
-
-    pub fn buffer(&self, slot: u32) -> u32 {
-        self.images + slot
     }
 
     fn write(
@@ -157,12 +154,12 @@ impl Bindless {
         if usage & usage::SAMPLED != 0 {
             let info = info.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
             let kind = vk::DescriptorType::SAMPLED_IMAGE;
-            self.write(device, HEAP, Self::texture(slot), kind, info);
+            self.write(device, TEXTURE, slot, kind, info);
         }
         if usage & usage::STORAGE != 0 {
             let info = info.image_layout(vk::ImageLayout::GENERAL);
             let kind = vk::DescriptorType::STORAGE_IMAGE;
-            self.write(device, HEAP, Self::image(slot), kind, info);
+            self.write(device, IMAGE, slot, kind, info);
         }
     }
 
@@ -170,8 +167,8 @@ impl Bindless {
         let infos = [info];
         let write = vk::WriteDescriptorSet::default()
             .dst_set(self.set)
-            .dst_binding(HEAP)
-            .dst_array_element(self.buffer(slot))
+            .dst_binding(BUFFER)
+            .dst_array_element(slot)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&infos);
         unsafe { device.update_descriptor_sets(&[write], &[]) };

@@ -7,25 +7,28 @@ use std::process::Command;
 pub fn metal(dir: &Path, out: &Path, name: &str) {
     let slang = dir.join(format!("{name}.slang"));
     let metal = dir.join(format!("{name}.metal"));
-    let text = fs::read_to_string(&slang).unwrap_or_default();
-    if text.contains("shader(\"raygeneration\")") {
-        return;
-    }
     let mut airs = Vec::new();
-    let groups = sizes(out, name);
-    for entry in entries(&text) {
+    let points = entries(out, name);
+    let groups: Vec<(String, [u32; 3])> = points
+        .iter()
+        .filter_map(|(entry, _, size)| Some((entry.clone(), (*size)?)))
+        .collect();
+    for (entry, mode, _) in &points {
+        if mode.starts_with('r') {
+            continue;
+        }
         let msl = out.join(format!("{name}.{entry}.metal"));
         let json = out.join(format!("{name}.{entry}.json"));
         run(Command::new("slangc")
             .arg(&slang)
             .args(["-I", super::LIBRARY])
-            .args(["-target", "metal", "-entry", &entry])
+            .args(["-target", "metal", "-entry", entry.as_str()])
             .arg("-reflection-json")
             .arg(&json)
             .arg("-o")
             .arg(&msl));
         pin(&msl, &json);
-        bases(&msl);
+        bases(&msl, &json);
         fs::remove_file(&json).unwrap();
         if !metal.exists() {
             let air = out.join(format!("{name}.{entry}.air"));
@@ -41,7 +44,7 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
     library(out, name, &airs, &groups);
 }
 
-fn sizes(out: &Path, name: &str) -> Vec<(String, [u32; 3])> {
+fn entries(out: &Path, name: &str) -> Vec<(String, String, Option<[u32; 3]>)> {
     let spv = out.join(format!("{name}.spv"));
     if !spv.exists() {
         return Vec::new();
@@ -52,10 +55,13 @@ fn sizes(out: &Path, name: &str) -> Vec<(String, [u32; 3])> {
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|e| {
-            let size = e["workgroup_size"].as_array()?;
-            let size: Vec<u32> = size.iter().map(|n| n.as_u64().unwrap() as u32).collect();
-            Some((e["name"].as_str()?.to_string(), [size[0], size[1], size[2]]))
+        .map(|e| {
+            let size = e["workgroup_size"].as_array().map(|s| {
+                let s: Vec<u32> = s.iter().map(|n| n.as_u64().unwrap() as u32).collect();
+                [s[0], s[1], s[2]]
+            });
+            let name = e["name"].as_str().unwrap().to_string();
+            (name, e["mode"].as_str().unwrap().to_string(), size)
         })
         .collect()
 }
@@ -90,27 +96,21 @@ fn library(out: &Path, name: &str, airs: &[PathBuf], groups: &[(String, [u32; 3]
     fs::write(&path, bytes).unwrap();
 }
 
-fn entries(text: &str) -> Vec<String> {
-    let mut list = Vec::new();
-    let mut lines = text.lines();
-    while let Some(line) = lines.next() {
-        if !line.trim_start().starts_with("[shader(") {
-            continue;
-        }
-        for next in lines.by_ref() {
-            let next = next.trim();
-            if next.starts_with('[') {
-                continue;
-            }
-            let head = &next[..next.find('(').unwrap()];
-            list.push(head.split_whitespace().last().unwrap().to_string());
-            break;
-        }
-    }
-    list
-}
-
-fn bases(msl: &Path) {
+fn bases(msl: &Path, json: &Path) {
+    let reflection: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
+    let relative: Vec<String> = reflection["entryPoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|e| e["parameters"].as_array().cloned().unwrap_or_default())
+        .filter(|p| {
+            matches!(
+                p["semanticName"].as_str(),
+                Some("SV_VERTEXID" | "SV_INSTANCEID")
+            )
+        })
+        .map(|p| format!("{}_", p["name"].as_str().unwrap()))
+        .collect();
     let mut text = fs::read_to_string(msl).unwrap();
     for (id, base) in [
         ("vertex_id", "base_vertex"),
@@ -122,6 +122,9 @@ fn bases(msl: &Path) {
         };
         let start = text[..i].rfind(' ').unwrap() + 1;
         let name = text[start..i].to_string();
+        if !relative.iter().any(|r| name.starts_with(r.as_str())) {
+            continue;
+        }
         let params = format!("{name}_id [[{id}]], uint {name}_base [[{base}]]");
         text.replace_range(start..i + tag.len(), &params);
         let open = i + text[i..].find('{').unwrap() + 1;

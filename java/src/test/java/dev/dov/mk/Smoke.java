@@ -27,7 +27,7 @@ public class Smoke {
                     .entry("fill")
                     ;
             var pipeline = device.createPipeline(info);
-            var event = device.createEvent();
+            var timeline = device.createTimeline();
             var push = nmemAlloc(8);
             memPutInt(push, n);
             memPutInt(push + 4, 100);
@@ -39,8 +39,8 @@ public class Smoke {
                 c.dispatch(n / 64, 1, 1);
                 c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
                 c.endCompute();
-                device.submit(0, c, new long[0], new long[] {event, 1});
-                if (!device.await(event, 1, 1000)) {
+                device.submit(0, c, new Point[0], new Point[] {new Point(timeline, 1)});
+                if (!timeline.await(1, 1000)) {
                     throw new IllegalStateException("timeout");
                 }
             }
@@ -57,6 +57,7 @@ public class Smoke {
             } catch (RuntimeException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
+            device.destroyTimeline(timeline);
             nmemFree(code);
             nmemFree(push);
             record(Path.of(args[2]));

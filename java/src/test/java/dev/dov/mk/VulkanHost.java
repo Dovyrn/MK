@@ -1,6 +1,5 @@
 package dev.dov.mk;
 
-import static org.lwjgl.vulkan.EXTMutableDescriptorType.*;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.*;
 import static org.lwjgl.vulkan.KHRPushDescriptor.*;
 import static org.lwjgl.vulkan.VK13.*;
@@ -18,7 +17,6 @@ import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkInstanceCreateInfo;
 import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
-import org.lwjgl.vulkan.VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan11Features;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan13Features;
@@ -75,12 +73,8 @@ public class VulkanHost {
             var available = VkExtensionProperties.malloc(count.get(0), stack);
             vkEnumerateDeviceExtensionProperties(physical, (String) null, count, available);
             var subset = has(available, "VK_KHR_portability_subset");
-            var mutables = has(available, VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
             var push = has(available, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
-            var extensions = stack.mallocPointer(3);
-            if (mutables) {
-                extensions.put(stack.UTF8(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME));
-            }
+            var extensions = stack.mallocPointer(2);
             if (push) {
                 extensions.put(stack.UTF8(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME));
             }
@@ -88,11 +82,7 @@ public class VulkanHost {
                 extensions.put(stack.UTF8("VK_KHR_portability_subset"));
             }
             extensions.flip();
-            var mutable = VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT.calloc(stack).sType$Default();
             var v13 = VkPhysicalDeviceVulkan13Features.calloc(stack).sType$Default();
-            if (mutables) {
-                v13.pNext(mutable.address());
-            }
             var v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default().pNext(v13.address());
             var v11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default().pNext(v12.address());
             var features = VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(v11.address());

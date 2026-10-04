@@ -3,7 +3,6 @@ package dev.dov.mk;
 import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.charset.StandardCharsets;
-import org.lwjgl.system.MemoryStack;
 
 public class Device implements AutoCloseable {
     protected long handle;
@@ -24,8 +23,8 @@ public class Device implements AutoCloseable {
     private static native void nFree(long device);
 
     public synchronized Caps caps() {
-        try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, Caps.SIZE);
+        try (var arena = new Arena()) {
+            var out = arena.alloc(Caps.SIZE);
             nCaps(handle, out);
             return Caps.decode(out);
         }
@@ -52,8 +51,8 @@ public class Device implements AutoCloseable {
     private static native void nDestroyBuffer(long device, int buffer);
 
     public synchronized int createIndirectBuffer(IndirectInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateIndirectBuffer(handle, infoAddress, info.encodedSize());
         }
@@ -68,8 +67,8 @@ public class Device implements AutoCloseable {
     private static native void nDestroyIndirectBuffer(long device, int indirect);
 
     public synchronized int[] indirectHandle(int indirect) {
-        try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, 32);
+        try (var arena = new Arena()) {
+            var out = arena.alloc(32);
             nIndirectHandle(handle, indirect, out);
             return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
         }
@@ -102,8 +101,8 @@ public class Device implements AutoCloseable {
     private static native long nAddress(long device, int buffer);
 
     public synchronized Budget memoryBudget() {
-        try (var stack = MemoryStack.stackPush()) {
-            var out = stack.nmalloc(8, Budget.SIZE);
+        try (var arena = new Arena()) {
+            var out = arena.alloc(Budget.SIZE);
             nMemoryBudget(handle, out);
             return Budget.decode(out);
         }
@@ -112,8 +111,8 @@ public class Device implements AutoCloseable {
     private static native void nMemoryBudget(long device, long out);
 
     public synchronized int createPipeline(ComputeInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreatePipeline(handle, infoAddress, info.encodedSize());
         }
@@ -128,8 +127,8 @@ public class Device implements AutoCloseable {
     private static native void nDestroyPipeline(long device, int pipeline);
 
     public synchronized int createRenderPipeline(RenderInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
         }
@@ -138,8 +137,8 @@ public class Device implements AutoCloseable {
     private static native int nCreateRenderPipeline(long device, long info, int infoLength);
 
     public synchronized int createMeshPipeline(MeshInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
         }
@@ -154,8 +153,8 @@ public class Device implements AutoCloseable {
     private static native void nDestroyRenderPipeline(long device, int pipeline);
 
     public synchronized int createDepthState(DepthInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateDepthState(handle, infoAddress, info.encodedSize());
         }
@@ -170,8 +169,8 @@ public class Device implements AutoCloseable {
     private static native void nDestroyDepthState(long device, int state);
 
     public synchronized int createTexture(TextureInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateTexture(handle, infoAddress, info.encodedSize());
         }
@@ -180,8 +179,8 @@ public class Device implements AutoCloseable {
     private static native int nCreateTexture(long device, long info, int infoLength);
 
     public synchronized void writeTexture(HostCopy copy, long data, long dataSize) {
-        try (var stack = MemoryStack.stackPush()) {
-            var copyAddress = stack.nmalloc(8, copy.encodedSize());
+        try (var arena = new Arena()) {
+            var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
             nWriteTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
         }
@@ -190,8 +189,8 @@ public class Device implements AutoCloseable {
     private static native void nWriteTexture(long device, long copy, int copyLength, long data, long dataLength);
 
     public synchronized void readTexture(HostCopy copy, long data, long dataSize) {
-        try (var stack = MemoryStack.stackPush()) {
-            var copyAddress = stack.nmalloc(8, copy.encodedSize());
+        try (var arena = new Arena()) {
+            var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
             nReadTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
         }
@@ -212,8 +211,8 @@ public class Device implements AutoCloseable {
     private static native int nFormatSamples(long device, int format, int usage);
 
     public synchronized int createView(int texture, ViewInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateView(handle, texture, infoAddress, info.encodedSize());
         }
@@ -234,8 +233,8 @@ public class Device implements AutoCloseable {
     private static native long nImageHandle(long device, int texture);
 
     public synchronized int createSampler(SamplerInfo info) {
-        try (var stack = MemoryStack.stackPush()) {
-            var infoAddress = stack.nmalloc(8, info.encodedSize());
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return nCreateSampler(handle, infoAddress, info.encodedSize());
         }
@@ -268,67 +267,49 @@ public class Device implements AutoCloseable {
     private static native void nRecordCache(long device);
 
     public synchronized void saveCache(String path) {
-        try (var stack = MemoryStack.stackPush()) {
-            var pathBytes = stack.UTF8(path, false);
-            nSaveCache(handle, memAddress(pathBytes), pathBytes.remaining());
+        try (var arena = new Arena()) {
+            var pathBytes = path.getBytes(StandardCharsets.UTF_8);
+            nSaveCache(handle, arena.bytes(pathBytes), pathBytes.length);
         }
     }
 
     private static native void nSaveCache(long device, long path, int pathLength);
 
     public synchronized void loadCache(String path) {
-        try (var stack = MemoryStack.stackPush()) {
-            var pathBytes = stack.UTF8(path, false);
-            nLoadCache(handle, memAddress(pathBytes), pathBytes.remaining());
+        try (var arena = new Arena()) {
+            var pathBytes = path.getBytes(StandardCharsets.UTF_8);
+            nLoadCache(handle, arena.bytes(pathBytes), pathBytes.length);
         }
     }
 
     private static native void nLoadCache(long device, long path, int pathLength);
 
-    public synchronized int createEvent() {
-        return nCreateEvent(handle);
+    public synchronized Timeline createTimeline() {
+        return new Timeline(nCreateTimeline(handle));
     }
 
-    private static native int nCreateEvent(long device);
+    private static native long nCreateTimeline(long device);
 
-    public synchronized void destroyEvent(int event) {
-        nDestroyEvent(handle, event);
+    public synchronized void destroyTimeline(Timeline timeline) {
+        nDestroyTimeline(handle, timeline.take());
     }
 
-    private static native void nDestroyEvent(long device, int event);
+    private static native void nDestroyTimeline(long device, long timeline);
 
-    public synchronized long eventValue(int event) {
-        return nEventValue(handle, event);
-    }
-
-    private static native long nEventValue(long device, int event);
-
-    public synchronized boolean await(int event, long value, long ms) {
-        return nWait(handle, event, value, ms);
-    }
-
-    private static native boolean nWait(long device, int event, long value, long ms);
-
-    public synchronized void submit(int queue, Commands commands, long[] waits, long[] signals) {
-        try (var stack = MemoryStack.stackPush()) {
-            if (waits.length % 2 != 0) {
-                throw new IllegalArgumentException("waits holds event and value pairs");
+    public synchronized void submit(int queue, Commands commands, Point[] waits, Point[] signals) {
+        try (var arena = new Arena()) {
+            var waitsAddress = arena.alloc(waits.length * 16L);
+            for (var i = 0; i < waits.length; i++) {
+                memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
+                memPutLong(waitsAddress + i * 16 + 8, waits[i].value());
             }
-            var waitsAddress = stack.nmalloc(8, waits.length * 8);
-            for (var i = 0; i < waits.length / 2; i++) {
-                memPutInt(waitsAddress + i * 16, (int) waits[i * 2]);
-                memPutLong(waitsAddress + i * 16 + 8, waits[i * 2 + 1]);
-            }
-            if (signals.length % 2 != 0) {
-                throw new IllegalArgumentException("signals holds event and value pairs");
-            }
-            var signalsAddress = stack.nmalloc(8, signals.length * 8);
-            for (var i = 0; i < signals.length / 2; i++) {
-                memPutInt(signalsAddress + i * 16, (int) signals[i * 2]);
-                memPutLong(signalsAddress + i * 16 + 8, signals[i * 2 + 1]);
+            var signalsAddress = arena.alloc(signals.length * 16L);
+            for (var i = 0; i < signals.length; i++) {
+                memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
+                memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
             }
             try {
-                nSubmit(handle, queue, commands.getAddress(), commands.getSize(), waitsAddress, waits.length / 2, signalsAddress, signals.length / 2);
+                nSubmit(handle, queue, commands.getAddress(), commands.getSize(), waitsAddress, waits.length, signalsAddress, signals.length);
             } finally {
                 java.lang.ref.Reference.reachabilityFence(commands);
             }

@@ -2,6 +2,7 @@ use crate::entries::Entries;
 use crate::{
     HostCopy, IndirectInfo, TextureInfo, ViewInfo, dimension, format, index, layout, usage,
 };
+use std::sync::{Arc, Weak};
 
 pub struct Table {
     pub buffers: Entries<u64>,
@@ -11,7 +12,7 @@ pub struct Table {
     pub renders: Entries<(u32, bool, u32, bool, u32)>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
-    pub events: Entries<(u64, usize)>,
+    pub timelines: Entries<(u64, usize, Weak<()>)>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub heaps: Entries<u64>,
     #[cfg(any(feature = "vk", feature = "mtl"))]
@@ -42,7 +43,7 @@ impl Default for Table {
             renders: Entries::new("render pipeline"),
             states: Entries::new("depth state"),
             queries: Entries::new("query heap"),
-            events: Entries::new("event"),
+            timelines: Entries::new("timeline"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
             heaps: Entries::new("heap"),
             #[cfg(any(feature = "vk", feature = "mtl"))]
@@ -457,26 +458,68 @@ impl Table {
         (pitch, image)
     }
 
-    pub fn submit(&self, queue: usize, waits: &[(u32, u64)], signals: &[(u32, u64)]) {
-        for &(event, _) in waits {
-            self.events.get(event);
-        }
-        for (i, &(event, value)) in signals.iter().enumerate() {
-            let (last, from) = *self.events.get(event);
+    pub fn add_timeline(&mut self, id: u32) -> Arc<()> {
+        let token = Arc::new(());
+        self.timelines
+            .set(id, (0, usize::MAX, Arc::downgrade(&token)));
+        token
+    }
+
+    pub fn drop_timeline(&mut self, timeline: &crate::Timeline) {
+        self.points(&[(timeline, 0)]);
+        self.timelines.clear(timeline.id);
+    }
+
+    pub fn points(&self, list: &[(&crate::Timeline, u64)]) -> Vec<(u32, u64)> {
+        list.iter()
+            .map(|&(t, value)| {
+                let (_, _, owner) = self.timelines.get(t.id);
+                assert!(
+                    Weak::ptr_eq(owner, &Arc::downgrade(&t.token)),
+                    "timeline {} belongs to another device",
+                    t.id
+                );
+                (t.id, value)
+            })
+            .collect()
+    }
+
+    pub fn submit(&self, queue: usize, signals: &[(u32, u64)]) {
+        for (i, &(id, value)) in signals.iter().enumerate() {
+            let (last, from, _) = self.timelines.get(id);
             assert!(
-                from != queue || value > last,
-                "event {event} is already signalled to {last} on queue {queue}, not below {value}"
+                *from != queue || value > *last,
+                "timeline {id} is already signalled to {last} on queue {queue}, not below {value}"
             );
             assert!(
-                signals[..i].iter().all(|s| s.0 != event),
-                "event {event} is signalled twice in one submit"
+                signals[..i].iter().all(|s| s.0 != id),
+                "timeline {id} is signalled twice in one submit"
             );
         }
     }
 
     pub fn signal(&mut self, queue: usize, signals: &[(u32, u64)]) {
-        for &(event, value) in signals {
-            self.events.set(event, (value, queue));
+        for &(id, value) in signals {
+            let owner = self.timelines.get(id).2.clone();
+            self.timelines.set(id, (value, queue, owner));
         }
     }
+}
+
+impl Drop for Table {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(
+                self.timelines.values().all(|t| t.2.strong_count() == 0),
+                "a timeline outlives its device"
+            );
+        }
+    }
+}
+
+pub fn rising(now: u64, value: u64) {
+    assert!(
+        value > now,
+        "signal {value} is not above the timeline's value {now}"
+    );
 }

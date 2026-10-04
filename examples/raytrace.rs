@@ -71,7 +71,7 @@ pub fn main() {
     let mut push = device.address(out).to_le_bytes().to_vec();
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.begin_compute();
     if gpu {
@@ -122,8 +122,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 5000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 5000).unwrap());
     let t = unsafe { std::slice::from_raw_parts(device.map(out).cast::<f32>(), (n * n) as usize) };
     let at = |x: u32, y: u32| t[(y * n + x) as usize];
     assert!((at(8, 8) - 1.0).abs() < 1e-4, "center {}", at(8, 8));

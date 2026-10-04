@@ -1,6 +1,6 @@
 use super::{Device, kind, options, size, texture_desc};
 use crate::mtl::texture::Texture;
-use crate::{SparseRange, SparseRegion, TextureInfo, format, memory};
+use crate::{SparseRange, SparseRegion, TextureInfo, Timeline, format, memory};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
@@ -98,7 +98,7 @@ impl Device {
         let q = &self.queues[queue].raw;
         for &(event, value) in waits {
             q.waitForEvent_value(
-                ProtocolObject::from_ref(&**self.res.events.get(event)),
+                ProtocolObject::from_ref(&**self.res.timelines.get(event)),
                 value,
             );
         }
@@ -106,7 +106,7 @@ impl Device {
         f(q, heap);
         for &(event, value) in signals {
             q.signalEvent_value(
-                ProtocolObject::from_ref(&**self.res.events.get(event)),
+                ProtocolObject::from_ref(&**self.res.timelines.get(event)),
                 value,
             );
         }
@@ -119,15 +119,17 @@ impl Device {
         buffer: u32,
         heap: u32,
         ranges: &[SparseRange],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         autoreleasepool(|_| {
+            let waits = &self.res.table.points(waits);
+            let signals = &self.res.table.points(signals);
             self.check_queue(queue);
             self.res.table.buffers.get(buffer);
             let page = self.sparse_page()?;
             self.res.table.map_buffer(buffer, heap, page, ranges);
-            self.res.table.submit(queue, waits, signals);
+            self.res.table.submit(queue, signals);
             let mode = if heap == !0 {
                 MTLSparseTextureMappingMode::Unmap
             } else {
@@ -168,15 +170,17 @@ impl Device {
         texture: u32,
         heap: u32,
         regions: &[SparseRegion],
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         autoreleasepool(|_| {
+            let waits = &self.res.table.points(waits);
+            let signals = &self.res.table.points(signals);
             self.check_queue(queue);
             self.res.table.textures.get(texture);
             let page = self.sparse_page()?;
             self.res.table.map_texture(texture, heap, page, regions);
-            self.res.table.submit(queue, waits, signals);
+            self.res.table.submit(queue, signals);
             let mode = if heap == !0 {
                 MTLSparseTextureMappingMode::Unmap
             } else {

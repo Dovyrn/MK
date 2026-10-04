@@ -225,6 +225,9 @@ impl Device {
         if self.ext.mesh.is_none() {
             return Err("VK_EXT_mesh_shader is not enabled".into());
         }
+        if !info.task.is_empty() && !self.ext.task {
+            return Err("the taskShader feature is not enabled".into());
+        }
         self.graphics(
             info.code,
             &[

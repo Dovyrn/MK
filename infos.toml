@@ -177,6 +177,9 @@ fields = [
 name = "Caps"
 fields = [
     ["mesh", "bool", "false"],
+    ["mesh_indirect", "bool", "false"],
+    ["mesh_groups", "u32", "0"],
+    ["mesh_axis", "u32", "0"],
     ["push", "u32", "0"],
     ["queues", "u32", "0"],
     ["samplers", "u32", "0"],
@@ -213,6 +216,8 @@ fields = [
     ["indirect", "bool", "false"],
     ["indirect_offset", "bool", "false"],
     ["max_buffer", "u64", "0"],
+    ["max_uniform", "u64", "0"],
+    ["max_storage", "u64", "0"],
     ["max_texture", "u32", "0"],
     ["max_cube", "u32", "0"],
     ["max_volume", "u32", "0"],

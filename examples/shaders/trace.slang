@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Push {
     float* out;
     DescriptorHandle<RaytracingAccelerationStructure> scene;

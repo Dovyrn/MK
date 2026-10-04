@@ -68,7 +68,7 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let blue = [0, 0, 255, 255];
     let red = [255, 0, 0, 255];
     let cases = [(Some(0), blue), (Some(1), red), (None, red)];
@@ -142,8 +142,8 @@ pub fn main() {
         );
         c.end_compute();
         let value = i as u64 + 1;
-        device.submit(0, &c, &[], &[(event, value)]).unwrap();
-        assert!(device.wait(event, value, 1000).unwrap());
+        device.submit(0, &c, &[], &[(&timeline, value)]).unwrap();
+        assert!(timeline.wait(value, 1000).unwrap());
         let pixels = unsafe {
             std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
         };

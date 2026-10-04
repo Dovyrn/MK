@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Push {
     float4* out;
     DescriptorHandle<Texture2D<float4>> tex;

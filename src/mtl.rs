@@ -13,6 +13,8 @@ mod residency;
 mod resolve;
 mod resources;
 mod texture;
+mod timeline;
 
 pub use device::Device;
 pub use native::{Callback, Native};
+pub use timeline::Timeline;

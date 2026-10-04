@@ -6,6 +6,7 @@ use ash::vk;
 pub struct Extensions {
     pub debug: Option<debug_utils::Device>,
     pub mesh: Option<mesh_shader::Device>,
+    pub task: bool,
     pub accel: Option<acceleration_structure::Device>,
     pub rates: Option<fragment_shading_rate::Device>,
     pub images: bool,
@@ -42,7 +43,6 @@ impl Extensions {
         unsafe {
             let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
             let v13 = chained::<vk::PhysicalDeviceVulkan13Features>(features);
-            let mutable = chained::<vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT>(features);
             let needs = [
                 (
                     "VkPhysicalDeviceVulkan12Features.bufferDeviceAddress",
@@ -72,10 +72,6 @@ impl Extensions {
                     "VkPhysicalDeviceVulkan13Features.dynamicRendering",
                     v13.map(|f| f.dynamic_rendering),
                 ),
-                (
-                    "VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT.mutableDescriptorType",
-                    mutable.map(|f| f.mutable_descriptor_type),
-                ),
             ];
             let missing: Vec<_> = needs
                 .iter()
@@ -93,6 +89,9 @@ impl Extensions {
             let mesh = chained::<vk::PhysicalDeviceMeshShaderFeaturesEXT>(features)
                 .is_some_and(|f| f.mesh_shader != 0)
                 && has(c"vkCmdDrawMeshTasksEXT");
+            let task = mesh
+                && chained::<vk::PhysicalDeviceMeshShaderFeaturesEXT>(features)
+                    .is_some_and(|f| f.task_shader != 0);
             let mesh = mesh.then(|| mesh_shader::Device::new(instance, raw));
             let accel = chained::<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>(features)
                 .is_some_and(|f| f.acceleration_structure != 0)
@@ -142,6 +141,7 @@ impl Extensions {
             Ok(Self {
                 debug,
                 mesh,
+                task,
                 accel,
                 rates,
                 images,

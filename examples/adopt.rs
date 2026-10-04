@@ -118,12 +118,9 @@ fn native(
     let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
         .synchronization2(true)
         .dynamic_rendering(true);
-    let mut mutable =
-        vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default().mutable_descriptor_type(true);
     let features = vk::PhysicalDeviceFeatures2::default()
         .push_next(&mut v12)
-        .push_next(&mut v13)
-        .push_next(&mut mutable);
+        .push_next(&mut v13);
     let mut device = Device::adopt(
         host.instance.clone(),
         host.physical,
@@ -153,7 +150,7 @@ pub fn main() {
     let back = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture,
@@ -198,8 +195,8 @@ pub fn main() {
         access::HOST_READ,
     );
     c.end_compute();
-    device.submit(0, &c, &[], &[(event, 1)]).unwrap();
-    assert!(device.wait(event, 1, 1000).unwrap());
+    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap());
     let pixels =
         unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
     assert!(
@@ -208,6 +205,7 @@ pub fn main() {
         pixels[0]
     );
     device.unmap(back);
+    device.destroy_timeline(timeline);
     drop(device);
     #[cfg(feature = "vk")]
     unsafe {

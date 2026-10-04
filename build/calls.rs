@@ -49,7 +49,9 @@ fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
     };
     match p.kind.as_str() {
         "u32" | "usize" | "i32" => one("int", "jint"),
-        "u64" | "handle" | "object" | "f32x12" | "pointer" => one("long", "jlong"),
+        "u64" | "handle" | "object" | "f32x12" | "pointer" | "timeline" | "taken" => {
+            one("long", "jlong")
+        }
         "f32" => one("float", "jfloat"),
         "bool" => one("boolean", "jboolean"),
         "bytes" | "mutbytes" | "commands" => two("long", "jlong"),
@@ -67,7 +69,7 @@ fn outs(call: &Call) -> bool {
 fn result_types(call: &Call) -> (&'static str, &'static str) {
     match call.result.as_str() {
         "u32" | "i32" => ("int", "jint"),
-        "u64" | "pointer" | "handle" | "object" | "device" => ("long", "jlong"),
+        "u64" | "pointer" | "handle" | "object" | "device" | "timeline" => ("long", "jlong"),
         "bytes" => ("byte[]", "jni::objects::JByteArray<'local>"),
         "str" => ("String", "jni::objects::JString<'local>"),
         "bool" => ("boolean", "jboolean"),
@@ -96,6 +98,8 @@ fn rust_arg(p: &Field) -> String {
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
         "handle" => format!("ash::vk::Handle::from_raw({n} as u64)"),
         "object" => format!("{j}::object({n})"),
+        "timeline" => format!("{j}::timeline({n})"),
+        "taken" => format!("{j}::take({n})"),
         k => match list(k) {
             Some(item) => format!(
                 "&crate::wire::list(&mut {j}::bytes({n}, {n}_length as i64), {})",
@@ -111,6 +115,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(mut env: JNIEnv, _: JClass, device: jlong) {\n",
     );
     s += "    crate::java::call(&mut env, |_| {\n        drop(unsafe { Box::from_raw(device as *mut crate::Device) });\n        Ok(())\n    })\n}\n";
+    s += include_str!("timeline.rs");
     for call in calls {
         let mut params = vec![
             "mut env: JNIEnv<'local>".to_string(),
@@ -189,7 +194,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             "pointer" => format!("Ok({invoke} as usize as jlong)"),
             "handle" => format!("Ok(ash::vk::Handle::as_raw({invoke}) as jlong)"),
             "object" => format!("Ok(crate::java::pointer({invoke}))"),
-            "device" => format!("Ok(Box::into_raw(Box::new({invoke})) as jlong)"),
+            "device" | "timeline" => format!("Ok(Box::into_raw(Box::new({invoke})) as jlong)"),
             "pair" => format!("crate::java::pair(out, {invoke});\n        Ok(())"),
             "handles" => format!(
                 "let r = {invoke};\n        crate::java::pair(out, (ash::vk::Handle::as_raw(r.0), ash::vk::Handle::as_raw(r.1)));\n        Ok(())"
@@ -240,6 +245,8 @@ fn direct(kind: &str) -> bool {
             | "bytes"
             | "mutbytes"
             | "commands"
+            | "timeline"
+            | "taken"
     )
 }
 
@@ -247,7 +254,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
     let name = class(backend, "Device");
     let mut s =
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
-    s += "import java.nio.charset.StandardCharsets;\nimport org.lwjgl.system.MemoryStack;\n\n";
+    s += "import java.nio.charset.StandardCharsets;\n\n";
     if backend.is_none() {
         s += include_str!("device.java");
     } else {
@@ -270,7 +277,8 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "bytes" | "mutbytes" => "long".into(),
                 "commands" => "Commands".into(),
                 "u32s" | "pairs" => "int[]".into(),
-                "waits" => "long[]".into(),
+                "waits" => "Point[]".into(),
+                "timeline" | "taken" => "Timeline".into(),
                 k => java_type(k),
             };
             params.push(format!("{t} {}", camel(&p.name)));
@@ -283,6 +291,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             "pair" | "handles" | "pair32" => "long[]".to_string(),
             "u32x2" | "u32x3" | "u32x8" => "int[]".into(),
             "device" => name.clone(),
+            "timeline" => "Timeline".into(),
             r if info(r) => r.into(),
             _ => java_ret.into(),
         };
@@ -298,10 +307,10 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
-        let stack = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
-        let indent = if stack { "            " } else { "        " };
-        if stack {
-            s += "        try (var stack = MemoryStack.stackPush()) {\n";
+        let arena = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
+        let indent = if arena { "            " } else { "        " };
+        if arena {
+            s += "        try (var arena = new Arena()) {\n";
         }
         let mut args = Vec::new();
         if !statics(call) {
@@ -313,14 +322,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "u32" | "usize" | "i32" | "u64" | "handle" | "object" | "pointer" | "f32"
                 | "bool" => args.push(n),
                 "f32s" => {
-                    args.push(format!("memAddress(stack.floats({n}))"));
+                    args.push(format!("arena.floats({n})"));
                     args.push(format!("{n}.length"));
                 }
                 k if list(k).is_some() => {
                     list_size(&mut s, k, &n, "            ");
                     writeln!(
                         s,
-                        "            var {n}Address = stack.nmalloc(8, {n}Size);\n            var {n}At = {n}Address;"
+                        "            var {n}Address = arena.alloc({n}Size);\n            var {n}At = {n}Address;"
                     )
                     .unwrap();
                     list_put(&mut s, k, &n, &format!("{n}At"), "            ").unwrap();
@@ -328,9 +337,13 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}Size"));
                 }
                 "str" => {
-                    writeln!(s, "            var {n}Bytes = stack.UTF8({n}, false);").unwrap();
-                    args.push(format!("memAddress({n}Bytes)"));
-                    args.push(format!("{n}Bytes.remaining()"));
+                    writeln!(
+                        s,
+                        "            var {n}Bytes = {n}.getBytes(StandardCharsets.UTF_8);"
+                    )
+                    .unwrap();
+                    args.push(format!("arena.bytes({n}Bytes)"));
+                    args.push(format!("{n}Bytes.length"));
                 }
                 "bytes" | "mutbytes" => {
                     args.push(n.clone());
@@ -348,7 +361,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                         )
                         .unwrap();
                     }
-                    args.push(format!("memAddress(stack.ints({n}))"));
+                    args.push(format!("arena.ints({n})"));
                     args.push(if p.kind == "pairs" {
                         format!("{n}.length / 2")
                     } else {
@@ -361,24 +374,21 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                         "            if ({n}.length != 12) {{\n                throw new IllegalArgumentException(\"{n} has 12 values\");\n            }}"
                     )
                     .unwrap();
-                    args.push(format!("memAddress(stack.floats({n}))"));
+                    args.push(format!("arena.floats({n})"));
                 }
                 "waits" => {
                     writeln!(
                         s,
-                        "            if ({n}.length % 2 != 0) {{\n                throw new IllegalArgumentException(\"{n} holds event and value pairs\");\n            }}"
-                    )
-                    .unwrap();
-                    writeln!(
-                        s,
-                        "            var {n}Address = stack.nmalloc(8, {n}.length * 8);\n            for (var i = 0; i < {n}.length / 2; i++) {{\n                memPutInt({n}Address + i * 16, (int) {n}[i * 2]);\n                memPutLong({n}Address + i * 16 + 8, {n}[i * 2 + 1]);\n            }}"
+                        "            var {n}Address = arena.alloc({n}.length * 16L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 16, {n}[i].timeline().handle());\n                memPutLong({n}Address + i * 16 + 8, {n}[i].value());\n            }}"
                     )
                     .unwrap();
                     args.push(format!("{n}Address"));
-                    args.push(format!("{n}.length / 2"));
+                    args.push(format!("{n}.length"));
                 }
+                "timeline" => args.push(format!("{n}.handle()")),
+                "taken" => args.push(format!("{n}.take()")),
                 _ => {
-                    writeln!(s, "            var {n}Address = stack.nmalloc(8, {n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();
+                    writeln!(s, "            var {n}Address = arena.alloc({n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();
                     args.push(format!("{n}Address"));
                     args.push(format!("{n}.encodedSize()"));
                 }
@@ -392,7 +402,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "u32x8" => "32".into(),
                 r => format!("{r}.SIZE"),
             };
-            writeln!(s, "            var out = stack.nmalloc(8, {size});").unwrap();
+            writeln!(s, "            var out = arena.alloc({size});").unwrap();
             args.push("out".into());
         }
         let invoke = format!("{}({})", native(call), args.join(", "));
@@ -412,6 +422,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 )
             }
             "device" => format!("return new {name}({invoke});"),
+            "timeline" => format!("return new Timeline({invoke});"),
             r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
@@ -435,7 +446,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             )
             .unwrap();
         }
-        if stack {
+        if arena {
             s += "        }\n";
         }
         s += "    }\n";

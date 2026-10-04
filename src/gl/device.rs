@@ -8,8 +8,8 @@ use crate::check::Check;
 use crate::gl::addresses::GPU_ADDRESS;
 use crate::gl::buffer::Buffer;
 use crate::gl::cache::Cache;
-use crate::gl::event::Event;
 use crate::gl::extra::Extra;
+use crate::gl::fences::Fences;
 use crate::gl::native::Callback;
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
@@ -21,16 +21,17 @@ use crate::gl::sampler;
 use crate::gl::state::{self, State, buffer};
 use crate::gl::texture::{Texture, target};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, ViewInfo,
-    dimension, format, memory, query, topology, usage,
+    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, Timeline,
+    ViewInfo, dimension, format, memory, query, topology, usage,
 };
 use glow::HasContext;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::rc::Rc;
 
 pub struct Device {
-    pub gl: glow::Context,
+    pub gl: Rc<glow::Context>,
     extra: Extra,
     version: u32,
     extensions: Vec<String>,
@@ -53,6 +54,14 @@ pub const RING: usize = 1 << 16;
 const TASK_SHADER: u32 = 0x955A;
 
 const MESH_SHADER: u32 = 0x9559;
+
+const MAX_TASK_TOTAL: u32 = 0x9740;
+
+const MAX_MESH_TOTAL: u32 = 0x9741;
+
+const MAX_TASK_COUNT: u32 = 0x9751;
+
+const MAX_MESH_COUNT: u32 = 0x9752;
 
 pub fn compare(c: u32) -> u32 {
     match c {
@@ -169,11 +178,32 @@ impl Device {
                 buffer_clear: extra.clear.is_some(),
                 partial_resolve: true,
                 max_buffer: isize::MAX as u64,
+                max_uniform: gl.get_parameter_i64(glow::MAX_UNIFORM_BLOCK_SIZE) as u64,
+                max_storage: if storage {
+                    gl.get_parameter_i64(glow::MAX_SHADER_STORAGE_BLOCK_SIZE) as u64
+                } else {
+                    0
+                },
                 max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
                 max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
                 max_volume: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
                 mesh: extra.mesh.is_some(),
+                mesh_indirect: extra.mesh.is_some(),
+                mesh_groups: if extra.mesh.is_some() {
+                    int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
+                } else {
+                    0
+                },
+                mesh_axis: if extra.mesh.is_some() {
+                    (0..3)
+                        .flat_map(|i| [MAX_TASK_COUNT, MAX_MESH_COUNT].map(|p| (p, i)))
+                        .map(|(p, i)| gl.get_parameter_indexed_i32(p, i))
+                        .min()
+                        .unwrap() as u32
+                } else {
+                    0
+                },
                 budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
                 host_read: has(45, "GL_ARB_get_texture_sub_image"),
                 buffers: if extra.addresses.is_some() {
@@ -215,7 +245,7 @@ impl Device {
             let read = gl.create_framebuffer()?;
             let resolve = Resolve::new(&gl)?;
             Ok(Self {
-                gl,
+                gl: Rc::new(gl),
                 extra,
                 version,
                 extensions,
@@ -730,20 +760,28 @@ impl Device {
         self.res.queries.remove(heap).delete(&self.gl);
     }
 
-    pub fn create_event(&mut self) -> Result<u32, String> {
+    pub fn create_timeline(&mut self) -> Result<Timeline, String> {
         self.thread();
-        let id = self.res.events.insert(Event {
+        let fences = Rc::new(RefCell::new(Fences {
             fences: Vec::new(),
             value: 0,
-        });
-        self.res.table.events.set(id, (0, usize::MAX));
-        Ok(id)
+        }));
+        let id = self.res.timelines.insert(fences.clone());
+        Ok(Timeline {
+            id,
+            token: self.res.table.add_timeline(id),
+            gl: self.gl.clone(),
+            fences,
+            reset: self.extra.reset,
+            thread: self.thread,
+        })
     }
 
-    pub fn destroy_event(&mut self, event: u32) {
+    pub fn destroy_timeline(&mut self, timeline: Timeline) {
         self.thread();
-        self.res.table.events.clear(event);
-        self.res.events.remove(event).delete(&self.gl);
+        self.res.table.drop_timeline(&timeline);
+        let fences = self.res.timelines.remove(timeline.id);
+        fences.borrow().delete(&self.gl);
     }
 
     fn healthy(&self) -> Result<(), String> {
@@ -753,29 +791,17 @@ impl Device {
         }
     }
 
-    pub fn event_value(&mut self, event: u32) -> Result<u64, String> {
-        self.thread();
-        self.res.table.events.get(event);
-        self.healthy()?;
-        Ok(self.res.events.get(event).value(&self.gl))
-    }
-
-    pub fn wait(&mut self, event: u32, value: u64, ms: u64) -> Result<bool, String> {
-        self.thread();
-        self.res.table.events.get(event);
-        self.healthy()?;
-        self.res.events.get(event).wait(&self.gl, value, ms)
-    }
-
     pub(crate) fn replay(
         &mut self,
         queue: usize,
         (commands, natives): (&[u8], &[Callback]),
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         self.thread();
         assert_eq!(queue, 0, "GL has one queue");
+        let waits = &self.res.table.points(waits);
+        let signals = &self.res.table.points(signals);
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         if let Some(i) = self
             .res
@@ -786,7 +812,7 @@ impl Device {
         }
         self.programs()?;
         self.queries()?;
-        self.res.table.submit(queue, waits, signals);
+        self.res.table.submit(queue, signals);
         self.healthy()?;
         self.waits(waits);
         let snapshot = || {
@@ -832,8 +858,8 @@ impl Device {
     }
 
     fn waits(&self, waits: &[(u32, u64)]) {
-        for &(event, value) in waits {
-            let e = self.res.events.get(event);
+        for &(id, value) in waits {
+            let e = self.res.timelines.get(id).borrow();
             if e.value >= value {
                 continue;
             }
@@ -841,14 +867,18 @@ impl Device {
                 .fences
                 .iter()
                 .find(|(v, _)| *v >= value)
-                .expect("wait on an event value no submit signals");
+                .expect("wait on a timeline value no submit signals");
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
     }
 
     fn signals(&mut self, queue: usize, signals: &[(u32, u64)]) -> Result<(), String> {
-        for &(event, value) in signals {
-            self.res.events.get_mut(event).signal(&self.gl, value)?;
+        for &(id, value) in signals {
+            self.res
+                .timelines
+                .get(id)
+                .borrow_mut()
+                .signal(&self.gl, value)?;
         }
         self.res.table.signal(queue, signals);
         unsafe { self.gl.flush() };
@@ -880,8 +910,8 @@ impl Drop for Device {
             for q in self.res.queries.drain() {
                 q.delete(gl);
             }
-            for e in self.res.events.drain() {
-                e.delete(gl);
+            for t in self.res.timelines.drain() {
+                t.borrow().delete(gl);
             }
             gl.delete_buffer(self.push);
             gl.delete_framebuffer(self.fbo);

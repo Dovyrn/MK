@@ -1,6 +1,5 @@
 use super::{Device, image_info, image_usage, whole};
 use crate::caps::supports;
-use crate::vk::bindless::Bindless;
 use crate::vk::texture::{Texture, aspect, count};
 use crate::{TextureInfo, ViewInfo, dimension, format, usage};
 use ash::vk;
@@ -148,7 +147,7 @@ impl Device {
         let view = t.view;
         let slot = self.res.textures.insert(t);
         let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
-        if bound && slot >= self.bindless.textures() {
+        if bound && slot >= self.bindless.textures {
             let t = self.res.textures.remove(slot);
             t.free(self);
             return Err("the bindless heap has no texture slot left".into());
@@ -168,12 +167,12 @@ impl Device {
 
     pub fn texture_handle(&self, texture: u32) -> u64 {
         self.res.table.textures.get(texture);
-        Bindless::texture(texture) as u64
+        texture as u64
     }
 
     pub fn image_handle(&self, texture: u32) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.image(texture);
-        Bindless::image(texture) as u64
+        texture as u64
     }
 }

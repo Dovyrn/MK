@@ -105,6 +105,7 @@ pub fn wgl(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
         let class: Vec<u16> = "mk\0".encode_utf16().collect();
         let instance = GetModuleHandleW(null());
         let wc = WNDCLASSW {
+            style: CS_OWNDC,
             lpfnWndProc: Some(DefWindowProcW),
             hInstance: instance,
             lpszClassName: class.as_ptr(),

@@ -112,10 +112,17 @@ pub fn java(root: &Path) -> usize {
         .arg("-d")
         .arg(&classes)
         .args(&sources)
-        .output()
-        .map(|o| o.status.success());
-    if !compiled.is_ok_and(|ok| ok) {
-        println!("X javac failed");
+        .output();
+    let errors = match compiled {
+        Ok(o) if o.status.success() => None,
+        Ok(o) => Some(String::from_utf8_lossy(&o.stderr).into_owned()),
+        Err(e) => Some(e.to_string()),
+    };
+    if let Some(e) = errors {
+        println!(
+            "X javac failed\n{}",
+            e.lines().take(20).collect::<Vec<_>>().join("\n")
+        );
         return failed + 1;
     }
     let classpath = format!("{}{separator}{}", classes.display(), join(&jars));

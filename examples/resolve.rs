@@ -12,7 +12,7 @@ pub fn main() {
     let back = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
-    let event = device.create_event().unwrap();
+    let timeline = device.create_timeline().unwrap();
     let mut value = 0;
     let mut done = Vec::new();
     let area = if device.caps().partial_resolve {
@@ -129,8 +129,8 @@ pub fn main() {
         );
         c.end_compute();
         value += 1;
-        device.submit(0, &c, &[], &[(event, value)]).unwrap();
-        assert!(device.wait(event, value, 1000).unwrap());
+        device.submit(0, &c, &[], &[(&timeline, value)]).unwrap();
+        assert!(timeline.wait(value, 1000).unwrap());
         let pixels = unsafe {
             std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
         };
