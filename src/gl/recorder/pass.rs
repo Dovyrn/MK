@@ -1,4 +1,4 @@
-use super::{Recorder, integer};
+use super::Recorder;
 use crate::gl::rates;
 use crate::gl::state::toggle;
 use crate::{format, load, slot, store};
@@ -154,7 +154,6 @@ impl Recorder<'_> {
 
     pub fn end_render(&mut self) -> Result<(), String> {
         let gl = self.gl;
-        let res = self.res;
         if self.rated {
             unsafe { (self.extra.rates.as_ref().unwrap().bind)(0) };
             self.rated = false;
@@ -186,27 +185,18 @@ impl Recorder<'_> {
                 gl.bind_framebuffer(target, Some(self.read));
                 self.attach(target, glow::COLOR_ATTACHMENT0, c.resolve, 1);
                 gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
-                let source = res.textures.get(c.texture);
-                if integer(source.format) {
-                    let state = (self.snapshot)();
-                    let raw = source.raw.expect("a resolve source has a texture");
-                    self.resolve
-                        .draw(gl, raw, format::sint(source.format), (w, h));
-                    state.restore(gl, self.extra)?;
-                } else {
-                    gl.blit_framebuffer(
-                        0,
-                        0,
-                        w,
-                        h,
-                        0,
-                        0,
-                        w,
-                        h,
-                        glow::COLOR_BUFFER_BIT,
-                        glow::NEAREST,
-                    );
-                }
+                gl.blit_framebuffer(
+                    0,
+                    0,
+                    w,
+                    h,
+                    0,
+                    0,
+                    w,
+                    h,
+                    glow::COLOR_BUFFER_BIT,
+                    glow::NEAREST,
+                );
                 gl.framebuffer_texture_2d(
                     target,
                     glow::COLOR_ATTACHMENT0,

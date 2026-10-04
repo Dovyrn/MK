@@ -56,6 +56,7 @@ HOST = 128
 BLIT = 256
 RATE = 512
 ATOMIC = 1024
+MIPS = 2048
 
 [memory]
 DEVICE = 0

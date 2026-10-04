@@ -20,17 +20,14 @@ pub fn main() {
     } else {
         n
     };
-    for (f, extra, target) in [
-        (format::RGBA8_UNORM, 0, 0),
-        (format::RGBA8_UINT, usage::SAMPLED, usage::STORAGE),
-    ] {
+    for f in [format::RGBA8_UNORM, format::RGBA8_SRGB] {
         let created = device
             .create_texture(&TextureInfo {
                 format: f,
                 width: n,
                 height: n,
                 samples: 4,
-                usage: usage::COLOR | extra,
+                usage: usage::COLOR,
                 ..Default::default()
             })
             .and_then(|ms| {
@@ -38,7 +35,7 @@ pub fn main() {
                     format: f,
                     width: n,
                     height: n,
-                    usage: usage::COLOR | usage::COPY_SRC | target,
+                    usage: usage::COLOR | usage::COPY_SRC,
                     ..Default::default()
                 })?;
                 Ok((ms, dst))
@@ -47,7 +44,6 @@ pub fn main() {
             println!("format {f}: {}", created.unwrap_err());
             continue;
         };
-        let full = if f == format::RGBA8_UINT { 255.0 } else { 1.0 };
         let mut c = Commands::default();
         for t in [ms, dst] {
             c.texture_barrier(&TextureBarrier {
@@ -60,8 +56,8 @@ pub fn main() {
         }
         c.color_attachment(&ColorAttachment {
             texture: dst,
-            b: full,
-            a: full,
+            b: 1.0,
+            a: 1.0,
             ..Default::default()
         });
         c.begin_render(n, n, 1);
@@ -78,8 +74,8 @@ pub fn main() {
         });
         c.color_attachment(&ColorAttachment {
             texture: ms,
-            r: full,
-            a: full,
+            r: 1.0,
+            a: 1.0,
             ..Default::default()
         });
         c.begin_render(n, n, 1);

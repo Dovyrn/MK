@@ -15,10 +15,8 @@ mod timelines;
 
 use crate::check::Check;
 use crate::mtl::Callback;
-use crate::mtl::blit::Blit;
 use crate::mtl::queue::Queue;
 use crate::mtl::residency::Residency;
-use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
 use crate::{Caps, TextureInfo, Timeline, dimension, format, memory, usage};
 use objc2::rc::{Retained, autoreleasepool};
@@ -27,8 +25,9 @@ use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor, MTL4CompilerTaskOptions,
     MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor, MTL4PipelineDataSetSerializer,
-    MTLCompareFunction, MTLDevice, MTLGPUFamily, MTLLibrary, MTLResourceID, MTLResourceOptions,
-    MTLSize, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage, MTLVertexFormat,
+    MTLCompareFunction, MTLComputePipelineState, MTLDevice, MTLGPUFamily, MTLLibrary,
+    MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
+    MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -152,7 +151,7 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage & usage::VIEW != 0 {
         flags |= MTLTextureUsage::PixelFormatView;
     }
-    if info.usage & usage::BLIT != 0 {
+    if info.usage & usage::MIPS != 0 {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget;
     }
     let desc = MTLTextureDescriptor::new();
@@ -205,8 +204,6 @@ pub struct Device {
     lost: Arc<Mutex<Option<String>>>,
     garbage: VecDeque<(Vec<u64>, Free)>,
     caps: Caps,
-    resolve: Resolve,
-    blit: Blit,
 }
 
 impl Drop for Device {
@@ -248,9 +245,7 @@ impl Device {
             let queues = (0..queues)
                 .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
-            let resolve = Resolve::new(&raw)?;
-            let caps = Self::detect(&raw, queues.len(), resolve.width());
-            let blit = Blit::new(&raw)?;
+            let caps = Self::detect(&raw, queues.len(), width(&raw)?);
             Ok(Self {
                 raw,
                 compiler,
@@ -264,8 +259,6 @@ impl Device {
                 lost,
                 garbage: VecDeque::new(),
                 caps,
-                resolve,
-                blit,
             })
         })
     }
@@ -329,16 +322,22 @@ impl Device {
             Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
             self.res.table.submit(queue, signals);
             self.collect();
-            self.queues[queue].submit(
-                &self.raw,
-                &self.res,
-                (&self.resolve, &self.blit),
-                (commands, natives),
-                waits,
-                signals,
-            )?;
+            self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)?;
             self.res.table.signal(queue, signals);
             Ok(())
         })
     }
+}
+
+fn width(device: &ProtocolObject<dyn MTLDevice>) -> Result<u32, String> {
+    let library = device
+        .newLibraryWithSource_options_error(&NSString::from_str("kernel void probe() {}"), None)
+        .map_err(|e| e.localizedDescription().to_string())?;
+    let function = library
+        .newFunctionWithName(&NSString::from_str("probe"))
+        .ok_or("probe kernel allocation failed")?;
+    let state = device
+        .newComputePipelineStateWithFunction_error(&function)
+        .map_err(|e| e.localizedDescription().to_string())?;
+    Ok(state.threadExecutionWidth() as u32)
 }

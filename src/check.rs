@@ -713,7 +713,7 @@ impl<'a> Check<'a> {
                 );
             }
             Command::GenerateMips { texture, layout: l } => {
-                let t = self.texture(texture, usage::BLIT, "BLIT");
+                let t = self.texture(texture, usage::MIPS, "MIPS");
                 needs_layout("generate_mips", l, layout::COPY_DST);
                 assert!(
                     !format::uint(t.format) && !format::sint(t.format),
@@ -777,12 +777,11 @@ impl<'a> Check<'a> {
                         s.format == r.format && s.width == r.width && s.height == r.height,
                         "resolve target {resolve} differs in format or size from texture {texture}"
                     );
-                    if format::uint(s.format) || format::sint(s.format) {
-                        assert!(
-                            s.usage & usage::SAMPLED != 0 && r.usage & usage::STORAGE != 0,
-                            "an integer resolve needs usage::SAMPLED on texture {texture} and usage::STORAGE on target {resolve}"
-                        );
-                    }
+                    assert!(
+                        !format::uint(s.format) && !format::sint(s.format),
+                        "integer format {} cannot be resolved",
+                        s.format
+                    );
                 }
             }
             Command::DepthAttachment {

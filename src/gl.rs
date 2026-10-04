@@ -12,7 +12,6 @@ mod program;
 mod query;
 mod rates;
 mod recorder;
-mod resolve;
 mod resources;
 mod sampler;
 mod state;

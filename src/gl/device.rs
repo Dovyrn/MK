@@ -15,7 +15,6 @@ use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
-use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
 use crate::gl::sampler;
 use crate::gl::state::{self, State, buffer};
@@ -39,7 +38,6 @@ pub struct Device {
     push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
-    resolve: Resolve,
     cache: Option<Cache>,
     units: u32,
     caps: Caps,
@@ -285,7 +283,6 @@ impl Device {
             gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;
-            let resolve = Resolve::new(&gl)?;
             Ok(Self {
                 gl: Rc::new(gl),
                 extra,
@@ -298,7 +295,6 @@ impl Device {
                 push,
                 fbo,
                 read,
-                resolve,
                 cache: None,
                 units: 0,
                 thread: std::thread::current().id(),
@@ -693,6 +689,9 @@ impl Device {
                 let mut u = base | usage::COPY_DST | usage::HOST;
                 if !unrenderable {
                     u |= usage::COLOR | usage::COPY_SRC | usage::BLIT;
+                    if !format::uint(format) && !format::sint(format) {
+                        u |= usage::MIPS;
+                    }
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
                     u |= usage::STORAGE;
@@ -887,7 +886,7 @@ impl Device {
             &self.res,
             &self.caps,
             (self.push, self.fbo, self.read),
-            (&self.resolve, &snapshot),
+            &snapshot,
             natives,
         );
         let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
@@ -968,7 +967,6 @@ impl Drop for Device {
             gl.delete_buffer(self.push);
             gl.delete_framebuffer(self.fbo);
             gl.delete_framebuffer(self.read);
-            self.resolve.delete(gl);
         }
     }
 }

@@ -1,15 +1,12 @@
 mod textures;
 
 use crate::command;
-use crate::mtl::blit::Blit;
 use crate::mtl::frame::Frame;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
-use crate::mtl::resolve::Resolve;
 use crate::mtl::resources::Resources;
-use crate::mtl::texture::Texture;
 use crate::mtl::{Callback, Native};
 use crate::{Command, access, face, format, index, load, stage, store};
 use crate::{register, slot};
@@ -31,9 +28,6 @@ pub struct Recorder<'a> {
     residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
-    resolve: &'a Resolve,
-    blit: &'a Blit,
-    resolves: Vec<(&'a Texture, &'a Texture, bool)>,
     frame: &'a mut Frame,
     res: &'a Resources,
     natives: &'a [Callback],
@@ -64,10 +58,6 @@ const RENDER: MTLStages = MTLStages(
 );
 
 const NONE: u32 = !0;
-
-pub fn integer(f: u32) -> Option<bool> {
-    (format::uint(f) || format::sint(f)).then(|| format::sint(f))
-}
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
@@ -175,7 +165,6 @@ impl<'a> Recorder<'a> {
     pub fn new(
         device: &'a ProtocolObject<dyn MTLDevice>,
         queue: &'a Queue,
-        (resolve, blit): (&'a Resolve, &'a Blit),
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
@@ -185,9 +174,6 @@ impl<'a> Recorder<'a> {
             residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
-            resolve,
-            blit,
-            resolves: Vec::new(),
             frame,
             res,
             natives,
@@ -237,21 +223,6 @@ impl<'a> Recorder<'a> {
         encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from | COMPUTE, to, options);
         encoder.endEncoding();
         self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
-        Ok(())
-    }
-
-    fn resolve(&mut self) -> Result<(), &'static str> {
-        if self.resolves.is_empty() {
-            return Ok(());
-        }
-        let encoder = self
-            .buffer
-            .computeCommandEncoder()
-            .ok_or("compute encoder allocation failed")?;
-        self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
-        self.resolve
-            .encode(&encoder, std::mem::take(&mut self.resolves));
-        encoder.endEncoding();
         Ok(())
     }
 
@@ -574,8 +545,8 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::CopyTexture { .. } => self.copy_texture(command)?,
-            Command::BlitTexture { .. } => self.blit_texture(command)?,
-            Command::GenerateMips { texture, .. } => self.generate_mips(texture)?,
+            Command::BlitTexture { .. } => unreachable!("Metal never reports usage::BLIT"),
+            Command::GenerateMips { texture, .. } => self.generate_mips(texture),
             Command::ClearTexture { .. } => self.clear_texture(command)?,
             Command::ColorAttachment {
                 index,
@@ -599,23 +570,15 @@ impl<'a> Recorder<'a> {
                 attachment.setTexture(Some(&t.raw));
                 unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
                 attachment.setLoadAction(load(l));
-                let signed = integer(t.format).filter(|_| resolve != NONE);
-                attachment.setStoreAction(match signed {
-                    Some(_) => MTLStoreAction::Store,
-                    None => store(s, resolve != NONE),
-                });
+                attachment.setStoreAction(store(s, resolve != NONE));
                 attachment.setClearColor(MTLClearColor {
                     red: r as f64,
                     green: g as f64,
                     blue: b as f64,
                     alpha: a as f64,
                 });
-                match signed {
-                    Some(signed) => self.resolves.push((t, res.textures.get(resolve), signed)),
-                    None if resolve != NONE => {
-                        attachment.setResolveTexture(Some(&res.textures.get(resolve).raw))
-                    }
-                    None => {}
+                if resolve != NONE {
+                    attachment.setResolveTexture(Some(&res.textures.get(resolve).raw));
                 }
             }
             Command::DepthAttachment {
@@ -673,7 +636,6 @@ impl<'a> Recorder<'a> {
             Command::EndRender => {
                 let encoder = self.render.take().unwrap();
                 encoder.endEncoding();
-                self.resolve()?;
             }
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);

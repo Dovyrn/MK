@@ -1,5 +1,4 @@
 mod accel;
-mod blit;
 mod device;
 mod frame;
 mod indirect;
@@ -10,7 +9,6 @@ mod queue;
 mod recorder;
 mod render;
 mod residency;
-mod resolve;
 mod resources;
 mod texture;
 mod timeline;

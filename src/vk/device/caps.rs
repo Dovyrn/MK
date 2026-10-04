@@ -175,10 +175,11 @@ impl Device {
         if !format::uint(format) && !format::sint(format) {
             need |= vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
         }
-        let blit = if features.contains(need) && !caps::depth(format) {
-            usage::BLIT
-        } else {
-            0
+        let integer = format::uint(format) || format::sint(format);
+        let blit = match features.contains(need) && !caps::depth(format) {
+            true if integer => usage::BLIT,
+            true => usage::BLIT | usage::MIPS,
+            false => 0,
         };
         [
             (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),

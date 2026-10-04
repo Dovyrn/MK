@@ -10,7 +10,6 @@ use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
 use crate::gl::program::Program;
 use crate::gl::rates;
-use crate::gl::resolve::Resolve;
 use crate::gl::resources::Resources;
 use crate::gl::state::{State, toggle};
 use crate::register;
@@ -56,7 +55,6 @@ pub struct Recorder<'a> {
     push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
-    resolve: &'a Resolve,
     snapshot: &'a dyn Fn() -> State,
     program: Option<&'a Program>,
     render: Option<&'a Pipeline>,
@@ -200,7 +198,7 @@ impl<'a> Recorder<'a> {
         res: &'a Resources,
         caps: &'a Caps,
         (push, fbo, read): (glow::Buffer, glow::Framebuffer, glow::Framebuffer),
-        (resolve, snapshot): (&'a Resolve, &'a dyn Fn() -> State),
+        snapshot: &'a dyn Fn() -> State,
         natives: &'a [Callback],
     ) -> Self {
         Self {
@@ -211,7 +209,6 @@ impl<'a> Recorder<'a> {
             push,
             fbo,
             read,
-            resolve,
             snapshot,
             program: None,
             render: None,
