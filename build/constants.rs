@@ -61,6 +61,6 @@ pub fn slang(table: &toml::Table) -> String {
         }
         s += "\n";
     }
-    s += "#include \"indirect.slangh\"\n#include \"rays.slangh\"\n";
+    s += "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n#include \"indirect.slangh\"\n#include \"rays.slangh\"\n";
     s
 }

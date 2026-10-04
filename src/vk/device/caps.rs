@@ -3,7 +3,7 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, TextureInfo, caps, format, stage, subgroup, usage};
+use crate::{Caps, Matrix, TextureInfo, caps, format, stage, subgroup, usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -64,6 +64,7 @@ pub(super) fn probe(
         max_threads: limits.max_compute_work_group_invocations,
         max_shared: limits.max_compute_shared_memory_size,
         atomics64: ext.atomics,
+        matrices: ext.matrices.len() as u32,
         mesh: ext.mesh.is_some(),
         mesh_indirect: ext.mesh.is_some(),
         mesh_groups: mesh
@@ -128,7 +129,7 @@ pub(super) fn probe(
         copy_formats: true,
         texture_clear: true,
         buffer_clear: true,
-        partial_resolve: true,
+        partial_resolve: !ext.moltenvk,
         max_buffer: buffer.max_buffer_size,
         max_uniform: limits.max_uniform_buffer_range as u64,
         max_storage: limits.max_storage_buffer_range as u64,
@@ -150,6 +151,11 @@ pub(super) fn probe(
 impl Device {
     pub fn caps(&self) -> Caps {
         self.caps
+    }
+
+    pub fn matrix(&self, index: u32) -> Matrix {
+        self.caps.matrix(index);
+        self.ext.matrices[index as usize]
     }
 
     pub fn format_usage(&self, format: u32) -> u32 {
@@ -177,6 +183,7 @@ impl Device {
         [
             (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),
             (vk::FormatFeatureFlags::STORAGE_IMAGE, usage::STORAGE),
+            (vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC, usage::ATOMIC),
             (vk::FormatFeatureFlags::COLOR_ATTACHMENT, usage::COLOR),
             (
                 vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,

@@ -100,6 +100,16 @@ public class Device implements AutoCloseable {
 
     private static native long nAddress(long device, int buffer);
 
+    public synchronized Matrix matrix(int index) {
+        try (var arena = new Arena()) {
+            var out = arena.alloc(Matrix.SIZE);
+            nMatrix(handle, index, out);
+            return Matrix.decode(out);
+        }
+    }
+
+    private static native void nMatrix(long device, int index, long out);
+
     public synchronized Budget memoryBudget() {
         try (var arena = new Arena()) {
             var out = arena.alloc(Budget.SIZE);

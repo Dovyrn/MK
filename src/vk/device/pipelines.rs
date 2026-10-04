@@ -6,6 +6,10 @@ use crate::{
 use ash::vk;
 use std::ffi::CString;
 
+const MATRIX: u32 = 6022;
+
+const MODEL: u32 = 5345;
+
 impl Device {
     #[allow(clippy::too_many_arguments)]
     fn graphics(
@@ -35,7 +39,7 @@ impl Device {
             .collect();
         let words = spirv::read(code, &used, self.caps.slots)?;
         let ops = spirv::subgroups(&words);
-        self.caps.atomics(spirv::atomics(&words))?;
+        self.capabilities(&words)?;
         for (flag, name) in entries {
             let stage = [
                 (vk::ShaderStageFlags::VERTEX, stage::VERTEX),
@@ -312,6 +316,19 @@ impl Device {
         Ok(())
     }
 
+    fn capabilities(&self, words: &[u32]) -> Result<(), String> {
+        self.caps.atomics(spirv::atomics(words))?;
+        if spirv::declares(words, MATRIX) && self.caps.matrices == 0 {
+            return Err("the shader uses cooperative matrices, and caps.matrices is 0".into());
+        }
+        if spirv::declares(words, MODEL) && !self.ext.model {
+            return Err(
+                "the shader uses the Vulkan memory model, which the host did not enable".into(),
+            );
+        }
+        Ok(())
+    }
+
     pub(super) fn module(&self, words: &[u32]) -> Result<vk::ShaderModule, String> {
         let info = vk::ShaderModuleCreateInfo::default().code(words);
         unsafe { self.raw.create_shader_module(&info, None) }.map_err(|e| e.to_string())
@@ -332,7 +349,7 @@ impl Device {
         let words = spirv::read(code, &[entry], self.caps.slots)?;
         self.caps
             .subgroups(spirv::subgroups(&words), stage::COMPUTE)?;
-        self.caps.atomics(spirv::atomics(&words))?;
+        self.capabilities(&words)?;
         if info.full {
             let size = if info.subgroup == 0 {
                 1 << (31 - self.caps.subgroup_sizes.leading_zeros())

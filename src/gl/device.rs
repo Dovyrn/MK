@@ -21,7 +21,7 @@ use crate::gl::sampler;
 use crate::gl::state::{self, State, buffer};
 use crate::gl::texture::{Texture, target};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, Timeline,
+    Caps, ComputeInfo, DepthInfo, Matrix, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, Timeline,
     ViewInfo, atomic, dimension, format, memory, query, stage, subgroup, topology, usage,
 };
 use glow::HasContext;
@@ -226,7 +226,7 @@ impl Device {
                     0
                 },
                 atomics64: if has(99, "GL_NV_shader_atomic_int64") {
-                    atomic::MIN_MAX | atomic::ALL | atomic::SHARED
+                    atomic::MIN_MAX | atomic::SIGNED
                 } else {
                     0
                 },
@@ -321,6 +321,12 @@ impl Device {
     pub fn caps(&self) -> Caps {
         self.thread();
         self.caps
+    }
+
+    pub fn matrix(&self, index: u32) -> Matrix {
+        self.thread();
+        self.caps.matrix(index);
+        unreachable!()
     }
 
     pub fn name(&self) -> String {
@@ -690,6 +696,9 @@ impl Device {
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
                     u |= usage::STORAGE;
+                    if matches!(format, format::R32_UINT | format::R32_SINT) {
+                        u |= usage::ATOMIC;
+                    }
                 }
                 u
             }

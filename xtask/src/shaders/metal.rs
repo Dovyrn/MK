@@ -19,14 +19,22 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         }
         let msl = out.join(format!("{name}.{entry}.metal"));
         let json = out.join(format!("{name}.{entry}.json"));
-        run(Command::new("slangc")
+        let made = Command::new("slangc")
             .arg(&slang)
             .args(["-I", super::LIBRARY])
             .args(["-target", "metal", "-entry", entry.as_str()])
             .arg("-reflection-json")
             .arg(&json)
             .arg("-o")
-            .arg(&msl));
+            .arg(&msl)
+            .output()
+            .unwrap();
+        if !made.status.success() {
+            let error = String::from_utf8_lossy(&made.stderr);
+            let first = error.lines().find(|l| l.contains("error")).unwrap_or("");
+            eprintln!("{name}.metallib skips entry {entry}: {first}");
+            continue;
+        }
         pin(&msl, &json);
         bases(&msl, &json);
         fs::remove_file(&json).unwrap();
@@ -52,6 +60,14 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         let air = out.join(format!("{name}.air"));
         compile(&metal, &air);
         airs.push(air);
+    }
+    let path = out.join(format!("{name}.metallib"));
+    if airs.is_empty() {
+        eprintln!("{name}.metallib skipped: no entry compiles for Metal");
+        if path.exists() {
+            fs::remove_file(&path).unwrap();
+        }
+        return;
     }
     library(out, name, &airs, &groups);
 }

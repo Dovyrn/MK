@@ -31,6 +31,10 @@ pub fn drivers() -> Vec<(String, String)> {
             "/usr/local/share/vulkan/icd.d/libkosmickrisp_icd.json".into(),
         ),
         (
+            "moltenvk".into(),
+            "/usr/local/share/vulkan/icd.d/MoltenVK_icd.json".into(),
+        ),
+        (
             "lavapipe".into(),
             format!("{home}/.local/mesa/share/vulkan/icd.d/lvp_icd.aarch64.json"),
         ),

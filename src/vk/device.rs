@@ -52,6 +52,7 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
         (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
         (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
+        (usage::ATOMIC, vk::ImageUsageFlags::STORAGE),
         (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
         (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
         (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
@@ -124,6 +125,7 @@ fn whole(info: &TextureInfo) -> ViewInfo {
 
 impl Device {
     pub fn adopt(
+        entry: &ash::Entry,
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -151,7 +153,7 @@ impl Device {
                 "queue {i} of family {f} is not on this device"
             );
         }
-        let ext = unsafe { Extensions::new(&instance, physical, &raw, features) }?;
+        let ext = unsafe { Extensions::new(entry, &instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
         let range = vk::PushConstantRange::default()
@@ -338,6 +340,7 @@ impl Device {
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
             Self::adopt(
+                &entry,
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,

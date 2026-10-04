@@ -55,6 +55,7 @@ VIEW = 64
 HOST = 128
 BLIT = 256
 RATE = 512
+ATOMIC = 1024
 
 [memory]
 DEVICE = 0
@@ -196,6 +197,24 @@ ROTATE = 512
 MIN_MAX = 1
 ALL = 2
 SHARED = 4
+SIGNED = 8
+IMAGE = 16
+
+[component]
+F16 = 0
+F32 = 1
+F64 = 2
+S8 = 3
+S16 = 4
+S32 = 5
+S64 = 6
+U8 = 7
+U16 = 8
+U32 = 9
+U64 = 10
+BF16 = 11
+E4M3 = 12
+E5M2 = 13
 
 [instance]
 NO_CULL = 1

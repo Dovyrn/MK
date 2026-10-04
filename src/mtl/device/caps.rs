@@ -1,7 +1,11 @@
 use super::Device;
-use crate::{Caps, TextureInfo, atomic, dimension, format, stage, subgroup, usage};
+use crate::{
+    Caps, Matrix, TextureInfo, atomic, component, dimension, format, stage, subgroup, usage,
+};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
+
+const MATRICES: [u32; 3] = [component::F16, component::BF16, component::F32];
 
 impl Device {
     pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize, width: u32) -> Caps {
@@ -24,10 +28,11 @@ impl Device {
             full_subgroups: false,
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
+            matrices: MATRICES.len() as u32,
             atomics64: if apple9
                 || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
             {
-                atomic::MIN_MAX
+                atomic::MIN_MAX | atomic::IMAGE
             } else {
                 0
             },
@@ -97,6 +102,21 @@ impl Device {
         self.caps
     }
 
+    pub fn matrix(&self, index: u32) -> Matrix {
+        self.caps.matrix(index);
+        let t = MATRICES[index as usize];
+        Matrix {
+            m: 8,
+            n: 8,
+            k: 8,
+            a: t,
+            b: t,
+            c: t,
+            result: t,
+            saturate: false,
+        }
+    }
+
     pub fn format_usage(&self, format: u32) -> u32 {
         let usage = match format {
             format::B5G6R5_UNORM
@@ -110,8 +130,6 @@ impl Device {
             | format::R16_UINT
             | format::R16_SINT
             | format::R32_FLOAT
-            | format::R32_UINT
-            | format::R32_SINT
             | format::RGBA8_UNORM
             | format::RGBA8_UINT
             | format::RGBA8_SINT
@@ -121,7 +139,13 @@ impl Device {
             | format::RGBA32_FLOAT
             | format::RGBA32_UINT
             | format::RGBA32_SINT => usage::SAMPLED | usage::STORAGE | usage::COLOR,
+            format::R32_UINT | format::R32_SINT => {
+                usage::SAMPLED | usage::STORAGE | usage::ATOMIC | usage::COLOR
+            }
             format::A8_UNORM..=format::RGBA32_FLOAT => usage::SAMPLED | usage::COLOR,
+            format::R64_UINT if self.caps.atomics64 & atomic::IMAGE != 0 => {
+                usage::STORAGE | usage::ATOMIC
+            }
             format::D24_UNORM_S8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => 0,
             format::D16_UNORM..=format::S8_UINT => usage::SAMPLED | usage::DEPTH,
             format::BC1_UNORM..=format::BC7_SRGB if !self.raw.supportsBCTextureCompression() => 0,

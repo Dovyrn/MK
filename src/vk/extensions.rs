@@ -1,7 +1,7 @@
-use crate::atomic;
+use crate::{Matrix, atomic, component};
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
 use ash::khr::push_descriptor;
-use ash::khr::{acceleration_structure, fragment_shading_rate};
+use ash::khr::{acceleration_structure, cooperative_matrix, fragment_shading_rate};
 use ash::vk;
 
 pub struct Extensions {
@@ -11,6 +11,9 @@ pub struct Extensions {
     pub sizes: bool,
     pub full: bool,
     pub atomics: u32,
+    pub matrices: Vec<Matrix>,
+    pub model: bool,
+    pub moltenvk: bool,
     pub accel: Option<acceleration_structure::Device>,
     pub rates: Option<fragment_shading_rate::Device>,
     pub images: bool,
@@ -39,6 +42,7 @@ unsafe fn chained<'a, T: vk::TaggedStructure>(
 
 impl Extensions {
     pub unsafe fn new(
+        entry: &ash::Entry,
         instance: &ash::Instance,
         physical: vk::PhysicalDevice,
         raw: &ash::Device,
@@ -112,9 +116,14 @@ impl Extensions {
                 .then(|| push_descriptor::Device::new(instance, raw));
             let buffers =
                 v12.is_some_and(|f| f.descriptor_binding_storage_buffer_update_after_bind != 0);
+            let mut driver = vk::PhysicalDeviceDriverProperties::default();
+            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut driver);
+            instance.get_physical_device_properties2(physical, &mut properties);
+            let moltenvk = driver.driver_id == vk::DriverId::MOLTENVK;
             let copy = chained::<vk::PhysicalDeviceHostImageCopyFeaturesEXT>(features)
                 .is_some_and(|f| f.host_image_copy != 0)
-                && has(c"vkCopyMemoryToImageEXT");
+                && has(c"vkCopyMemoryToImageEXT")
+                && !moltenvk;
             let layouts = if copy {
                 let mut counts = vk::PhysicalDeviceHostImageCopyPropertiesEXT::default();
                 let mut properties =
@@ -150,7 +159,7 @@ impl Extensions {
                 full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
                 atomics: v12.map_or(0, |f| {
                     let buffer = if f.shader_buffer_int64_atomics != 0 {
-                        atomic::MIN_MAX | atomic::ALL
+                        atomic::MIN_MAX | atomic::ALL | atomic::SIGNED
                     } else {
                         0
                     };
@@ -160,7 +169,24 @@ impl Extensions {
                         0
                     };
                     buffer | shared
-                }),
+                }) | if chained::<vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT>(
+                    features,
+                )
+                .is_some_and(|f| f.shader_image_int64_atomics != 0)
+                {
+                    atomic::IMAGE
+                } else {
+                    0
+                },
+                matrices: if chained::<vk::PhysicalDeviceCooperativeMatrixFeaturesKHR>(features)
+                    .is_some_and(|f| f.cooperative_matrix != 0)
+                {
+                    matrices(entry, instance, physical)
+                } else {
+                    Vec::new()
+                },
+                model: v12.is_some_and(|f| f.vulkan_memory_model != 0),
+                moltenvk,
                 accel,
                 rates,
                 images,
@@ -175,4 +201,49 @@ impl Extensions {
             })
         }
     }
+}
+
+fn kind(t: vk::ComponentTypeKHR) -> Option<u32> {
+    Some(match t.as_raw() {
+        0 => component::F16,
+        1 => component::F32,
+        2 => component::F64,
+        3 => component::S8,
+        4 => component::S16,
+        5 => component::S32,
+        6 => component::S64,
+        7 => component::U8,
+        8 => component::U16,
+        9 => component::U32,
+        10 => component::U64,
+        1000141000 => component::BF16,
+        1000491002 => component::E4M3,
+        1000491003 => component::E5M2,
+        _ => return None,
+    })
+}
+
+unsafe fn matrices(
+    entry: &ash::Entry,
+    instance: &ash::Instance,
+    physical: vk::PhysicalDevice,
+) -> Vec<Matrix> {
+    let loader = cooperative_matrix::Instance::new(entry, instance);
+    let list = unsafe { loader.get_physical_device_cooperative_matrix_properties(physical) };
+    list.unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.scope == vk::ScopeKHR::SUBGROUP)
+        .filter_map(|p| {
+            Some(Matrix {
+                m: p.m_size,
+                n: p.n_size,
+                k: p.k_size,
+                a: kind(p.a_type)?,
+                b: kind(p.b_type)?,
+                c: kind(p.c_type)?,
+                result: kind(p.result_type)?,
+                saturate: p.saturating_accumulation != 0,
+            })
+        })
+        .collect()
 }

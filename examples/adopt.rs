@@ -122,6 +122,7 @@ fn native(
         .push_next(&mut v12)
         .push_next(&mut v13);
     let mut device = Device::adopt(
+        &host.entry,
         host.instance.clone(),
         host.physical,
         host.raw.clone(),

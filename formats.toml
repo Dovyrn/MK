@@ -53,7 +53,7 @@ format = [
     ["RGB32_UINT", "R32G32B32_UINT", "-", 12, 1, 1, "RGB32UI RGB_INTEGER UNSIGNED_INT"],
     ["RGB32_SINT", "R32G32B32_SINT", "-", 12, 1, 1, "RGB32I RGB_INTEGER INT"],
     ["RGB32_FLOAT", "R32G32B32_SFLOAT", "-", 12, 1, 1, "RGB32F RGB FLOAT"],
-    ["R64_UINT", "R64_UINT", "-", 8, 1, 1, "-"],
+    ["R64_UINT", "R64_UINT", "RG32Uint", 8, 1, 1, "-"],
     ["R64_SINT", "R64_SINT", "-", 8, 1, 1, "-"],
     ["R64_FLOAT", "R64_SFLOAT", "-", 8, 1, 1, "-"],
     ["RG64_UINT", "R64G64_UINT", "-", 16, 1, 1, "-"],

@@ -11,4 +11,5 @@ public interface Usage {
     int HOST = 128;
     int BLIT = 256;
     int RATE = 512;
+    int ATOMIC = 1024;
 }

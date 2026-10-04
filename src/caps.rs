@@ -80,6 +80,14 @@ fn face(f: &StencilFace) {
 }
 
 impl Caps {
+    pub(crate) fn matrix(&self, index: u32) {
+        assert!(
+            index < self.matrices,
+            "matrix {index} is outside 0..{}",
+            self.matrices
+        );
+    }
+
     pub(crate) fn compute(&self, info: &crate::ComputeInfo) -> Result<(), String> {
         let n = info.subgroup;
         assert!(
@@ -202,6 +210,10 @@ impl Caps {
             0,
             "unknown usage bits {:#x}",
             info.usage & !usage::BITS
+        );
+        assert!(
+            info.usage & usage::ATOMIC == 0 || info.usage & usage::STORAGE != 0,
+            "usage::ATOMIC needs usage::STORAGE"
         );
         samples(info.samples);
         let largest = info.width.max(info.height).max(info.depth);

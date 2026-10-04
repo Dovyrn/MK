@@ -91,6 +91,11 @@ result = "u32"
 fails = true
 
 [[call]]
+name = "matrix"
+params = [["index", "u32"]]
+result = "Matrix"
+
+[[call]]
 name = "memory_budget"
 result = "Budget"
 fails = true

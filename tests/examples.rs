@@ -20,6 +20,8 @@ mod heap;
 mod images;
 #[path = "../examples/indirect.rs"]
 mod indirect;
+#[path = "../examples/matrices.rs"]
+mod matrices;
 #[path = "../examples/mesh.rs"]
 mod mesh;
 #[path = "../examples/native.rs"]
@@ -61,7 +63,7 @@ macro_rules! examples {
 }
 
 examples!(
-    adopt, atomics, blits, cache, compact, compute, handles, heap, images, indirect, mesh, native,
-    queries, queues, raytrace, render, resolve, slots, sparse, subgroups, texture, uploads, view,
-    viewports
+    adopt, atomics, blits, cache, compact, compute, handles, heap, images, indirect, matrices,
+    mesh, native, queries, queues, raytrace, render, resolve, slots, sparse, subgroups, texture,
+    uploads, view, viewports
 );

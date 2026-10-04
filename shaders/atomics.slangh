@@ -1,0 +1,35 @@
+void atomic_max(RWStructuredBuffer<uint64_t> buffer, uint index, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "atomic_max_explicit((device atomic_ulong*)&$0[$1], $2, memory_order_relaxed)";
+    default:
+        InterlockedMax(buffer[index], value);
+    }
+}
+
+void atomic_min(RWStructuredBuffer<uint64_t> buffer, uint index, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "atomic_min_explicit((device atomic_ulong*)&$0[$1], $2, memory_order_relaxed)";
+    default:
+        InterlockedMin(buffer[index], value);
+    }
+}
+
+void atomic_max(RWTexture2D<uint64_t> texture, uint2 at, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "$0.atomic_max(uint2($1), ulong4($2))";
+    default:
+        InterlockedMax(texture[at], value);
+    }
+}
+
+void atomic_min(RWTexture2D<uint64_t> texture, uint2 at, uint64_t value) {
+    __target_switch {
+    case metal:
+        __intrinsic_asm "$0.atomic_min(uint2($1), ulong4($2))";
+    default:
+        InterlockedMin(texture[at], value);
+    }
+}

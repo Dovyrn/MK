@@ -71,11 +71,12 @@ public class Caps {
     public int maxThreads = 0;
     public int maxShared = 0;
     public int atomics64 = 0;
+    public int matrices = 0;
 
-    public static final int SIZE = 264;
+    public static final int SIZE = 268;
 
     int encodedSize() {
-        return 264;
+        return 268;
     }
 
     long encode(long p) {
@@ -204,6 +205,8 @@ public class Caps {
         memPutInt(p, maxShared);
         p += 4;
         memPutInt(p, atomics64);
+        p += 4;
+        memPutInt(p, matrices);
         p += 4;
         return p;
     }
@@ -335,6 +338,8 @@ public class Caps {
         r.maxShared = memGetInt(p);
         p += 4;
         r.atomics64 = memGetInt(p);
+        p += 4;
+        r.matrices = memGetInt(p);
         p += 4;
         return r;
     }

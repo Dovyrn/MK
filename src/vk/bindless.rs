@@ -24,7 +24,7 @@ impl Bindless {
         limits: &vk::PhysicalDeviceVulkan12Properties,
         buffers: bool,
     ) -> Result<Self, vk::Result> {
-        let samplers = SAMPLERS
+        let mut samplers = SAMPLERS
             .min(limits.max_descriptor_set_update_after_bind_samplers)
             .min(limits.max_per_stage_descriptor_update_after_bind_samplers);
         let mut textures = TEXTURES
@@ -55,18 +55,21 @@ impl Bindless {
                 .descriptor_count(count)
                 .stage_flags(vk::ShaderStageFlags::ALL)
         };
-        let bindings = |textures, buffers: u32| {
-            [
+        let bindings = |samplers, textures, buffers: u32| {
+            let mut list = vec![
                 binding(SAMPLER, vk::DescriptorType::SAMPLER, samplers),
                 binding(TEXTURE, vk::DescriptorType::SAMPLED_IMAGE, textures),
                 binding(IMAGE, vk::DescriptorType::STORAGE_IMAGE, textures),
-                binding(BUFFER, vk::DescriptorType::STORAGE_BUFFER, buffers.max(1)),
-            ]
+            ];
+            if buffers > 0 {
+                list.push(binding(BUFFER, vk::DescriptorType::STORAGE_BUFFER, buffers));
+            }
+            list
         };
-        let fits = |textures, buffers| {
-            let bindings = bindings(textures, buffers);
-            let mut binding_flags =
-                vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&flags);
+        let fits = |samplers, textures, buffers| {
+            let bindings = bindings(samplers, textures, buffers);
+            let mut binding_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+                .binding_flags(&flags[..bindings.len()]);
             let info = vk::DescriptorSetLayoutCreateInfo::default()
                 .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
                 .bindings(&bindings)
@@ -75,21 +78,28 @@ impl Bindless {
             unsafe { device.get_descriptor_set_layout_support(&info, &mut support) };
             support.supported != 0
         };
-        while textures > 0 && !fits(textures, buffers) {
-            textures /= 2;
+        while !fits(samplers, textures, buffers) {
+            if samplers.max(textures) == 1 {
+                return Err(vk::Result::ERROR_FEATURE_NOT_PRESENT);
+            }
+            samplers = (samplers / 2).max(1);
+            textures = (textures / 2).max(1);
             buffers /= 2;
         }
-        let bindings = bindings(textures, buffers);
-        let mut binding_flags =
-            vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&flags);
+        let bindings = bindings(samplers, textures, buffers);
+        let mut binding_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+            .binding_flags(&flags[..bindings.len()]);
         let info = vk::DescriptorSetLayoutCreateInfo::default()
             .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
             .bindings(&bindings)
             .push_next(&mut binding_flags);
-        let sizes = bindings.map(|b| vk::DescriptorPoolSize {
-            ty: b.descriptor_type,
-            descriptor_count: b.descriptor_count,
-        });
+        let sizes: Vec<_> = bindings
+            .iter()
+            .map(|b| vk::DescriptorPoolSize {
+                ty: b.descriptor_type,
+                descriptor_count: b.descriptor_count,
+            })
+            .collect();
         let pool_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .max_sets(1)

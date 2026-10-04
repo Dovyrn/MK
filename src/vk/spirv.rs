@@ -86,8 +86,16 @@ pub fn subgroups(words: &[u32]) -> u32 {
 }
 
 pub fn atomics(words: &[u32]) -> u32 {
-    let declared = instructions(words).any(|(op, args)| op == CAPABILITY && args[0] == 12);
-    if declared { atomic::ALL } else { 0 }
+    let image = if declares(words, 5016) {
+        atomic::IMAGE
+    } else {
+        0
+    };
+    image | if declares(words, 12) { atomic::ALL } else { 0 }
+}
+
+pub fn declares(words: &[u32], capability: u32) -> bool {
+    instructions(words).any(|(op, args)| op == CAPABILITY && args[0] == capability)
 }
 
 pub fn width(words: &[u32], entry: &str) -> u32 {

@@ -239,6 +239,20 @@ fields = [
     ["max_threads", "u32", "0"],
     ["max_shared", "u32", "0"],
     ["atomics64", "u32", "0"],
+    ["matrices", "u32", "0"],
+]
+
+[[info]]
+name = "Matrix"
+fields = [
+    ["m", "u32", "0"],
+    ["n", "u32", "0"],
+    ["k", "u32", "0"],
+    ["a", "u32", "0"],
+    ["b", "u32", "0"],
+    ["c", "u32", "0"],
+    ["result", "u32", "0"],
+    ["saturate", "bool", "false"],
 ]
 
 [[info]]

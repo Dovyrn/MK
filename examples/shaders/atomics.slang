@@ -17,3 +17,13 @@ void sums(uint i: SV_GroupIndex) {
     InterlockedAdd(results[0], uint64_t(1) << 32, before);
     InterlockedOr(results[1], uint64_t(1) << (i % 64), before);
 }
+
+RWStructuredBuffer<int64_t> signed : STORAGE(1);
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void counts(uint i: SV_GroupIndex) {
+    int64_t before;
+    InterlockedAdd(signed[0], -(int64_t(1) << 32), before);
+    InterlockedMax(signed[1], -int64_t(i), before);
+}

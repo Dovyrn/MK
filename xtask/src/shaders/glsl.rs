@@ -152,6 +152,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
             &block("BaseInstance"),
             "uniform int SPIRV_Cross_BaseInstance;\n",
         );
+        let plain = plain.replace("GL_EXT_shader_atomic_int64", "GL_NV_shader_atomic_int64");
         container += &format!("//@ entry {entry}\n{}", unbind(&plain));
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         let mut table = Vec::new();

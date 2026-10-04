@@ -143,6 +143,9 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage & usage::STORAGE != 0 {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
     }
+    if info.usage & usage::ATOMIC != 0 {
+        flags |= MTLTextureUsage::ShaderAtomic;
+    }
     if info.usage & (usage::COLOR | usage::DEPTH) != 0 {
         flags |= MTLTextureUsage::RenderTarget;
     }

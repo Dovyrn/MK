@@ -1,6 +1,6 @@
-use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader};
+use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader, shader_image_atomic_int64};
 use mk::ash::khr::{
-    acceleration_structure, deferred_host_operations, fragment_shading_rate,
+    acceleration_structure, cooperative_matrix, deferred_host_operations, fragment_shading_rate,
     portability_enumeration, portability_subset, push_descriptor, ray_query,
 };
 use mk::ash::{self, vk};
@@ -142,6 +142,26 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if copies {
             extensions.push(host_image_copy::NAME.as_ptr());
         }
+        let mut supported_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_matrix);
+        instance.get_physical_device_features2(physical, &mut query);
+        let matrices =
+            has(&available, cooperative_matrix::NAME) && supported_matrix.cooperative_matrix != 0;
+        let mut matrix =
+            vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default().cooperative_matrix(true);
+        if matrices {
+            extensions.push(cooperative_matrix::NAME.as_ptr());
+        }
+        let mut supported_wide = vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_wide);
+        instance.get_physical_device_features2(physical, &mut query);
+        let wide = has(&available, shader_image_atomic_int64::NAME)
+            && supported_wide.shader_image_int64_atomics != 0;
+        let mut image64 = vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT::default()
+            .shader_image_int64_atomics(true);
+        if wide {
+            extensions.push(shader_image_atomic_int64::NAME.as_ptr());
+        }
         let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
         instance.get_physical_device_features2(physical, &mut query);
@@ -273,11 +293,24 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if copies {
             info = info.push_next(&mut copy);
         }
+        if matrices {
+            info = info.push_next(&mut matrix);
+        }
+        if wide {
+            info = info.push_next(&mut image64);
+        }
         let raw = instance.create_device(physical, &info, None).unwrap();
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
         enabled.p_next = info.p_next as *mut _;
-        let device =
-            mk::Device::adopt(instance.clone(), physical, raw.clone(), &slots, &enabled).unwrap();
+        let device = mk::Device::adopt(
+            &entry,
+            instance.clone(),
+            physical,
+            raw.clone(),
+            &slots,
+            &enabled,
+        )
+        .unwrap();
         Some(Host {
             device: ManuallyDrop::new(device),
             raw,
