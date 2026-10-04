@@ -6,7 +6,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let (w, h) = (64u32, 32u32);
     let mut device = host::device(1);
     if device.caps().viewports < 2 {

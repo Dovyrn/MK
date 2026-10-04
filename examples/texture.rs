@@ -8,12 +8,12 @@ use mk::{
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("needs the bindless heap, which GL lacks");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let n = 16u32;
     let texels = (n * n) as usize;
     let mut device = host::device(1);

@@ -6,7 +6,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let mut device = host::device(1);
     if !device.caps().texture_views {
         println!("no texture views");

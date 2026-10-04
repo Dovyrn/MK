@@ -691,7 +691,9 @@ impl Recorder<'_> {
                     let (raw, topology) = *self.res.renders.get(pipeline);
                     self.graphics = raw;
                     d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
-                    d.cmd_set_primitive_topology(b, topology);
+                    if let Some(topology) = topology {
+                        d.cmd_set_primitive_topology(b, topology);
+                    }
                 }
                 Command::SetViewport {
                     x,

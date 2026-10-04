@@ -1,4 +1,7 @@
-use crate::run;
+use super::run;
+use rspirv::binary::Assemble;
+use rspirv::dr::Operand;
+use rspirv::spirv::{Op, StorageClass};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -20,10 +23,10 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             .arg(&spv));
         return;
     }
-    let (textures, samplers) = crate::shifts();
+    let (textures, samplers) = super::shifts();
     run(Command::new("slangc")
         .arg(dir.join(format!("{name}.slang")))
-        .args(["-I", crate::LIBRARY])
+        .args(["-I", super::LIBRARY])
         .args([
             "-target",
             "spirv",
@@ -42,7 +45,41 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         .chunks(4)
         .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
         .collect();
-    fs::write(&spv, queries(&words)).unwrap();
+    fs::write(&spv, queries(&payloads(words))).unwrap();
+}
+
+fn payloads(words: Vec<u32>) -> Vec<u32> {
+    let mut module = rspirv::dr::load_words(words).unwrap();
+    let payload = Operand::StorageClass(StorageClass::TaskPayloadWorkgroupEXT);
+    let mut kept: Vec<(u32, u32)> = Vec::new();
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for i in &module.types_global_values {
+        if i.class.opcode == Op::Variable && i.operands[0] == payload {
+            let (ty, id) = (i.result_type.unwrap(), i.result_id.unwrap());
+            match kept.iter().find(|k| k.0 == ty) {
+                Some(&(_, keep)) => merged.push((id, keep)),
+                None => kept.push((ty, id)),
+            }
+        }
+    }
+    let gone = |id: Option<u32>| merged.iter().any(|m| Some(m.0) == id);
+    let target = |i: &rspirv::dr::Instruction| match i.operands.first() {
+        Some(Operand::IdRef(id)) => Some(*id),
+        _ => None,
+    };
+    module.types_global_values.retain(|i| !gone(i.result_id));
+    module.debug_names.retain(|i| !gone(target(i)));
+    module.annotations.retain(|i| !gone(target(i)));
+    for i in module.all_inst_iter_mut() {
+        for o in &mut i.operands {
+            if let Operand::IdRef(id) = o
+                && let Some(m) = merged.iter().find(|m| m.0 == *id)
+            {
+                *id = m.1;
+            }
+        }
+    }
+    module.assemble()
 }
 
 fn queries(words: &[u32]) -> Vec<u8> {

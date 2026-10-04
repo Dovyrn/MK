@@ -152,7 +152,7 @@ impl Recorder<'_> {
         Ok(())
     }
 
-    pub fn end_render(&mut self) {
+    pub fn end_render(&mut self) -> Result<(), String> {
         let gl = self.gl;
         let res = self.res;
         if self.rated {
@@ -192,7 +192,7 @@ impl Recorder<'_> {
                     let raw = source.raw.expect("a resolve source has a texture");
                     self.resolve
                         .draw(gl, raw, format::sint(source.format), (w, h));
-                    state.restore(gl, self.extra);
+                    state.restore(gl, self.extra)?;
                 } else {
                     gl.blit_framebuffer(
                         0,
@@ -217,13 +217,16 @@ impl Recorder<'_> {
                 gl.bind_framebuffer(glow::READ_FRAMEBUFFER, None);
                 gl.bind_framebuffer(target, Some(self.fbo));
             }
-            if !discard.is_empty() && self.caps.storage {
-                gl.invalidate_framebuffer(target, &discard);
+            if let Some(invalidate) = self.extra.invalidate
+                && !discard.is_empty()
+            {
+                invalidate(target, discard.len() as i32, discard.as_ptr());
             }
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             self.colors.clear();
             self.depth = None;
             self.rendering = false;
         }
+        Ok(())
     }
 }

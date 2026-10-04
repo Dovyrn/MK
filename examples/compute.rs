@@ -5,12 +5,12 @@ use mk::{Command, Commands, access, memory, stage};
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("needs device addresses, which GL lacks");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let mut device = host::device(1);
     println!("{:?}", device.caps());
     let n = 1024u32;

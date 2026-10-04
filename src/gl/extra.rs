@@ -49,6 +49,8 @@ type Enabled = unsafe extern "system" fn(u32, u32) -> u8;
 type ClampColor = unsafe extern "system" fn(u32, u32);
 type Provoking = unsafe extern "system" fn(u32);
 type Point = unsafe extern "system" fn(u32, i32);
+type Images = unsafe extern "system" fn(u32, i32, *const u32);
+type Invalidate = unsafe extern "system" fn(u32, i32, *const u32);
 type CopyImage = unsafe extern "system" fn(
     u32,
     u32,
@@ -106,6 +108,8 @@ pub struct Extra {
     pub compressed_sub: Option<CompressedSub>,
     pub provoking: Provoking,
     pub point: Point,
+    pub images: Option<Images>,
+    pub invalidate: Option<Invalidate>,
     pub integers: Integers,
     pub query: Integers,
     pub booleans: Booleans,
@@ -135,6 +139,7 @@ impl Extra {
     pub fn load(
         proc: &dyn Fn(&str) -> *const c_void,
         has: &dyn Fn(u32, &str) -> bool,
+        version: u32,
     ) -> Result<Self, String> {
         let get = |name: &str, version, extension| {
             let p = proc(name);
@@ -151,8 +156,8 @@ impl Extra {
         let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         let indirect = |name| get(name, 40, "GL_ARB_draw_indirect");
         let count = |core, arb| {
-            get(core, 46, "GL_ARB_indirect_parameters")
-                .or_else(|| get(arb, 46, "GL_ARB_indirect_parameters"))
+            let name = if version >= 46 { core } else { arb };
+            get(name, 46, "GL_ARB_indirect_parameters")
         };
         let multisample = |name| get(name, 43, "GL_ARB_texture_storage_multisample");
         unsafe {
@@ -222,6 +227,9 @@ impl Extra {
                 .map(|p| cast(p)),
                 provoking: cast(need("glProvokingVertex")?),
                 point: cast(need("glPointParameteri")?),
+                images: get("glBindImageTextures", 44, "GL_ARB_multi_bind").map(|p| cast(p)),
+                invalidate: get("glInvalidateFramebuffer", 43, "GL_ARB_invalidate_subdata")
+                    .map(|p| cast(p)),
                 integers: cast(need("glGetIntegeri_v")?),
                 query: cast(need("glGetQueryiv")?),
                 booleans: cast(need("glGetBooleani_v")?),

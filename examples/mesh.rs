@@ -6,7 +6,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     let color = device
@@ -61,6 +61,7 @@ fn main() {
         })
         .unwrap();
     let passes = [Some(0), listed.then_some(1), Some(2)];
+    let mut wrong = Vec::new();
     for pass in passes.into_iter().flatten() {
         let mut c = Commands::default();
         if pass == 1 {
@@ -141,10 +142,19 @@ fn main() {
             std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
         };
         let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
-        assert_eq!(at(32, 32), [255, 0, 0, 255], "center of pass {pass}");
-        assert_eq!(at(20, 44), [255, 0, 0, 255], "lower left of pass {pass}");
-        assert_eq!(at(20, 20), [0, 0, 255, 255], "upper left of pass {pass}");
+        let red = [255, 0, 0, 255];
+        let blue = [0, 0, 255, 255];
+        for (x, y, want, what) in [
+            (32, 32, red, "center"),
+            (20, 44, red, "lower left"),
+            (20, 20, blue, "upper left"),
+        ] {
+            if at(x, y) != want {
+                wrong.push(format!("pass {pass} {what} is {:?}", at(x, y)));
+            }
+        }
     }
+    assert!(wrong.is_empty(), "{}", wrong.join(", "));
     println!(
         "task and mesh shader triangle drawn, from an indirect buffer: {listed}, mesh shader without a task shader: true"
     );

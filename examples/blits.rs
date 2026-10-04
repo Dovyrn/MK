@@ -38,7 +38,7 @@ fn move_to(c: &mut Commands, texture: u32, (before, after): (u32, u32), layers: 
     });
 }
 
-fn main() {
+pub fn main() {
     let mut device = host::device(1);
     let caps = device.caps();
     let mut make = |dimension, format, [width, height, layers]: [u32; 3], mips, bits| {

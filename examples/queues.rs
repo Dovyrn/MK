@@ -5,12 +5,12 @@ use mk::{Commands, access, memory, stage};
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("GL has one queue");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let Some(mut device) = host::try_device(2) else {
         println!("one queue only");
         return;

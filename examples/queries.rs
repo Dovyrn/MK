@@ -6,7 +6,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     let caps = device.caps();
@@ -150,6 +150,18 @@ fn main() {
         r[2]
     );
     println!("{caps:?}");
+    #[cfg(all(feature = "gl", windows))]
+    println!(
+        "{}",
+        host::report(&[
+            "GL_NV_shader_buffer_load",
+            "GL_NV_shader_buffer_store",
+            "GL_ARB_bindless_texture",
+            "GL_EXT_mesh_shader",
+            "GL_NV_mesh_shader",
+            "GL_NV_shading_rate_image",
+        ])
+    );
     if caps.timestamps {
         assert!(r[1] >= r[0], "timestamps {} {}", r[0], r[1]);
     }

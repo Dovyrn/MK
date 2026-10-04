@@ -49,7 +49,7 @@ pub fn raise(gl: &glow::Context, extra: &Extra, errors: &[u32]) {
                         gl.delete_buffer(b);
                     }
                 }
-                glow::STACK_OVERFLOW => {
+                glow::STACK_OVERFLOW if gl.supports_debug() => {
                     let room =
                         int(glow::MAX_DEBUG_GROUP_STACK_DEPTH) - int(glow::DEBUG_GROUP_STACK_DEPTH);
                     for _ in 0..=room {
@@ -59,7 +59,9 @@ pub fn raise(gl: &glow::Context, extra: &Extra, errors: &[u32]) {
                         gl.pop_debug_group();
                     }
                 }
-                glow::STACK_UNDERFLOW if int(glow::DEBUG_GROUP_STACK_DEPTH) == 1 => {
+                glow::STACK_UNDERFLOW
+                    if gl.supports_debug() && int(glow::DEBUG_GROUP_STACK_DEPTH) == 1 =>
+                {
                     gl.pop_debug_group();
                 }
                 _ => {}

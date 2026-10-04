@@ -58,7 +58,7 @@ fn build(device: &mut Device) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-fn main() {
+pub fn main() {
     let path = std::env::temp_dir().join(format!("mk-cache-{SUFFIX}"));
     let path = path.to_str().unwrap();
     let _ = std::fs::remove_file(path);

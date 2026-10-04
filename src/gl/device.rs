@@ -90,6 +90,14 @@ impl Device {
     }
 
     fn load(proc: &dyn Fn(&str) -> *const c_void) -> Result<Self, String> {
+        let proc = &|name: &str| {
+            let p = proc(name);
+            if matches!(p as isize, 1..=3 | -1) {
+                std::ptr::null()
+            } else {
+                p
+            }
+        };
         if proc("glGetIntegerv").is_null() {
             return Err("the GL loader returned no glGetIntegerv".into());
         }
@@ -107,7 +115,7 @@ impl Device {
                 .collect();
             extensions.sort();
             let has = |v, e: &str| has(version, &extensions, v, e);
-            let extra = Extra::load(proc, &has)?;
+            let extra = Extra::load(proc, &has, version)?;
             let int = |p| gl.get_parameter_i32(p);
             let storage = has(43, "GL_ARB_shader_storage_buffer_object");
             let results = has(44, "GL_ARB_query_buffer_object");
@@ -145,7 +153,8 @@ impl Device {
                 compute: has(43, "GL_ARB_compute_shader"),
                 texture_views: has(43, "GL_ARB_texture_view"),
                 occlusion: results,
-                cache: int(glow::NUM_PROGRAM_BINARY_FORMATS) > 0,
+                cache: has(41, "GL_ARB_get_program_binary")
+                    && int(glow::NUM_PROGRAM_BINARY_FORMATS) > 0,
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
                 blends: has(40, "GL_ARB_draw_buffers_blend"),
                 indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
@@ -268,6 +277,7 @@ impl Device {
     }
 
     pub fn destroy_indirect_buffer(&mut self, indirect: u32) {
+        self.thread();
         self.res.table.indirects.clear(indirect);
         let buffer = self.res.indirects.remove(indirect);
         self.destroy_buffer(buffer);
@@ -790,7 +800,9 @@ impl Device {
         };
         let host = crate::gl::errors::drain(&self.gl);
         let state = snapshot();
+        let saved = crate::gl::errors::drain(&self.gl);
         state.clear(&self.gl, &self.extra);
+        let cleared = crate::gl::errors::drain(&self.gl);
         let mut recorder = Recorder::new(
             &self.gl,
             &self.extra,
@@ -802,12 +814,19 @@ impl Device {
         );
         let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
         recorder.finish();
-        state.restore(&self.gl, &self.extra);
+        let restored = state.restore(&self.gl, &self.extra);
         let mine = crate::gl::errors::drain(&self.gl);
         crate::gl::errors::raise(&self.gl, &self.extra, &host);
         result.unwrap_or_else(|p| resume_unwind(p))?;
-        if !mine.is_empty() {
-            return Err(format!("submit raised GL errors {mine:#x?}"));
+        restored?;
+        for (errors, what) in [
+            (saved, "saving host state"),
+            (cleared, "clearing host state"),
+            (mine, "the submit or restoring host state"),
+        ] {
+            if !errors.is_empty() {
+                return Err(format!("submit raised GL errors {errors:#x?} while {what}"));
+            }
         }
         self.signals(queue, signals)
     }
@@ -839,9 +858,7 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        if std::thread::current().id() != self.thread {
-            return;
-        }
+        self.thread();
         let gl = &self.gl;
         unsafe {
             gl.finish();

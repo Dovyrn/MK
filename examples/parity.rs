@@ -1,6 +1,6 @@
 use mk::{Command, Commands, TextureBarrier, Viewport};
 
-fn main() {
+pub fn main() {
     let path = std::env::args()
         .nth(1)
         .expect("path to the Java-recorded stream");

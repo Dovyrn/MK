@@ -3,11 +3,11 @@ mod metal;
 mod spirv;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn main() {
-    let dir = PathBuf::from(std::env::args().nth(1).unwrap_or("examples/shaders".into()));
+pub fn compile(root: &Path) {
+    let dir = root.join("examples/shaders");
     let out = dir.join("out");
     fs::create_dir_all(&out).unwrap();
     let mut sources: Vec<PathBuf> = fs::read_dir(&dir)
@@ -37,7 +37,7 @@ fn main() {
     }
 }
 
-const LIBRARY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../shaders");
+const LIBRARY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders");
 
 fn run(command: &mut Command) -> String {
     let output = command.output().unwrap();

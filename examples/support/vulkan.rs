@@ -76,6 +76,14 @@ pub fn try_device(queues: usize) -> Option<Host> {
             })
             .or(physicals.first())
             .expect("no Vulkan device");
+        if instance
+            .get_physical_device_properties(physical)
+            .api_version
+            < vk::API_VERSION_1_3
+        {
+            instance.destroy_instance(None);
+            return None;
+        }
         let families = instance.get_physical_device_queue_family_properties(physical);
         let mut order: Vec<_> = (0..families.len() as u32)
             .filter(|&f| {
@@ -113,7 +121,20 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let available = instance
             .enumerate_device_extension_properties(physical)
             .unwrap();
-        let mut extensions = vec![mutable_descriptor_type::NAME.as_ptr()];
+        let mut supported_mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default();
+        let mut supported_v11 = vk::PhysicalDeviceVulkan11Features::default();
+        let mut supported_v13 = vk::PhysicalDeviceVulkan13Features::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut supported_mutable)
+            .push_next(&mut supported_v11)
+            .push_next(&mut supported_v13);
+        instance.get_physical_device_features2(physical, &mut query);
+        let mutables = has(&available, mutable_descriptor_type::NAME)
+            && supported_mutable.mutable_descriptor_type != 0;
+        let mut extensions = Vec::new();
+        if mutables {
+            extensions.push(mutable_descriptor_type::NAME.as_ptr());
+        }
         if has(&available, portability_subset::NAME) {
             extensions.push(portability_subset::NAME.as_ptr());
         }
@@ -172,6 +193,7 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let supported = instance.get_physical_device_features(physical);
         let features = vk::PhysicalDeviceFeatures::default()
             .sampler_anisotropy(supported.sampler_anisotropy != 0)
+            .image_cube_array(supported.image_cube_array != 0)
             .multi_viewport(supported.multi_viewport != 0)
             .depth_clamp(supported.depth_clamp != 0)
             .sparse_binding(supported.sparse_binding != 0)
@@ -190,20 +212,30 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .shader_storage_image_write_without_format(
                 supported.shader_storage_image_write_without_format != 0,
             );
-        let mut v11 = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
+        let mut v11 = vk::PhysicalDeviceVulkan11Features::default()
+            .shader_draw_parameters(supported_v11.shader_draw_parameters != 0);
         let mut supported_v12 = vk::PhysicalDeviceVulkan12Features::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_v12);
         instance.get_physical_device_features2(physical, &mut query);
+        let s = &supported_v12;
         let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
-            .buffer_device_address(true)
-            .timeline_semaphore(true)
-            .descriptor_indexing(true)
-            .runtime_descriptor_array(true)
-            .descriptor_binding_partially_bound(true)
-            .descriptor_binding_sampled_image_update_after_bind(true)
-            .descriptor_binding_storage_image_update_after_bind(true)
-            .shader_sampled_image_array_non_uniform_indexing(true)
-            .shader_storage_image_array_non_uniform_indexing(true)
+            .buffer_device_address(s.buffer_device_address != 0)
+            .timeline_semaphore(s.timeline_semaphore != 0)
+            .descriptor_indexing(s.descriptor_indexing != 0)
+            .runtime_descriptor_array(s.runtime_descriptor_array != 0)
+            .descriptor_binding_partially_bound(s.descriptor_binding_partially_bound != 0)
+            .descriptor_binding_sampled_image_update_after_bind(
+                s.descriptor_binding_sampled_image_update_after_bind != 0,
+            )
+            .descriptor_binding_storage_image_update_after_bind(
+                s.descriptor_binding_storage_image_update_after_bind != 0,
+            )
+            .shader_sampled_image_array_non_uniform_indexing(
+                s.shader_sampled_image_array_non_uniform_indexing != 0,
+            )
+            .shader_storage_image_array_non_uniform_indexing(
+                s.shader_storage_image_array_non_uniform_indexing != 0,
+            )
             .descriptor_binding_storage_buffer_update_after_bind(
                 supported_v12.descriptor_binding_storage_buffer_update_after_bind != 0,
             )
@@ -215,21 +247,26 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .draw_indirect_count(supported_v12.draw_indirect_count != 0)
             .vulkan_memory_model(supported_v12.vulkan_memory_model != 0)
             .shader_float16(supported_v12.shader_float16 != 0)
-            .shader_int8(supported_v12.shader_int8 != 0);
+            .shader_int8(supported_v12.shader_int8 != 0)
+            .sampler_mirror_clamp_to_edge(supported_v12.sampler_mirror_clamp_to_edge != 0);
         let mut mutable = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT::default()
-            .mutable_descriptor_type(true);
+            .mutable_descriptor_type(mutables);
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
-            .synchronization2(true)
-            .dynamic_rendering(true)
-            .maintenance4(true);
+            .synchronization2(supported_v13.synchronization2 != 0)
+            .dynamic_rendering(supported_v13.dynamic_rendering != 0)
+            .maintenance4(supported_v13.maintenance4 != 0);
         let info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&infos)
             .enabled_extension_names(&extensions)
             .enabled_features(&features)
             .push_next(&mut v11)
             .push_next(&mut v12)
-            .push_next(&mut v13)
-            .push_next(&mut mutable);
+            .push_next(&mut v13);
+        let info = if mutables {
+            info.push_next(&mut mutable)
+        } else {
+            info
+        };
         let info = if meshes {
             info.push_next(&mut mesh)
         } else {

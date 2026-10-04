@@ -27,9 +27,11 @@ impl Device {
             usage: usage::SAMPLED | usage::DEPTH | usage::COPY_SRC | usage::COPY_DST,
             ..Default::default()
         };
-        let bits = self.buffer_needs(4096).memory_type_bits
-            & self.texture_needs(&color).memory_type_bits
-            & self.texture_needs(&depth).memory_type_bits;
+        let mut bits = self.buffer_needs(4096).memory_type_bits;
+        if device {
+            bits &= self.texture_needs(&color).memory_type_bits
+                & self.texture_needs(&depth).memory_type_bits;
+        }
         let index = self.memory_type(bits, memory)?;
         let mut flags =
             vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);

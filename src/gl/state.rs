@@ -5,6 +5,10 @@ use glow::HasContext;
 use std::num::NonZeroU32;
 
 const ALPHA_TEST: u32 = 0x0BC0;
+const POINT_SPRITE: u32 = 0x8861;
+const POINT_SMOOTH: u32 = 0x0B10;
+const LINE_STIPPLE: u32 = 0x0B24;
+const POLYGON_STIPPLE: u32 = 0x0B42;
 const CLAMP_FRAGMENT: u32 = 0x891B;
 const COMPATIBILITY: i32 = 0x2;
 
@@ -98,6 +102,48 @@ const STENCIL: [u32; 14] = [
     glow::STENCIL_BACK_FAIL,
     glow::STENCIL_BACK_PASS_DEPTH_FAIL,
     glow::STENCIL_BACK_PASS_DEPTH_PASS,
+];
+
+const IMAGES: [u32; 39] = [
+    glow::RGBA32F,
+    glow::RGBA16F,
+    glow::RG32F,
+    glow::RG16F,
+    glow::R11F_G11F_B10F,
+    glow::R32F,
+    glow::R16F,
+    glow::RGBA32UI,
+    glow::RGBA16UI,
+    glow::RGB10_A2UI,
+    glow::RGBA8UI,
+    glow::RG32UI,
+    glow::RG16UI,
+    glow::RG8UI,
+    glow::R32UI,
+    glow::R16UI,
+    glow::R8UI,
+    glow::RGBA32I,
+    glow::RGBA16I,
+    glow::RGBA8I,
+    glow::RG32I,
+    glow::RG16I,
+    glow::RG8I,
+    glow::R32I,
+    glow::R16I,
+    glow::R8I,
+    glow::RGBA16,
+    glow::RGB10_A2,
+    glow::RGBA8,
+    glow::RG16,
+    glow::RG8,
+    glow::R16,
+    glow::R8,
+    glow::RGBA16_SNORM,
+    glow::RGBA8_SNORM,
+    glow::RG16_SNORM,
+    glow::RG8_SNORM,
+    glow::R16_SNORM,
+    glow::R8_SNORM,
 ];
 
 const BLEND: [u32; 6] = [
@@ -204,11 +250,13 @@ impl State {
                     glow::DRAW_INDIRECT_BUFFER_BINDING,
                 ));
             }
-            if caps.storage {
+            if extra.dispatch.is_some() {
                 targets.push((
                     glow::DISPATCH_INDIRECT_BUFFER,
                     glow::DISPATCH_INDIRECT_BUFFER_BINDING,
                 ));
+            }
+            if caps.storage {
                 targets.push((
                     glow::SHADER_STORAGE_BUFFER,
                     glow::SHADER_STORAGE_BUFFER_BINDING,
@@ -253,7 +301,7 @@ impl State {
                     ));
                 }
             }
-            let images = if caps.storage {
+            let images = if has(42, "GL_ARB_shader_image_load_store") {
                 (0..slot::IMAGES)
                     .map(|i| {
                         [
@@ -299,7 +347,13 @@ impl State {
                 enables.push(glow::SAMPLE_SHADING);
             }
             if compat {
-                enables.push(ALPHA_TEST);
+                enables.extend([
+                    ALPHA_TEST,
+                    POINT_SPRITE,
+                    POINT_SMOOTH,
+                    LINE_STIPPLE,
+                    POLYGON_STIPPLE,
+                ]);
             }
             let enables = enables.into_iter().map(|e| (e, gl.is_enabled(e))).collect();
             let blends = (0..slot::COLORS)
@@ -429,9 +483,17 @@ impl State {
         for &(e, _) in &self.enables {
             if matches!(
                 e,
-                glow::PRIMITIVE_RESTART_FIXED_INDEX | glow::SAMPLE_SHADING | ALPHA_TEST
+                glow::PRIMITIVE_RESTART_FIXED_INDEX
+                    | glow::SAMPLE_SHADING
+                    | ALPHA_TEST
+                    | POINT_SMOOTH
+                    | LINE_STIPPLE
+                    | POLYGON_STIPPLE
             ) {
                 unsafe { gl.disable(e) };
+            }
+            if e == POINT_SPRITE {
+                unsafe { gl.enable(e) };
             }
         }
         unsafe { (extra.point)(glow::POINT_SPRITE_COORD_ORIGIN, glow::UPPER_LEFT as i32) };
@@ -440,7 +502,19 @@ impl State {
         }
     }
 
-    pub fn restore(&self, gl: &glow::Context, extra: &Extra) {
+    pub fn restore(&self, gl: &glow::Context, extra: &Extra) -> Result<(), String> {
+        let check = |what: &str| {
+            let errors = if cfg!(debug_assertions) {
+                crate::gl::errors::drain(gl)
+            } else {
+                Vec::new()
+            };
+            if errors.is_empty() {
+                Ok(())
+            } else {
+                Err(format!("GL errors {errors:#x?} restoring host {what}"))
+            }
+        };
         unsafe {
             gl.use_program(NonZeroU32::new(self.program as u32).map(glow::NativeProgram));
             gl.bind_vertex_array(NonZeroU32::new(self.vao as u32).map(glow::NativeVertexArray));
@@ -454,11 +528,17 @@ impl State {
                     gl.bind_buffer_base(target, i, buffer(name));
                 }
             }
+            check("framebuffers and buffer ranges")?;
             for &(target, name) in &self.buffers {
                 gl.bind_buffer(target, buffer(name));
             }
+            check("buffer bindings")?;
             for (i, image) in self.images.iter().enumerate() {
                 let [name, level, layered, layer, access, format] = *image;
+                if !IMAGES.contains(&(format as u32)) {
+                    extra.images.unwrap()(i as u32, 1, &(name as u32));
+                    continue;
+                }
                 gl.bind_image_texture(
                     i as u32,
                     texture(name),
@@ -469,6 +549,7 @@ impl State {
                     format as u32,
                 );
             }
+            check("image units")?;
             for (u, (bound, sampler)) in self.units.iter().enumerate() {
                 gl.active_texture(glow::TEXTURE0 + u as u32);
                 for &(target, name) in bound {
@@ -477,13 +558,16 @@ impl State {
                 let sampler = NonZeroU32::new(*sampler as u32).map(glow::NativeSampler);
                 gl.bind_sampler(u as u32, sampler);
             }
+            check("texture units")?;
             gl.active_texture(self.active as u32);
             for &(p, v) in &self.pixels {
                 gl.pixel_store_i32(p, v);
             }
+            check("pixel store")?;
             for &(e, on) in &self.enables {
                 toggle(gl, e, on);
             }
+            check("enables")?;
             for (i, &on) in self.blends.iter().enumerate() {
                 if on {
                     gl.enable_draw_buffer(glow::BLEND, i as u32);
@@ -499,17 +583,26 @@ impl State {
                 [f] => {
                     let f = f.map(|v| v as u32);
                     gl.blend_func_separate(f[0], f[1], f[2], f[3]);
-                    gl.blend_equation_separate(f[4], f[5]);
+                    if f[4] == f[5] {
+                        gl.blend_equation(f[4]);
+                    } else {
+                        gl.blend_equation_separate(f[4], f[5]);
+                    }
                 }
                 funcs => {
                     for (i, f) in funcs.iter().enumerate() {
                         let f = f.map(|v| v as u32);
                         let i = i as u32;
                         gl.blend_func_separate_draw_buffer(i, f[0], f[1], f[2], f[3]);
-                        gl.blend_equation_separate_draw_buffer(i, f[4], f[5]);
+                        if f[4] == f[5] {
+                            gl.blend_equation_draw_buffer(i, f[4]);
+                        } else {
+                            gl.blend_equation_separate_draw_buffer(i, f[4], f[5]);
+                        }
                     }
                 }
             }
+            check("blending and masks")?;
             match (self.viewports.as_slice(), self.depths.as_slice()) {
                 ([v], [d]) => {
                     gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
@@ -531,6 +624,7 @@ impl State {
                     }
                 }
             }
+            check("viewports and scissors")?;
             let [cull, front, provoking, func, clamp] = self.values.map(|v| v as u32);
             gl.cull_face(cull);
             gl.front_face(front);
@@ -539,7 +633,7 @@ impl State {
             gl.depth_mask(self.write);
             (extra.clamp_color)(glow::CLAMP_READ_COLOR, clamp);
             let [front, back] = self.polygon.map(|p| p as u32);
-            if front == back {
+            if !self.compat || front == back {
                 gl.polygon_mode(glow::FRONT_AND_BACK, front);
             } else {
                 gl.polygon_mode(glow::FRONT, front);
@@ -549,6 +643,7 @@ impl State {
             if self.compat {
                 (extra.clamp_color)(CLAMP_FRAGMENT, self.fragment as u32);
             }
+            check("raster state")?;
             let [factor, units, limit] = self.offset;
             match extra.offset_clamp {
                 Some(offset) => offset(factor, units, limit),
@@ -566,6 +661,7 @@ impl State {
             if let (Some(clip), Some([origin, depth])) = (extra.clip, self.clip) {
                 clip(origin as u32, depth as u32);
             }
+            check("stencil, line width and clip")?;
             if let Some(r) = &extra.rates {
                 (r.bind)(self.rate as u32);
                 for (i, (on, entries)) in self.palettes.iter().enumerate() {
@@ -578,6 +674,7 @@ impl State {
                     }
                 }
             }
+            check("shading rate image")
         }
     }
 }

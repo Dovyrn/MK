@@ -35,7 +35,7 @@ fn fill(device: &Device, c: &mut Commands, buffer: u32, size: u64) {
     });
 }
 
-fn main() {
+pub fn main() {
     let n = 4096u64;
     let mut device = host::device(1);
     let data = device.create_buffer(n, memory::DEVICE).unwrap();

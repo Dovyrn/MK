@@ -3,7 +3,7 @@ use mk::{Commands, ComputeInfo, access, memory, stage};
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let n = 256u32;
     let mut device = host::device(1);
     if device.caps().buffers == 0 {

@@ -248,10 +248,25 @@ impl<'a> Recorder<'a> {
     pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), String> {
         self.reset();
         self.shade();
+        self.errors("the submit reset")?;
         while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?)?;
+            let command = Command::read(&mut bytes)?;
+            let name = command.to_string();
+            self.step(command)?;
+            self.errors(&name)?;
         }
         Ok(())
+    }
+
+    fn errors(&self, what: &str) -> Result<(), String> {
+        if !cfg!(debug_assertions) {
+            return Ok(());
+        }
+        let errors = crate::gl::errors::drain(self.gl);
+        if errors.is_empty() {
+            return Ok(());
+        }
+        Err(format!("GL errors {errors:#x?} in {what}"))
     }
 
     pub fn finish(&self) {
@@ -575,7 +590,7 @@ impl<'a> Recorder<'a> {
                     height,
                     layers,
                 } => self.begin_render(width, height, layers)?,
-                Command::EndRender => self.end_render(),
+                Command::EndRender => self.end_render()?,
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
@@ -922,7 +937,7 @@ impl<'a> Recorder<'a> {
                     self.prepare(self.rendering)?;
                     let state = (self.snapshot)();
                     self.natives[index as usize](&Native { gl });
-                    state.restore(gl, self.extra);
+                    state.restore(gl, self.extra)?;
                     self.fed = None;
                     if self.rendering {
                         self.bind(self.layers)?;

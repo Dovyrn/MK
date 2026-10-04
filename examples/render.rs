@@ -7,7 +7,7 @@ use mk::{
 #[path = "support/host.rs"]
 mod host;
 
-fn main() {
+pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     let target = |format, usage| TextureInfo {

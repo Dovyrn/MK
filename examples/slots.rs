@@ -22,7 +22,7 @@ fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32,
     });
 }
 
-fn main() {
+pub fn main() {
     let mut device = host::device(1);
     let caps = device.caps();
     if !caps.slots {

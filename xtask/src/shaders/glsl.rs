@@ -1,4 +1,4 @@
-use crate::run;
+use super::run;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -7,7 +7,7 @@ use std::process::Command;
 const LOCATIONS: u32 = 16;
 
 pub fn glsl(out: &Path, name: &str) {
-    let (textures, samplers) = crate::shifts();
+    let (textures, samplers) = super::shifts();
     let spv = out.join(format!("{name}.spv"));
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
@@ -126,7 +126,7 @@ pub fn glsl(out: &Path, name: &str) {
             &block("BaseInstance"),
             "uniform int SPIRV_Cross_BaseInstance;\n",
         );
-        container += &format!("//@ entry {entry}\n{plain}");
+        container += &format!("//@ entry {entry}\n{}", unbind(&plain));
         let separate: Vec<(String, u32)> = vulkan.lines().filter_map(binding).collect();
         let mut table = Vec::new();
         for line in packed.lines() {
@@ -253,6 +253,30 @@ fn bindless(text: &str) -> Option<String> {
     }
     let line = kept.find('\n')? + 1;
     Some(format!("{}{extensions}{}", &kept[..line], &kept[line..]))
+}
+
+fn unbind(text: &str) -> String {
+    let mut out = String::new();
+    for line in text.lines() {
+        let Some(open) = line.find("layout(") else {
+            out += line;
+            out += "\n";
+            continue;
+        };
+        let close = open + line[open..].find(')').unwrap();
+        let kept: Vec<&str> = line[open + 7..close]
+            .split(',')
+            .map(str::trim)
+            .filter(|q| !q.starts_with("binding"))
+            .collect();
+        out += &line[..open];
+        if !kept.is_empty() {
+            out += &format!("layout({})", kept.join(", "));
+        }
+        out += line[close + 1..].trim_start_matches(|c| kept.is_empty() && c == ' ');
+        out += "\n";
+    }
+    out
 }
 
 fn unset(text: &str) -> String {

@@ -147,7 +147,7 @@ fn native(
     (device, slot, (host, image, memory))
 }
 
-fn main() {
+pub fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
     let back = device

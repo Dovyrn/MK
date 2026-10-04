@@ -8,12 +8,12 @@ use mk::{
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("sparse resources are Vulkan and Metal only");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let mut device = host::device(1);
     if !device.caps().sparse {
         println!("no sparse resources");

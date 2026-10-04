@@ -5,12 +5,12 @@ use mk::{AccelInfo, Commands, Triangles, access, memory, stage};
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("ray tracing is Vulkan and Metal only");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let n = 16u32;
     let mut device = host::device(1);
     let caps = device.caps();

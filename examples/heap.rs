@@ -9,12 +9,12 @@ use mk::{
 mod host;
 
 #[cfg(feature = "gl")]
-fn main() {
+pub fn main() {
     println!("memory heaps are Vulkan and Metal only");
 }
 
 #[cfg(not(feature = "gl"))]
-fn main() {
+pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     let color_info = TextureInfo {

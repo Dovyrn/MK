@@ -171,9 +171,7 @@ impl Device {
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
-        let topology = vertex.map_or(vk::PrimitiveTopology::TRIANGLE_LIST, |v| {
-            vk::PrimitiveTopology::from_raw(v.topology as i32)
-        });
+        let topology = vertex.map(|v| vk::PrimitiveTopology::from_raw(v.topology as i32));
         let id = self.res.renders.insert((pipeline, topology));
         let shape = vertex.map_or(topology::TRIANGLE, |v| v.topology);
         self.res.table.renders.set(

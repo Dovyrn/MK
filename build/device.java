@@ -7,9 +7,10 @@ public class Device implements AutoCloseable {
 
     @Override
     public synchronized void close() {
-        if (handle != 0) {
-            nFree(handle);
-            handle = 0;
+        var device = handle;
+        handle = 0;
+        if (device != 0) {
+            nFree(device);
         }
     }
 

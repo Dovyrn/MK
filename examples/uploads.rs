@@ -10,7 +10,7 @@ fn pattern(size: usize, seed: usize) -> Vec<u8> {
     (0..size).map(|i| ((i * 7 + seed) % 251) as u8).collect()
 }
 
-fn main() {
+pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     if device.format_usage(format::RGBA8_UNORM) & usage::HOST == 0 {
