@@ -1,5 +1,8 @@
-use std::ffi::{CString, c_char, c_void};
+#[cfg(target_os = "macos")]
+use std::ffi::c_char;
+use std::ffi::{CString, c_void};
 
+#[cfg(target_os = "macos")]
 #[link(name = "OpenGL", kind = "framework")]
 unsafe extern "C" {
     fn CGLChoosePixelFormat(
@@ -11,19 +14,25 @@ unsafe extern "C" {
     fn CGLSetCurrentContext(context: *mut c_void) -> i32;
 }
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn dlopen(path: *const c_char, mode: i32) -> *mut c_void;
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
 }
 
+#[cfg(target_os = "macos")]
 const PROFILE: i32 = 99;
 
+#[cfg(target_os = "macos")]
 const CORE: i32 = 0x4100;
 
+#[cfg(target_os = "macos")]
 const SURFACELESS: u32 = 0x31DD;
 
+#[cfg(target_os = "macos")]
 const LAZY: i32 = 1;
 
+#[cfg(target_os = "macos")]
 pub fn apple() -> impl Fn(&str) -> *const c_void {
     unsafe {
         let attributes = [PROFILE, CORE, 0];
@@ -42,6 +51,7 @@ pub fn apple() -> impl Fn(&str) -> *const c_void {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn mesa(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
     use khronos_egl as egl;
     unsafe {
@@ -76,6 +86,83 @@ pub fn mesa(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
 
 pub type Proc = Box<dyn Fn(&str) -> *const c_void>;
 
+#[cfg(windows)]
+pub fn wgl(major: i32, minor: i32) -> impl Fn(&str) -> *const c_void {
+    use std::ptr::{null, null_mut};
+    use windows_sys::Win32::Graphics::Gdi::{GetDC, HDC};
+    use windows_sys::Win32::Graphics::OpenGL::*;
+    use windows_sys::Win32::System::LibraryLoader::{
+        GetModuleHandleW, GetProcAddress, LoadLibraryA,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    type Create = unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
+    unsafe {
+        let class: Vec<u16> = "mk\0".encode_utf16().collect();
+        let instance = GetModuleHandleW(null());
+        let wc = WNDCLASSW {
+            lpfnWndProc: Some(DefWindowProcW),
+            hInstance: instance,
+            lpszClassName: class.as_ptr(),
+            ..std::mem::zeroed()
+        };
+        RegisterClassW(&wc);
+        let window = CreateWindowExW(
+            0,
+            class.as_ptr(),
+            class.as_ptr(),
+            WS_OVERLAPPEDWINDOW,
+            0,
+            0,
+            16,
+            16,
+            null_mut(),
+            null_mut(),
+            instance,
+            null(),
+        );
+        let dc = GetDC(window);
+        let format = PIXELFORMATDESCRIPTOR {
+            nSize: size_of::<PIXELFORMATDESCRIPTOR>() as u16,
+            nVersion: 1,
+            dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+            iPixelType: PFD_TYPE_RGBA,
+            cColorBits: 32,
+            cDepthBits: 24,
+            cStencilBits: 8,
+            ..std::mem::zeroed()
+        };
+        SetPixelFormat(dc, ChoosePixelFormat(dc, &format), &format);
+        let old = wglCreateContext(dc);
+        wglMakeCurrent(dc, old);
+        let create = wglGetProcAddress(c"wglCreateContextAttribsARB".as_ptr().cast())
+            .expect("wglCreateContextAttribsARB");
+        let create: Create = std::mem::transmute(create);
+        let attributes = [0x2091, major, 0x2092, minor, 0x9126, 1, 0];
+        let context = create(dc, null_mut(), attributes.as_ptr());
+        assert!(!context.is_null(), "no GL {major}.{minor} core context");
+        wglMakeCurrent(dc, context);
+        wglDeleteContext(old);
+        let library = LoadLibraryA(c"opengl32.dll".as_ptr().cast());
+        move |name| {
+            let name = CString::new(name).unwrap();
+            let found = wglGetProcAddress(name.as_ptr().cast()).map_or(0, |f| f as usize);
+            if found > 3 && found != usize::MAX {
+                return found as *const c_void;
+            }
+            GetProcAddress(library, name.as_ptr().cast()).map_or(null(), |f| f as *const c_void)
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn proc() -> Proc {
+    match std::env::var("MK_HOST").as_deref() {
+        Ok("legacy") => Box::new(wgl(3, 3)),
+        _ => Box::new(wgl(4, 6)),
+    }
+}
+
+#[cfg(target_os = "macos")]
 const NEWER: &str = "GL_ARB_buffer_storage GL_ARB_compute_shader GL_ARB_base_instance \
     GL_ARB_draw_buffers_blend GL_AMD_draw_buffers_blend GL_ARB_draw_indirect \
     GL_ARB_multi_draw_indirect GL_AMD_multi_draw_indirect GL_ARB_ES2_compatibility \
@@ -88,6 +175,7 @@ const NEWER: &str = "GL_ARB_buffer_storage GL_ARB_compute_shader GL_ARB_base_ins
     GL_ARB_texture_mirror_clamp_to_edge GL_ARB_sample_shading GL_ARB_stencil_texturing \
     GL_KHR_texture_compression_astc_ldr GL_ARB_gpu_shader5 GL_ARB_tessellation_shader";
 
+#[cfg(target_os = "macos")]
 pub fn proc() -> Proc {
     match std::env::var("MK_HOST").as_deref() {
         Ok("apple") => Box::new(apple()),

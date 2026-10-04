@@ -31,7 +31,9 @@ fn main() {
             spirv::spirv(&dir, &out, &name);
             glsl::glsl(&out, &name);
         }
-        metal::metal(&dir, &out, &name);
+        if cfg!(target_os = "macos") {
+            metal::metal(&dir, &out, &name);
+        }
     }
 }
 

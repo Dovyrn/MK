@@ -34,6 +34,15 @@ jni = { version = "0.21", optional = true }
 [dev-dependencies]
 khronos-egl = { version = "6", features = ["dynamic"] }
 
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", features = ["preserve_order"] }

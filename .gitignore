@@ -1,5 +1,8 @@
-/target
+target/
 /examples/shaders/out
 .idea
 CLAUDE.md
 /libs/*/Cargo.lock
+.DS_Store
+.gradle
+/java/build
