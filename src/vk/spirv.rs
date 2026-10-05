@@ -11,6 +11,8 @@ const VERTEX: u32 = 0;
 const INPUT: u32 = 1;
 const LOCATION: u32 = 30;
 const SET: u32 = 34;
+const ATTACHMENT: u32 = 43;
+const FRAGMENT: u32 = 4;
 
 fn instructions(words: &[u32]) -> impl Iterator<Item = (u32, &[u32])> {
     let mut rest = words.get(5..).unwrap_or_default();
@@ -105,6 +107,23 @@ pub fn width(words: &[u32], entry: &str) -> u32 {
     instructions(words)
         .find(|(op, args)| *op == MODE && args[0] == function && args[1] == LOCAL_SIZE)
         .map_or(0, |(_, args)| args[2])
+}
+
+pub fn reads(words: &[u32], entry: &str) -> u32 {
+    let Some((_, _, _, interface)) =
+        entries(words).find(|(model, _, name, _)| *model == FRAGMENT && name == entry)
+    else {
+        return 0;
+    };
+    let old = words.get(1).is_some_and(|&v| v < 0x10400);
+    instructions(words)
+        .filter(|(op, args)| {
+            *op == DECORATE
+                && args.len() > 2
+                && args[1] == ATTACHMENT
+                && (old || interface.contains(&args[0]))
+        })
+        .fold(0, |mask, (_, args)| mask | 1 << args[2])
 }
 
 pub fn inputs(words: &[u32], entry: &str) -> Vec<u32> {

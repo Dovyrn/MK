@@ -1,7 +1,7 @@
 use super::{Device, id, kind, texture_desc};
 use crate::caps;
 use crate::mtl::texture::Texture;
-use crate::{TextureInfo, ViewInfo, dimension, format, usage};
+use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
@@ -21,7 +21,9 @@ impl Device {
                 .raw
                 .newTextureWithDescriptor(&desc)
                 .ok_or("texture allocation failed")?;
-            self.residency.add(ProtocolObject::from_ref(&*raw));
+            if info.memory != memory::TRANSIENT {
+                self.residency.add(ProtocolObject::from_ref(&*raw));
+            }
             let id = self.res.textures.insert(Texture {
                 raw,
                 format: info.format,
@@ -57,7 +59,9 @@ impl Device {
             let flags = raw.usage();
             let mut usage = usage::COPY_SRC | usage::COPY_DST;
             let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
-            if !depth && raw.sampleCount() == 1 && raw.storageMode() != MTLStorageMode::Private {
+            let mode = raw.storageMode();
+            let shared = mode == MTLStorageMode::Shared || mode == MTLStorageMode::Managed;
+            if !depth && raw.sampleCount() == 1 && shared {
                 usage |= usage::HOST;
             }
             if flags.contains(MTLTextureUsage::ShaderRead) {
@@ -75,7 +79,9 @@ impl Device {
             if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget) {
                 usage |= self.format_usage(format) & usage::BLIT;
             }
-            self.residency.add(ProtocolObject::from_ref(&*raw));
+            if mode != MTLStorageMode::Memoryless {
+                self.residency.add(ProtocolObject::from_ref(&*raw));
+            }
             let info = TextureInfo {
                 dimension,
                 format,
@@ -86,7 +92,11 @@ impl Device {
                 mips: raw.mipmapLevelCount() as u32,
                 samples: raw.sampleCount() as u32,
                 usage,
-                ..Default::default()
+                memory: if mode == MTLStorageMode::Memoryless {
+                    memory::TRANSIENT
+                } else {
+                    memory::DEVICE
+                },
             };
             let id = self.res.textures.insert(Texture { raw, format });
             self.res.table.textures.set(id, info);

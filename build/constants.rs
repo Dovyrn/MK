@@ -61,6 +61,16 @@ pub fn slang(table: &toml::Table) -> String {
         }
         s += "\n";
     }
+    writeln!(s, "#define ATTACHMENT(n) MK_ATTACHMENT_##n").unwrap();
+    for i in 0..get("slot", "COLORS") {
+        let at = get("register", "ATTACHMENT") + i;
+        writeln!(
+            s,
+            "#define MK_ATTACHMENT_{i} [[vk::input_attachment_index({i})]] [[vk::binding({at}, 2)]]"
+        )
+        .unwrap();
+    }
+    s += "\n";
     s += "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n#include \"indirect.slangh\"\n#include \"rays.slangh\"\n";
     s
 }

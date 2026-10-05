@@ -3,10 +3,11 @@ mod textures;
 use crate::command;
 use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
+use crate::vk::frame::Frame;
 use crate::vk::resources::Resources;
 use crate::vk::texture::{Texture, count};
 use crate::vk::{Callback, Native};
-use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
+use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store, usage};
 use ash::vk;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::CString;
@@ -39,6 +40,9 @@ pub struct Recorder<'a> {
     pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
     pub defaults: bool,
     pub area: vk::Rect2D,
+    pub inputs: Vec<(u32, vk::DescriptorImageInfo)>,
+    pub attachments: vk::DescriptorSetLayout,
+    pub frame: &'a mut Frame,
 }
 
 fn load(l: u32) -> vk::AttachmentLoadOp {
@@ -117,6 +121,7 @@ pub fn layout(l: u32) -> vk::ImageLayout {
         layout::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
         layout::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         layout::PRESENT => vk::ImageLayout::PRESENT_SRC_KHR,
+        layout::LOCAL_READ => vk::ImageLayout::RENDERING_LOCAL_READ_KHR,
         l => panic!("unknown layout {l}"),
     }
 }
@@ -134,6 +139,41 @@ fn write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'
 }
 
 impl Recorder<'_> {
+    fn attachments(&mut self) -> Result<(), &'static str> {
+        if self.inputs.is_empty() {
+            return Ok(());
+        }
+        let set = self
+            .frame
+            .set(self.device, self.attachments)
+            .map_err(|_| "input attachment descriptor set allocation failed")?;
+        let kind = vk::DescriptorType::INPUT_ATTACHMENT;
+        let writes: Vec<_> = self
+            .inputs
+            .iter()
+            .map(|(index, image)| {
+                vk::WriteDescriptorSet::default()
+                    .dst_set(set)
+                    .dst_binding(bindings::binding(kind, *index))
+                    .descriptor_type(kind)
+                    .image_info(std::slice::from_ref(image))
+            })
+            .collect();
+        unsafe {
+            self.device.update_descriptor_sets(&writes, &[]);
+            self.device.cmd_bind_descriptor_sets(
+                self.buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.layout,
+                2,
+                &[set],
+                &[],
+            );
+        }
+        self.inputs.clear();
+        Ok(())
+    }
+
     fn push_slots(&self, writes: &[vk::WriteDescriptorSet]) -> Result<(), &'static str> {
         let push = self
             .ext
@@ -596,6 +636,13 @@ impl Recorder<'_> {
                             .resolve_image_view(self.res.textures.get(resolve).target)
                             .resolve_image_layout(layout(resolve_layout));
                     }
+                    let t = self.res.textures.get(texture);
+                    if t.usage & usage::INPUT != 0 {
+                        let image = vk::DescriptorImageInfo::default()
+                            .image_view(t.target)
+                            .image_layout(layout(l));
+                        self.inputs.push((index, image));
+                    }
                     let i = index as usize;
                     if self.colors.len() <= i {
                         self.colors
@@ -649,6 +696,7 @@ impl Recorder<'_> {
                     d.cmd_begin_rendering(b, &info);
                     self.colors.clear();
                     self.depth = None;
+                    self.attachments()?;
                     let viewport = vk::Viewport {
                         x: 0.0,
                         y: 0.0,
@@ -681,6 +729,33 @@ impl Recorder<'_> {
                     }
                 }
                 Command::EndRender => d.cmd_end_rendering(b),
+                Command::AttachmentBarrier => {
+                    let written = vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
+                        | vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
+                        | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
+                    let barrier = vk::MemoryBarrier2::default()
+                        .src_stage_mask(written | vk::PipelineStageFlags2::FRAGMENT_SHADER)
+                        .src_access_mask(
+                            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
+                                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                        )
+                        .dst_stage_mask(written | vk::PipelineStageFlags2::FRAGMENT_SHADER)
+                        .dst_access_mask(
+                            vk::AccessFlags2::INPUT_ATTACHMENT_READ
+                                | vk::AccessFlags2::COLOR_ATTACHMENT_READ
+                                | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
+                                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
+                                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                        );
+                    let barriers = [barrier];
+                    let info = vk::DependencyInfo::default()
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .memory_barriers(&barriers);
+                    d.cmd_pipeline_barrier2(b, &info);
+                }
+                Command::TileSize { .. } | Command::DispatchTile { .. } => {
+                    unreachable!("caps.tiles is false on Vulkan")
+                }
                 Command::BindRenderPipeline { pipeline } => {
                     let (raw, topology) = *self.res.renders.get(pipeline);
                     self.graphics = raw;

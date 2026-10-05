@@ -24,6 +24,9 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
     let spv = out.join(format!("{name}.spv"));
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
+    if let Some((entry, _)) = super::spirv::reads(&spv).into_iter().find(|r| r.1 != 0) {
+        return Err(entry);
+    }
     let mut container = String::new();
     let entries = reflection["entryPoints"].as_array().unwrap();
     let meshy = entries

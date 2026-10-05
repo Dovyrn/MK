@@ -160,6 +160,7 @@ impl Device {
         info: &TextureInfo,
     ) -> Result<u32, String> {
         self.res.table.heaps.get(heap);
+        crate::caps::attached(info.memory);
         self.texture(info)?;
         self.res.table.place(heap, offset, self.texture_size(info));
         let h = self.res.heaps.get(heap);

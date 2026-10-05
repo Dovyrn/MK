@@ -283,3 +283,15 @@ name = "set_scissors"
 scope = "render"
 fields = [["scissors", "[Scissor]"]]
 
+[[command]]
+name = "attachment_barrier"
+scope = "render"
+
+[[command]]
+name = "tile_size"
+fields = [["width", "u32"], ["height", "u32"], ["shared", "u32"]]
+
+[[command]]
+name = "dispatch_tile"
+scope = "render"
+fields = [["pipeline", "u32"]]

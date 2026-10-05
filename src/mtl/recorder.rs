@@ -48,13 +48,19 @@ pub struct Recorder<'a> {
     size: usize,
     dirty: bool,
     stale: bool,
+    tile: MTLSize,
+    shared: usize,
 }
 
 const COMPUTE: MTLStages =
     MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0 | MTLStages::AccelerationStructure.0);
 
 const RENDER: MTLStages = MTLStages(
-    MTLStages::Vertex.0 | MTLStages::Fragment.0 | MTLStages::Object.0 | MTLStages::Mesh.0,
+    MTLStages::Vertex.0
+        | MTLStages::Fragment.0
+        | MTLStages::Tile.0
+        | MTLStages::Object.0
+        | MTLStages::Mesh.0,
 );
 
 const NONE: u32 = !0;
@@ -77,7 +83,12 @@ fn stages(bits: u32) -> MTLStages {
     if bits & (stage::DEPTH | stage::COLOR) != 0 {
         s |= stage::FRAGMENT;
     }
-    MTLStages(s as usize)
+    let tile = if s & stage::FRAGMENT != 0 {
+        MTLStages::Tile.0
+    } else {
+        0
+    };
+    MTLStages(s as usize | tile)
 }
 
 fn order(
@@ -194,6 +205,12 @@ impl<'a> Recorder<'a> {
             size: 0,
             dirty: false,
             stale: false,
+            tile: MTLSize {
+                width: 0,
+                height: 0,
+                depth: 1,
+            },
+            shared: 0,
         }
     }
 
@@ -240,6 +257,7 @@ impl<'a> Recorder<'a> {
     fn setup(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
         let all = MTLRenderStages::Vertex
             | MTLRenderStages::Fragment
+            | MTLRenderStages::Tile
             | MTLRenderStages::Object
             | MTLRenderStages::Mesh;
         encoder.setArgumentTable_atStages(self.table, all);
@@ -835,6 +853,35 @@ impl<'a> Recorder<'a> {
                             )
                     };
                 }
+            }
+            Command::AttachmentBarrier => {}
+            Command::TileSize {
+                width,
+                height,
+                shared,
+            } => {
+                self.pass.setTileWidth(width as usize);
+                self.pass.setTileHeight(height as usize);
+                self.pass.setThreadgroupMemoryLength(shared as usize);
+                self.shared = shared as usize;
+                self.tile = MTLSize {
+                    width: width as usize,
+                    height: height as usize,
+                    depth: 1,
+                };
+            }
+            Command::DispatchTile { pipeline } => {
+                self.prepare()?;
+                self.render()
+                    .setRenderPipelineState(self.res.tiles.get(pipeline));
+                self.render_pipeline = None;
+                if self.shared > 0 {
+                    unsafe {
+                        self.render()
+                            .setThreadgroupMemoryLength_offset_atIndex(self.shared, 0, 0)
+                    };
+                }
+                self.render().dispatchThreadsPerTile(self.tile);
             }
             Command::DrawMesh { x, y, z } => {
                 let Some(p) = self.render_pipeline else {

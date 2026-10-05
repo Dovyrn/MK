@@ -1,7 +1,11 @@
-use mk::ash::ext::{debug_utils, host_image_copy, mesh_shader, shader_image_atomic_int64};
+use mk::ash::ext::{
+    debug_utils, host_image_copy, mesh_shader, rasterization_order_attachment_access,
+    shader_image_atomic_int64,
+};
 use mk::ash::khr::{
-    acceleration_structure, cooperative_matrix, deferred_host_operations, fragment_shading_rate,
-    portability_enumeration, portability_subset, push_descriptor, ray_query,
+    acceleration_structure, cooperative_matrix, deferred_host_operations,
+    dynamic_rendering_local_read, fragment_shading_rate, portability_enumeration,
+    portability_subset, push_descriptor, ray_query,
 };
 use mk::ash::{self, vk};
 use std::ffi::{CStr, c_void};
@@ -141,6 +145,27 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let mut copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default().host_image_copy(true);
         if copies {
             extensions.push(host_image_copy::NAME.as_ptr());
+        }
+        let mut supported_local = vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR::default();
+        let mut supported_order =
+            vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT::default();
+        let mut query = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut supported_local)
+            .push_next(&mut supported_order);
+        instance.get_physical_device_features2(physical, &mut query);
+        let locals = has(&available, dynamic_rendering_local_read::NAME)
+            && supported_local.dynamic_rendering_local_read != 0;
+        let mut local = vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR::default()
+            .dynamic_rendering_local_read(true);
+        if locals {
+            extensions.push(dynamic_rendering_local_read::NAME.as_ptr());
+        }
+        let orders = has(&available, rasterization_order_attachment_access::NAME)
+            && supported_order.rasterization_order_color_attachment_access != 0;
+        let mut order = vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT::default()
+            .rasterization_order_color_attachment_access(true);
+        if orders {
+            extensions.push(rasterization_order_attachment_access::NAME.as_ptr());
         }
         let mut supported_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_matrix);
@@ -292,6 +317,12 @@ pub fn try_device(queues: usize) -> Option<Host> {
         }
         if copies {
             info = info.push_next(&mut copy);
+        }
+        if locals {
+            info = info.push_next(&mut local);
+        }
+        if orders {
+            info = info.push_next(&mut order);
         }
         if matrices {
             info = info.push_next(&mut matrix);

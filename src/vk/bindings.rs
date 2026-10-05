@@ -16,8 +16,24 @@ pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
         vk::DescriptorType::STORAGE_BUFFER => register::STORAGE + slot,
         vk::DescriptorType::STORAGE_IMAGE => register::IMAGE + slot,
         vk::DescriptorType::SAMPLED_IMAGE => register::IMAGE + slot::IMAGES + slot,
+        vk::DescriptorType::INPUT_ATTACHMENT => register::ATTACHMENT + slot,
         _ => register::IMAGE + slot::IMAGES + slot::TEXTURES + slot,
     }
+}
+
+pub fn attachments(device: &ash::Device) -> Result<vk::DescriptorSetLayout, vk::Result> {
+    let kind = vk::DescriptorType::INPUT_ATTACHMENT;
+    let list: Vec<_> = (0..slot::COLORS)
+        .map(|i| {
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(binding(kind, i))
+                .descriptor_type(kind)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+        })
+        .collect();
+    let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&list);
+    unsafe { device.create_descriptor_set_layout(&info, None) }
 }
 
 pub fn layout(device: &ash::Device, push: bool) -> Result<vk::DescriptorSetLayout, vk::Result> {

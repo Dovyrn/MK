@@ -25,6 +25,20 @@ pub struct Extensions {
     pub copy: Option<host_image_copy::Device>,
     pub layouts: Vec<vk::ImageLayout>,
     pub budget: bool,
+    pub local: bool,
+    pub ordered: bool,
+}
+
+unsafe fn v14(features: &vk::PhysicalDeviceFeatures2) -> bool {
+    let mut next = features.p_next as *const vk::BaseInStructure;
+    while let Some(s) = unsafe { next.as_ref() } {
+        if s.s_type.as_raw() == 55 {
+            let flags = unsafe { next.cast::<u8>().add(16).cast::<vk::Bool32>() };
+            return unsafe { *flags.add(14) } != 0;
+        }
+        next = s.p_next;
+    }
+    false
 }
 
 unsafe fn chained<'a, T: vk::TaggedStructure>(
@@ -145,6 +159,14 @@ impl Extensions {
             let copy = layouts
                 .contains(&vk::ImageLayout::GENERAL)
                 .then(|| host_image_copy::Device::new(instance, raw));
+            let local = chained::<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>(features)
+                .is_some_and(|f| f.dynamic_rendering_local_read != 0)
+                || v14(features);
+            let ordered =
+                chained::<vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT>(
+                    features,
+                )
+                .is_some_and(|f| f.rasterization_order_color_attachment_access != 0);
             let budget = instance
                 .enumerate_device_extension_properties(physical)
                 .unwrap_or_default()
@@ -198,6 +220,8 @@ impl Extensions {
                 copy,
                 layouts,
                 budget,
+                local,
+                ordered,
             })
         }
     }

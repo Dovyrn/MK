@@ -39,6 +39,7 @@ pub struct Device {
     cache: vk::PipelineCache,
     bindless: Bindless,
     slots: vk::DescriptorSetLayout,
+    attachments: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
@@ -54,6 +55,7 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
         (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
         (usage::ATOMIC, vk::ImageUsageFlags::STORAGE),
         (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
+        (usage::INPUT, vk::ImageUsageFlags::INPUT_ATTACHMENT),
         (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
         (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
         (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
@@ -95,7 +97,10 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     if info.usage & usage::VIEW != 0 {
         flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
     }
-    let bits = image_usage(info.usage);
+    let mut bits = image_usage(info.usage);
+    if info.memory == memory::TRANSIENT {
+        bits |= vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
+    }
     vk::ImageCreateInfo::default()
         .flags(flags)
         .image_type(kind)
@@ -109,6 +114,36 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
         .array_layers(info.layers)
         .samples(vk::SampleCountFlags::from_raw(info.samples))
         .usage(bits)
+}
+
+fn lazy(device: &ash::Device, memory: &vk::PhysicalDeviceMemoryProperties) -> bool {
+    let info = vk::ImageCreateInfo::default()
+        .image_type(vk::ImageType::TYPE_2D)
+        .format(vk::Format::R8G8B8A8_UNORM)
+        .extent(vk::Extent3D {
+            width: 1,
+            height: 1,
+            depth: 1,
+        })
+        .mip_levels(1)
+        .array_layers(1)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .usage(
+            vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::INPUT_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+        );
+    let Ok(image) = (unsafe { device.create_image(&info, None) }) else {
+        return false;
+    };
+    let bits = unsafe { device.get_image_memory_requirements(image) }.memory_type_bits;
+    unsafe { device.destroy_image(image, None) };
+    (0..memory.memory_type_count).any(|i| {
+        bits & 1 << i != 0
+            && memory.memory_types[i as usize]
+                .property_flags
+                .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+    })
 }
 
 fn whole(info: &TextureInfo) -> ViewInfo {
@@ -163,18 +198,26 @@ impl Device {
         let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
         unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
         let slots = bindings::layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
-        let bindless = Bindless::new(&raw, &properties12, ext.buffers).map_err(|e| {
+        let attachments = bindings::attachments(&raw).map_err(|e| {
             unsafe { raw.destroy_descriptor_set_layout(slots, None) };
             e.to_string()
         })?;
+        let unset = || unsafe {
+            raw.destroy_descriptor_set_layout(slots, None);
+            raw.destroy_descriptor_set_layout(attachments, None);
+        };
+        let bindless = Bindless::new(&raw, &properties12, ext.buffers).map_err(|e| {
+            unset();
+            e.to_string()
+        })?;
         let ranges = [range];
-        let sets = [slots, bindless.layout];
+        let sets = [slots, bindless.layout, attachments];
         let info = vk::PipelineLayoutCreateInfo::default()
             .set_layouts(&sets)
             .push_constant_ranges(&ranges);
         let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
             bindless.destroy(&raw);
-            unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+            unset();
             e.to_string()
         })?;
         let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
@@ -193,14 +236,16 @@ impl Device {
                     }
                     unsafe { raw.destroy_pipeline_layout(layout, None) };
                     bindless.destroy(&raw);
-                    unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+                    unset();
                     return Err(e);
                 }
             }
         }
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
+        let mut caps = probe(&instance, physical, &ext, &list, &bindless, &limits);
+        caps.transient_reads = caps.transients && caps.attachment_reads && lazy(&raw, &memory);
         Ok(Self {
-            caps: probe(&instance, physical, &ext, &list, &bindless, &limits),
+            caps,
             name: basic
                 .device_name_as_c_str()
                 .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
@@ -213,6 +258,7 @@ impl Device {
             raw,
             ext,
             slots,
+            attachments,
             bindless,
             layout,
             res: Resources::default(),
@@ -252,6 +298,10 @@ impl Device {
             memory::DEVICE => (vk::MemoryPropertyFlags::DEVICE_LOCAL, "device local"),
             memory::UPLOAD => (host, "host coherent"),
             memory::READBACK => (host | vk::MemoryPropertyFlags::HOST_CACHED, "host cached"),
+            memory::TRANSIENT => (
+                vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
+                "lazily allocated",
+            ),
             _ => panic!("unknown memory {memory}"),
         };
         self.find_type(bits, flags)
@@ -411,6 +461,7 @@ impl Device {
             &self.ext,
             self.layout,
             self.bindless.set,
+            self.attachments,
             &self.res,
             (commands, natives),
             waits,
@@ -467,6 +518,8 @@ impl Drop for Device {
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
             self.raw.destroy_descriptor_set_layout(self.slots, None);
+            self.raw
+                .destroy_descriptor_set_layout(self.attachments, None);
         }
     }
 }

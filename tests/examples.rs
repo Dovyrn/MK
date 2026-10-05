@@ -32,6 +32,8 @@ mod queries;
 mod queues;
 #[path = "../examples/raytrace.rs"]
 mod raytrace;
+#[path = "../examples/reads.rs"]
+mod reads;
 #[path = "../examples/render.rs"]
 mod render;
 #[path = "../examples/resolve.rs"]
@@ -44,6 +46,8 @@ mod sparse;
 mod subgroups;
 #[path = "../examples/texture.rs"]
 mod texture;
+#[path = "../examples/tiles.rs"]
+mod tiles;
 #[path = "../examples/uploads.rs"]
 mod uploads;
 #[path = "../examples/view.rs"]
@@ -64,6 +68,6 @@ macro_rules! examples {
 
 examples!(
     adopt, atomics, blits, cache, compact, compute, handles, heap, images, indirect, matrices,
-    mesh, native, queries, queues, raytrace, render, resolve, slots, sparse, subgroups, texture,
-    uploads, view, viewports
+    mesh, native, queries, queues, raytrace, reads, render, resolve, slots, sparse, subgroups,
+    texture, tiles, uploads, view, viewports
 );

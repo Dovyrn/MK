@@ -129,6 +129,7 @@ fn options(memory: u32) -> MTLResourceOptions {
                     | MTLResourceOptions::CPUCacheModeWriteCombined
             }
             memory::READBACK => MTLResourceOptions::StorageModeShared,
+            memory::TRANSIENT => MTLResourceOptions::StorageModeMemoryless,
             _ => panic!("unknown memory {memory}"),
         }
 }

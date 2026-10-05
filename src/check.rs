@@ -2,7 +2,7 @@ use crate::caps::{compressed, depth};
 use crate::table::Table;
 use crate::{
     Caps, Command, TextureInfo, access, cull, dimension, face, filter, format, index, layout, load,
-    query, slot, stage, store, topology, usage,
+    memory, query, slot, stage, store, topology, usage,
 };
 
 pub struct Check<'a> {
@@ -24,6 +24,9 @@ pub struct Check<'a> {
     needs: u32,
     vertices: u32,
     resolves: Vec<u32>,
+    inputs: u32,
+    reads: u32,
+    tile: Option<(u32, u32)>,
 }
 
 fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
@@ -129,6 +132,9 @@ impl<'a> Check<'a> {
             needs: 0,
             vertices: 0,
             resolves: Vec::new(),
+            inputs: 0,
+            reads: 0,
+            tile: None,
         };
         while !bytes.is_empty() {
             let c = Command::read(&mut bytes)
@@ -298,6 +304,29 @@ impl<'a> Check<'a> {
             "{} needs bind_index_buffer first",
             name(c)
         );
+        let missing = self.reads & !self.inputs;
+        assert_eq!(
+            missing,
+            0,
+            "{} reads attachments {missing:#b} that the pass has without usage::INPUT",
+            name(c)
+        );
+    }
+
+    fn transient(&self, texture: u32, load: u32, store: u32) {
+        if self.table.textures.get(texture).memory == memory::TRANSIENT {
+            assert!(
+                load != load::LOAD && store == store::DONT_CARE,
+                "memory::TRANSIENT texture {texture} is never loaded or stored"
+            );
+        }
+    }
+
+    fn local(&self, c: &Command, l: u32) -> Result<(), String> {
+        if l == layout::LOCAL_READ {
+            self.need(c, self.caps.attachment_reads, "attachment_reads")?;
+        }
+        Ok(())
     }
 
     fn indirect(&self, buffer: u32, offset: u64, count: u32, stride: u32, size: u64) {
@@ -494,6 +523,8 @@ impl<'a> Check<'a> {
                 self.targets.clear();
                 self.resolves.clear();
                 self.heap = None;
+                self.inputs = 0;
+                self.tile = None;
             }
             Command::BindPipeline { pipeline } => {
                 self.need(c, caps.compute, "compute")?;
@@ -565,6 +596,8 @@ impl<'a> Check<'a> {
                 self.barrier(src_stage, src_access, dst_stage, dst_access);
                 known("layout", before, layout::valid(before));
                 known("layout", after, layout::valid(after));
+                self.local(c, before)?;
+                self.local(c, after)?;
                 let t = self.table.textures.get(texture);
                 span("mip", base_mip, mips, t.mips, texture);
                 span("layer", base_layer, layers, t.layers, texture);
@@ -753,7 +786,22 @@ impl<'a> Check<'a> {
                 known("layout", l, layout::valid(l));
                 known("load", ld, load::valid(ld));
                 known("store", st, store::valid(st));
-                self.texture(texture, usage::COLOR, "COLOR");
+                let t = self.texture(texture, usage::COLOR, "COLOR");
+                self.local(c, l)?;
+                if t.usage & usage::INPUT != 0 {
+                    assert!(
+                        l == layout::GENERAL || l == layout::LOCAL_READ,
+                        "usage::INPUT attachment {texture} is in layout {l}, not GENERAL or LOCAL_READ"
+                    );
+                    self.inputs |= 1 << index;
+                } else {
+                    assert_ne!(
+                        l,
+                        layout::LOCAL_READ,
+                        "layout::LOCAL_READ needs texture {texture} made with usage::INPUT"
+                    );
+                }
+                self.transient(texture, ld, st);
                 self.targets.push((texture, ld == load::CLEAR));
                 if resolve != !0 {
                     known("layout", resolve_layout, layout::valid(resolve_layout));
@@ -795,11 +843,15 @@ impl<'a> Check<'a> {
                     "depth clear value {depth} is outside 0..1"
                 );
                 self.texture(texture, usage::DEPTH, "DEPTH");
+                self.transient(texture, ld, st);
+                self.transient(texture, stencil_load, stencil_store);
                 let clear = ld == load::CLEAR || stencil_load == load::CLEAR;
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let (samples, indirect, shape, mesh, needs) = *self.table.renders.get(pipeline);
+                let (samples, indirect, shape, mesh, needs, reads) =
+                    *self.table.renders.get(pipeline);
+                self.reads = reads;
                 assert!(
                     self.samples == 0 || samples == self.samples,
                     "render pipeline {pipeline} has {samples} samples but the pass has {}",
@@ -811,6 +863,47 @@ impl<'a> Check<'a> {
                 self.indirect = indirect;
                 self.topology = shape;
                 self.mesh = mesh;
+            }
+            Command::AttachmentBarrier => {
+                self.need(c, caps.attachment_reads, "attachment_reads")?;
+            }
+            Command::TileSize {
+                width,
+                height,
+                shared,
+            } => {
+                self.need(c, caps.tiles, "tiles")?;
+                assert_eq!(open, "outside", "{c} inside begin_{open}");
+                let sizes = [8, 16, 32];
+                assert!(
+                    sizes.contains(&width) && sizes.contains(&height),
+                    "tile size {width}x{height} is not 8, 16 or 32 on each side"
+                );
+                assert!(
+                    shared.is_multiple_of(16),
+                    "tile threadgroup memory {shared} is not a multiple of 16"
+                );
+                if shared > caps.max_shared {
+                    return Err(format!(
+                        "tile threadgroup memory {shared} is over caps.max_shared {}",
+                        caps.max_shared
+                    ));
+                }
+                self.tile = Some((width, height));
+            }
+            Command::DispatchTile { pipeline } => {
+                self.need(c, caps.tiles, "tiles")?;
+                let samples = *self.table.tile_pipelines.get(pipeline);
+                assert!(
+                    self.tile.is_some(),
+                    "dispatch_tile needs tile_size before begin_render"
+                );
+                assert!(
+                    self.samples == 0 || samples == self.samples,
+                    "tile pipeline {pipeline} has {samples} samples but the pass has {}",
+                    self.samples
+                );
+                self.render = false;
             }
             Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
             Command::SetFace { face: v } => known("face", v, face::valid(v)),

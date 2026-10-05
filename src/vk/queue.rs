@@ -49,6 +49,7 @@ impl Queue {
         ext: &Extensions,
         layout: vk::PipelineLayout,
         heap: vk::DescriptorSet,
+        attachments: vk::DescriptorSetLayout,
         res: &Resources,
         (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
@@ -63,7 +64,7 @@ impl Queue {
             }
             self.free.push(frame);
         }
-        let frame = match self.free.pop() {
+        let mut frame = match self.free.pop() {
             Some(f) => f,
             None => Frame::new(device, self.family).map_err(|e| e.to_string())?,
         };
@@ -72,15 +73,15 @@ impl Queue {
         if self.graphics {
             points.push(vk::PipelineBindPoint::GRAPHICS);
         }
+        let buffer = frame.buffer;
         let run = || -> Result<(), String> {
             let begin = vk::CommandBufferBeginInfo::default()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            unsafe { device.begin_command_buffer(frame.buffer, &begin) }
-                .map_err(|e| e.to_string())?;
+            unsafe { device.begin_command_buffer(buffer, &begin) }.map_err(|e| e.to_string())?;
             Recorder {
                 device,
                 ext,
-                buffer: frame.buffer,
+                buffer,
                 layout,
                 points: &points,
                 res,
@@ -97,9 +98,12 @@ impl Queue {
                 rate: None,
                 defaults: false,
                 area: vk::Rect2D::default(),
+                inputs: Vec::new(),
+                attachments,
+                frame: &mut frame,
             }
             .run(commands)?;
-            unsafe { device.end_command_buffer(frame.buffer) }.map_err(|e| e.to_string())?;
+            unsafe { device.end_command_buffer(buffer) }.map_err(|e| e.to_string())?;
             let info = |semaphore, value| {
                 vk::SemaphoreSubmitInfo::default()
                     .semaphore(semaphore)
@@ -115,7 +119,7 @@ impl Queue {
                 .map(|&(t, v)| info(res.timelines.get(t).raw, v))
                 .collect();
             signals.push(info(self.semaphore, value));
-            let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.buffer)];
+            let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(buffer)];
             let submit = vk::SubmitInfo2::default()
                 .wait_semaphore_infos(&waits)
                 .command_buffer_infos(&buffers)

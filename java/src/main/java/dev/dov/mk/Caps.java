@@ -72,11 +72,16 @@ public class Caps {
     public int maxShared = 0;
     public int atomics64 = 0;
     public int matrices = 0;
+    public boolean transients = false;
+    public boolean transientReads = false;
+    public boolean attachmentReads = false;
+    public boolean orderedReads = false;
+    public boolean tiles = false;
 
-    public static final int SIZE = 268;
+    public static final int SIZE = 288;
 
     int encodedSize() {
-        return 268;
+        return 288;
     }
 
     long encode(long p) {
@@ -207,6 +212,16 @@ public class Caps {
         memPutInt(p, atomics64);
         p += 4;
         memPutInt(p, matrices);
+        p += 4;
+        memPutInt(p, transients ? 1 : 0);
+        p += 4;
+        memPutInt(p, transientReads ? 1 : 0);
+        p += 4;
+        memPutInt(p, attachmentReads ? 1 : 0);
+        p += 4;
+        memPutInt(p, orderedReads ? 1 : 0);
+        p += 4;
+        memPutInt(p, tiles ? 1 : 0);
         p += 4;
         return p;
     }
@@ -340,6 +355,16 @@ public class Caps {
         r.atomics64 = memGetInt(p);
         p += 4;
         r.matrices = memGetInt(p);
+        p += 4;
+        r.transients = memGetInt(p) != 0;
+        p += 4;
+        r.transientReads = memGetInt(p) != 0;
+        p += 4;
+        r.attachmentReads = memGetInt(p) != 0;
+        p += 4;
+        r.orderedReads = memGetInt(p) != 0;
+        p += 4;
+        r.tiles = memGetInt(p) != 0;
         p += 4;
         return r;
     }

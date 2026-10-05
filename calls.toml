@@ -127,6 +127,16 @@ name = "destroy_render_pipeline"
 params = [["pipeline", "u32"]]
 
 [[call]]
+name = "create_tile_pipeline"
+params = [["info", "TileInfo"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_tile_pipeline"
+params = [["pipeline", "u32"]]
+
+[[call]]
 name = "create_depth_state"
 params = [["info", "DepthInfo"]]
 result = "u32"

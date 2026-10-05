@@ -9,9 +9,14 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
     let metal = dir.join(format!("{name}.metal"));
     let mut airs = Vec::new();
     let points = entries(out, name);
-    let groups: Vec<(String, [u32; 3])> = points
+    let reads = super::spirv::reads(&out.join(format!("{name}.spv")));
+    let groups: Vec<(String, [u32; 3], u32)> = points
         .iter()
-        .filter_map(|(entry, _, size)| Some((entry.clone(), (*size)?)))
+        .filter(|(_, mode, _)| !mode.starts_with('r'))
+        .map(|(entry, _, size)| {
+            let mask = reads.iter().find(|(e, _)| e == entry).map_or(0, |r| r.1);
+            (entry.clone(), size.unwrap_or([0; 3]), mask)
+        })
         .collect();
     for (entry, mode, _) in &points {
         if mode.starts_with('r') {
@@ -104,7 +109,7 @@ fn compile(source: &Path, air: &Path) {
         .arg(air));
 }
 
-fn library(out: &Path, name: &str, airs: &[PathBuf], groups: &[(String, [u32; 3])]) {
+fn library(out: &Path, name: &str, airs: &[PathBuf], groups: &[(String, [u32; 3], u32)]) {
     let path = out.join(format!("{name}.metallib"));
     run(Command::new("xcrun")
         .args(["-sdk", "macosx", "metallib"])
@@ -115,12 +120,13 @@ fn library(out: &Path, name: &str, airs: &[PathBuf], groups: &[(String, [u32; 3]
         fs::remove_file(air).unwrap();
     }
     let mut bytes = (groups.len() as u32).to_le_bytes().to_vec();
-    for (entry, size) in groups {
+    for (entry, size, reads) in groups {
         bytes.extend((entry.len() as u32).to_le_bytes());
         bytes.extend(entry.as_bytes());
         for n in size {
             bytes.extend(n.to_le_bytes());
         }
+        bytes.extend(reads.to_le_bytes());
     }
     bytes.extend(fs::read(&path).unwrap());
     fs::write(&path, bytes).unwrap();

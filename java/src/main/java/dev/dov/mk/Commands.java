@@ -519,4 +519,20 @@ public class Commands implements AutoCloseable {
             memPutInt(q + 12, scissors[i].height);
         }
     }
+
+    public void attachmentBarrier() {
+        head(61, 0);
+    }
+
+    public void tileSize(int width, int height, int shared) {
+        var p = head(62, 12);
+        memPutInt(p, width);
+        memPutInt(p + 4, height);
+        memPutInt(p + 8, shared);
+    }
+
+    public void dispatchTile(int pipeline) {
+        var p = head(63, 4);
+        memPutInt(p, pipeline);
+    }
 }

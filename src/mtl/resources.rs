@@ -7,7 +7,10 @@ use crate::mtl::texture::Texture;
 use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{MTLBuffer, MTLDepthStencilState, MTLHeap, MTLSamplerState, MTLSharedEvent};
+use objc2_metal::{
+    MTLBuffer, MTLDepthStencilState, MTLHeap, MTLRenderPipelineState, MTLSamplerState,
+    MTLSharedEvent,
+};
 use std::collections::HashSet;
 
 #[derive(Default)]
@@ -17,6 +20,7 @@ pub struct Resources {
     pub samplers: Slots<Retained<ProtocolObject<dyn MTLSamplerState>>>,
     pub pipelines: Slots<Pipeline>,
     pub renders: Slots<Render>,
+    pub tiles: Slots<Retained<ProtocolObject<dyn MTLRenderPipelineState>>>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub heaps: Slots<(Retained<ProtocolObject<dyn MTLHeap>>, u32)>,
     pub indirects: Slots<Indirect>,

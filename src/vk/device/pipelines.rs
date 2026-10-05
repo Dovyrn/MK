@@ -1,7 +1,8 @@
 use super::Device;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, fill, format, stage, topology,
+    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, TileInfo, fill, format, stage,
+    topology,
 };
 use ash::vk;
 use std::ffi::CString;
@@ -25,6 +26,7 @@ impl Device {
         coverage: bool,
         clamp: bool,
         indirect: bool,
+        ordered: bool,
     ) -> Result<u32, String> {
         if clamp && self.ext.features.depth_clamp == 0 {
             return Err("depth clamp is not supported".into());
@@ -38,6 +40,17 @@ impl Device {
             .filter(|name| !name.is_empty())
             .collect();
         let words = spirv::read(code, &used, self.caps.slots)?;
+        let fragment = entries
+            .iter()
+            .find(|(stage, _)| *stage == vk::ShaderStageFlags::FRAGMENT)
+            .map_or("", |e| e.1);
+        let reads = spirv::reads(&words, fragment);
+        if reads != 0 && !self.caps.attachment_reads {
+            return Err("attachment reads need caps.attachment_reads".into());
+        }
+        if ordered && !self.caps.ordered_reads {
+            return Err("ordered needs caps.ordered_reads".into());
+        }
         let ops = spirv::subgroups(&words);
         self.capabilities(&words)?;
         for (flag, name) in entries {
@@ -142,7 +155,14 @@ impl Device {
                 color_write_mask: vk::ColorComponentFlags::from_raw(c.mask),
             })
             .collect();
-        let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
+        let flags = if ordered {
+            vk::PipelineColorBlendStateCreateFlags::RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXT
+        } else {
+            vk::PipelineColorBlendStateCreateFlags::empty()
+        };
+        let blend = vk::PipelineColorBlendStateCreateInfo::default()
+            .flags(flags)
+            .attachments(&blends);
         let mut states = vec![
             vk::DynamicState::VIEWPORT_WITH_COUNT,
             vk::DynamicState::SCISSOR_WITH_COUNT,
@@ -204,6 +224,7 @@ impl Device {
                 shape,
                 vertex.is_none(),
                 vertex.map_or(0, crate::table::vertices),
+                reads,
             ),
         );
         Ok(id)
@@ -233,6 +254,7 @@ impl Device {
             info.coverage,
             info.clamp,
             info.indirect,
+            info.ordered,
         )
     }
 
@@ -266,6 +288,7 @@ impl Device {
             info.coverage,
             info.clamp,
             info.indirect,
+            info.ordered,
         )
     }
 
@@ -275,6 +298,15 @@ impl Device {
             let (pipeline, _) = d.res.renders.remove(pipeline);
             unsafe { d.raw.destroy_pipeline(pipeline, None) };
         });
+    }
+
+    pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
+        crate::caps::tile(info);
+        Err("create_tile_pipeline needs caps.tiles".into())
+    }
+
+    pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
+        self.res.table.tile_pipelines.clear(pipeline);
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {

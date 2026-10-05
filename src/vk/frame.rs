@@ -3,6 +3,7 @@ use ash::vk;
 pub struct Frame {
     pub pool: vk::CommandPool,
     pub buffer: vk::CommandBuffer,
+    pub sets: Vec<vk::DescriptorPool>,
 }
 
 impl Frame {
@@ -23,15 +24,58 @@ impl Frame {
                     return Err(e);
                 }
             };
-            Ok(Self { pool, buffer })
+            Ok(Self {
+                pool,
+                buffer,
+                sets: Vec::new(),
+            })
         }
     }
 
     pub fn reset(&self, device: &ash::Device) -> Result<(), vk::Result> {
-        unsafe { device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty()) }
+        unsafe {
+            for &pool in &self.sets {
+                device.reset_descriptor_pool(pool, vk::DescriptorPoolResetFlags::empty())?;
+            }
+            device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
+        }
+    }
+
+    pub fn set(
+        &mut self,
+        device: &ash::Device,
+        layout: vk::DescriptorSetLayout,
+    ) -> Result<vk::DescriptorSet, vk::Result> {
+        let layouts = [layout];
+        if let Some(&pool) = self.sets.last() {
+            let info = vk::DescriptorSetAllocateInfo::default()
+                .descriptor_pool(pool)
+                .set_layouts(&layouts);
+            if let Ok(sets) = unsafe { device.allocate_descriptor_sets(&info) } {
+                return Ok(sets[0]);
+            }
+        }
+        let sizes = [vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::INPUT_ATTACHMENT,
+            descriptor_count: 8 * 64,
+        }];
+        let info = vk::DescriptorPoolCreateInfo::default()
+            .max_sets(64)
+            .pool_sizes(&sizes);
+        let pool = unsafe { device.create_descriptor_pool(&info, None) }?;
+        self.sets.push(pool);
+        let info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(pool)
+            .set_layouts(&layouts);
+        Ok(unsafe { device.allocate_descriptor_sets(&info) }?[0])
     }
 
     pub fn destroy(&self, device: &ash::Device) {
-        unsafe { device.destroy_command_pool(self.pool, None) };
+        unsafe {
+            for &pool in &self.sets {
+                device.destroy_descriptor_pool(pool, None);
+            }
+            device.destroy_command_pool(self.pool, None);
+        }
     }
 }

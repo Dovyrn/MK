@@ -22,13 +22,14 @@ public class MeshInfo {
     public boolean coverage = false;
     public boolean indirect = false;
     public boolean clamp = false;
+    public boolean ordered = false;
 
     int encodedSize() {
         var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 56 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 60 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
     }
 
     long encode(long p) {
@@ -65,6 +66,8 @@ public class MeshInfo {
         memPutInt(p, indirect ? 1 : 0);
         p += 4;
         memPutInt(p, clamp ? 1 : 0);
+        p += 4;
+        memPutInt(p, ordered ? 1 : 0);
         p += 4;
         return p;
     }

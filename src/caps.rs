@@ -68,6 +68,24 @@ pub(crate) fn targets(colors: &[ColorTarget], depth: u32, stencil: u32, count: u
     known("fill", mode, fill::valid(mode));
 }
 
+pub(crate) fn attached(memory: u32) {
+    assert_ne!(
+        memory,
+        memory::TRANSIENT,
+        "memory::TRANSIENT holds attachments, not buffers or heaps"
+    );
+}
+
+pub(crate) fn tile(info: &crate::TileInfo) {
+    targets(
+        info.colors,
+        format::NONE,
+        format::NONE,
+        info.samples,
+        fill::FILL,
+    );
+}
+
 pub(crate) fn primitive(t: u32) {
     known("topology", t, topology::valid(t));
 }
@@ -140,6 +158,7 @@ impl Caps {
 
     pub(crate) fn buffer(&self, size: u64, memory: u32) -> Result<(), String> {
         known("memory", memory, memory::valid(memory));
+        attached(memory);
         assert!(size > 0, "buffer size is 0");
         if size > self.max_buffer {
             return Err(format!("buffer size {size} is over {}", self.max_buffer));
@@ -169,6 +188,7 @@ impl Caps {
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub(crate) fn heap(&self, size: u64, memory: u32) {
         known("memory", memory, memory::valid(memory));
+        attached(memory);
         assert!(size > 0, "heap size is 0");
     }
 
@@ -215,6 +235,29 @@ impl Caps {
             info.usage & usage::ATOMIC == 0 || info.usage & usage::STORAGE != 0,
             "usage::ATOMIC needs usage::STORAGE"
         );
+        assert!(
+            info.usage & usage::INPUT == 0 || info.usage & usage::COLOR != 0,
+            "usage::INPUT needs usage::COLOR"
+        );
+        if info.memory == memory::TRANSIENT {
+            let attachment = usage::COLOR | usage::DEPTH | usage::INPUT;
+            assert!(
+                info.usage & !attachment == 0 && info.usage & (usage::COLOR | usage::DEPTH) != 0,
+                "a memory::TRANSIENT texture is only an attachment, not usage {:#x}",
+                info.usage
+            );
+            if !self.transients {
+                return Err("memory::TRANSIENT needs caps.transients".into());
+            }
+            if info.usage & usage::INPUT != 0 && !self.transient_reads {
+                return Err(
+                    "memory::TRANSIENT with usage::INPUT needs caps.transient_reads".into(),
+                );
+            }
+        }
+        if info.usage & usage::INPUT != 0 && !self.attachment_reads {
+            return Err("usage::INPUT needs caps.attachment_reads".into());
+        }
         samples(info.samples);
         let largest = info.width.max(info.height).max(info.depth);
         assert!(

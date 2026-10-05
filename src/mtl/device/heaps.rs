@@ -81,6 +81,7 @@ impl Device {
     ) -> Result<u32, String> {
         autoreleasepool(|_| {
             self.res.table.heaps.get(heap);
+            crate::caps::attached(info.memory);
             self.supports(info)?;
             self.res.table.place(heap, offset, self.texture_size(info));
             let (h, memory) = self.res.heaps.get(heap);

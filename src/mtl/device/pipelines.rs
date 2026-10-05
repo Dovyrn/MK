@@ -3,8 +3,8 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::VERTICES;
 use crate::mtl::render::Render;
 use crate::{
-    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, StencilFace, blend, fill, format,
-    mask, topology,
+    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, StencilFace, TileInfo, blend, fill,
+    format, mask, topology,
 };
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
@@ -14,11 +14,11 @@ use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
     MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask,
-    MTLComputePipelineState, MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction,
-    MTLLibrary, MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState,
-    MTLStencilDescriptor, MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor,
-    MTLVertexStepFunction,
+    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
+    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
+    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
+    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 
 fn factor(f: u32) -> MTLBlendFactor {
@@ -57,7 +57,7 @@ fn stencil(face: &StencilFace) -> Retained<MTLStencilDescriptor> {
     desc
 }
 
-type Groups = Vec<(String, [u32; 3])>;
+type Groups = Vec<(String, [u32; 3], u32)>;
 
 fn word(rest: &mut &[u8]) -> Option<u32> {
     let (head, tail) = rest.split_first_chunk::<4>()?;
@@ -72,7 +72,8 @@ fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
         let length = word(rest)? as usize;
         let name = String::from_utf8(rest.get(..length)?.to_vec()).ok()?;
         *rest = &rest[length..];
-        groups.push((name, [word(rest)?, word(rest)?, word(rest)?]));
+        let size = [word(rest)?, word(rest)?, word(rest)?];
+        groups.push((name, size, word(rest)?));
     }
     Some((groups, code))
 }
@@ -80,9 +81,16 @@ fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
 fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], String> {
     groups
         .iter()
-        .find(|(name, _)| name == entry)
-        .map(|&(_, size)| size)
+        .find(|(name, ..)| name == entry)
+        .map(|&(_, size, _)| size)
         .ok_or_else(|| format!("entry {entry} has no thread group size in its code"))
+}
+
+fn reads(groups: &Groups, entry: &str) -> u32 {
+    groups
+        .iter()
+        .find(|(name, ..)| name == entry)
+        .map_or(0, |&(.., reads)| reads)
 }
 
 fn threads(group: [u32; 3], max: usize) -> Result<(), String> {
@@ -221,7 +229,7 @@ impl Device {
                 info.fill,
             );
             crate::caps::primitive(info.topology);
-            let (library, _) = self.library(info.code)?;
+            let (library, groups) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
             desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
             let inputs = library
@@ -290,6 +298,7 @@ impl Device {
                     info.topology,
                     false,
                     crate::table::vertices(info),
+                    reads(&groups, info.fragment),
                 ),
             );
             Ok(id)
@@ -342,7 +351,14 @@ impl Device {
             });
             self.res.table.renders.set(
                 id,
-                (info.samples, info.indirect, topology::TRIANGLE, true, 0),
+                (
+                    info.samples,
+                    info.indirect,
+                    topology::TRIANGLE,
+                    true,
+                    0,
+                    reads(&groups, info.fragment),
+                ),
             );
             Ok(id)
         })
@@ -351,6 +367,34 @@ impl Device {
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
         self.res.table.renders.clear(pipeline);
         let pipeline = self.res.renders.remove(pipeline);
+        self.defer(move |_| drop(pipeline));
+    }
+
+    pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
+        autoreleasepool(|_| {
+            crate::caps::tile(info);
+            if !self.caps.tiles {
+                return Err("create_tile_pipeline needs caps.tiles".into());
+            }
+            let (library, _) = self.library(info.code)?;
+            let desc = MTL4TileRenderPipelineDescriptor::new();
+            desc.setTileFunctionDescriptor(Some(&*function(&library, info.entry)?));
+            for (i, c) in info.colors.iter().enumerate() {
+                let a = unsafe { desc.colorAttachments().objectAtIndexedSubscript(i) };
+                a.setPixelFormat(format::mtl(c.format));
+            }
+            unsafe { desc.setRasterSampleCount(info.samples as usize) };
+            desc.setThreadgroupSizeMatchesTileSize(true);
+            let state = self.compile(&desc)?;
+            let id = self.res.tiles.insert(state);
+            self.res.table.tile_pipelines.set(id, info.samples);
+            Ok(id)
+        })
+    }
+
+    pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
+        self.res.table.tile_pipelines.clear(pipeline);
+        let pipeline = self.res.tiles.remove(pipeline);
         self.defer(move |_| drop(pipeline));
     }
 

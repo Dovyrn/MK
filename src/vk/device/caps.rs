@@ -55,7 +55,20 @@ pub(super) fn probe(
     .into_iter()
     .filter(|(v, _)| groups.subgroup_supported_stages.contains(*v))
     .fold(0, |m, (_, s)| m | s);
+    let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
+    let transients = memory.memory_types[..memory.memory_type_count as usize]
+        .iter()
+        .any(|t| {
+            t.property_flags
+                .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+        });
+    let reads = ext.local && ext.push.is_some();
     Caps {
+        transients,
+        transient_reads: false,
+        attachment_reads: reads,
+        ordered_reads: reads && ext.ordered,
+        tiles: false,
         subgroup: groups.subgroup_size,
         subgroup_sizes: sizes,
         subgroup_ops: groups.subgroup_supported_operations.as_raw() & subgroup::BITS,
@@ -196,6 +209,16 @@ impl Device {
         .fold(usage::VIEW, |u, (_, b)| u | b)
             | blit
             | self.host(format, raw)
+            | self.input(features)
+    }
+
+    fn input(&self, features: vk::FormatFeatureFlags) -> u32 {
+        let color = features.contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT);
+        if color && self.caps.attachment_reads {
+            usage::INPUT
+        } else {
+            0
+        }
     }
 
     fn host(&self, format: u32, raw: vk::Format) -> u32 {

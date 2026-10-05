@@ -20,8 +20,8 @@ use crate::gl::sampler;
 use crate::gl::state::{self, State, buffer};
 use crate::gl::texture::{Texture, target};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, Matrix, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, Timeline,
-    ViewInfo, atomic, dimension, format, memory, query, stage, subgroup, topology, usage,
+    Caps, ComputeInfo, DepthInfo, Matrix, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, TileInfo,
+    Timeline, ViewInfo, atomic, dimension, format, memory, query, stage, subgroup, topology, usage,
 };
 use glow::HasContext;
 use std::cell::{Cell, RefCell};
@@ -531,12 +531,16 @@ impl Device {
             coverage: info.coverage,
             clamp: info.clamp,
             indirect: info.indirect,
+            ordered: info.ordered,
             ..Default::default()
         };
         self.render(&render, &stages)
     }
 
     fn render(&mut self, info: &RenderInfo, stages: &[(u32, &str)]) -> Result<u32, String> {
+        if info.ordered {
+            return Err("ordered needs caps.ordered_reads".into());
+        }
         self.programs()?;
         let cache = self.cache.as_mut();
         let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
@@ -551,6 +555,7 @@ impl Device {
                 info.topology,
                 mesh,
                 crate::table::vertices(info),
+                0,
             ),
         );
         Ok(id)
@@ -560,6 +565,17 @@ impl Device {
         self.thread();
         self.res.table.renders.clear(pipeline);
         self.res.renders.remove(pipeline).delete(&self.gl);
+    }
+
+    pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
+        self.thread();
+        crate::caps::tile(info);
+        Err("create_tile_pipeline needs caps.tiles".into())
+    }
+
+    pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
+        self.thread();
+        self.res.table.tile_pipelines.clear(pipeline);
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {

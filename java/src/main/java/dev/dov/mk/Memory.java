@@ -4,4 +4,5 @@ public interface Memory {
     int DEVICE = 0;
     int UPLOAD = 1;
     int READBACK = 2;
+    int TRANSIENT = 3;
 }

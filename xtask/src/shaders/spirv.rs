@@ -1,7 +1,8 @@
 use super::run;
 use rspirv::binary::Assemble;
 use rspirv::dr::Operand;
-use rspirv::spirv::{Op, StorageClass};
+use rspirv::spirv::{Decoration, Op, StorageClass};
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -24,6 +25,7 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         return;
     }
     let (textures, samplers) = super::shifts();
+    let json = out.join(format!("{name}.json"));
     run(Command::new("slangc")
         .arg(dir.join(format!("{name}.slang")))
         .args(["-I", super::LIBRARY])
@@ -36,8 +38,9 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         .args(["-fvk-invert-y"])
         .args(["-bindless-space-index", "1"])
         .args(["-fvk-b-shift", "0", "0", "-fvk-u-shift", "0", "0"])
-        .args(["-fvk-t-shift", &textures.to_string(), "0"])
         .args(["-fvk-s-shift", &samplers.to_string(), "0"])
+        .arg("-reflection-json")
+        .arg(&json)
         .arg("-o")
         .arg(&spv));
     let words: Vec<u32> = fs::read(&spv)
@@ -45,7 +48,50 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         .chunks(4)
         .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
         .collect();
-    fs::write(&spv, queries(&payloads(words))).unwrap();
+    let words = shift(payloads(words), &json, textures);
+    fs::remove_file(&json).unwrap();
+    fs::write(&spv, queries(&words)).unwrap();
+}
+
+fn shift(words: Vec<u32>, json: &Path, by: u32) -> Vec<u32> {
+    let reflection: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
+    let names: Vec<&str> = reflection["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| {
+            let t = &p["type"];
+            t["kind"] == "resource"
+                && t["access"] != "readWrite"
+                && t["baseShape"] != "subpassInput"
+                && p["binding"]["kind"] == "descriptorTableSlot"
+                && p["binding"]["space"].is_null()
+        })
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    let mut module = rspirv::dr::load_words(words).unwrap();
+    let ids: Vec<u32> = module
+        .debug_names
+        .iter()
+        .filter_map(|i| match i.operands.as_slice() {
+            [Operand::IdRef(id), Operand::LiteralString(n)] if names.contains(&n.as_str()) => {
+                Some(*id)
+            }
+            _ => None,
+        })
+        .collect();
+    for i in &mut module.annotations {
+        if let [
+            Operand::IdRef(id),
+            Operand::Decoration(Decoration::Binding),
+            Operand::LiteralBit32(b),
+        ] = i.operands.as_mut_slice()
+            && ids.contains(id)
+        {
+            *b += by;
+        }
+    }
+    module.assemble()
 }
 
 fn payloads(words: Vec<u32>) -> Vec<u32> {
@@ -106,4 +152,42 @@ fn queries(words: &[u32]) -> Vec<u8> {
         i += n;
     }
     kept.iter().flat_map(|w| w.to_le_bytes()).collect()
+}
+
+pub fn reads(spv: &Path) -> Vec<(String, u32)> {
+    let Ok(bytes) = fs::read(spv) else {
+        return Vec::new();
+    };
+    let module = rspirv::dr::load_bytes(bytes).unwrap();
+    let index = |id: u32| {
+        module
+            .annotations
+            .iter()
+            .find_map(|d| match d.operands.as_slice() {
+                [
+                    Operand::IdRef(target),
+                    Operand::Decoration(Decoration::InputAttachmentIndex),
+                    Operand::LiteralBit32(i),
+                ] if *target == id => Some(*i),
+                _ => None,
+            })
+    };
+    module
+        .entry_points
+        .iter()
+        .map(|e| {
+            let name = match &e.operands[2] {
+                Operand::LiteralString(n) => n.clone(),
+                _ => String::new(),
+            };
+            let mask = e.operands[3..]
+                .iter()
+                .filter_map(|o| match o {
+                    Operand::IdRef(id) => index(*id),
+                    _ => None,
+                })
+                .fold(0, |m, i| m | 1 << i);
+            (name, mask)
+        })
+        .collect()
 }

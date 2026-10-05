@@ -10,4 +10,5 @@ public interface Layout {
     int COPY_SRC = 6;
     int COPY_DST = 7;
     int PRESENT = 8;
+    int LOCAL_READ = 9;
 }

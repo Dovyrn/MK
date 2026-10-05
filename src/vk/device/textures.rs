@@ -93,8 +93,9 @@ impl Device {
         } else {
             aspect
         };
-        let attach =
-            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+        let attach = vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+            | vk::ImageUsageFlags::INPUT_ATTACHMENT;
         let bits = image_usage(info.usage)
             & (vk::ImageUsageFlags::SAMPLED
                 | vk::ImageUsageFlags::STORAGE

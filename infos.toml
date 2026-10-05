@@ -86,6 +86,7 @@ fields = [
     ["coverage", "bool", "false"],
     ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
+    ["ordered", "bool", "false"],
     ["buffers", "[VertexBuffer]", ""],
     ["attributes", "[VertexAttribute]", ""],
 ]
@@ -116,6 +117,16 @@ fields = [
     ["coverage", "bool", "false"],
     ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
+    ["ordered", "bool", "false"],
+]
+
+[[info]]
+name = "TileInfo"
+fields = [
+    ["code", "bytes", ""],
+    ["entry", "str", ""],
+    ["colors", "[ColorTarget]", ""],
+    ["samples", "u32", "1"],
 ]
 
 [[info]]
@@ -240,6 +251,11 @@ fields = [
     ["max_shared", "u32", "0"],
     ["atomics64", "u32", "0"],
     ["matrices", "u32", "0"],
+    ["transients", "bool", "false"],
+    ["transient_reads", "bool", "false"],
+    ["attachment_reads", "bool", "false"],
+    ["ordered_reads", "bool", "false"],
+    ["tiles", "bool", "false"],
 ]
 
 [[info]]

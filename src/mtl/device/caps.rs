@@ -29,6 +29,11 @@ impl Device {
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
             matrices: MATRICES.len() as u32,
+            transients: true,
+            transient_reads: true,
+            attachment_reads: true,
+            ordered_reads: true,
+            tiles: raw.supportsFamily(MTLGPUFamily::Apple4),
             atomics64: if apple9
                 || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
             {
@@ -155,6 +160,11 @@ impl Device {
         if usage == 0 {
             return 0;
         }
+        let usage = if usage & usage::COLOR != 0 {
+            usage | usage::INPUT
+        } else {
+            usage
+        };
         let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
         let host = if depth || !self.raw.hasUnifiedMemory() {
             0

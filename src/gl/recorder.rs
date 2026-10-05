@@ -577,6 +577,11 @@ impl<'a> Recorder<'a> {
                     layers,
                 } => self.begin_render(width, height, layers)?,
                 Command::EndRender => self.end_render()?,
+                Command::AttachmentBarrier
+                | Command::TileSize { .. }
+                | Command::DispatchTile { .. } => {
+                    unreachable!("caps.attachment_reads and caps.tiles are false on GL")
+                }
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);

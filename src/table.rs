@@ -9,7 +9,8 @@ pub struct Table {
     pub textures: Entries<TextureInfo>,
     pub samplers: Entries<()>,
     pub pipelines: Entries<()>,
-    pub renders: Entries<(u32, bool, u32, bool, u32)>,
+    pub renders: Entries<(u32, bool, u32, bool, u32, u32)>,
+    pub tile_pipelines: Entries<u32>,
     pub states: Entries<()>,
     pub queries: Entries<(u32, u32)>,
     pub timelines: Entries<(u64, usize, Weak<()>)>,
@@ -41,6 +42,7 @@ impl Default for Table {
             samplers: Entries::new("sampler"),
             pipelines: Entries::new("pipeline"),
             renders: Entries::new("render pipeline"),
+            tile_pipelines: Entries::new("tile pipeline"),
             states: Entries::new("depth state"),
             queries: Entries::new("query heap"),
             timelines: Entries::new("timeline"),
@@ -253,7 +255,7 @@ impl Table {
     pub fn indirect(&self, info: &IndirectInfo) -> (IndirectInfo, u32, bool) {
         assert!(info.size > 0, "indirect buffer size is 0");
         let pipeline = info.pipeline;
-        let (_, indirect, topology, mesh, _) = *self.renders.get(pipeline);
+        let (_, indirect, topology, mesh, _, _) = *self.renders.get(pipeline);
         assert!(
             indirect,
             "an indirect buffer needs render pipeline {pipeline} created with indirect: true"
