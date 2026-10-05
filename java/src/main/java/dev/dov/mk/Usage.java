@@ -12,5 +12,4 @@ public interface Usage {
     int BLIT = 256;
     int RATE = 512;
     int ATOMIC = 1024;
-    int MIPS = 2048;
 }

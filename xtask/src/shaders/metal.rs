@@ -37,6 +37,8 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         }
         pin(&msl, &json);
         bases(&msl, &json);
+        local(&msl);
+        indices(&msl);
         fs::remove_file(&json).unwrap();
         if !metal.exists() {
             let air = out.join(format!("{name}.{entry}.air"));
@@ -162,6 +164,52 @@ fn bases(msl: &Path, json: &Path) {
         );
     }
     fs::write(msl, text).unwrap();
+}
+
+fn indices(msl: &Path) {
+    let text = fs::read_to_string(msl).unwrap();
+    let tag = ".set_index(";
+    let mut out = String::new();
+    let mut rest = text.as_str();
+    while let Some(i) = rest.find(tag) {
+        let start = i + tag.len();
+        out += &rest[..start];
+        rest = &rest[start..];
+        let end = rest.find(',').unwrap();
+        let star = rest[..end].rfind('*').unwrap();
+        out += &format!("({}){}", &rest[..star], &rest[star..end]);
+        rest = &rest[end..];
+    }
+    out += rest;
+    fs::write(msl, out).unwrap();
+}
+
+fn local(msl: &Path) {
+    let text = fs::read_to_string(msl).unwrap();
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let attributed = lines.last().is_some_and(|l| l.starts_with("[["));
+        let helper = !attributed
+            && line.starts_with(|c: char| c.is_ascii_alphabetic())
+            && line.contains('(')
+            && !line.ends_with(';')
+            && ![
+                "struct ",
+                "constant ",
+                "static ",
+                "using ",
+                "template",
+                "typedef ",
+            ]
+            .iter()
+            .any(|k| line.starts_with(k));
+        if helper {
+            lines.push(format!("static {line}"));
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    fs::write(msl, lines.join("\n")).unwrap();
 }
 
 fn pin(msl: &Path, json: &Path) {

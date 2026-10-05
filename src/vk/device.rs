@@ -66,10 +66,6 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
         ),
         (
-            usage::MIPS,
-            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
-        ),
-        (
             usage::RATE,
             vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
         ),

@@ -172,9 +172,11 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
             };
             let b = if kind == "texture" {
                 let pair = name.strip_prefix("SPIRV_Cross_Combined").unwrap();
-                let (texture, _) = separate
+                let texture = separate
                     .iter()
-                    .find(|(n, s)| *s == slot && pair.starts_with(n.as_str()))
+                    .filter(|(_, s)| *s == slot)
+                    .flat_map(|(n, _)| [n.as_str(), n.trim_start_matches('_')])
+                    .find(|n| pair.starts_with(n))
                     .unwrap();
                 let rest = &pair[texture.len()..];
                 match separate.iter().find(|(n, _)| n == rest) {

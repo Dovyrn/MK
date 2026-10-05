@@ -155,22 +155,13 @@ impl Device {
         if usage == 0 {
             return 0;
         }
-        let float = matches!(
-            format,
-            format::R32_FLOAT | format::RG32_FLOAT | format::RGBA32_FLOAT
-        );
-        let integer = format::uint(format) || format::sint(format);
-        let mips = usage & usage::COLOR != 0
-            && !integer
-            && (!float || self.raw.supports32BitFloatFiltering());
-        let mips = if mips { usage::MIPS } else { 0 };
         let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
         let host = if depth || !self.raw.hasUnifiedMemory() {
             0
         } else {
             usage::HOST
         };
-        usage | mips | usage::COPY_SRC | usage::COPY_DST | usage::VIEW | host
+        usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW | host
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {

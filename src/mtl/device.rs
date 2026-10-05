@@ -151,9 +151,6 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage & usage::VIEW != 0 {
         flags |= MTLTextureUsage::PixelFormatView;
     }
-    if info.usage & usage::MIPS != 0 {
-        flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget;
-    }
     let desc = MTLTextureDescriptor::new();
     desc.setTextureType(kind(info.dimension, info.samples));
     desc.setPixelFormat(format::mtl(info.format));

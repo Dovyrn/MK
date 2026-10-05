@@ -23,17 +23,6 @@ fn average(p: [[f32; 4]; 4]) -> [f32; 4] {
     [0, 1, 2, 3].map(|i| p.iter().map(|q| q[i]).sum::<f32>() / 4.0)
 }
 
-fn within(a: [u8; 4], p: [[f32; 4]; 4], what: &str) {
-    for i in 0..4 {
-        let low = p.iter().map(|q| q[i]).fold(f32::MAX, f32::min);
-        let high = p.iter().map(|q| q[i]).fold(f32::MIN, f32::max);
-        assert!(
-            (low - 1.0..=high + 1.0).contains(&(a[i] as f32)),
-            "{what}: {a:?} is outside the texels it reduces, {p:?}"
-        );
-    }
-}
-
 fn move_to(c: &mut Commands, texture: u32, (before, after): (u32, u32), layers: (u32, u32)) {
     c.texture_barrier(&TextureBarrier {
         texture,
@@ -70,13 +59,7 @@ pub fn main() {
     };
     let plain = dimension::D2;
     let view = if caps.copy_formats { usage::VIEW } else { 0 };
-    let a = make(
-        plain,
-        format::RGBA8_UNORM,
-        [N, N, 1],
-        5,
-        usage::MIPS | blit | view,
-    );
+    let a = make(plain, format::RGBA8_UNORM, [N, N, 1], 1, blit | view);
     let b = make(
         plain,
         format::RGBA8_UNORM,
@@ -111,8 +94,6 @@ pub fn main() {
     let slots = [
         (b, 0, 0, N, N),
         (cast, 0, 0, N, N),
-        (a, 1, 0, N / 2, N / 2),
-        (a, 2, 0, N / 4, N / 4),
         (array, 0, 0, 8, 8),
         (array, 0, 1, 8, 8),
         (array, 0, 2, 8, 8),
@@ -152,7 +133,6 @@ pub fn main() {
         });
         move_to(&mut c, texture, written, all);
     }
-    c.generate_mips(a, layout::COPY_DST);
     move_to(&mut c, a, read, all);
     c.end_compute();
     c.clear_texture(&ClearInfo {
@@ -301,14 +281,11 @@ pub fn main() {
     };
     let float = |p: [u8; 4]| p.map(|v| v as f32);
     let blue = [0.0, 0.0, 255.0, 255.0];
-    let mut mip1 = [[[0.0f32; 4]; 8]; 8];
     for y in 0..8 {
         for x in 0..8 {
             let four = [(0, 0), (1, 0), (0, 1), (1, 1)];
             let block = four.map(|(i, j)| float(pattern(2 * x + i, 2 * y + j)));
             let mean = average(block);
-            within(texel(2, x, y), block, "mip 1");
-            mip1[y as usize][x as usize] = float(texel(2, x, y));
             if blits {
                 near(texel(0, N / 2 + x, N / 2 + y), mean, 2.0, "linear blit");
                 near(
@@ -322,13 +299,6 @@ pub fn main() {
             near(texel(0, x, N / 2 + y), blue, 0.0, "cleared");
         }
     }
-    for y in 0..4 {
-        for x in 0..4 {
-            let four = [(0, 0), (1, 0), (0, 1), (1, 1)];
-            let block = four.map(|(i, j)| mip1[2 * y + j][2 * x + i]);
-            within(texel(3, x as u32, y as u32), block, "mip 2");
-        }
-    }
     if caps.copy_formats {
         for y in 0..N {
             for x in 0..N {
@@ -340,21 +310,21 @@ pub fn main() {
     let green = [0.0, 255.0, 0.0, 255.0];
     for y in 0..8 {
         for x in 0..8 {
-            near(texel(4, x, y), red, 0.0, "layer 0");
-            near(texel(5, x, y), green, 0.0, "layer 1");
+            near(texel(2, x, y), red, 0.0, "layer 0");
+            near(texel(3, x, y), green, 0.0, "layer 1");
             let copied = (4..8).contains(&x) && (4..8).contains(&y);
             let expect = if copied { red } else { green };
-            near(texel(6, x, y), expect, 0.0, "layer 2");
+            near(texel(4, x, y), expect, 0.0, "layer 2");
             let depth = |slot| f32::from_le_bytes(texel(slot, x, y));
-            assert_eq!(depth(7), 0.25, "depth clear at {x},{y}");
-            assert_eq!(depth(9), 0.25, "depth copy at {x},{y}");
+            assert_eq!(depth(5), 0.25, "depth clear at {x},{y}");
+            assert_eq!(depth(7), 0.25, "depth copy at {x},{y}");
         }
         if caps.texture_clear {
-            near(texel(11, y, 0), blue, 0.0, "1D clear");
+            near(texel(9, y, 0), blue, 0.0, "1D clear");
         }
     }
     near(
-        texel(8, 3, 3),
+        texel(6, 3, 3),
         [188.0, 188.0, 188.0, 255.0],
         1.0,
         "srgb clear",
@@ -371,7 +341,7 @@ pub fn main() {
         refused.push(device.submit(0, &c, &[], &[]).unwrap_err());
     }
     println!(
-        "copy, blit {blits}, mips and clear match on {}; refused: {refused:?}",
+        "copy, blit {blits} and clear match on {}; refused: {refused:?}",
         device.name()
     );
 }

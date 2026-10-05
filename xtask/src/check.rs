@@ -40,7 +40,7 @@ pub fn check(root: &Path, full: bool) -> i32 {
         }
     };
     step("fmt".into(), cargo(root, &["fmt", "--check"]), &mut out);
-    crate::shaders::compile(root);
+    crate::shaders::compile(&root.join("examples/shaders"));
     let mut configs: Vec<String> = backends().iter().map(|b| b.to_string()).collect();
     if full {
         configs.extend(backends().iter().map(|b| format!("{b},jni")));

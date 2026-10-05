@@ -6,11 +6,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn compile(root: &Path) {
-    let dir = root.join("examples/shaders");
+pub fn compile(dir: &Path) {
     let out = dir.join("out");
     fs::create_dir_all(&out).unwrap();
-    let mut sources: Vec<PathBuf> = fs::read_dir(&dir)
+    let mut sources: Vec<PathBuf> = fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap().path())
         .filter(|p| {
@@ -28,11 +27,11 @@ pub fn compile(root: &Path) {
             continue;
         }
         if slang.exists() {
-            spirv::spirv(&dir, &out, &name);
+            spirv::spirv(dir, &out, &name);
             glsl::glsl(&out, &name);
         }
         if cfg!(target_os = "macos") {
-            metal::metal(&dir, &out, &name);
+            metal::metal(dir, &out, &name);
         }
     }
 }

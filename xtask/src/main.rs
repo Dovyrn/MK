@@ -7,7 +7,7 @@ mod windows;
 use std::path::PathBuf;
 
 const USAGE: &str = "cargo xtask <command>
-  shaders   compile examples/shaders into examples/shaders/out
+  shaders   compile a directory of shaders (examples/shaders by default) into its out folder
   check     fmt, clippy, unit tests, then every example on every local backend
   full      check with validation layers, the JNI builds and the Java smoke test
   windows   cross-build target/windows.zip, run.exe inside runs it all on Windows";
@@ -18,7 +18,8 @@ fn main() {
     let here = exe.parent().unwrap().to_path_buf();
     let code = match std::env::args().nth(1).as_deref() {
         Some("shaders") => {
-            shaders::compile(&root);
+            let dir = std::env::args().nth(2).map(PathBuf::from);
+            shaders::compile(&dir.unwrap_or(root.join("examples/shaders")));
             0
         }
         Some("check") => check::check(&root, false),

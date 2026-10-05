@@ -20,36 +20,7 @@ fn layers(t: &Texture, mip: u32, layer: u32, count: u32) -> vk::ImageSubresource
     }
 }
 
-fn barrier(
-    t: &Texture,
-    (base, mips): (u32, u32),
-    (before, after): (vk::ImageLayout, vk::ImageLayout),
-    (src, dst): (vk::AccessFlags2, vk::AccessFlags2),
-) -> vk::ImageMemoryBarrier2<'static> {
-    let copy = vk::PipelineStageFlags2::ALL_TRANSFER;
-    vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(copy)
-        .src_access_mask(src)
-        .dst_stage_mask(copy)
-        .dst_access_mask(dst)
-        .old_layout(before)
-        .new_layout(after)
-        .image(t.image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: t.aspect,
-            base_mip_level: t.base_mip + base,
-            level_count: mips,
-            base_array_layer: t.base_layer,
-            layer_count: t.layers,
-        })
-}
-
 impl Recorder<'_> {
-    fn transition(&self, barriers: &[vk::ImageMemoryBarrier2]) {
-        let info = vk::DependencyInfo::default().image_memory_barriers(barriers);
-        unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
-    }
-
     pub fn copy_texture(&self, c: Command) {
         let Command::CopyTexture {
             src,
@@ -142,59 +113,6 @@ impl Recorder<'_> {
                 _ => vk::Filter::LINEAR,
             });
         unsafe { self.device.cmd_blit_image2(self.buffer, &info) };
-    }
-
-    pub fn generate_mips(&self, texture: u32, l: u32) {
-        let t = self.res.textures.get(texture);
-        if t.mips < 2 {
-            return;
-        }
-        let given = layout(l);
-        let (from, to) = if given == vk::ImageLayout::GENERAL {
-            (given, given)
-        } else {
-            (
-                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            )
-        };
-        let (read, written) = (
-            vk::AccessFlags2::TRANSFER_READ,
-            vk::AccessFlags2::TRANSFER_WRITE,
-        );
-        let none = vk::AccessFlags2::NONE;
-        self.transition(&[
-            barrier(t, (0, 1), (given, from), (written, read)),
-            barrier(t, (1, t.mips - 1), (given, to), (none, written)),
-        ]);
-        let info = self.res.table.textures.get(texture);
-        let size = |m: u32| [info.width, info.height, info.depth].map(|n| (n >> m).max(1));
-        for m in 1..t.mips {
-            if m > 1 {
-                self.transition(&[barrier(t, (m - 1, 1), (to, from), (written, read))]);
-            }
-            let [w, h, d] = size(m - 1);
-            let [x, y, z] = size(m);
-            let region = vk::ImageBlit2::default()
-                .src_subresource(layers(t, m - 1, 0, t.layers))
-                .src_offsets([offset(0, 0, 0), offset(w, h, d)])
-                .dst_subresource(layers(t, m, 0, t.layers))
-                .dst_offsets([offset(0, 0, 0), offset(x, y, z)]);
-            let regions = [region];
-            let info = vk::BlitImageInfo2::default()
-                .src_image(t.image)
-                .src_image_layout(from)
-                .dst_image(t.image)
-                .dst_image_layout(to)
-                .regions(&regions)
-                .filter(vk::Filter::LINEAR);
-            unsafe { self.device.cmd_blit_image2(self.buffer, &info) };
-        }
-        let last = t.mips - 1;
-        self.transition(&[
-            barrier(t, (0, last), (from, given), (read, read | written)),
-            barrier(t, (last, 1), (to, given), (written, read | written)),
-        ]);
     }
 
     pub fn clear_texture(&self, c: Command) {

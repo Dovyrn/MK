@@ -712,15 +712,6 @@ impl<'a> Check<'a> {
                     "blit_texture reads and writes one subresource of texture {src}"
                 );
             }
-            Command::GenerateMips { texture, layout: l } => {
-                let t = self.texture(texture, usage::MIPS, "MIPS");
-                needs_layout("generate_mips", l, layout::COPY_DST);
-                assert!(
-                    !format::uint(t.format) && !format::sint(t.format),
-                    "generate_mips needs a filterable format, not integer format {}",
-                    t.format
-                );
-            }
             Command::ClearTexture {
                 texture,
                 layout: l,

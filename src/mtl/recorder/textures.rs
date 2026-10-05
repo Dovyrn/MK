@@ -129,11 +129,6 @@ impl Recorder<'_> {
         Ok(())
     }
 
-    pub(super) fn generate_mips(&mut self, texture: u32) {
-        let t = self.res.textures.get(texture);
-        unsafe { self.compute().generateMipmapsForTexture(&t.raw) };
-    }
-
     pub(super) fn clear_texture(&mut self, c: Command) -> Result<(), &'static str> {
         let Command::ClearTexture {
             texture,

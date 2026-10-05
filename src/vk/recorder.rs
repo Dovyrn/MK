@@ -560,7 +560,6 @@ impl Recorder<'_> {
                 }
                 Command::CopyTexture { .. } => self.copy_texture(command),
                 Command::BlitTexture { .. } => self.blit_texture(command),
-                Command::GenerateMips { texture, layout } => self.generate_mips(texture, layout),
                 Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
                     index,

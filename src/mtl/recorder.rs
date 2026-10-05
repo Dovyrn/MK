@@ -546,7 +546,6 @@ impl<'a> Recorder<'a> {
             }
             Command::CopyTexture { .. } => self.copy_texture(command)?,
             Command::BlitTexture { .. } => unreachable!("Metal never reports usage::BLIT"),
-            Command::GenerateMips { texture, .. } => self.generate_mips(texture),
             Command::ClearTexture { .. } => self.clear_texture(command)?,
             Command::ColorAttachment {
                 index,

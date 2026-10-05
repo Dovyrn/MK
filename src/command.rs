@@ -114,7 +114,7 @@ mod tests {
     #[test]
     #[cfg(feature = "mtl")]
     fn foreign() {
-        let mut bytes = vec![56, 0, 16, 0];
+        let mut bytes = vec![55, 0, 16, 0];
         bytes.extend([0; 16]);
         assert_eq!(
             Command::dump(&bytes),
