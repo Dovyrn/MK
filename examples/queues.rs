@@ -31,10 +31,11 @@ pub fn main() {
     let mut push = device.buffer_handle(data).unwrap().to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(3u32.to_le_bytes());
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut compute = Commands::default();
     compute.begin_compute();
     compute.bind_pipeline(pipeline);
-    compute.push_constants(0, &push);
+    compute.bind_uniform(0, constants, 0, push.len() as u64);
     compute.dispatch(n / 64, 1, 1);
     compute.end_compute();
     let mut copy = Commands::default();

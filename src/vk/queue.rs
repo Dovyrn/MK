@@ -49,7 +49,6 @@ impl Queue {
         ext: &Extensions,
         layout: vk::PipelineLayout,
         heap: vk::DescriptorSet,
-        attachments: vk::DescriptorSetLayout,
         res: &Resources,
         (commands, natives): (&[u8], &[Callback]),
         waits: &[(u32, u64)],
@@ -64,7 +63,7 @@ impl Queue {
             }
             self.free.push(frame);
         }
-        let mut frame = match self.free.pop() {
+        let frame = match self.free.pop() {
             Some(f) => f,
             None => Frame::new(device, self.family).map_err(|e| e.to_string())?,
         };
@@ -94,13 +93,9 @@ impl Queue {
                 graphics: vk::Pipeline::null(),
                 slots: BTreeMap::new(),
                 stale: vec![BTreeSet::new(); points.len()],
-                push: Vec::new(),
                 rate: None,
                 defaults: false,
                 area: vk::Rect2D::default(),
-                inputs: Vec::new(),
-                attachments,
-                frame: &mut frame,
             }
             .run(commands)?;
             unsafe { device.end_command_buffer(buffer) }.map_err(|e| e.to_string())?;

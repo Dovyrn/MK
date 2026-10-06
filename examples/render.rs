@@ -95,6 +95,8 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let (constants, stride) =
+        host::constants(&mut device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture: color,
@@ -126,9 +128,9 @@ pub fn main() {
     c.set_depth_state(less);
     c.bind_vertex_buffer(0, vbuf, 0);
     c.bind_index_buffer(ibuf, 0, index::U16);
-    c.push_constants(0, &0.5f32.to_le_bytes());
+    c.bind_uniform(0, constants, 0, 4);
     c.draw_indexed(3, 1, 0, 0, 0);
-    c.push_constants(0, &0.7f32.to_le_bytes());
+    c.bind_uniform(0, constants, stride, 4);
     c.draw_indexed(3, 1, 0, 3, 0);
     c.end_render();
     c.texture_barrier(&TextureBarrier {

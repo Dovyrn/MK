@@ -183,10 +183,8 @@ impl Device {
 
     pub fn destroy_accel(&mut self, accel: u32) {
         self.res.table.drop_accel(accel);
-        self.defer(move |d| {
-            let accel = d.res.accels.remove(accel);
-            accel.free(d, d.ext.accel.as_ref().unwrap());
-        });
+        let accel = self.res.accels.remove(accel);
+        accel.free(self, self.ext.accel.as_ref().unwrap());
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {

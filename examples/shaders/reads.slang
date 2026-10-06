@@ -4,7 +4,7 @@ struct Push {
     float value;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push : register(b0);
+Uniform<Push> push : UNIFORM(0);
 
 ATTACHMENT(0) SubpassInput<float4> value;
 

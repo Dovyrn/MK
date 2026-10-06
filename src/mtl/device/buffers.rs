@@ -38,7 +38,7 @@ impl Device {
         self.res.table.drop_buffer(buffer);
         self.res.imports.remove(&buffer);
         let buffer = self.res.buffers.remove(buffer);
-        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*buffer)));
+        self.residency.remove(ProtocolObject::from_ref(&*buffer));
     }
 
     pub fn map(&self, buffer: u32) -> *mut u8 {

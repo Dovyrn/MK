@@ -152,7 +152,7 @@ impl Device {
     pub fn destroy_accel(&mut self, accel: u32) {
         self.res.table.drop_accel(accel);
         let a = self.res.accels.remove(accel);
-        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*a.raw)));
+        self.residency.remove(ProtocolObject::from_ref(&*a.raw));
     }
 
     pub fn accel_scratch(&self, accel: u32) -> (u64, u64) {

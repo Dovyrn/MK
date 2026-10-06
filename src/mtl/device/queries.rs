@@ -41,10 +41,8 @@ impl Device {
     pub fn destroy_query_heap(&mut self, heap: u32) {
         self.res.table.queries.clear(heap);
         let heap = self.res.queries.remove(heap);
-        self.defer(move |r| {
-            if let Query::Buffer(buffer) = &heap {
-                r.remove(ProtocolObject::from_ref(&**buffer));
-            }
-        });
+        if let Query::Buffer(buffer) = &heap {
+            self.residency.remove(ProtocolObject::from_ref(&**buffer));
+        }
     }
 }

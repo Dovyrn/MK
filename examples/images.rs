@@ -41,6 +41,7 @@ pub fn main() {
     let mut push = device.image_handle(texture).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture,
@@ -71,7 +72,7 @@ pub fn main() {
     });
     c.begin_compute();
     c.bind_pipeline(pipeline);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 8, n / 8, 1);
     c.end_compute();
     c.texture_barrier(&TextureBarrier {

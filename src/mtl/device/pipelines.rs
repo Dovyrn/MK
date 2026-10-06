@@ -216,7 +216,7 @@ impl Device {
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
         self.res.table.pipelines.clear(pipeline);
         let pipeline = self.res.pipelines.remove(pipeline);
-        self.defer(move |_| drop(pipeline));
+        drop(pipeline);
     }
 
     pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
@@ -367,7 +367,7 @@ impl Device {
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
         self.res.table.renders.clear(pipeline);
         let pipeline = self.res.renders.remove(pipeline);
-        self.defer(move |_| drop(pipeline));
+        drop(pipeline);
     }
 
     pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
@@ -395,7 +395,7 @@ impl Device {
     pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
         self.res.table.tile_pipelines.clear(pipeline);
         let pipeline = self.res.tiles.remove(pipeline);
-        self.defer(move |_| drop(pipeline));
+        drop(pipeline);
     }
 
     pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
@@ -421,6 +421,6 @@ impl Device {
     pub fn destroy_depth_state(&mut self, state: u32) {
         self.res.table.states.clear(state);
         let state = self.res.depths.remove(state);
-        self.defer(move |_| drop(state));
+        drop(state);
     }
 }

@@ -28,6 +28,7 @@ pub struct Resources {
     pub rays: Slots<u32>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    pub attachments: Slots<()>,
     pub imports: HashSet<u32>,
     pub table: crate::table::Table,
 }

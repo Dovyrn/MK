@@ -34,10 +34,12 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             "spirv",
             "-emit-spirv-directly",
             "-fvk-use-entrypoint-name",
+            "-D",
+            "MK_SPIRV",
         ])
         .args(["-fvk-invert-y"])
         .args(["-bindless-space-index", "1"])
-        .args(["-fvk-b-shift", "0", "0", "-fvk-u-shift", "0", "0"])
+        .args(["-fvk-b-shift", "64", "0", "-fvk-u-shift", "0", "0"])
         .args(["-fvk-s-shift", &samplers.to_string(), "0"])
         .arg("-reflection-json")
         .arg(&json)
@@ -55,27 +57,34 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
 
 fn shift(words: Vec<u32>, json: &Path, by: u32) -> Vec<u32> {
     let reflection: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
-    let names: Vec<&str> = reflection["parameters"]
+    let moves: Vec<(&str, u32)> = reflection["parameters"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|p| {
+        .filter(|p| p["binding"]["space"].is_null())
+        .filter_map(|p| {
             let t = &p["type"];
-            t["kind"] == "resource"
+            let name = p["name"].as_str().unwrap();
+            if p["binding"]["kind"] == "constantBuffer" {
+                Some((name, 64u32.wrapping_neg()))
+            } else if p["binding"]["kind"] == "descriptorTableSlot"
+                && t["kind"] == "resource"
                 && t["access"] != "readWrite"
                 && t["baseShape"] != "subpassInput"
-                && p["binding"]["kind"] == "descriptorTableSlot"
-                && p["binding"]["space"].is_null()
+            {
+                Some((name, by))
+            } else {
+                None
+            }
         })
-        .map(|p| p["name"].as_str().unwrap())
         .collect();
     let mut module = rspirv::dr::load_words(words).unwrap();
-    let ids: Vec<u32> = module
+    let ids: Vec<(u32, u32)> = module
         .debug_names
         .iter()
         .filter_map(|i| match i.operands.as_slice() {
-            [Operand::IdRef(id), Operand::LiteralString(n)] if names.contains(&n.as_str()) => {
-                Some(*id)
+            [Operand::IdRef(id), Operand::LiteralString(n)] => {
+                moves.iter().find(|m| m.0 == n).map(|m| (*id, m.1))
             }
             _ => None,
         })
@@ -86,9 +95,9 @@ fn shift(words: Vec<u32>, json: &Path, by: u32) -> Vec<u32> {
             Operand::Decoration(Decoration::Binding),
             Operand::LiteralBit32(b),
         ] = i.operands.as_mut_slice()
-            && ids.contains(id)
+            && let Some(m) = ids.iter().find(|m| m.0 == *id)
         {
-            *b += by;
+            *b = b.wrapping_add(m.1);
         }
     }
     module.assemble()

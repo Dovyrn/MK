@@ -87,6 +87,10 @@ impl Extensions {
                     v12.map(|f| f.descriptor_binding_storage_image_update_after_bind),
                 ),
                 (
+                    "VkPhysicalDeviceVulkan12Features.uniformBufferStandardLayout",
+                    v12.map(|f| f.uniform_buffer_standard_layout),
+                ),
+                (
                     "VkPhysicalDeviceVulkan13Features.synchronization2",
                     v13.map(|f| f.synchronization2),
                 ),

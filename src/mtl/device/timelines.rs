@@ -31,6 +31,6 @@ impl Device {
     pub fn destroy_timeline(&mut self, timeline: Timeline) {
         self.res.table.drop_timeline(&timeline);
         let raw = self.res.timelines.remove(timeline.id);
-        self.defer(move |_| drop(raw));
+        drop(raw);
     }
 }

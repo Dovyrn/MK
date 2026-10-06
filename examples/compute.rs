@@ -32,6 +32,7 @@ pub fn main() {
     let mut push = handle.to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(100u32.to_le_bytes());
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.begin_label("fill");
     c.begin_compute();
@@ -43,7 +44,7 @@ pub fn main() {
         access::SHADER_WRITE,
     );
     c.bind_pipeline(pipeline);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 64, 1, 1);
     c.barrier(
         stage::COMPUTE,

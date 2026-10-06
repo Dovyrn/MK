@@ -64,10 +64,8 @@ impl Device {
 
     pub fn destroy_sampler(&mut self, sampler: u32) {
         self.res.table.samplers.clear(sampler);
-        self.defer(move |d| {
-            let sampler = d.res.samplers.remove(sampler);
-            unsafe { d.raw.destroy_sampler(sampler, None) };
-        });
+        let sampler = self.res.samplers.remove(sampler);
+        unsafe { self.raw.destroy_sampler(sampler, None) };
     }
 
     pub fn sampler_handle(&self, sampler: u32) -> u64 {

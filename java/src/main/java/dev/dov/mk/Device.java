@@ -178,6 +178,20 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTilePipeline(long device, int pipeline);
 
+    public synchronized int createAttachments(int[] textures) {
+        try (var arena = new Arena()) {
+            return nCreateAttachments(handle, arena.ints(textures), textures.length);
+        }
+    }
+
+    private static native int nCreateAttachments(long device, long textures, int texturesLength);
+
+    public synchronized void destroyAttachments(int attachments) {
+        nDestroyAttachments(handle, attachments);
+    }
+
+    private static native void nDestroyAttachments(long device, int attachments);
+
     public synchronized int createDepthState(DepthInfo info) {
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());

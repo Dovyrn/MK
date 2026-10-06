@@ -82,10 +82,11 @@ pub fn main() {
             push.extend(word.to_le_bytes());
         }
         push.extend(count.unwrap_or(0u32).to_le_bytes());
+        let (constants, _) = host::constants(&mut device, &[&push]);
         let mut c = Commands::default();
         c.begin_compute();
         c.bind_pipeline(encode);
-        c.push_constants(0, &push);
+        c.bind_uniform(0, constants, 0, push.len() as u64);
         c.dispatch(1, 1, 1);
         c.end_compute();
         c.barrier(

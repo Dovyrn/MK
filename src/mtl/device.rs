@@ -1,4 +1,5 @@
 mod accels;
+mod attachments;
 mod budget;
 mod buffers;
 mod cache;
@@ -30,7 +31,6 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -187,8 +187,6 @@ pub fn id(id: MTLResourceID) -> u64 {
     unsafe { std::mem::transmute(id) }
 }
 
-type Free = Box<dyn FnOnce(&mut Residency)>;
-
 pub struct Device {
     pub raw: Retained<ProtocolObject<dyn MTLDevice>>,
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
@@ -200,7 +198,6 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     lost: Arc<Mutex<Option<String>>>,
-    garbage: VecDeque<(Vec<u64>, Free)>,
     caps: Caps,
 }
 
@@ -214,7 +211,6 @@ impl Drop for Device {
             for path in &self.archives {
                 let _ = std::fs::remove_file(path);
             }
-            self.garbage.clear();
             self.queues.clear();
             self.res = Resources::default();
             self.residency.clear();
@@ -255,36 +251,8 @@ impl Device {
                 res: Resources::default(),
                 queues,
                 lost,
-                garbage: VecDeque::new(),
                 caps,
             })
-        })
-    }
-
-    fn defer(&mut self, free: impl FnOnce(&mut Residency) + 'static) {
-        autoreleasepool(|_| {
-            let counts = self
-                .queues
-                .iter_mut()
-                .map(|q| {
-                    q.signal();
-                    q.count
-                })
-                .collect();
-            self.garbage.push_back((counts, Box::new(free)));
-            self.collect();
-        })
-    }
-
-    fn collect(&mut self) {
-        autoreleasepool(|_| {
-            let done: Vec<u64> = self.queues.iter().map(Queue::done).collect();
-            while let Some((_, free)) = self
-                .garbage
-                .pop_front_if(|(counts, _)| counts.iter().zip(&done).all(|(c, d)| c <= d))
-            {
-                free(&mut self.residency);
-            }
         })
     }
 
@@ -319,7 +287,6 @@ impl Device {
             let signals = &self.res.table.points(signals);
             Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
             self.res.table.submit(queue, signals);
-            self.collect();
             self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)?;
             self.res.table.signal(queue, signals);
             Ok(())

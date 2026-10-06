@@ -54,7 +54,7 @@ impl Device {
     pub fn destroy_indirect_buffer(&mut self, indirect: u32) {
         self.res.table.indirects.clear(indirect);
         let raw = self.res.indirects.remove(indirect).raw;
-        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*raw)));
+        self.residency.remove(ProtocolObject::from_ref(&*raw));
     }
 
     pub fn indirect_handle(&self, indirect: u32) -> Result<[u32; 8], String> {

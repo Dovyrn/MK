@@ -89,7 +89,6 @@ pub(super) fn probe(
             .chain(mesh.max_mesh_work_group_count)
             .min()
             .unwrap(),
-        push: limits.max_push_constants_size.min(256),
         queues: queues.len() as u32,
         samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
         textures: bindless.textures,

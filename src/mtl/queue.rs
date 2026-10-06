@@ -9,8 +9,7 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4ArgumentTable, MTL4ArgumentTableDescriptor, MTL4CommandBuffer, MTL4CommandEncoder,
-    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLResidencySetDescriptor,
-    MTLSharedEvent,
+    MTL4CommandQueue, MTLDevice, MTLEvent, MTLResidencySet, MTLSharedEvent,
 };
 use objc2_metal::{MTL4CommitFeedback, MTL4CommitOptions};
 use std::collections::VecDeque;
@@ -22,7 +21,6 @@ pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
     pub buffer: Retained<ProtocolObject<dyn MTL4CommandBuffer>>,
     pub table: Retained<ProtocolObject<dyn MTL4ArgumentTable>>,
-    pub residency: Retained<ProtocolObject<dyn MTLResidencySet>>,
     event: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     pub count: u64,
     free: Vec<Frame>,
@@ -39,11 +37,7 @@ impl Queue {
         let raw = device
             .newMTL4CommandQueue()
             .ok_or("command queue allocation failed")?;
-        let residency = device
-            .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
-            .map_err(|e| e.localizedDescription().to_string())?;
         raw.addResidencySet(shared);
-        raw.addResidencySet(&residency);
         let desc = MTL4ArgumentTableDescriptor::new();
         desc.setMaxBufferBindCount(VERTICES + slot::VERTICES as usize);
         desc.setMaxTextureBindCount((register::IMAGE + slot::IMAGES) as usize);
@@ -57,7 +51,6 @@ impl Queue {
                 .newCommandBuffer()
                 .ok_or("command buffer allocation failed")?,
             table,
-            residency,
             event: device.newSharedEvent().ok_or("event allocation failed")?,
             count: 0,
             free: Vec::new(),
@@ -89,7 +82,7 @@ impl Queue {
         };
         self.buffer
             .beginCommandBufferWithAllocator(&frame.allocator);
-        let mut recorder = Recorder::new(device, self, &mut frame, res, natives);
+        let mut recorder = Recorder::new(self, &mut frame, res, natives);
         let result = catch_unwind(AssertUnwindSafe(|| {
             recorder.run(commands)?;
             recorder.release()
@@ -141,10 +134,6 @@ impl Queue {
         self.count += 1;
         let own = ProtocolObject::<dyn MTLEvent>::from_ref(&*self.event);
         self.raw.signalEvent_value(own, self.count);
-    }
-
-    pub fn done(&self) -> u64 {
-        self.event.signaledValue()
     }
 
     pub fn idle(&self) {

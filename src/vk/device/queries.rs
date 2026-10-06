@@ -43,9 +43,7 @@ impl Device {
 
     pub fn destroy_query_heap(&mut self, heap: u32) {
         self.res.table.queries.clear(heap);
-        self.defer(move |d| {
-            let query = d.res.queries.remove(heap);
-            unsafe { d.raw.destroy_query_pool(query.pool, None) };
-        });
+        let query = self.res.queries.remove(heap);
+        unsafe { self.raw.destroy_query_pool(query.pool, None) };
     }
 }

@@ -63,20 +63,19 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
                     "--no-es",
                     "--vulkan-semantics",
                 ])
-                .args(["--glsl-emit-push-constant-as-ubo", "--fixup-clipspace"])
+                .arg("--fixup-clipspace")
                 .output()
                 .unwrap();
             if !output.status.success() {
                 return Err(entry.to_string());
             }
             let vulkan = String::from_utf8(output.stdout).unwrap();
-            let fixed = unset(&vulkan.replace("layout(push_constant, ", "layout("));
+            let fixed = unset(&vulkan);
             let fixed = bindless(&fixed).ok_or(entry)?;
             let fixed = if fixed.contains("layout(scalar) uniform") {
-                let push = reflection["push_constants"][0]["type"]
-                    .as_str()
-                    .ok_or(entry)?;
-                std430(&reflection["types"], push).ok_or(entry)?;
+                for u in reflection["ubos"].as_array().ok_or(entry)? {
+                    std430(&reflection["types"], u["type"].as_str().ok_or(entry)?).ok_or(entry)?;
+                }
                 fixed
                     .replace(
                         "#extension GL_EXT_scalar_block_layout : require",
@@ -104,11 +103,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
                         version,
                         "--no-es",
                     ])
-                    .args([
-                        "--glsl-emit-push-constant-as-ubo",
-                        "--combined-samplers-inherit-bindings",
-                        "--fixup-clipspace",
-                    ])
+                    .args(["--combined-samplers-inherit-bindings", "--fixup-clipspace"])
                     .args(&renames)
                     .args(extra)
                     .output()

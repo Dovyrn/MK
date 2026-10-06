@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Vertex {
     [[vk::location(0)]] float2 position : POSITION;
     [[vk::location(1)]] float3 color : COLOR;
@@ -12,7 +14,7 @@ struct Push {
     float z;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push;
+Uniform<Push> push : UNIFORM(0);
 
 [shader("vertex")]
 Varyings vert(Vertex v) {

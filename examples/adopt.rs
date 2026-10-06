@@ -112,6 +112,7 @@ fn native(
     let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
         .buffer_device_address(true)
         .timeline_semaphore(true)
+        .uniform_buffer_standard_layout(true)
         .descriptor_binding_partially_bound(true)
         .descriptor_binding_sampled_image_update_after_bind(true)
         .descriptor_binding_storage_image_update_after_bind(true);

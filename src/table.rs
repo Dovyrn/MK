@@ -1,6 +1,6 @@
 use crate::entries::Entries;
 use crate::{
-    HostCopy, IndirectInfo, TextureInfo, ViewInfo, dimension, format, index, layout, usage,
+    HostCopy, IndirectInfo, TextureInfo, ViewInfo, dimension, format, index, layout, slot, usage,
 };
 use std::sync::{Arc, Weak};
 
@@ -32,6 +32,7 @@ pub struct Table {
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub tiles: Entries<[u32; 3]>,
     pub indirects: Entries<(IndirectInfo, u32, bool)>,
+    pub attachments: Entries<Vec<u32>>,
 }
 
 impl Default for Table {
@@ -64,6 +65,7 @@ impl Default for Table {
             #[cfg(any(feature = "vk", feature = "mtl"))]
             tiles: Entries::new("sparse texture"),
             indirects: Entries::new("indirect buffer"),
+            attachments: Entries::new("attachments"),
         }
     }
 }
@@ -109,6 +111,21 @@ pub fn vertices(info: &crate::RenderInfo) -> u32 {
 }
 
 impl Table {
+    pub fn check_attachments(&self, textures: &[u32]) {
+        assert!(
+            !textures.is_empty() && textures.len() <= slot::COLORS as usize,
+            "create_attachments takes 1..={} textures, not {}",
+            slot::COLORS,
+            textures.len()
+        );
+        for &t in textures {
+            assert!(
+                self.textures.get(t).usage & usage::INPUT != 0,
+                "attachment texture {t} was made without usage::INPUT"
+            );
+        }
+    }
+
     pub fn drop_buffer(&mut self, buffer: u32) {
         self.buffers.clear(buffer);
         #[cfg(any(feature = "vk", feature = "mtl"))]

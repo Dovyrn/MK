@@ -1,8 +1,8 @@
 #define UNIFORM(n) MK_UNIFORM_##n
-#define MK_UNIFORM_0 register(b1)
-#define MK_UNIFORM_1 register(b2)
-#define MK_UNIFORM_2 register(b3)
-#define MK_UNIFORM_3 register(b4)
+#define MK_UNIFORM_0 register(b0)
+#define MK_UNIFORM_1 register(b1)
+#define MK_UNIFORM_2 register(b2)
+#define MK_UNIFORM_3 register(b3)
 
 #define STORAGE(n) MK_STORAGE_##n
 #define MK_STORAGE_0 register(u5)
@@ -49,6 +49,12 @@
 #define MK_ATTACHMENT_5 [[vk::input_attachment_index(5)]] [[vk::binding(5, 2)]]
 #define MK_ATTACHMENT_6 [[vk::input_attachment_index(6)]] [[vk::binding(6, 2)]]
 #define MK_ATTACHMENT_7 [[vk::input_attachment_index(7)]] [[vk::binding(7, 2)]]
+
+#ifdef MK_SPIRV
+typealias Uniform<T> = ConstantBuffer<T, Std430DataLayout>;
+#else
+typealias Uniform<T> = ConstantBuffer<T>;
+#endif
 
 #include "atomics.slangh"
 #include "bindless.slangh"

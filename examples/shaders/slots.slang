@@ -4,13 +4,13 @@ struct Push {
     uint count;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push;
+Uniform<Push> push : UNIFORM(0);
 
 struct Params {
     float4 tint;
 };
 
-ConstantBuffer<Params> params : UNIFORM(0);
+Uniform<Params> params : UNIFORM(1);
 RWStructuredBuffer<uint> data : STORAGE(0);
 RWTexture2D<float4> image : IMAGE(0);
 Texture2D<float4> source : TEXTURE(0);

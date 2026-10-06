@@ -72,6 +72,7 @@ pub fn main() {
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.begin_compute();
     if gpu {
@@ -88,8 +89,9 @@ pub fn main() {
             .to_le_bytes()
             .to_vec();
         words.extend(device.accel_handle(blas).to_le_bytes());
+        let (placed, _) = host::constants(&mut device, &[&words]);
         c.bind_pipeline(place);
-        c.push_constants(0, &words);
+        c.bind_uniform(0, placed, 0, words.len() as u64);
         c.dispatch(1, 1, 1);
         c.barrier(
             stage::COMPUTE,
@@ -113,7 +115,7 @@ pub fn main() {
         access::ACCEL_READ,
     );
     c.bind_pipeline(pipeline);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 8, n / 8, 1);
     c.barrier(
         stage::COMPUTE,

@@ -191,7 +191,6 @@ fields = [
     ["mesh_indirect", "bool", "false"],
     ["mesh_groups", "u32", "0"],
     ["mesh_axis", "u32", "0"],
-    ["push", "u32", "0"],
     ["queues", "u32", "0"],
     ["samplers", "u32", "0"],
     ["textures", "u32", "0"],

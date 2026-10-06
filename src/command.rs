@@ -59,7 +59,6 @@ mod tests {
         let mut c = Commands::default();
         c.begin_compute();
         c.bind_pipeline(7);
-        c.push_constants(16, &[1, 2, 3]);
         c.dispatch(1, 2, 3);
         c.dispatch_indirect(4, 1 << 40);
         c.copy_buffer(1, 2, 3, 4, 5);
@@ -71,10 +70,6 @@ mod tests {
         let expected = vec![
             Command::BeginCompute,
             Command::BindPipeline { pipeline: 7 },
-            Command::PushConstants {
-                offset: 16,
-                data: &[1, 2, 3],
-            },
             Command::Dispatch { x: 1, y: 2, z: 3 },
             Command::DispatchIndirect {
                 buffer: 4,
@@ -114,7 +109,7 @@ mod tests {
     #[test]
     #[cfg(feature = "mtl")]
     fn foreign() {
-        let mut bytes = vec![55, 0, 16, 0];
+        let mut bytes = vec![54, 0, 16, 0];
         bytes.extend([0; 16]);
         assert_eq!(
             Command::dump(&bytes),

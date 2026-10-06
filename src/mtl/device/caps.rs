@@ -45,7 +45,6 @@ impl Device {
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
             mesh_groups: groups,
             mesh_axis: groups,
-            push: 256,
             queues: queues as u32,
             samplers: (raw.maxArgumentBufferSamplerCount() as u32).min(if apple9 {
                 500_000

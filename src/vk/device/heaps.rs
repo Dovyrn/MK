@@ -55,12 +55,10 @@ impl Device {
 
     pub fn destroy_heap(&mut self, heap: u32) {
         self.res.table.drop_heap(heap);
-        self.defer(move |d| {
-            let heap = d.res.heaps.remove(heap);
-            if Rc::strong_count(&heap.memory) == 1 {
-                d.release(*heap.memory);
-            }
-        });
+        let heap = self.res.heaps.remove(heap);
+        if Rc::strong_count(&heap.memory) == 1 {
+            self.release(*heap.memory);
+        }
     }
 
     fn buffer_needs(&self, size: u64) -> vk::MemoryRequirements {

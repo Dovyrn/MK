@@ -10,7 +10,7 @@ public class Smoke {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
             var caps = device.caps();
-            System.out.println("caps: mesh " + caps.mesh + ", push " + caps.push + ", ray " + caps.ray);
+            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slots + ", ray " + caps.ray);
             if (!caps.compute) {
                 record(Path.of(args[2]));
                 System.out.println("java: no compute, stream recorded");
@@ -28,14 +28,16 @@ public class Smoke {
                     ;
             var pipeline = device.createPipeline(info);
             var timeline = device.createTimeline();
-            var push = nmemAlloc(8);
+            var constants = device.createBuffer(8, Memory.UPLOAD);
+            var push = device.map(constants);
             memPutInt(push, n);
             memPutInt(push + 4, 100);
+            device.unmap(constants);
             try (var c = new Commands()) {
                 c.beginCompute();
                 c.bindPipeline(pipeline);
                 c.bindStorage(0, buffer, 0, n * 4L);
-                c.pushConstants(0, push, 8);
+                c.bindUniform(0, constants, 0, 8);
                 c.dispatch(n / 64, 1, 1);
                 c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
                 c.endCompute();
@@ -52,14 +54,13 @@ public class Smoke {
             }
             device.unmap(buffer);
             try {
-                device.createPipeline(info.code(push).codeSize(8));
+                device.createPipeline(info.code(code).codeSize(8));
                 throw new IllegalStateException("bad code was accepted");
             } catch (RuntimeException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
             device.destroyTimeline(timeline);
             nmemFree(code);
-            nmemFree(push);
             record(Path.of(args[2]));
             System.out.println("java: 1024 values match");
         }
@@ -79,12 +80,6 @@ public class Smoke {
         try (var s = new Commands()) {
             s.beginCompute();
             s.bindPipeline(7);
-            var push = nmemAlloc(3);
-            memPutByte(push, (byte) 1);
-            memPutByte(push + 1, (byte) 2);
-            memPutByte(push + 2, (byte) 3);
-            s.pushConstants(16, push, 3);
-            nmemFree(push);
             s.dispatch(1, 2, 3);
             s.dispatchIndirect(4, 1L << 40);
             s.copyBuffer(1, 2, 3, 4, 5);

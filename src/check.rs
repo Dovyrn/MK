@@ -24,7 +24,8 @@ pub struct Check<'a> {
     needs: u32,
     vertices: u32,
     resolves: Vec<u32>,
-    inputs: u32,
+    inputs: [u32; slot::COLORS as usize],
+    attachments: Option<u32>,
     reads: u32,
     tile: Option<(u32, u32)>,
 }
@@ -132,7 +133,8 @@ impl<'a> Check<'a> {
             needs: 0,
             vertices: 0,
             resolves: Vec::new(),
-            inputs: 0,
+            inputs: [!0; slot::COLORS as usize],
+            attachments: None,
             reads: 0,
             tile: None,
         };
@@ -304,13 +306,24 @@ impl<'a> Check<'a> {
             "{} needs bind_index_buffer first",
             name(c)
         );
-        let missing = self.reads & !self.inputs;
-        assert_eq!(
-            missing,
-            0,
-            "{} reads attachments {missing:#b} that the pass has without usage::INPUT",
-            name(c)
-        );
+        for i in (0..slot::COLORS).filter(|i| self.reads & 1 << i != 0) {
+            let texture = self.inputs[i as usize];
+            assert_ne!(
+                texture,
+                !0,
+                "{} reads attachment {i}, which the pass has without usage::INPUT in layout::LOCAL_READ",
+                name(c)
+            );
+            let set = self.attachments.unwrap_or_else(|| {
+                panic!("{} reads attachments without bind_attachments", name(c))
+            });
+            assert_eq!(
+                self.table.attachments.get(set).get(i as usize),
+                Some(&texture),
+                "{} reads attachment {i}, but attachments {set} do not hold texture {texture} there",
+                name(c)
+            );
+        }
     }
 
     fn transient(&self, texture: u32, load: u32, store: u32) {
@@ -523,7 +536,8 @@ impl<'a> Check<'a> {
                 self.targets.clear();
                 self.resolves.clear();
                 self.heap = None;
-                self.inputs = 0;
+                self.inputs = [!0; slot::COLORS as usize];
+                self.attachments = None;
                 self.tile = None;
             }
             Command::BindPipeline { pipeline } => {
@@ -793,7 +807,9 @@ impl<'a> Check<'a> {
                         l == layout::GENERAL || l == layout::LOCAL_READ,
                         "usage::INPUT attachment {texture} is in layout {l}, not GENERAL or LOCAL_READ"
                     );
-                    self.inputs |= 1 << index;
+                    if l == layout::LOCAL_READ {
+                        self.inputs[index as usize] = texture;
+                    }
                 } else {
                     assert_ne!(
                         l,
@@ -863,6 +879,13 @@ impl<'a> Check<'a> {
                 self.indirect = indirect;
                 self.topology = shape;
                 self.mesh = mesh;
+            }
+            Command::BindAttachments { attachments } => {
+                self.need(c, caps.attachment_reads, "attachment_reads")?;
+                for &t in self.table.attachments.get(attachments) {
+                    self.table.textures.get(t);
+                }
+                self.attachments = Some(attachments);
             }
             Command::AttachmentBarrier => {
                 self.need(c, caps.attachment_reads, "attachment_reads")?;
@@ -1089,19 +1112,6 @@ impl<'a> Check<'a> {
                     "resolve_queries offset {offset} is not a multiple of 8"
                 );
                 self.range(buffer, offset, count as u64 * 8);
-            }
-            Command::PushConstants { offset, data } => {
-                let end = offset as usize + data.len();
-                assert!(
-                    offset.is_multiple_of(4) && data.len().is_multiple_of(4),
-                    "push_constants offset {offset} and size {} must be multiples of 4",
-                    data.len()
-                );
-                assert!(
-                    end <= caps.push as usize,
-                    "push_constants ends at {end}, past {} bytes",
-                    caps.push
-                );
             }
             Command::BeginLabel { .. } => {
                 self.need(c, caps.labels, "labels")?;

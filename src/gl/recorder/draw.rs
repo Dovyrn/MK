@@ -1,6 +1,5 @@
 use super::{Recorder, integer};
 use crate::format;
-use crate::gl::device::{PUSH, RING};
 use crate::gl::pipeline::Pipeline;
 use glow::HasContext;
 
@@ -19,30 +18,6 @@ impl Recorder<'_> {
             if self.used != Some(program.raw) {
                 gl.use_program(Some(program.raw));
                 self.used = Some(program.raw);
-            }
-            if self.dirty {
-                let stride = PUSH.next_multiple_of(self.caps.bind_alignment as usize);
-                gl.bind_buffer(glow::UNIFORM_BUFFER, Some(self.push));
-                if self.ring + stride > RING {
-                    gl.buffer_data_size(glow::UNIFORM_BUFFER, RING as i32, glow::DYNAMIC_DRAW);
-                    self.ring = 0;
-                }
-                let at = self.ring;
-                self.ring += stride;
-                let bits = glow::MAP_WRITE_BIT
-                    | glow::MAP_UNSYNCHRONIZED_BIT
-                    | glow::MAP_INVALIDATE_RANGE_BIT;
-                let to = gl.map_buffer_range(glow::UNIFORM_BUFFER, at as i32, PUSH as i32, bits);
-                if to.is_null() {
-                    gl.bind_buffer(glow::UNIFORM_BUFFER, None);
-                    return Err("mapping the push constant ring failed".into());
-                }
-                std::ptr::copy_nonoverlapping(self.data.as_ptr(), to, self.size);
-                gl.unmap_buffer(glow::UNIFORM_BUFFER);
-                gl.bind_buffer(glow::UNIFORM_BUFFER, None);
-                let push = Some(self.push);
-                gl.bind_buffer_range(glow::UNIFORM_BUFFER, 0, push, at as i32, PUSH as i32);
-                self.dirty = false;
             }
             for (unit, &(t, s)) in program.pairs.iter().enumerate() {
                 let pair = (

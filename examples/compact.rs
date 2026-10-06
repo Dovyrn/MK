@@ -99,6 +99,7 @@ pub fn main() {
     let mut push = device.address(hits).to_le_bytes().to_vec();
     push.extend(device.accel_handle(tlas).to_le_bytes());
     push.extend(n.to_le_bytes());
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.begin_compute();
     c.copy_accel(blas, compacted, 1);
@@ -116,7 +117,7 @@ pub fn main() {
         access::ACCEL_READ,
     );
     c.bind_pipeline(pipeline);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 8, n / 8, 1);
     c.barrier(
         stage::COMPUTE,

@@ -98,6 +98,7 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let (constants, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture: color,
@@ -128,7 +129,7 @@ pub fn main() {
     c.bind_render_pipeline(pipeline);
     c.set_depth_state(less);
     c.bind_vertex_buffer(0, vbuf, 0);
-    c.push_constants(0, &0.5f32.to_le_bytes());
+    c.bind_uniform(0, constants, 0, 4);
     c.draw(3, 1, 0, 0);
     c.end_render();
     c.texture_barrier(&TextureBarrier {

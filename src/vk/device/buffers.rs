@@ -87,10 +87,8 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: u32) {
         self.res.table.drop_buffer(buffer);
-        self.defer(move |d| {
-            let buffer = d.res.buffers.remove(buffer);
-            buffer.free(d);
-        });
+        let buffer = self.res.buffers.remove(buffer);
+        buffer.free(self);
     }
 
     pub fn raw_buffer(&self, buffer: u32) -> vk::Buffer {

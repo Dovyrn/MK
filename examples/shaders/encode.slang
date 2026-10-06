@@ -7,7 +7,7 @@ struct Push {
     uint count;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push;
+Uniform<Push> push : UNIFORM(0);
 
 [shader("compute")]
 [numthreads(1, 1, 1)]

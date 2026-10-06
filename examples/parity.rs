@@ -8,7 +8,6 @@ pub fn main() {
     let mut c = Commands::default();
     c.begin_compute();
     c.bind_pipeline(7);
-    c.push_constants(16, &[1, 2, 3]);
     c.dispatch(1, 2, 3);
     c.dispatch_indirect(4, 1 << 40);
     c.copy_buffer(1, 2, 3, 4, 5);

@@ -17,15 +17,13 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
-    MTLCullMode, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
-    MTLRenderStages, MTLResidencySet, MTLSamplerState, MTLScissorRect, MTLSize, MTLStages,
-    MTLStoreAction, MTLTexture, MTLViewport, MTLVisibilityResultMode, MTLWinding,
+    MTLCullMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
+    MTLSamplerState, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture, MTLViewport,
+    MTLVisibilityResultMode, MTLWinding,
 };
 use std::ptr::NonNull;
 
 pub struct Recorder<'a> {
-    device: &'a ProtocolObject<dyn MTLDevice>,
-    residency: &'a ProtocolObject<dyn MTLResidencySet>,
     buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
     frame: &'a mut Frame,
@@ -44,9 +42,6 @@ pub struct Recorder<'a> {
     height: u32,
     primitive: MTLPrimitiveType,
     index: Option<(u64, usize, MTLIndexType, u64)>,
-    push: [u8; 256],
-    size: usize,
-    dirty: bool,
     stale: bool,
     tile: MTLSize,
     shared: usize,
@@ -174,15 +169,12 @@ fn keep<'a>(list: &mut Vec<(u64, &'a [u8])>, key: u64, bytes: &'a [u8]) {
 
 impl<'a> Recorder<'a> {
     pub fn new(
-        device: &'a ProtocolObject<dyn MTLDevice>,
         queue: &'a Queue,
         frame: &'a mut Frame,
         res: &'a Resources,
         natives: &'a [Callback],
     ) -> Self {
         Self {
-            device,
-            residency: &queue.residency,
             buffer: &queue.buffer,
             table: &queue.table,
             frame,
@@ -201,9 +193,6 @@ impl<'a> Recorder<'a> {
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
             index: None,
-            push: [0; 256],
-            size: 0,
-            dirty: false,
             stale: false,
             tile: MTLSize {
                 width: 0,
@@ -243,17 +232,6 @@ impl<'a> Recorder<'a> {
         Ok(())
     }
 
-    fn flush(&mut self) -> Result<(), &'static str> {
-        if self.dirty {
-            let address = self
-                .frame
-                .push(self.device, self.residency, &self.push[..self.size])?;
-            unsafe { self.table.setAddress_atIndex(address, 0) };
-            self.dirty = false;
-        }
-        Ok(())
-    }
-
     fn setup(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
         let all = MTLRenderStages::Vertex
             | MTLRenderStages::Fragment
@@ -269,7 +247,6 @@ impl<'a> Recorder<'a> {
             let mut bytes = self.binds[i].1;
             self.step(Command::read(&mut bytes)?)?;
         }
-        self.dirty = self.size > 0;
         if let Some(e) = &self.compute {
             e.setArgumentTable(Some(self.table));
             if let Some(p) = self.compute_pipeline {
@@ -295,7 +272,7 @@ impl<'a> Recorder<'a> {
                 self.step(Command::read(&mut bytes)?)?;
             }
         }
-        self.flush()
+        Ok(())
     }
 
     pub fn run(&mut self, mut bytes: &'a [u8]) -> Result<(), &'static str> {
@@ -383,12 +360,6 @@ impl<'a> Recorder<'a> {
                 self.compute().setComputePipelineState(&p.state);
                 self.compute_pipeline = Some(p);
             }
-            Command::PushConstants { offset, data } => {
-                let at = offset as usize;
-                self.push[at..at + data.len()].copy_from_slice(data);
-                self.size = self.size.max(at + data.len());
-                self.dirty = true;
-            }
             Command::Dispatch { x, y, z } => {
                 let Some(p) = self.compute_pipeline else {
                     return Ok(());
@@ -396,7 +367,6 @@ impl<'a> Recorder<'a> {
                 if [x, y, z].contains(&0) {
                     return Ok(());
                 }
-                self.flush()?;
                 self.compute()
                     .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), p.group);
             }
@@ -404,7 +374,6 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.compute_pipeline else {
                     return Ok(());
                 };
-                self.flush()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.compute()
@@ -854,7 +823,7 @@ impl<'a> Recorder<'a> {
                     };
                 }
             }
-            Command::AttachmentBarrier => {}
+            Command::BindAttachments { .. } | Command::AttachmentBarrier => {}
             Command::TileSize {
                 width,
                 height,
@@ -1033,7 +1002,6 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::Callback { index } => {
-                self.flush()?;
                 self.release()?;
                 self.natives[index as usize](&Native {
                     buffer: self.buffer,

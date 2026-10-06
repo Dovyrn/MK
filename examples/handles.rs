@@ -24,10 +24,11 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut push = device.buffer_handle(data).unwrap().to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.begin_compute();
     c.bind_pipeline(fill);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 64, 1, 1);
     c.barrier(
         stage::COMPUTE,

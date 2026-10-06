@@ -77,6 +77,7 @@ pub fn main() {
     push.extend(device.sampler_handle(sampler).to_le_bytes());
     push.extend(device.image_handle(dst).to_le_bytes());
     push.extend(n.to_le_bytes());
+    let (constants, _) = host::constants(&mut device, &[&push]);
     let mut c = Commands::default();
     c.begin_compute();
     c.texture_barrier(&TextureBarrier {
@@ -112,7 +113,7 @@ pub fn main() {
         ..Default::default()
     });
     c.bind_pipeline(pipeline);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(n / 8, n / 8, 1);
     c.texture_barrier(&TextureBarrier {
         texture: dst,

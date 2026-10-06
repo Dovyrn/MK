@@ -1,3 +1,5 @@
+#include "mk.slangh"
+
 struct Varyings {
     float4 position : SV_Position;
     float3 color : COLOR;
@@ -11,7 +13,7 @@ struct Push {
     float z;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push;
+Uniform<Push> push : UNIFORM(0);
 
 [shader("amplification")]
 [numthreads(1, 1, 1)]

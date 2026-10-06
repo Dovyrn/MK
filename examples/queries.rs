@@ -92,6 +92,7 @@ pub fn main() {
     let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
+    let (constants, stride) = host::constants(&mut device, &[&push, &0.5f32.to_le_bytes()]);
     let mut c = Commands::default();
     if let Some(times) = times {
         c.reset_queries(times, 0, 2);
@@ -103,7 +104,7 @@ pub fn main() {
     }
     c.bind_pipeline(fill);
     c.bind_storage(0, data, 0, count as u64 * 4);
-    c.push_constants(0, &push);
+    c.bind_uniform(0, constants, 0, push.len() as u64);
     c.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
         c.write_timestamp(times, 1, stage::COMPUTE);
@@ -125,7 +126,7 @@ pub fn main() {
     c.begin_render(n, n, 1);
     c.bind_render_pipeline(triangle);
     c.bind_vertex_buffer(0, vbuf, 0);
-    c.push_constants(0, &0.5f32.to_le_bytes());
+    c.bind_uniform(0, constants, stride, 4);
     c.begin_query(samples, 0);
     c.draw(3, 1, 0, 0);
     c.end_query(samples, 0);

@@ -137,6 +137,16 @@ name = "destroy_tile_pipeline"
 params = [["pipeline", "u32"]]
 
 [[call]]
+name = "create_attachments"
+params = [["textures", "u32s"]]
+result = "u32"
+fails = true
+
+[[call]]
+name = "destroy_attachments"
+params = [["attachments", "u32"]]
+
+[[call]]
 name = "create_depth_state"
 params = [["info", "DepthInfo"]]
 result = "u32"

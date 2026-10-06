@@ -4,7 +4,7 @@ mod pass;
 mod textures;
 
 use crate::command;
-use crate::gl::device::{PUSH, RING, compare};
+use crate::gl::device::compare;
 use crate::gl::extra::Extra;
 use crate::gl::native::{Callback, Native};
 use crate::gl::pipeline::{Pipeline, uniform};
@@ -52,7 +52,6 @@ pub struct Recorder<'a> {
     extra: &'a Extra,
     res: &'a Resources,
     caps: &'a Caps,
-    push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     snapshot: &'a dyn Fn() -> State,
@@ -60,9 +59,6 @@ pub struct Recorder<'a> {
     render: Option<&'a Pipeline>,
     colors: Vec<ColorAttachment>,
     depth: Option<DepthAttachment>,
-    data: [u8; PUSH],
-    size: usize,
-    dirty: bool,
     textures: [Option<u32>; slot::TEXTURES as usize],
     samplers: [Option<u32>; slot::SAMPLERS as usize],
     vertices: [Option<(u32, u64)>; slot::VERTICES as usize],
@@ -82,7 +78,6 @@ pub struct Recorder<'a> {
     labels: u32,
     natives: &'a [Callback],
     used: Option<glow::Program>,
-    ring: usize,
     units: Vec<Option<(Option<u32>, Option<u32>)>>,
     fed: Option<glow::VertexArray>,
 }
@@ -197,7 +192,7 @@ impl<'a> Recorder<'a> {
         extra: &'a Extra,
         res: &'a Resources,
         caps: &'a Caps,
-        (push, fbo, read): (glow::Buffer, glow::Framebuffer, glow::Framebuffer),
+        (fbo, read): (glow::Framebuffer, glow::Framebuffer),
         snapshot: &'a dyn Fn() -> State,
         natives: &'a [Callback],
     ) -> Self {
@@ -206,7 +201,6 @@ impl<'a> Recorder<'a> {
             extra,
             res,
             caps,
-            push,
             fbo,
             read,
             snapshot,
@@ -214,9 +208,6 @@ impl<'a> Recorder<'a> {
             render: None,
             colors: Vec::new(),
             depth: None,
-            data: [0; PUSH],
-            size: 0,
-            dirty: false,
             textures: [None; slot::TEXTURES as usize],
             samplers: [None; slot::SAMPLERS as usize],
             vertices: [None; slot::VERTICES as usize],
@@ -236,7 +227,6 @@ impl<'a> Recorder<'a> {
             labels: 0,
             natives,
             used: None,
-            ring: RING,
             units: Vec::new(),
             fed: None,
         }
@@ -422,12 +412,6 @@ impl<'a> Recorder<'a> {
                     let p = res.pipelines.get(pipeline);
                     self.program = Some(p);
                 }
-                Command::PushConstants { offset, data } => {
-                    let at = offset as usize;
-                    self.data[at..at + data.len()].copy_from_slice(data);
-                    self.size = self.size.max(at + data.len());
-                    self.dirty = true;
-                }
                 Command::Dispatch { x, y, z } => {
                     if x.min(y).min(z) != 0 && self.prepare(false)? {
                         gl.dispatch_compute(x, y, z);
@@ -577,7 +561,8 @@ impl<'a> Recorder<'a> {
                     layers,
                 } => self.begin_render(width, height, layers)?,
                 Command::EndRender => self.end_render()?,
-                Command::AttachmentBarrier
+                Command::BindAttachments { .. }
+                | Command::AttachmentBarrier
                 | Command::TileSize { .. }
                 | Command::DispatchTile { .. } => {
                     unreachable!("caps.attachment_reads and caps.tiles are false on GL")

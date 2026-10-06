@@ -1,4 +1,5 @@
 mod accels;
+mod attachments;
 mod budget;
 mod buffers;
 mod caps;
@@ -43,11 +44,8 @@ pub struct Device {
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
-    garbage: Vec<(Vec<u64>, Free)>,
     allocations: Cell<u32>,
 }
-
-type Free = Box<dyn FnOnce(&mut Device)>;
 
 fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
@@ -191,9 +189,6 @@ impl Device {
         let ext = unsafe { Extensions::new(entry, &instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
-        let range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::ALL)
-            .size(limits.max_push_constants_size.min(256));
         let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
         let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
         unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
@@ -210,11 +205,8 @@ impl Device {
             unset();
             e.to_string()
         })?;
-        let ranges = [range];
         let sets = [slots, bindless.layout, attachments];
-        let info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(&sets)
-            .push_constant_ranges(&ranges);
+        let info = vk::PipelineLayoutCreateInfo::default().set_layouts(&sets);
         let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
             bindless.destroy(&raw);
             unset();
@@ -263,33 +255,8 @@ impl Device {
             layout,
             res: Resources::default(),
             queues: list,
-            garbage: Vec::new(),
             allocations: Cell::new(0),
         })
-    }
-
-    fn defer(&mut self, free: impl FnOnce(&mut Self) + 'static) {
-        let ticket = self.queues.iter_mut().map(|q| q.count).collect();
-        self.garbage.push((ticket, Box::new(free)));
-        self.collect();
-    }
-
-    fn collect(&mut self) {
-        if self.garbage.is_empty() {
-            return;
-        }
-        let done: Vec<u64> = self
-            .queues
-            .iter()
-            .map(|q| unsafe { self.raw.get_semaphore_counter_value(q.semaphore) }.unwrap_or(0))
-            .collect();
-        let (ready, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.garbage)
-            .into_iter()
-            .partition(|(ticket, _)| ticket.iter().zip(&done).all(|(t, d)| t <= d));
-        self.garbage = waiting;
-        for (_, free) in ready {
-            free(self);
-        }
     }
 
     fn memory_type(&self, bits: u32, memory: u32) -> Result<u32, String> {
@@ -455,13 +422,11 @@ impl Device {
         let signals = &self.res.table.points(signals);
         Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
         self.res.table.submit(queue, signals);
-        self.collect();
         self.queues[queue].submit(
             &self.raw,
             &self.ext,
             self.layout,
             self.bindless.set,
-            self.attachments,
             &self.res,
             (commands, natives),
             waits,
@@ -477,9 +442,6 @@ impl Drop for Device {
         unsafe {
             for queue in &self.queues {
                 self.raw.queue_wait_idle(queue.raw).ok();
-            }
-            for (_, free) in std::mem::take(&mut self.garbage) {
-                free(self);
             }
             for queue in &mut self.queues {
                 queue.destroy(&self.raw);

@@ -100,6 +100,11 @@ pub fn main() {
     }
     let (count, step) = if ordered { (16, 1.0 / 32.0) } else { (1, 0.5) };
     let timeline = device.create_timeline().unwrap();
+    let attachments = device.create_attachments(&[value]).unwrap();
+    let (constants, stride) = host::constants(
+        &mut device,
+        &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
+    );
     let mut c = Commands::default();
     c.texture_barrier(&TextureBarrier {
         texture: value,
@@ -141,12 +146,13 @@ pub fn main() {
         ..Default::default()
     });
     c.begin_render(n, n, 1);
+    c.bind_attachments(attachments);
     c.bind_render_pipeline(fill);
-    c.push_constants(0, &0.25f32.to_le_bytes());
+    c.bind_uniform(0, constants, 0, 4);
     c.draw(3, 1, 0, 0);
     c.attachment_barrier();
     c.bind_render_pipeline(add);
-    c.push_constants(0, &(step as f32).to_le_bytes());
+    c.bind_uniform(0, constants, stride, 4);
     c.draw(3, count, 0, 0);
     c.attachment_barrier();
     c.bind_render_pipeline(copy);

@@ -10,10 +10,6 @@ scope = "compute"
 fields = [["pipeline", "u32"]]
 
 [[command]]
-name = "push_constants"
-fields = [["offset", "u32"], ["data", "bytes"]]
-
-[[command]]
 name = "dispatch"
 scope = "compute"
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
@@ -282,6 +278,11 @@ fields = [["viewports", "[Viewport]"]]
 name = "set_scissors"
 scope = "render"
 fields = [["scissors", "[Scissor]"]]
+
+[[command]]
+name = "bind_attachments"
+scope = "render"
+fields = [["attachments", "u32"]]
 
 [[command]]
 name = "attachment_barrier"

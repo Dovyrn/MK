@@ -294,10 +294,8 @@ impl Device {
 
     pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
         self.res.table.renders.clear(pipeline);
-        self.defer(move |d| {
-            let (pipeline, _) = d.res.renders.remove(pipeline);
-            unsafe { d.raw.destroy_pipeline(pipeline, None) };
-        });
+        let (pipeline, _) = self.res.renders.remove(pipeline);
+        unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
     pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
@@ -420,9 +418,7 @@ impl Device {
 
     pub fn destroy_pipeline(&mut self, pipeline: u32) {
         self.res.table.pipelines.clear(pipeline);
-        self.defer(move |d| {
-            let pipeline = d.res.pipelines.remove(pipeline);
-            unsafe { d.raw.destroy_pipeline(pipeline, None) };
-        });
+        let pipeline = self.res.pipelines.remove(pipeline);
+        unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 }

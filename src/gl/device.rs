@@ -17,7 +17,7 @@ use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
 use crate::gl::sampler;
-use crate::gl::state::{self, State, buffer};
+use crate::gl::state::{self, State};
 use crate::gl::texture::{Texture, target};
 use crate::{
     Caps, ComputeInfo, DepthInfo, Matrix, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, TileInfo,
@@ -35,7 +35,6 @@ pub struct Device {
     version: u32,
     extensions: Vec<String>,
     res: Resources,
-    push: glow::Buffer,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     cache: Option<Cache>,
@@ -45,9 +44,6 @@ pub struct Device {
     samples: [i32; 4],
     thread: std::thread::ThreadId,
 }
-
-pub const PUSH: usize = 256;
-pub const RING: usize = 1 << 16;
 
 const TASK_SHADER: u32 = 0x955A;
 
@@ -150,7 +146,6 @@ impl Device {
             .filter(|(g, _)| group(SUBGROUP_STAGES) & g != 0)
             .fold(0, |m, (_, s)| m | s);
             let caps = Caps {
-                push: PUSH as u32,
                 queues: 1,
                 tick: 1.0,
                 timestamps: results,
@@ -276,11 +271,6 @@ impl Device {
                     0
                 },
             ];
-            let push = gl.create_buffer()?;
-            let old = buffer(gl.get_parameter_i32(glow::UNIFORM_BUFFER_BINDING));
-            gl.bind_buffer(glow::UNIFORM_BUFFER, Some(push));
-            gl.buffer_data_size(glow::UNIFORM_BUFFER, RING as i32, glow::DYNAMIC_DRAW);
-            gl.bind_buffer(glow::UNIFORM_BUFFER, old);
             let fbo = gl.create_framebuffer()?;
             let read = gl.create_framebuffer()?;
             Ok(Self {
@@ -292,7 +282,6 @@ impl Device {
                 anisotropy,
                 samples,
                 res: Resources::default(),
-                push,
                 fbo,
                 read,
                 cache: None,
@@ -565,6 +554,17 @@ impl Device {
         self.thread();
         self.res.table.renders.clear(pipeline);
         self.res.renders.remove(pipeline).delete(&self.gl);
+    }
+
+    pub fn create_attachments(&mut self, textures: &[u32]) -> Result<u32, String> {
+        self.thread();
+        self.res.table.check_attachments(textures);
+        Err("create_attachments needs caps.attachment_reads".into())
+    }
+
+    pub fn destroy_attachments(&mut self, attachments: u32) {
+        self.thread();
+        self.res.table.attachments.clear(attachments);
     }
 
     pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
@@ -898,7 +898,7 @@ impl Device {
             &self.extra,
             &self.res,
             &self.caps,
-            (self.push, self.fbo, self.read),
+            (self.fbo, self.read),
             &snapshot,
             natives,
         );
@@ -977,7 +977,6 @@ impl Drop for Device {
             for t in self.res.timelines.drain() {
                 t.borrow().delete(gl);
             }
-            gl.delete_buffer(self.push);
             gl.delete_framebuffer(self.fbo);
             gl.delete_framebuffer(self.read);
         }

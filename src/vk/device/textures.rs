@@ -160,10 +160,8 @@ impl Device {
 
     pub fn destroy_texture(&mut self, texture: u32) {
         self.res.table.drop_texture(texture);
-        self.defer(move |d| {
-            let texture = d.res.textures.remove(texture);
-            texture.free(d);
-        });
+        let texture = self.res.textures.remove(texture);
+        texture.free(self);
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {

@@ -5,7 +5,7 @@ struct Push {
     uint value;
 };
 
-[[vk::push_constant]] ConstantBuffer<Push> push;
+Uniform<Push> push : UNIFORM(0);
 
 RWStructuredBuffer<uint> data : STORAGE(0);
 

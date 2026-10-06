@@ -152,7 +152,8 @@ impl Device {
     pub fn destroy_texture(&mut self, texture: u32) {
         self.res.table.drop_texture(texture);
         let texture = self.res.textures.remove(texture);
-        self.defer(move |r| r.remove(ProtocolObject::from_ref(&*texture.raw)));
+        self.residency
+            .remove(ProtocolObject::from_ref(&*texture.raw));
     }
 
     pub fn texture_handle(&self, texture: u32) -> u64 {

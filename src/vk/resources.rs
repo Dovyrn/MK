@@ -22,5 +22,6 @@ pub struct Resources {
     pub rays: Slots<u32>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
+    pub attachments: Slots<(vk::DescriptorPool, vk::DescriptorSet)>,
     pub table: crate::table::Table,
 }

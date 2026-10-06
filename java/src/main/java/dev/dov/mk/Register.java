@@ -1,7 +1,7 @@
 package dev.dov.mk;
 
 public interface Register {
-    int UNIFORM = 1;
+    int UNIFORM = 0;
     int STORAGE = 5;
     int IMAGE = 13;
     int TEXTURE = 0;

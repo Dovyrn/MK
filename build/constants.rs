@@ -71,6 +71,7 @@ pub fn slang(table: &toml::Table) -> String {
         .unwrap();
     }
     s += "\n";
+    s += "#ifdef MK_SPIRV\ntypealias Uniform<T> = ConstantBuffer<T, Std430DataLayout>;\n#else\ntypealias Uniform<T> = ConstantBuffer<T>;\n#endif\n\n";
     s += "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n#include \"indirect.slangh\"\n#include \"rays.slangh\"\n";
     s
 }

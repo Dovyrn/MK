@@ -62,6 +62,7 @@ pub fn main() {
         .unwrap();
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
+    let (half, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
     for pass in passes.into_iter().flatten() {
         let mut c = Commands::default();
         if pass == 1 {
@@ -76,9 +77,10 @@ pub fn main() {
             for word in device.indirect_handle(list).unwrap() {
                 push.extend(word.to_le_bytes());
             }
+            let (constants, _) = host::constants(&mut device, &[&push]);
             c.begin_compute();
             c.bind_pipeline(encode);
-            c.push_constants(0, &push);
+            c.bind_uniform(0, constants, 0, push.len() as u64);
             c.dispatch(1, 1, 1);
             c.end_compute();
             c.barrier(
@@ -103,7 +105,7 @@ pub fn main() {
         });
         c.begin_render(n, n, 1);
         c.bind_render_pipeline(if pass == 2 { single } else { pipeline });
-        c.push_constants(0, &0.5f32.to_le_bytes());
+        c.bind_uniform(0, half, 0, 4);
         if pass == 1 {
             c.execute_indirect_count(list, range, 0);
         } else {

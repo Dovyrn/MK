@@ -289,7 +289,8 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .shader_int8(supported_v12.shader_int8 != 0)
             .shader_buffer_int64_atomics(supported_v12.shader_buffer_int64_atomics != 0)
             .shader_shared_int64_atomics(supported_v12.shader_shared_int64_atomics != 0)
-            .sampler_mirror_clamp_to_edge(supported_v12.sampler_mirror_clamp_to_edge != 0);
+            .sampler_mirror_clamp_to_edge(supported_v12.sampler_mirror_clamp_to_edge != 0)
+            .uniform_buffer_standard_layout(supported_v12.uniform_buffer_standard_layout != 0);
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
             .synchronization2(supported_v13.synchronization2 != 0)
             .dynamic_rendering(supported_v13.dynamic_rendering != 0)
