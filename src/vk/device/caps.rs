@@ -109,7 +109,6 @@ pub(super) fn probe(
                     .contains(vk::QueueFlags::GRAPHICS)
             })
             .fold(0, |mask, (i, _)| mask | 1 << i),
-        labels: ext.debug.is_some(),
         anisotropy: if features.sampler_anisotropy != 0 {
             limits.max_sampler_anisotropy as u32
         } else {
@@ -129,7 +128,6 @@ pub(super) fn probe(
         mirror_clamp: ext.mirror,
         budget: ext.budget,
         host_read: ext.copy.is_some(),
-        copy_formats: true,
         buffer_clear: true,
         partial_resolve: !ext.moltenvk,
         max_buffer: buffer.max_buffer_size,

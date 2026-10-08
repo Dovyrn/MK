@@ -26,7 +26,6 @@ public class Caps {
     public boolean precise = false;
     public int viewports = 1;
     public int graphics = 0;
-    public boolean labels = false;
     public int anisotropy = 1;
     public boolean depthClamp = false;
     public boolean lineFill = false;
@@ -53,7 +52,6 @@ public class Caps {
     public boolean mirrorClamp = false;
     public boolean budget = false;
     public boolean hostRead = false;
-    public boolean copyFormats = false;
     public boolean bufferClear = false;
     public boolean partialResolve = false;
     public int subgroup = 0;
@@ -70,10 +68,10 @@ public class Caps {
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 256;
+    public static final int SIZE = 248;
 
     int encodedSize() {
-        return 256;
+        return 248;
     }
 
     long encode(long p) {
@@ -112,8 +110,6 @@ public class Caps {
         memPutInt(p, viewports);
         p += 4;
         memPutInt(p, graphics);
-        p += 4;
-        memPutInt(p, labels ? 1 : 0);
         p += 4;
         memPutInt(p, anisotropy);
         p += 4;
@@ -166,8 +162,6 @@ public class Caps {
         memPutInt(p, budget ? 1 : 0);
         p += 4;
         memPutInt(p, hostRead ? 1 : 0);
-        p += 4;
-        memPutInt(p, copyFormats ? 1 : 0);
         p += 4;
         memPutInt(p, bufferClear ? 1 : 0);
         p += 4;
@@ -240,8 +234,6 @@ public class Caps {
         p += 4;
         r.graphics = memGetInt(p);
         p += 4;
-        r.labels = memGetInt(p) != 0;
-        p += 4;
         r.anisotropy = memGetInt(p);
         p += 4;
         r.depthClamp = memGetInt(p) != 0;
@@ -293,8 +285,6 @@ public class Caps {
         r.budget = memGetInt(p) != 0;
         p += 4;
         r.hostRead = memGetInt(p) != 0;
-        p += 4;
-        r.copyFormats = memGetInt(p) != 0;
         p += 4;
         r.bufferClear = memGetInt(p) != 0;
         p += 4;

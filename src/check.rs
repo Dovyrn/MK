@@ -788,16 +788,11 @@ impl<'a> Check<'a> {
                     line(t),
                     "copy_texture cannot copy between a 1D texture and a 2D or 3D one"
                 );
-                if s.format != t.format {
-                    self.require(c, caps.copy_formats, "copy_formats")?;
-                    assert_ne!(
-                        s.usage & texture_usage::VIEW,
-                        0,
-                        "copy_texture from format {} to {} needs {src} created with texture_usage::VIEW",
-                        s.format,
-                        t.format
-                    );
-                }
+                assert_eq!(
+                    s.format, t.format,
+                    "copy_texture from format {} to {}; to reinterpret, copy through a texture view in the other format",
+                    s.format, t.format
+                );
             }
             Command::ColorAttachment {
                 index,
@@ -1144,7 +1139,6 @@ impl<'a> Check<'a> {
                 self.buffer_range(name, buffer, offset, count as u64 * 8);
             }
             Command::BeginDebugLabel { .. } => {
-                self.require(c, caps.labels, "labels")?;
                 self.labels.push(open);
             }
             Command::EndDebugLabel => {

@@ -1,7 +1,7 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, DepthAttachment, RenderPassInfo, TextureBarrier,
-    TextureCopy, TextureInfo, format, load_op, memory, stage, texture_dimension, texture_layout,
-    texture_usage,
+    TextureCopy, TextureInfo, TextureViewInfo, format, load_op, memory, stage, texture_dimension,
+    texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -31,7 +31,7 @@ pub fn main() {
             .unwrap()
     };
     let plain = texture_dimension::D2;
-    let view = if caps.copy_formats {
+    let view = if caps.texture_views {
         texture_usage::VIEW
     } else {
         0
@@ -75,6 +75,18 @@ pub fn main() {
         total += (s.2 * s.3 * 4) as u64;
     }
     let back = device.create_buffer(total, memory::READBACK).unwrap();
+    let words = caps.texture_views.then(|| {
+        device
+            .create_texture_view(
+                a,
+                &TextureViewInfo {
+                    format: format::R32_UINT,
+                    usage: texture_usage::COPY_SRC,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    });
     let set = device.create_residency_set().unwrap();
     let textures = [a, cast, array, depth, depth2, srgb, line];
     device.add_residency(set, &[upload, back], &textures, &[], &[]);
@@ -114,15 +126,15 @@ pub fn main() {
         });
     }
     pass.memory_barrier(stage::COPY, stage::COPY);
-    let reinterpret = TextureCopy {
-        src: a,
-        dst: cast,
-        width: N,
-        height: N,
-        ..Default::default()
-    };
-    if caps.copy_formats {
-        pass.copy_texture(&reinterpret).unwrap();
+    if let Some(words) = words {
+        pass.copy_texture(&TextureCopy {
+            src: words,
+            dst: cast,
+            width: N,
+            height: N,
+            ..Default::default()
+        })
+        .unwrap();
     }
     pass.copy_texture(&TextureCopy {
         src: array,
@@ -202,7 +214,7 @@ pub fn main() {
     for y in 0..N {
         for x in 0..N {
             assert_eq!(texel(0, x, y), pattern(x, y), "upload at {x},{y}");
-            if caps.copy_formats {
+            if words.is_some() {
                 assert_eq!(texel(1, x, y), pattern(x, y), "R32_UINT copy at {x},{y}");
             }
         }
@@ -229,15 +241,9 @@ pub fn main() {
         "srgb clear {grey:?}"
     );
     device.unmap_buffer(back);
-    let mut refused = Vec::new();
-    if !caps.copy_formats {
-        let mut c = device.begin_commands(pool).unwrap();
-        c.use_residency_set(set);
-        let mut pass = c.begin_compute_pass().unwrap();
-        refused.push(pass.copy_texture(&reinterpret).unwrap_err());
-    }
     println!(
-        "buffer, texture, layer, depth and 1D copies match on {}; refused: {refused:?}",
-        device.device_name()
+        "buffer, texture, layer, depth and 1D copies match on {}; reinterpreted through a view: {}",
+        device.device_name(),
+        words.is_some()
     );
 }

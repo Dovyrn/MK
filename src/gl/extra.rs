@@ -65,6 +65,7 @@ type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
 pub struct Extra {
     pub view: Option<View>,
+    pub debug: bool,
     pub reset: Option<Reset>,
     pub clear: Option<Clear>,
     pub mesh: Option<Mesh>,
@@ -139,6 +140,7 @@ impl Extra {
         unsafe {
             Ok(Self {
                 view: get("glTextureView", 43, "GL_ARB_texture_view").map(|p| cast(p)),
+                debug: has(43, "GL_KHR_debug"),
                 reset: get("glGetGraphicsResetStatus", 45, "GL_KHR_robustness").map(|p| cast(p)),
                 clear: get("glClearBufferSubData", 43, "GL_ARB_clear_buffer_object")
                     .map(|p| cast(p)),

@@ -486,6 +486,9 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::BeginDebugLabel { text } => {
+                    if !self.extra.debug {
+                        return Ok(());
+                    }
                     let depth = gl.get_parameter_i32(glow::DEBUG_GROUP_STACK_DEPTH);
                     if depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH) {
                         return Err("the debug group stack is full".into());

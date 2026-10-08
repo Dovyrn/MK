@@ -159,7 +159,6 @@ impl Device {
                     1
                 },
                 graphics: 1,
-                labels: has(43, "GL_KHR_debug"),
                 anisotropy: if has(46, "GL_ARB_texture_filter_anisotropic")
                     || has(99, "GL_EXT_texture_filter_anisotropic")
                 {
@@ -189,9 +188,6 @@ impl Device {
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
                 mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
-                copy_formats: has(43, "GL_ARB_copy_image")
-                    && has(43, "GL_ARB_texture_view")
-                    && has(42, "GL_ARB_texture_storage"),
                 buffer_clear: extra.clear.is_some(),
                 partial_resolve: true,
                 max_buffer: isize::MAX as u64,

@@ -994,18 +994,16 @@ impl Recorder<'_> {
                     d.cmd_set_scissor_with_count(b, &list[..scissors.len()])
                 }
                 Command::BeginDebugLabel { text } => {
-                    let name = CString::new(text).unwrap();
-                    let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
-                    let debug = self.ext.debug.as_ref().unwrap();
-                    debug.cmd_begin_debug_utils_label(b, &label);
+                    if let Some(debug) = &self.ext.debug {
+                        let name = CString::new(text).unwrap();
+                        let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
+                        debug.cmd_begin_debug_utils_label(b, &label);
+                    }
                 }
                 Command::EndDebugLabel => {
-                    let debug = self
-                        .ext
-                        .debug
-                        .as_ref()
-                        .ok_or("VK_EXT_debug_utils is not enabled")?;
-                    debug.cmd_end_debug_utils_label(b);
+                    if let Some(debug) = &self.ext.debug {
+                        debug.cmd_end_debug_utils_label(b);
+                    }
                 }
             }
         }
