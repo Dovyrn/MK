@@ -50,3 +50,4 @@ typealias Uniform<T> = ConstantBuffer<T>;
 
 #include "atomics.slangh"
 #include "bindless.slangh"
+#include "indirect.slangh"

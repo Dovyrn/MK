@@ -288,7 +288,7 @@ pub fn main() {
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back], &[texture], &[]);
+    device.add_residency(set, &[back], &[texture], &[], &[]);
     device.commit_residency(set);
     host_frame(&device, pool, texture, back, pipeline, &timeline, set);
     let pixels = unsafe {

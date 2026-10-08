@@ -86,6 +86,7 @@ fields = [
     ["coverage", "bool", "false"],
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
+    ["indirect", "bool", "false"],
     ["buffers", "[VertexBufferLayout]", ""],
     ["attributes", "[VertexAttribute]", ""],
 ]
@@ -105,6 +106,7 @@ fields = [
     ["coverage", "bool", "false"],
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
+    ["indirect", "bool", "false"],
 ]
 
 [[info]]
@@ -143,6 +145,7 @@ fields = [
     ["mesh", "bool", "false"],
     ["task", "bool", "false"],
     ["mesh_indirect", "bool", "false"],
+    ["indirect_count", "bool", "false"],
     ["mesh_groups", "u32", "0"],
     ["mesh_axis", "u32", "0"],
     ["queues", "u32", "0"],
@@ -215,6 +218,17 @@ fields = [
     ["entry", "str", ""],
     ["subgroup", "u32", "0"],
     ["full", "bool", "false"],
+]
+
+[[info]]
+name = "IndirectBufferInfo"
+fields = [
+    ["draws", "u32", "0"],
+    ["pipeline", "RenderPipeline", ""],
+    ["indexed", "bool", "false"],
+    ["indices", "Buffer", ""],
+    ["offset", "u64", "0"],
+    ["kind", "u32", "index_type::U16"],
 ]
 
 [[info]]

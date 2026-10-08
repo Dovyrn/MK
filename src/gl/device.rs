@@ -1,6 +1,7 @@
 mod budget;
 mod copies;
 mod host;
+mod indirect;
 mod residency;
 
 use crate::caps;
@@ -227,6 +228,7 @@ impl Device {
                 mesh: extra.mesh.is_some(),
                 task: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
+                indirect_count: false,
                 mesh_groups: if extra.mesh.is_some() {
                     int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
                 } else {
@@ -439,6 +441,7 @@ impl Device {
             coverage: info.coverage,
             clamp: info.clamp,
             ordered: info.ordered,
+            indirect: info.indirect,
             ..Default::default()
         };
         self.render(&render, &stages)
@@ -460,6 +463,7 @@ impl Device {
                 samples: info.samples,
                 topology: info.topology,
                 mesh,
+                indirect: info.indirect,
                 vertices: crate::table::vertex_buffer_mask(info),
                 reads: 0,
             },

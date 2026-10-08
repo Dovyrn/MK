@@ -17,5 +17,6 @@ pub struct Resources {
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
     pub sets: Slots<()>,
+    pub indirects: Slots<crate::Buffer>,
     pub table: crate::table::Table,
 }

@@ -3,8 +3,8 @@ use crate::command::Command;
 use crate::residency::Residency;
 use crate::table::Table;
 use crate::{
-    Buffer, Caps, CommandPool, QueryPool, Texture, TextureInfo, cull_mode, format, front_face,
-    index_type, load_op, memory, query_kind, slot, stage, store_op, texture_dimension,
+    Buffer, Caps, CommandPool, IndirectBuffer, QueryPool, Texture, TextureInfo, cull_mode, format,
+    front_face, index_type, load_op, memory, query_kind, slot, stage, store_op, texture_dimension,
     texture_layout, texture_usage, topology,
 };
 
@@ -16,6 +16,7 @@ pub struct Check<'a> {
     open: &'static str,
     index: Option<(Buffer, u64, u32)>,
     mesh: bool,
+    indirect: bool,
     compute: bool,
     render: bool,
     topology: u32,
@@ -147,6 +148,7 @@ impl<'a> Check<'a> {
             open: base,
             index: None,
             mesh: false,
+            indirect: false,
             compute: false,
             render: false,
             topology: topology::TRIANGLE,
@@ -388,6 +390,44 @@ impl<'a> Check<'a> {
                 command_name(c)
             );
         }
+    }
+
+    fn indirect_list(&self, c: &Command, indirect: IndirectBuffer) -> Result<u32, String> {
+        let name = &command_name(c);
+        let e = *self.table.indirects.get(indirect);
+        self.assert_resident(name, &indirect, self.table.residency.indirect(indirect));
+        self.check_draw(c, e.info.indexed);
+        assert!(
+            self.indirect,
+            "{name} needs a pipeline created with indirect: true"
+        );
+        assert_eq!(
+            self.mesh, e.mesh,
+            "{name} needs a mesh pipeline exactly when {indirect} was made for one"
+        );
+        assert_eq!(
+            self.topology,
+            e.topology,
+            "{name} draws with topology {} but {indirect} holds topology {}",
+            topology::name(self.topology),
+            topology::name(e.topology)
+        );
+        if e.info.indexed {
+            let (buffer, offset, kind) = (e.info.indices, e.info.offset, e.info.kind);
+            assert_eq!(
+                self.index,
+                Some((buffer, offset, kind)),
+                "{name} needs bind_index_buffer of {buffer} at offset {offset} with {}",
+                index_type::name(kind)
+            );
+            if offset != 0 {
+                self.require(c, self.caps.indirect_offset, "indirect_offset")?;
+            }
+        }
+        if e.mesh {
+            self.require(c, self.caps.mesh_indirect, "mesh_indirect")?;
+        }
+        Ok(e.info.draws)
     }
 
     fn check_transient(&self, name: &str, texture: Texture, load: u32, store: u32) {
@@ -851,6 +891,7 @@ impl<'a> Check<'a> {
                 self.needs = entry.vertices;
                 self.topology = entry.topology;
                 self.mesh = entry.mesh;
+                self.indirect = entry.indirect;
             }
             Command::InputAttachmentBarrier => {
                 self.require(c, caps.attachment_reads, "attachment_reads")?;
@@ -1030,6 +1071,31 @@ impl<'a> Check<'a> {
                     self.require(c, caps.indirect_offset, "indirect_offset")?;
                 }
                 self.check_indirect_buffer(name, buffer, offset, count, stride, 20);
+            }
+            Command::ExecuteIndirect {
+                indirect,
+                first,
+                count,
+            } => {
+                let draws = self.indirect_list(c, indirect)?;
+                assert!(
+                    first as u64 + count as u64 <= draws as u64,
+                    "execute_indirect draws {first}..{} past the {draws} draws of {indirect}",
+                    first as u64 + count as u64
+                );
+            }
+            Command::ExecuteIndirectCount {
+                indirect,
+                buffer,
+                offset,
+            } => {
+                self.indirect_list(c, indirect)?;
+                assert!(
+                    offset.is_multiple_of(4),
+                    "execute_indirect_count offset {offset} is not a multiple of 4"
+                );
+                self.buffer_range(name, buffer, offset, 8);
+                self.require(c, caps.indirect_count, "indirect_count")?;
             }
             Command::DrawMeshTasks { x, y, z } => {
                 self.require(c, caps.mesh, "mesh")?;

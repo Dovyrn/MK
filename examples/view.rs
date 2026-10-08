@@ -36,7 +36,7 @@ pub fn main() {
         .unwrap();
     let back = device.create_buffer(16 * 4, memory::READBACK).unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back], &[texture], &[]);
+    device.add_residency(set, &[back], &[texture], &[], &[]);
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();

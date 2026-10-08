@@ -1,6 +1,6 @@
 use crate::entries::Entries;
 use crate::handle::Handle;
-use crate::{Buffer, QueryPool, ResidencySet, Texture};
+use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Texture};
 
 const EXEMPT: u32 = 1 << 31;
 
@@ -9,6 +9,7 @@ pub struct Members {
     pub buffers: Vec<Buffer>,
     pub textures: Vec<Texture>,
     pub queries: Vec<QueryPool>,
+    pub indirects: Vec<IndirectBuffer>,
 }
 
 #[derive(Default)]
@@ -17,6 +18,7 @@ pub struct Residency {
     buffers: Vec<u32>,
     textures: Vec<u32>,
     queries: Vec<u32>,
+    indirects: Vec<u32>,
 }
 
 fn count<H: Handle>(counts: &mut Vec<u32>, h: H) -> &mut u32 {
@@ -63,6 +65,7 @@ impl Residency {
         shift(&mut self.buffers, &committed.buffers, false);
         shift(&mut self.textures, &committed.textures, false);
         shift(&mut self.queries, &committed.queries, false);
+        shift(&mut self.indirects, &committed.indirects, false);
         self.sets.clear(set);
     }
 
@@ -76,6 +79,7 @@ impl Residency {
         change(name, set, &mut pending.buffers, &items.buffers, add);
         change(name, set, &mut pending.textures, &items.textures, add);
         change(name, set, &mut pending.queries, &items.queries, add);
+        change(name, set, &mut pending.indirects, &items.indirects, add);
     }
 
     pub fn commit(&mut self, set: ResidencySet) {
@@ -83,9 +87,11 @@ impl Residency {
         shift(&mut self.buffers, &committed.buffers, false);
         shift(&mut self.textures, &committed.textures, false);
         shift(&mut self.queries, &committed.queries, false);
+        shift(&mut self.indirects, &committed.indirects, false);
         shift(&mut self.buffers, &pending.buffers, true);
         shift(&mut self.textures, &pending.textures, true);
         shift(&mut self.queries, &pending.queries, true);
+        shift(&mut self.indirects, &pending.indirects, true);
         self.sets.get_mut(set).1 = pending;
     }
 
@@ -137,6 +143,22 @@ impl Residency {
             );
         }
         *count(&mut self.queries, pool) = 0;
+    }
+
+    pub fn free_indirect(&mut self, indirect: IndirectBuffer) {
+        if let Some(set) = self.held(indirect, |m| &m.indirects) {
+            panic!(
+                "destroy_indirect_buffer on {indirect}, which {set} still holds; remove_residency and commit_residency first"
+            );
+        }
+        *count(&mut self.indirects, indirect) = 0;
+    }
+
+    pub fn indirect(&self, indirect: IndirectBuffer) -> u32 {
+        self.indirects
+            .get(indirect.index() as usize)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn buffer(&self, buffer: Buffer) -> u32 {

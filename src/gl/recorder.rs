@@ -729,6 +729,9 @@ impl<'a> Recorder<'a> {
                         self.extra.mesh.unwrap()(x, y, z);
                     }
                 }
+                Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. } => {
+                    unreachable!("create_indirect_buffer needs caps.addresses, which GL lacks")
+                }
                 Command::DrawMeshTasksIndirect {
                     buffer,
                     offset,

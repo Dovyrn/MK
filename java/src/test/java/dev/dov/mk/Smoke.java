@@ -33,7 +33,7 @@ public class Smoke {
             memPutInt(push + 4, 100);
             device.unmapBuffer(constants);
             var set = device.createResidencySet();
-            device.addResidency(set, new Buffer[] {buffer, constants}, new Texture[0], new QueryPool[0]);
+            device.addResidency(set, new Buffer[] {buffer, constants}, new Texture[0], new QueryPool[0], new IndirectBuffer[0]);
             device.commitResidency(set);
             var commands = device.beginCommands(pool);
             commands.useResidencySet(set);

@@ -166,6 +166,21 @@ name = "destroy_query_pool"
 params = [["pool", "QueryPool"]]
 
 [[call]]
+name = "create_indirect_buffer"
+params = [["info", "IndirectBufferInfo"]]
+result = "IndirectBuffer"
+fails = true
+
+[[call]]
+name = "destroy_indirect_buffer"
+params = [["indirect", "IndirectBuffer"]]
+
+[[call]]
+name = "indirect_shader_handle"
+params = [["indirect", "IndirectBuffer"]]
+result = "u32x8"
+
+[[call]]
 name = "create_residency_set"
 result = "ResidencySet"
 fails = true
@@ -176,11 +191,11 @@ params = [["set", "ResidencySet"]]
 
 [[call]]
 name = "add_residency"
-params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"]]
+params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"], ["indirects", "[IndirectBuffer]"]]
 
 [[call]]
 name = "remove_residency"
-params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"]]
+params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"], ["indirects", "[IndirectBuffer]"]]
 
 [[call]]
 name = "commit_residency"

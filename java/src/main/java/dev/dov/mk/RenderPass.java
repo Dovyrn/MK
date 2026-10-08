@@ -246,6 +246,22 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nDrawIndexedIndirect(long target, long buffer, long offset, int count, int stride);
 
+    public void executeIndirect(IndirectBuffer indirect, int first, int count) {
+        synchronized (device) {
+            nExecuteIndirect(handle(), IndirectBuffer.raw(indirect), first, count);
+        }
+    }
+
+    private static native void nExecuteIndirect(long target, long indirect, int first, int count);
+
+    public void executeIndirectCount(IndirectBuffer indirect, Buffer buffer, long offset) {
+        synchronized (device) {
+            nExecuteIndirectCount(handle(), IndirectBuffer.raw(indirect), Buffer.raw(buffer), offset);
+        }
+    }
+
+    private static native void nExecuteIndirectCount(long target, long indirect, long buffer, long offset);
+
     public void drawMeshTasks(int x, int y, int z) {
         synchronized (device) {
             nDrawMeshTasks(handle(), x, y, z);

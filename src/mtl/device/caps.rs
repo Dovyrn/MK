@@ -40,6 +40,7 @@ impl Device {
             mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
             task: raw.supportsFamily(MTLGPUFamily::Apple7),
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
+            indirect_count: true,
             mesh_groups: groups,
             mesh_axis: groups,
             queues: queues as u32,

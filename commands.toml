@@ -212,6 +212,18 @@ fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
 [[command]]
+name = "execute_indirect"
+scope = "render"
+fails = true
+fields = [["indirect", "IndirectBuffer"], ["first", "u32"], ["count", "u32"]]
+
+[[command]]
+name = "execute_indirect_count"
+scope = "render"
+fails = true
+fields = [["indirect", "IndirectBuffer"], ["buffer", "Buffer"], ["offset", "u64"]]
+
+[[command]]
 name = "draw_mesh_tasks"
 scope = "render"
 fails = true

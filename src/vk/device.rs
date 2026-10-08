@@ -2,12 +2,15 @@ mod budget;
 mod buffers;
 mod caps;
 mod copies;
+mod indirect;
 mod pipelines;
 mod queries;
 mod residency;
 mod samplers;
 mod textures;
 mod timelines;
+
+pub use indirect::indirect_stride;
 
 use caps::probe;
 

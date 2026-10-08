@@ -22,6 +22,7 @@ public class RenderPipelineInfo {
     public boolean coverage = false;
     public boolean clamp = false;
     public boolean ordered = false;
+    public boolean indirect = false;
     public VertexBufferLayout[] buffers = new VertexBufferLayout[0];
     public VertexAttribute[] attributes = new VertexAttribute[0];
 
@@ -38,7 +39,7 @@ public class RenderPipelineInfo {
         for (var x : attributes) {
             attributesSize += x.encodedSize();
         }
-        return 56 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
+        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
     }
 
     long encode(long p) {
@@ -73,6 +74,8 @@ public class RenderPipelineInfo {
         memPutInt(p, clamp ? 1 : 0);
         p += 4;
         memPutInt(p, ordered ? 1 : 0);
+        p += 4;
+        memPutInt(p, indirect ? 1 : 0);
         p += 4;
         memPutInt(p, buffers.length);
         p += 4;

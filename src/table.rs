@@ -2,9 +2,9 @@ use crate::entries::Entries;
 use crate::handle::TimelineId;
 use crate::residency::{Members, Residency};
 use crate::{
-    Buffer, CommandPool, ComputePipeline, DepthState, HostTextureCopy, QueryPool, RenderPipeline,
-    ResidencySet, Sampler, Texture, TextureInfo, TextureViewInfo, TilePipeline, format, memory,
-    texture_dimension, texture_usage,
+    Buffer, CommandPool, ComputePipeline, DepthState, HostTextureCopy, IndirectBuffer,
+    IndirectBufferInfo, QueryPool, RenderPipeline, ResidencySet, Sampler, Texture, TextureInfo,
+    TextureViewInfo, TilePipeline, format, index_type, memory, texture_dimension, texture_usage,
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Weak};
@@ -14,6 +14,7 @@ pub struct RenderEntry {
     pub samples: u32,
     pub topology: u32,
     pub mesh: bool,
+    pub indirect: bool,
     pub vertices: u32,
     pub reads: u32,
 }
@@ -35,6 +36,14 @@ pub struct Table {
     pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
     pub undefined: RefCell<Vec<Texture>>,
     pub residency: Residency,
+    pub indirects: Entries<IndirectBuffer, IndirectEntry>,
+}
+
+#[derive(Clone, Copy)]
+pub struct IndirectEntry {
+    pub info: IndirectBufferInfo,
+    pub topology: u32,
+    pub mesh: bool,
 }
 
 fn rest(base: u32, count: u32, total: u32, what: &str, texture: Texture) -> u32 {
@@ -61,6 +70,75 @@ impl Table {
         self.residency.free_buffer(buffer);
     }
 
+    pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
+        let name = "create_indirect_buffer";
+        assert!(info.draws > 0, "{name} draws is 0");
+        let pipeline = info.pipeline;
+        let entry = *self.renders.get(pipeline);
+        assert!(
+            entry.indirect,
+            "{name} needs {pipeline} created with indirect: true"
+        );
+        if info.indexed {
+            assert!(!entry.mesh, "{name} of mesh {pipeline} cannot be indexed");
+            let kind = info.kind;
+            assert!(
+                index_type::valid(kind),
+                "{name} kind is {}",
+                index_type::name(kind)
+            );
+            let size = if kind == index_type::U16 { 2 } else { 4 };
+            assert!(
+                info.offset.is_multiple_of(size),
+                "{name} index offset {} is not a multiple of {size}",
+                info.offset
+            );
+            let total = *self.buffers.get(info.indices);
+            assert!(
+                info.offset < total,
+                "{name} index offset {} is past {} ({total} bytes)",
+                info.offset,
+                info.indices
+            );
+        }
+        IndirectEntry {
+            info: *info,
+            topology: entry.topology,
+            mesh: entry.mesh,
+        }
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn shader_handle(
+        &self,
+        indirect: IndirectBuffer,
+        commands: u64,
+        indices: u64,
+        groups: [u32; 6],
+    ) -> [u32; 8] {
+        let e = *self.indirects.get(indirect);
+        let mut words = [commands as u32, (commands >> 32) as u32, 0, 0, 0, 0, 0, 0];
+        if e.mesh {
+            words[2..].copy_from_slice(&groups);
+        } else if e.info.indexed {
+            let kind = e.info.kind;
+            words[2..6].copy_from_slice(&[
+                indices as u32,
+                (indices >> 32) as u32,
+                e.topology,
+                kind,
+            ]);
+        } else {
+            words[2] = e.topology;
+        }
+        words
+    }
+
+    pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {
+        self.indirects.clear(indirect);
+        self.residency.free_indirect(indirect);
+    }
+
     pub fn drop_query(&mut self, pool: QueryPool) {
         self.queries.clear(pool);
         self.residency.free_query(pool);
@@ -84,6 +162,9 @@ impl Table {
         }
         for &q in &items.queries {
             self.queries.get(q);
+        }
+        for &i in &items.indirects {
+            self.indirects.get(i);
         }
         self.residency.change(set, &items, add);
     }

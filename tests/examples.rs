@@ -14,6 +14,8 @@ mod handles;
 mod images;
 #[path = "../examples/imports.rs"]
 mod imports;
+#[path = "../examples/indirect.rs"]
+mod indirect;
 #[path = "../examples/mesh.rs"]
 mod mesh;
 #[path = "../examples/native.rs"]
@@ -55,6 +57,6 @@ macro_rules! examples {
 }
 
 examples!(
-    adopt, atomics, compute, copies, handles, images, imports, mesh, native, queries, queues,
-    reads, render, resolve, slots, subgroups, texture, tiles, uploads, view, viewports
+    adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, queries,
+    queues, reads, render, resolve, slots, subgroups, texture, tiles, uploads, view, viewports
 );

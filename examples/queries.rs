@@ -97,7 +97,7 @@ pub fn main() {
     let (constants, stride) = host::constants(&mut device, &[&push, &0.5f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
     let queries: Vec<_> = times.into_iter().chain([samples]).collect();
-    device.add_residency(set, &[out, data, vbuf, constants], &[color], &queries);
+    device.add_residency(set, &[out, data, vbuf, constants], &[color], &queries, &[]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

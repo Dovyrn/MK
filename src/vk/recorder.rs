@@ -2,6 +2,7 @@ mod textures;
 
 use crate::command::Command;
 use crate::vk::bindings;
+use crate::vk::device::indirect_stride;
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::{TextureObject, count};
@@ -399,7 +400,9 @@ impl Recorder<'_> {
             | Command::DrawIndirect { .. }
             | Command::DrawIndexedIndirect { .. }
             | Command::DrawMeshTasks { .. }
-            | Command::DrawMeshTasksIndirect { .. } => {
+            | Command::DrawMeshTasksIndirect { .. }
+            | Command::ExecuteIndirect { .. }
+            | Command::ExecuteIndirectCount { .. } => {
                 self.push_stale_slots(vk::PipelineBindPoint::GRAPHICS)?
             }
             _ => {}
@@ -872,6 +875,56 @@ impl Recorder<'_> {
                     .as_ref()
                     .unwrap()
                     .cmd_draw_mesh_tasks(b, x, y, z),
+                Command::ExecuteIndirect {
+                    indirect,
+                    first,
+                    count,
+                } => {
+                    let e = *self.res.table.indirects.get(indirect);
+                    let stride = indirect_stride(e.mesh, e.info.indexed);
+                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
+                    let at = |i: u32| (first + i) as u64 * stride as u64;
+                    let (batch, n) = if self.ext.features.multi_draw_indirect != 0 {
+                        (count, count.min(1))
+                    } else {
+                        (count.min(1), count)
+                    };
+                    for i in 0..n {
+                        match (e.mesh, e.info.indexed) {
+                            (true, _) => self
+                                .ext
+                                .mesh
+                                .as_ref()
+                                .unwrap()
+                                .cmd_draw_mesh_tasks_indirect(b, raw, at(i), batch, stride),
+                            (_, true) => d.cmd_draw_indexed_indirect(b, raw, at(i), batch, stride),
+                            _ => d.cmd_draw_indirect(b, raw, at(i), batch, stride),
+                        }
+                    }
+                }
+                Command::ExecuteIndirectCount {
+                    indirect,
+                    buffer,
+                    offset,
+                } => {
+                    let e = *self.res.table.indirects.get(indirect);
+                    let stride = indirect_stride(e.mesh, e.info.indexed);
+                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
+                    let range = self.res.buffers.get(buffer).raw;
+                    let (at, max) = (offset + 4, e.info.draws);
+                    match (e.mesh, e.info.indexed) {
+                        (true, _) => self
+                            .ext
+                            .mesh
+                            .as_ref()
+                            .unwrap()
+                            .cmd_draw_mesh_tasks_indirect_count(b, raw, 0, range, at, max, stride),
+                        (_, true) => {
+                            d.cmd_draw_indexed_indirect_count(b, raw, 0, range, at, max, stride)
+                        }
+                        _ => d.cmd_draw_indirect_count(b, raw, 0, range, at, max, stride),
+                    }
+                }
                 Command::DrawMeshTasksIndirect {
                     buffer,
                     offset,

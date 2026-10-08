@@ -25,6 +25,7 @@ impl Device {
         coverage: bool,
         clamp: bool,
         ordered: bool,
+        indirect: bool,
     ) -> Result<RenderPipeline, String> {
         let used: Vec<_> = entries
             .iter()
@@ -211,6 +212,7 @@ impl Device {
                 samples,
                 topology: shape,
                 mesh: vertex.is_none(),
+                indirect,
                 vertices: vertex.map_or(0, crate::table::vertex_buffer_mask),
                 reads,
             },
@@ -238,6 +240,7 @@ impl Device {
             info.coverage,
             info.clamp,
             info.ordered,
+            info.indirect,
         )
     }
 
@@ -262,6 +265,7 @@ impl Device {
             info.coverage,
             info.clamp,
             info.ordered,
+            info.indirect,
         )
     }
 

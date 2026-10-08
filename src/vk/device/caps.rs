@@ -73,6 +73,7 @@ pub(super) fn probe(
         mesh: ext.mesh.is_some(),
         task: ext.task,
         mesh_indirect: ext.mesh.is_some(),
+        indirect_count: ext.count,
         mesh_groups: mesh
             .max_task_work_group_total_count
             .min(mesh.max_mesh_work_group_total_count),

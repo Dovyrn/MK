@@ -22,6 +22,7 @@ pub struct Resources {
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    pub indirects: Slots<crate::mtl::indirect::Indirect>,
     pub sets: Slots<Retained<ProtocolObject<dyn MTLResidencySet>>>,
     pub imports: HashSet<crate::Buffer>,
     pub table: crate::table::Table,

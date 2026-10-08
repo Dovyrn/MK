@@ -194,6 +194,12 @@ impl Caps {
         need(name, same_blend(colors) || self.blends, "blends")
     }
 
+    pub(crate) fn check_indirect(&self, mesh: bool) -> Result<(), String> {
+        let name = "create_indirect_buffer";
+        need(name, self.addresses, "addresses")?;
+        need(name, !mesh || self.mesh_indirect, "mesh_indirect")
+    }
+
     pub(crate) fn check_compute_pipeline(
         &self,
         info: &crate::ComputePipelineInfo,

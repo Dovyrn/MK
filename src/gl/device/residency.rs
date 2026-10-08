@@ -1,6 +1,6 @@
 use super::Device;
 use crate::residency::Members;
-use crate::{Buffer, QueryPool, ResidencySet, Texture};
+use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Texture};
 
 impl Device {
     pub fn create_residency_set(&mut self) -> Result<ResidencySet, String> {
@@ -20,11 +20,13 @@ impl Device {
         buffers: &[Buffer],
         textures: &[Texture],
         queries: &[QueryPool],
+        indirects: &[IndirectBuffer],
     ) {
         let items = Members {
             buffers: buffers.to_vec(),
             textures: textures.to_vec(),
             queries: queries.to_vec(),
+            indirects: indirects.to_vec(),
         };
         self.res.table.change_residency(set, items, true);
     }
@@ -35,11 +37,13 @@ impl Device {
         buffers: &[Buffer],
         textures: &[Texture],
         queries: &[QueryPool],
+        indirects: &[IndirectBuffer],
     ) {
         let items = Members {
             buffers: buffers.to_vec(),
             textures: textures.to_vec(),
             queries: queries.to_vec(),
+            indirects: indirects.to_vec(),
         };
         self.res.table.change_residency(set, items, false);
     }

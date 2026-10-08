@@ -8,6 +8,7 @@ pub struct Extensions {
     pub mesh: Option<mesh_shader::Device>,
     pub task: bool,
     pub sizes: bool,
+    pub count: bool,
     pub full: bool,
     pub atomics: u32,
     pub model: bool,
@@ -160,6 +161,7 @@ impl Extensions {
                 mesh,
                 task,
                 sizes: v13.is_some_and(|f| f.subgroup_size_control != 0),
+                count: v12.is_some_and(|f| f.draw_indirect_count != 0),
                 full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
                 atomics: v12.map_or(0, |f| {
                     let buffer = if f.shader_buffer_int64_atomics != 0 {

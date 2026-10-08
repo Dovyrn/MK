@@ -1,7 +1,7 @@
 use super::Device;
 use crate::mtl::query::Query;
 use crate::residency::Members;
-use crate::{Buffer, QueryPool, ResidencySet, Texture};
+use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Texture};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
@@ -30,8 +30,9 @@ impl Device {
         buffers: &[Buffer],
         textures: &[Texture],
         queries: &[QueryPool],
+        indirects: &[IndirectBuffer],
     ) {
-        self.change_residency(set, buffers, textures, queries, true);
+        self.change_residency(set, buffers, textures, queries, indirects, true);
     }
 
     pub fn remove_residency(
@@ -40,8 +41,9 @@ impl Device {
         buffers: &[Buffer],
         textures: &[Texture],
         queries: &[QueryPool],
+        indirects: &[IndirectBuffer],
     ) {
-        self.change_residency(set, buffers, textures, queries, false);
+        self.change_residency(set, buffers, textures, queries, indirects, false);
     }
 
     fn change_residency(
@@ -50,12 +52,14 @@ impl Device {
         buffers: &[Buffer],
         textures: &[Texture],
         queries: &[QueryPool],
+        indirects: &[IndirectBuffer],
         add: bool,
     ) {
         let items = Members {
             buffers: buffers.to_vec(),
             textures: textures.to_vec(),
             queries: queries.to_vec(),
+            indirects: indirects.to_vec(),
         };
         self.res.table.change_residency(set, items, add);
         let raw = self.res.sets.get(set);
@@ -71,7 +75,12 @@ impl Device {
             .chain(queries.iter().filter_map(|&q| match res.queries.get(q) {
                 Query::Buffer(b) => Some(ProtocolObject::from_ref(&**b)),
                 Query::Timestamp(_) => None,
-            }));
+            }))
+            .chain(
+                indirects
+                    .iter()
+                    .map(|&i| ProtocolObject::from_ref(&*res.indirects.get(i).raw)),
+            );
         for a in allocations {
             let a: &ProtocolObject<dyn MTLAllocation> = a;
             if add {

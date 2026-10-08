@@ -811,6 +811,36 @@ impl<'a> Recorder<'a> {
                         p.mesh,
                     );
             }
+            Command::ExecuteIndirect {
+                indirect,
+                first,
+                count,
+            } => {
+                if self.render_pipeline.is_none() || count == 0 {
+                    return Ok(());
+                }
+                let icb = &self.res.indirects.get(indirect).raw;
+                let range = NSRange::new(first as usize, count as usize);
+                unsafe {
+                    self.render_encoder()
+                        .executeCommandsInBuffer_withRange(icb, range)
+                };
+            }
+            Command::ExecuteIndirectCount {
+                indirect,
+                buffer,
+                offset,
+            } => {
+                if self.render_pipeline.is_none() {
+                    return Ok(());
+                }
+                let icb = &self.res.indirects.get(indirect).raw;
+                let range = self.res.buffers.get(buffer).gpuAddress() + offset;
+                unsafe {
+                    self.render_encoder()
+                        .executeCommandsInBuffer_indirectBuffer(icb, range)
+                };
+            }
             Command::DrawMeshTasksIndirect { buffer, offset, .. } => {
                 let Some(p) = self.render_pipeline else {
                     return Ok(());

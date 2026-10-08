@@ -114,7 +114,7 @@ pub fn main() {
         textures.push(depth);
     }
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back, constants], &textures, &[]);
+    device.add_residency(set, &[back, constants], &textures, &[], &[]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

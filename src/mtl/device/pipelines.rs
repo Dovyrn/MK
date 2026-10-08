@@ -13,13 +13,13 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
-    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
-    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
-    MTL4TileRenderPipelineDescriptor, MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask,
-    MTLComputePipelineState, MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction,
-    MTLLibrary, MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState,
-    MTLStencilDescriptor, MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor,
-    MTLVertexStepFunction,
+    MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
+    MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
+    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
+    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
+    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
+    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 
 fn mtl_blend_factor(f: u32) -> MTLBlendFactor {
@@ -158,6 +158,14 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
     }
 }
 
+fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
+    if on {
+        MTL4IndirectCommandBufferSupportState::Enabled
+    } else {
+        MTL4IndirectCommandBufferSupportState::Disabled
+    }
+}
+
 impl Device {
     fn compile(
         &self,
@@ -222,6 +230,7 @@ impl Device {
             self.caps.check_render_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
+            desc.setSupportIndirectCommandBuffers(support(info.indirect));
             desc.setVertexFunctionDescriptor(Some(&*function_descriptor(&library, info.vertex)?));
             let inputs = library
                 .newFunctionWithName(&NSString::from_str(info.vertex))
@@ -289,6 +298,7 @@ impl Device {
                     samples: info.samples,
                     topology: info.topology,
                     mesh: false,
+                    indirect: info.indirect,
                     vertices: crate::table::vertex_buffer_mask(info),
                     reads: attachment_reads(&groups, info.fragment),
                 },
@@ -311,6 +321,7 @@ impl Device {
                 group(&groups, info.task)?
             };
             let desc = MTL4MeshRenderPipelineDescriptor::new();
+            desc.setSupportIndirectCommandBuffers(support(info.indirect));
             if !info.task.is_empty() {
                 desc.setObjectFunctionDescriptor(Some(&*function_descriptor(&library, info.task)?));
             }
@@ -343,6 +354,7 @@ impl Device {
                     samples: info.samples,
                     topology: topology::TRIANGLE,
                     mesh: true,
+                    indirect: info.indirect,
                     vertices: 0,
                     reads: attachment_reads(&groups, info.fragment),
                 },

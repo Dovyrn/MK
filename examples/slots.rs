@@ -80,7 +80,7 @@ pub fn main() {
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[upload, back], &[source, target], &[]);
+    device.add_residency(set, &[upload, back], &[source, target], &[], &[]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
@@ -163,7 +163,7 @@ pub fn main() {
         })
         .unwrap();
     let (constants, _) = host::constants(&mut device, &[&64u32.to_le_bytes()]);
-    device.add_residency(set, &[data, out, constants], &[image], &[]);
+    device.add_residency(set, &[data, out, constants], &[image], &[], &[]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
