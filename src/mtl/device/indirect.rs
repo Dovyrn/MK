@@ -13,7 +13,7 @@ impl Device {
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, String> {
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh)?;
+        self.caps.check_indirect(entry.mesh, info.draws)?;
         let render = self.res.renders.get(info.pipeline);
         let (task, mesh) = (render.task, render.mesh);
         let groups = [

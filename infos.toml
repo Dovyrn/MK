@@ -147,6 +147,7 @@ fields = [
     ["mesh_indirect", "bool", "false"],
     ["indirect_count", "bool", "false"],
     ["multi_draw", "bool", "false"],
+    ["max_draws", "u32", "0"],
     ["mesh_groups", "u32", "0"],
     ["mesh_axis", "u32", "0"],
     ["queues", "u32", "0"],

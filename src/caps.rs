@@ -194,10 +194,17 @@ impl Caps {
         need(name, same_blend(colors) || self.blends, "blends")
     }
 
-    pub(crate) fn check_indirect(&self, mesh: bool) -> Result<(), String> {
+    pub(crate) fn check_indirect(&self, mesh: bool, draws: u32) -> Result<(), String> {
         let name = "create_indirect_buffer";
         need(name, self.addresses, "addresses")?;
-        need(name, !mesh || self.mesh_indirect, "mesh_indirect")
+        need(name, !mesh || self.mesh_indirect, "mesh_indirect")?;
+        if draws > self.max_draws {
+            return Err(format!(
+                "{name} draws {draws} is over caps.max_draws {}",
+                self.max_draws
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn check_compute_pipeline(

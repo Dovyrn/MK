@@ -15,7 +15,7 @@ impl Device {
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, String> {
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh)?;
+        self.caps.check_indirect(entry.mesh, info.draws)?;
         let stride = indirect_stride(entry.mesh, info.indexed);
         let buffer = self.create_buffer(info.draws as u64 * stride as u64, memory::DEVICE)?;
         let id = self.res.indirects.insert(buffer);

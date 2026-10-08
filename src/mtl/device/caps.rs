@@ -42,6 +42,7 @@ impl Device {
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
             indirect_count: true,
             multi_draw: true,
+            max_draws: u32::MAX,
             mesh_groups: groups,
             mesh_axis: groups,
             queues: queues as u32,

@@ -8,7 +8,7 @@ impl Device {
     ) -> Result<IndirectBuffer, String> {
         self.thread();
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh)?;
+        self.caps.check_indirect(entry.mesh, info.draws)?;
         unreachable!("caps.addresses is false on GL")
     }
 

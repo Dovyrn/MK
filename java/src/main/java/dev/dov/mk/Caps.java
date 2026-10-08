@@ -13,6 +13,7 @@ public class Caps {
     public boolean meshIndirect = false;
     public boolean indirectCount = false;
     public boolean multiDraw = false;
+    public int maxDraws = 0;
     public int meshGroups = 0;
     public int meshAxis = 0;
     public int queues = 0;
@@ -69,10 +70,10 @@ public class Caps {
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 252;
+    public static final int SIZE = 256;
 
     int encodedSize() {
-        return 252;
+        return 256;
     }
 
     long encode(long p) {
@@ -85,6 +86,8 @@ public class Caps {
         memPutInt(p, indirectCount ? 1 : 0);
         p += 4;
         memPutInt(p, multiDraw ? 1 : 0);
+        p += 4;
+        memPutInt(p, maxDraws);
         p += 4;
         memPutInt(p, meshGroups);
         p += 4;
@@ -210,6 +213,8 @@ public class Caps {
         r.indirectCount = memGetInt(p) != 0;
         p += 4;
         r.multiDraw = memGetInt(p) != 0;
+        p += 4;
+        r.maxDraws = memGetInt(p);
         p += 4;
         r.meshGroups = memGetInt(p);
         p += 4;
