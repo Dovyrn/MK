@@ -394,11 +394,7 @@ impl<'a> Recorder<'a> {
                 dst_stage,
                 ..
             } => {
-                let options = if (src_stage | dst_stage) & stage::HOST != 0 {
-                    MTL4VisibilityOptions::Device
-                } else {
-                    MTL4VisibilityOptions::None
-                };
+                let options = MTL4VisibilityOptions::Device;
                 let (from, to) = (mtl_stages(src_stage), mtl_stages(dst_stage));
                 let Some(encoder) = &self.compute else {
                     match &*self.last.borrow() {

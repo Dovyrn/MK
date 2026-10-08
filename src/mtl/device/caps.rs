@@ -182,7 +182,8 @@ impl Device {
             info.dimension,
             texture_dimension::D1 | texture_dimension::D1_ARRAY
         );
-        if line && info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0 {
+        let target = info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0;
+        if cfg!(feature = "validation") && line && target {
             return Err("a 1D texture cannot be a render target on Metal".into());
         }
         Ok(())

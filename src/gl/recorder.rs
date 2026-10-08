@@ -489,8 +489,11 @@ impl<'a> Recorder<'a> {
                     if !self.extra.debug {
                         return Ok(());
                     }
-                    let depth = gl.get_parameter_i32(glow::DEBUG_GROUP_STACK_DEPTH);
-                    if depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH) {
+                    let full = || {
+                        let depth = gl.get_parameter_i32(glow::DEBUG_GROUP_STACK_DEPTH);
+                        depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH)
+                    };
+                    if cfg!(feature = "validation") && full() {
                         return Err("the debug group stack is full".into());
                     }
                     gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);

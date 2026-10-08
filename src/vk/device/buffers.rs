@@ -1,6 +1,5 @@
 use super::Device;
 use crate::Buffer;
-use crate::memory;
 use crate::vk::buffer::BufferObject;
 use ash::vk;
 use std::rc::Rc;
@@ -43,7 +42,6 @@ impl Device {
             address: 0,
             data: std::ptr::null_mut(),
             own: true,
-            device: memory == memory::DEVICE,
         };
         buffer.data = self
             .map_memory(*buffer.memory, index)
@@ -53,14 +51,13 @@ impl Device {
         Ok(buffer)
     }
 
-    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64) -> Buffer {
+    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64, data: *mut u8) -> Buffer {
         let id = self.res.buffers.insert(BufferObject {
             raw,
             memory: Rc::new(vk::DeviceMemory::null()),
             address: 0,
-            data: std::ptr::null_mut(),
+            data,
             own: false,
-            device: false,
         });
         self.res.table.buffers.set(id, size);
         self.res.table.residency.exempt_buffer(id);
@@ -81,8 +78,10 @@ impl Device {
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
-        assert!(b.own, "map of an imported buffer");
-        assert!(!b.device, "map of a device buffer");
+        check!(
+            !b.data.is_null(),
+            "map_buffer on {buffer}, which has no host mapping; create it with memory::UPLOAD or memory::READBACK, or import it with its mapped pointer"
+        );
         b.data
     }
 
@@ -100,7 +99,10 @@ impl Device {
         self.res.table.buffers.get(buffer);
         self.caps.assert_addresses();
         let b = self.res.buffers.get(buffer);
-        assert!(b.own, "imported buffers have no address on Vulkan");
-        b.address
+        if b.own {
+            return b.address;
+        }
+        let info = vk::BufferDeviceAddressInfo::default().buffer(b.raw);
+        unsafe { self.raw.get_buffer_device_address(&info) }
     }
 }

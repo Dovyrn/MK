@@ -47,12 +47,12 @@ pub struct IndirectEntry {
 }
 
 fn rest(base: u32, count: u32, total: u32, what: &str, texture: Texture) -> u32 {
-    assert!(
+    check!(
         base < total,
         "create_texture_view base {what} {base} is outside the {total} {what}s of {texture}"
     );
     let count = if count == !0 { total - base } else { count };
-    assert!(
+    check!(
         count > 0 && count <= total - base,
         "create_texture_view {what}s {base}..{} are outside the {total} {what}s of {texture}",
         base as u64 + count as u64
@@ -72,29 +72,29 @@ impl Table {
 
     pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
         let name = "create_indirect_buffer";
-        assert!(info.draws > 0, "{name} draws is 0");
+        check!(info.draws > 0, "{name} draws is 0");
         let pipeline = info.pipeline;
         let entry = *self.renders.get(pipeline);
-        assert!(
+        check!(
             entry.indirect,
             "{name} needs {pipeline} created with indirect: true"
         );
         if info.indexed {
-            assert!(!entry.mesh, "{name} of mesh {pipeline} cannot be indexed");
+            check!(!entry.mesh, "{name} of mesh {pipeline} cannot be indexed");
             let kind = info.kind;
-            assert!(
+            check!(
                 index_type::valid(kind),
                 "{name} kind is {}",
                 index_type::name(kind)
             );
             let size = if kind == index_type::U16 { 2 } else { 4 };
-            assert!(
+            check!(
                 info.offset.is_multiple_of(size),
                 "{name} index offset {} is not a multiple of {size}",
                 info.offset
             );
             let total = *self.buffers.get(info.indices);
-            assert!(
+            check!(
                 info.offset < total,
                 "{name} index offset {} is past {} ({total} bytes)",
                 info.offset,
@@ -150,11 +150,11 @@ impl Table {
         }
         for &t in &items.textures {
             self.textures.get(t);
-            assert!(
+            check!(
                 self.parents.find(t).is_none(),
                 "add_residency and remove_residency take whole textures, not view {t}"
             );
-            assert_ne!(
+            check_ne!(
                 self.textures.get(t).memory,
                 memory::TRANSIENT,
                 "{t} is memory::TRANSIENT and has no memory to make resident"
@@ -189,14 +189,14 @@ impl Table {
             return;
         }
         let root = self.parents.find(texture).copied().unwrap_or(texture);
-        assert!(
+        check!(
             !undefined.contains(&root),
             "{name} uses {texture} before its first texture_barrier; record one with before: texture_layout::UNDEFINED"
         );
     }
 
     pub fn drop_texture(&mut self, texture: Texture) {
-        assert!(
+        check!(
             !self.parents.values().any(|&p| p == texture),
             "destroy_texture on {texture} while views of it live; destroy the views first"
         );
@@ -210,28 +210,28 @@ impl Table {
 
     pub fn resolve_view(&self, texture: Texture, info: &TextureViewInfo) -> TextureViewInfo {
         let t = self.textures.get(texture);
-        assert!(
+        check!(
             texture_dimension::valid(info.dimension),
             "unknown dimension {}",
             info.dimension
         );
-        assert!(
+        check!(
             info.format > 0 && format::block(info.format)[0] > 0,
             "unknown format {}",
             info.format
         );
-        assert!(
+        check!(
             info.usage != 0 && info.usage & !t.usage == 0,
             "view usage {:#x} is not part of {texture} usage {:#x}",
             info.usage,
             t.usage
         );
-        assert!(
+        check!(
             info.format == t.format || t.usage & texture_usage::VIEW != 0,
             "a view of {texture} in format {} needs texture_usage::VIEW",
             info.format
         );
-        assert_eq!(
+        check_eq!(
             format::block(info.format),
             format::block(t.format),
             "format {} has a different block than format {}",
@@ -245,7 +245,7 @@ impl Table {
             texture_dimension::D3 => 3,
             _ => 2,
         };
-        assert_eq!(
+        check_eq!(
             family(t.dimension),
             family(info.dimension),
             "a view of {texture} cannot change dimension {} to {}",
@@ -258,16 +258,17 @@ impl Table {
         );
         match info.dimension {
             texture_dimension::D1 | texture_dimension::D2 | texture_dimension::D3 => {
-                assert_eq!(
-                    layers, 1,
+                check_eq!(
+                    layers,
+                    1,
                     "a view without layers has one layer, not {layers}"
                 )
             }
-            texture_dimension::CUBE => assert!(
+            texture_dimension::CUBE => check!(
                 cube && layers == 6,
                 "a cube view needs a cube texture and 6 layers"
             ),
-            texture_dimension::CUBE_ARRAY => assert!(
+            texture_dimension::CUBE_ARRAY => check!(
                 cube && layers.is_multiple_of(6),
                 "a cube array view needs a cube texture and a multiple of 6 layers"
             ),
@@ -302,21 +303,21 @@ impl Table {
     pub fn check_host_copy(&self, c: &HostTextureCopy, size: usize) -> (u64, u64) {
         let texture = c.texture;
         let t = self.textures.get(texture);
-        assert_ne!(
+        check_ne!(
             t.usage & texture_usage::HOST,
             0,
             "write_texture and read_texture need {texture} created with texture_usage::HOST"
         );
-        assert!(
+        check!(
             t.samples == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&t.format),
             "write_texture and read_texture need a single-sampled color texture, not {texture}"
         );
         let (w, h, d) = (c.width, c.height, c.depth);
-        assert!(
+        check!(
             w > 0 && h > 0 && d > 0,
             "host copy region {w}x{h}x{d} has a zero"
         );
-        assert!(
+        check!(
             c.mip < t.mips && c.layer < t.layers,
             "mip {} layer {} is outside {} mips and {} layers of {texture}",
             c.mip,
@@ -330,7 +331,7 @@ impl Table {
         let edge = |at: u32, n: u32, end: u32, b: u32| {
             at.is_multiple_of(b) && (n.is_multiple_of(b) || at + n == end)
         };
-        assert!(
+        check!(
             fits(c.x, w, sizes[0]) && fits(c.y, h, sizes[1]) && fits(c.z, d, sizes[2]),
             "region {},{},{} {w}x{h}x{d} is outside mip {} of {texture} ({}x{}x{})",
             c.x,
@@ -341,7 +342,7 @@ impl Table {
             sizes[1],
             sizes[2]
         );
-        assert!(
+        check!(
             edge(c.x, w, sizes[0], bw) && edge(c.y, h, sizes[1], bh),
             "region {},{} {w}x{h} is not aligned to the {bw}x{bh} blocks of {texture}",
             c.x,
@@ -349,11 +350,11 @@ impl Table {
         );
         let row = if c.row_length == 0 { w } else { c.row_length };
         let rows = if c.row_count == 0 { h } else { c.row_count };
-        assert!(
+        check!(
             row >= w && (row.is_multiple_of(bw) || row == w),
             "row length {row} is below width {w} or not a multiple of block width {bw}"
         );
-        assert!(
+        check!(
             rows >= h && (rows.is_multiple_of(bh) || rows == h),
             "row count {rows} is below height {h} or not a multiple of block height {bh}"
         );
@@ -362,7 +363,7 @@ impl Table {
         let need = image
             .checked_mul(d as u64)
             .expect("host copy size overflows");
-        assert!(
+        check!(
             size as u64 >= need,
             "host copy needs {need} bytes, not {size}"
         );
@@ -387,7 +388,7 @@ impl Table {
         list.iter()
             .map(|&(t, value)| {
                 let (_, _, owner) = timelines.get(t.id);
-                assert!(
+                check!(
                     Weak::ptr_eq(owner, &Arc::downgrade(&t.token)),
                     "{} belongs to another device; use the device that created it",
                     t.id
@@ -401,11 +402,11 @@ impl Table {
         let timelines = self.timelines.borrow();
         for (i, &(id, value)) in signals.iter().enumerate() {
             let (last, from, _) = timelines.get(id);
-            assert!(
+            check!(
                 *from != queue || value > *last,
                 "submit signals {id} to {value}, but queue {queue} already signalled it to {last}; signal a value above {last}"
             );
-            assert!(
+            check!(
                 signals[..i].iter().all(|s| s.0 != id),
                 "submit signals {id} twice; signal it once with the highest value"
             );
@@ -425,7 +426,7 @@ impl Table {
 impl Drop for Table {
     fn drop(&mut self) {
         if !std::thread::panicking() {
-            assert!(
+            check!(
                 self.timelines
                     .get_mut()
                     .values()
@@ -437,7 +438,7 @@ impl Drop for Table {
 }
 
 pub fn assert_rising(now: u64, value: u64) {
-    assert!(
+    check!(
         value > now,
         "signal {value} is not above the timeline's value {now}; signal a value above {now}"
     );

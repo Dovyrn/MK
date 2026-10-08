@@ -39,11 +39,13 @@ fn change<H: Handle + PartialEq>(
     for &h in items {
         let at = list.iter().position(|&x| x == h);
         if add {
-            assert!(at.is_none(), "{name} {h} is already in {set}");
+            check!(at.is_none(), "{name} {h} is already in {set}");
             list.push(h);
         } else {
-            let at = at.unwrap_or_else(|| panic!("{name} {h} is not in {set}"));
-            list.swap_remove(at);
+            check!(at.is_some(), "{name} {h} is not in {set}");
+            if let Some(at) = at {
+                list.swap_remove(at);
+            }
         }
     }
 }
@@ -138,7 +140,9 @@ impl Residency {
     }
 
     pub fn free_buffer(&mut self, buffer: Buffer) {
-        if let Some(set) = self.held(buffer, |m| &m.buffers) {
+        if cfg!(feature = "validation")
+            && let Some(set) = self.held(buffer, |m| &m.buffers)
+        {
             panic!(
                 "destroy_buffer on {buffer}, which {set} still holds; remove_residency and commit_residency first"
             );
@@ -147,7 +151,9 @@ impl Residency {
     }
 
     pub fn free_texture(&mut self, texture: Texture) {
-        if let Some(set) = self.held(texture, |m| &m.textures) {
+        if cfg!(feature = "validation")
+            && let Some(set) = self.held(texture, |m| &m.textures)
+        {
             panic!(
                 "destroy_texture on {texture}, which {set} still holds; remove_residency and commit_residency first"
             );
@@ -156,7 +162,9 @@ impl Residency {
     }
 
     pub fn free_query(&mut self, pool: QueryPool) {
-        if let Some(set) = self.held(pool, |m| &m.queries) {
+        if cfg!(feature = "validation")
+            && let Some(set) = self.held(pool, |m| &m.queries)
+        {
             panic!(
                 "destroy_query_pool on {pool}, which {set} still holds; remove_residency and commit_residency first"
             );
@@ -165,7 +173,9 @@ impl Residency {
     }
 
     pub fn free_indirect(&mut self, indirect: IndirectBuffer) {
-        if let Some(set) = self.held(indirect, |m| &m.indirects) {
+        if cfg!(feature = "validation")
+            && let Some(set) = self.held(indirect, |m| &m.indirects)
+        {
             panic!(
                 "destroy_indirect_buffer on {indirect}, which {set} still holds; remove_residency and commit_residency first"
             );

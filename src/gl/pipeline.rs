@@ -22,8 +22,13 @@ impl Pipeline {
     ) -> Result<Self, String> {
         let program = Program::new(gl, info.code, stages)?;
         let raw = program.raw;
+        let validate = cfg!(feature = "validation");
         let missing = unsafe {
-            (0..gl.get_active_attributes(raw))
+            (0..if validate {
+                gl.get_active_attributes(raw)
+            } else {
+                0
+            })
                 .filter_map(|i| gl.get_active_attribute(raw, i))
                 .filter(|a| !a.name.starts_with("gl_"))
                 .filter_map(|a| gl.get_attrib_location(raw, &a.name))

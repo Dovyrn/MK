@@ -35,7 +35,7 @@ impl<T> Slots<T> {
             .items
             .get(i)
             .is_some_and(|s| s.0 == h.generation() && s.1.is_some());
-        assert!(live, "{h} does not exist or was destroyed");
+        check!(live, "{h} does not exist or was destroyed");
         i
     }
 

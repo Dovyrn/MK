@@ -23,7 +23,6 @@ impl Device {
             let size = raw.length() as u64;
             let id = self.res.buffers.insert(raw);
             self.res.table.buffers.set(id, size);
-            self.res.imports.insert(id);
             self.res.table.residency.exempt_buffer(id);
             id
         })
@@ -36,21 +35,16 @@ impl Device {
 
     pub fn destroy_buffer(&mut self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
-        self.res.imports.remove(&buffer);
         self.res.buffers.remove(buffer);
     }
 
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
-        assert!(
-            !self.res.imports.contains(&buffer),
-            "map of an imported buffer"
-        );
         let b = self.res.buffers.get(buffer);
-        assert_ne!(
+        check_ne!(
             b.storageMode(),
             MTLStorageMode::Private,
-            "map of a device buffer"
+            "map_buffer on {buffer}, which is in private storage and has no host mapping"
         );
         b.contents().as_ptr().cast()
     }

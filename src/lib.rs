@@ -8,6 +8,30 @@ compile_error!("enable one backend feature: vk, mtl or gl");
 ))]
 compile_error!("enable exactly one backend feature");
 
+macro_rules! check {
+    ($($t:tt)*) => {
+        if cfg!(feature = "validation") {
+            assert!($($t)*);
+        }
+    };
+}
+
+macro_rules! check_eq {
+    ($($t:tt)*) => {
+        if cfg!(feature = "validation") {
+            assert_eq!($($t)*);
+        }
+    };
+}
+
+macro_rules! check_ne {
+    ($($t:tt)*) => {
+        if cfg!(feature = "validation") {
+            assert_ne!($($t)*);
+        }
+    };
+}
+
 mod caps;
 mod check;
 mod command;

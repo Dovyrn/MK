@@ -279,7 +279,7 @@ impl Device {
     }
 
     fn thread(&self) {
-        assert_eq!(
+        check_eq!(
             std::thread::current().id(),
             self.thread,
             "GL device used from another thread"
@@ -343,13 +343,16 @@ impl Device {
         self.thread();
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
-        assert!(b.own, "map of an imported buffer");
-        assert_ne!(b.memory, memory::DEVICE, "map of a device buffer");
+        check!(
+            !b.own || b.memory != memory::DEVICE,
+            "map_buffer on {buffer}, which was created with memory::DEVICE and has no host mapping"
+        );
         if b.persistent || !b.data.get().is_null() {
             return b.data.get();
         }
-        let access = match b.memory {
-            memory::UPLOAD => glow::MAP_WRITE_BIT | glow::MAP_UNSYNCHRONIZED_BIT,
+        let access = match (b.own, b.memory) {
+            (false, _) => glow::MAP_READ_BIT | glow::MAP_WRITE_BIT,
+            (_, memory::UPLOAD) => glow::MAP_WRITE_BIT | glow::MAP_UNSYNCHRONIZED_BIT,
             _ => glow::MAP_READ_BIT,
         };
         unsafe {
@@ -752,7 +755,7 @@ impl Device {
 
     pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
         self.thread();
-        assert_eq!(queue, 0, "GL has one queue");
+        check_eq!(queue, 0, "GL has one queue");
         let pool = self.res.pools.insert(());
         self.res.table.pools.set(pool, (queue, Cell::new(false)));
         Ok(pool)
@@ -777,7 +780,7 @@ impl Device {
         samples: u32,
     ) -> Result<Recording<'_>, String> {
         self.thread();
-        assert!(
+        check!(
             !self.open.get(),
             "GL runs commands as they are recorded; submit, finish or drop the open command buffer first"
         );

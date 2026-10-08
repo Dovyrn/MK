@@ -50,22 +50,22 @@ const STATES: [&str; 6] = [
 ];
 
 fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
-    assert!(
+    check!(
         [x, y, width, height].iter().all(|v| v.is_finite()) && width > 0.0 && height > 0.0,
         "{name} {x},{y} {width}x{height} is not a finite positive area; give it a width and height above 0"
     );
-    assert!(
+    check!(
         (0.0..=1.0).contains(&near) && (0.0..=1.0).contains(&far),
         "{name} depth range {near}..{far} is outside 0..1; keep near and far in 0..1"
     );
 }
 
 pub(crate) fn assert_known(name: &str, field: &str, text: String, valid: bool) {
-    assert!(valid, "{name} {field} is {text}");
+    check!(valid, "{name} {field} is {text}");
 }
 
 fn assert_bits(name: &str, field: &str, value: u32, all: u32, group: &str) {
-    assert_eq!(
+    check_eq!(
         value & !all,
         0,
         "{name} {field} has bits {:#x} that are no {group} constant",
@@ -84,32 +84,32 @@ fn command_name(c: &Command) -> String {
 }
 
 fn assert_rects(name: &str, count: usize, max: u32) {
-    assert!(count > 0, "{name} got an empty list; pass at least one");
-    assert!(
+    check!(count > 0, "{name} got an empty list; pass at least one");
+    check!(
         count <= max as usize,
         "{name} got {count}, over caps.viewports {max}"
     );
 }
 
 fn assert_aligned(name: &str, offset: u64, alignment: u32) {
-    assert!(
+    check!(
         offset.is_multiple_of(alignment.max(1) as u64),
         "{name} offset {offset} is not a multiple of caps.bind_alignment {alignment}"
     );
 }
 
 fn assert_slot(name: &str, slot: u32, count: u32) {
-    assert!(slot < count, "{name} slot {slot} is outside 0..{count}");
+    check!(slot < count, "{name} slot {slot} is outside 0..{count}");
 }
 
 fn assert_span(name: &str, what: &str, base: u32, count: u32, total: u32, texture: Texture) {
-    assert_ne!(count, 0, "{name} covers 0 {what}s of {texture}");
+    check_ne!(count, 0, "{name} covers 0 {what}s of {texture}");
     let end = if count == !0 {
         total
     } else {
         base.saturating_add(count)
     };
-    assert!(
+    check!(
         base < total && end <= total,
         "{name} {what}s {base}..{end} are outside the {total} {what}s of {texture}"
     );
@@ -135,7 +135,7 @@ impl<'a> Check<'a> {
         samples: u32,
     ) -> Self {
         let busy = &table.pools.get(pool).1;
-        assert!(
+        check!(
             !busy.get(),
             "begin_commands on {pool}, which is already recording a command buffer; submit, finish or drop that one first"
         );
@@ -178,17 +178,18 @@ impl<'a> Check<'a> {
     }
 
     pub fn finish(&self) {
-        assert_eq!(
-            self.open, self.base,
+        check_eq!(
+            self.open,
+            self.base,
             "the command buffer ends inside a {} pass; call end() on the pass first",
             self.open
         );
-        assert!(
+        check!(
             self.labels.is_empty(),
             "the command buffer ends with {} debug labels open; call end_debug_label for each",
             self.labels.len()
         );
-        assert!(
+        check!(
             !self.barrier,
             "a barrier with no pass before or after it in its command buffer orders nothing on Metal; record it next to the pass that writes or reads the results"
         );
@@ -206,11 +207,11 @@ impl<'a> Check<'a> {
         if Residency::is_exempt(count) {
             return;
         }
-        assert!(
+        check!(
             count > 0,
             "{name} uses {what}, which no committed residency set holds; add_residency it and commit_residency"
         );
-        assert!(
+        check!(
             self.resident,
             "{name} uses {what} before use_residency_set in this command buffer"
         );
@@ -224,7 +225,7 @@ impl<'a> Check<'a> {
         } else {
             offset.saturating_add(size)
         };
-        assert!(
+        check!(
             offset <= total && end <= total,
             "{name} reads bytes {offset}..{end} of {buffer}, which has {total}"
         );
@@ -240,7 +241,7 @@ impl<'a> Check<'a> {
         max: u64,
     ) -> Result<(), String> {
         let size = self.buffer_range(&command_name(c), buffer, offset, size);
-        assert!(size > 0, "{} covers 0 bytes of {buffer}", command_name(c));
+        check!(size > 0, "{} covers 0 bytes of {buffer}", command_name(c));
         if size > max {
             return Err(format!(
                 "{} binds {size} bytes, over the limit of {max}",
@@ -253,8 +254,8 @@ impl<'a> Check<'a> {
     fn check_barrier(&mut self, name: &str, src: u32, dst: u32, layouts: (u32, u32)) {
         assert_bits(name, "src_stage", src, stage::BITS, "stage");
         assert_bits(name, "dst_stage", dst, stage::BITS, "stage");
-        assert!(dst != 0, "{name} needs a dst_stage");
-        assert!(
+        check!(dst != 0, "{name} needs a dst_stage");
+        check!(
             src != 0 || layouts.0 == texture_layout::UNDEFINED,
             "{name} needs a src_stage; only a texture_barrier from texture_layout::UNDEFINED waits on nothing"
         );
@@ -277,7 +278,7 @@ impl<'a> Check<'a> {
         } else {
             0
         };
-        assert_ne!(
+        check_ne!(
             (t.usage | copies) & needs,
             0,
             "{name} needs {texture} created with texture_usage::{what}"
@@ -300,13 +301,13 @@ impl<'a> Check<'a> {
         assert_span(name, "mip", mip, 1, t.mips, texture);
         assert_span(name, "layer", layer, layers, t.layers, texture);
         let end = [t.width, t.height, t.depth].map(|n| (n >> mip).max(1));
-        assert!(
+        check!(
             (0..3).all(|i| at[i] as u64 + size[i] as u64 <= end[i] as u64),
             "{name} region {at:?} {size:?} is outside mip {mip} of {texture} ({end:?})"
         );
         let [_, bw, bh] = format::block(t.format);
         let edge = |i: usize, b: u32| size[i].is_multiple_of(b) || at[i] + size[i] == end[i];
-        assert!(
+        check!(
             at[0].is_multiple_of(bw) && at[1].is_multiple_of(bh) && edge(0, bw) && edge(1, bh),
             "{name} region {at:?} {size:?} is not aligned to the {bw}x{bh} blocks of {texture}"
         );
@@ -317,7 +318,7 @@ impl<'a> Check<'a> {
         let &(kind, total) = self.table.queries.get(pool);
         self.assert_resident(name, &pool, self.table.residency.query(pool));
         let names: Vec<_> = kinds.iter().map(|&k| query_kind::name(k)).collect();
-        assert!(
+        check!(
             kinds.is_empty() || kinds.contains(&kind),
             "{name} needs a {} pool, but {pool} is {}",
             names.join(" or "),
@@ -325,7 +326,7 @@ impl<'a> Check<'a> {
         );
         if count > 0 {
             let last = first.saturating_add(count - 1);
-            assert!(
+            check!(
                 last < total,
                 "{name} query {last} is outside the {total} queries of {pool}"
             );
@@ -337,17 +338,17 @@ impl<'a> Check<'a> {
     }
 
     fn check_draw(&self, c: &Command, indexed: bool) {
-        assert!(
+        check!(
             self.render,
             "{} needs bind_render_pipeline earlier in this pass",
             command_name(c)
         );
-        assert!(
+        check!(
             self.views > 0 && self.scissors > 0,
             "{} needs set_viewport and set_scissor earlier in this pass; passes start with neither",
             command_name(c)
         );
-        assert_eq!(
+        check_eq!(
             self.views,
             self.scissors,
             "{} has {} viewports but {} scissors; set one scissor per viewport",
@@ -363,7 +364,7 @@ impl<'a> Check<'a> {
                 command_name(c)
             );
         }
-        assert!(
+        check!(
             self.samples == 0 || self.bound == self.samples,
             "{} draws with a {}-sample pipeline in a {}-sample pass; create the pipeline with the pass's sample count",
             command_name(c),
@@ -371,20 +372,20 @@ impl<'a> Check<'a> {
             self.samples
         );
         let missing = self.needs & !self.vertices;
-        assert_eq!(
+        check_eq!(
             missing,
             0,
             "{} needs bind_vertex_buffer for slots {missing:#b}, which the pipeline's attributes read",
             command_name(c)
         );
-        assert!(
+        check!(
             !indexed || self.index.is_some(),
             "{} needs bind_index_buffer earlier in this pass",
             command_name(c)
         );
         for i in (0..slot::COLORS).filter(|i| self.reads & 1 << i != 0) {
             let texture = self.inputs[i as usize];
-            assert!(
+            check!(
                 !texture.is_null(),
                 "{} reads attachment {i}; give the pass a texture_usage::INPUT color there",
                 command_name(c)
@@ -397,15 +398,16 @@ impl<'a> Check<'a> {
         let e = *self.table.indirects.get(indirect);
         self.assert_resident(name, &indirect, self.table.residency.indirect(indirect));
         self.check_draw(c, e.info.indexed);
-        assert!(
+        check!(
             self.indirect,
             "{name} needs a pipeline created with indirect: true"
         );
-        assert_eq!(
-            self.mesh, e.mesh,
+        check_eq!(
+            self.mesh,
+            e.mesh,
             "{name} needs a mesh pipeline exactly when {indirect} was made for one"
         );
-        assert_eq!(
+        check_eq!(
             self.topology,
             e.topology,
             "{name} draws with topology {} but {indirect} holds topology {}",
@@ -414,7 +416,7 @@ impl<'a> Check<'a> {
         );
         if e.info.indexed {
             let (buffer, offset, kind) = (e.info.indices, e.info.offset, e.info.kind);
-            assert_eq!(
+            check_eq!(
                 self.index,
                 Some((buffer, offset, kind)),
                 "{name} needs bind_index_buffer of {buffer} at offset {offset} with {}",
@@ -432,7 +434,7 @@ impl<'a> Check<'a> {
 
     fn check_transient(&self, name: &str, texture: Texture, load: u32, store: u32) {
         if self.table.textures.get(texture).memory == memory::TRANSIENT {
-            assert!(
+            check!(
                 load != load_op::LOAD && store == store_op::DONT_CARE,
                 "{name} loads or stores memory::TRANSIENT {texture}; use load_op::CLEAR or DONT_CARE and store_op::DONT_CARE"
             );
@@ -440,7 +442,7 @@ impl<'a> Check<'a> {
     }
 
     fn check_indirect_buffer(&self, name: &str, buffer: Buffer, offset: u64, size: u64) {
-        assert!(
+        check!(
             offset.is_multiple_of(4),
             "{name} offset {offset} is not a multiple of 4"
         );
@@ -489,7 +491,7 @@ impl<'a> Check<'a> {
         };
         let name = command_name(c);
         let t = self.texture_with_usage(&name, texture, needs, what);
-        assert!(
+        check!(
             w > 0 && h > 0 && d > 0,
             "{} region {w}x{h}x{d} has a zero",
             command_name(c)
@@ -502,7 +504,7 @@ impl<'a> Check<'a> {
             (t.depth >> mip).max(1),
         ];
         let fits = |at: u32, n: u32, end: u32| at as u64 + n as u64 <= end as u64;
-        assert!(
+        check!(
             fits(x, w, size[0]) && fits(y, h, size[1]) && fits(z, d, size[2]),
             "{name} region {x},{y},{z} {w}x{h}x{d} is outside mip {mip} of {texture} ({}x{}x{})",
             size[0],
@@ -513,25 +515,25 @@ impl<'a> Check<'a> {
         let edge = |at: u32, n: u32, b: u32, end: u32| {
             at.is_multiple_of(b) && (n.is_multiple_of(b) || at + n == end)
         };
-        assert!(
+        check!(
             edge(x, w, bw, size[0]) && edge(y, h, bh, size[1]),
             "{} region {x},{y} {w}x{h} is not aligned to the {bw}x{bh} blocks of {texture}",
             command_name(c)
         );
-        assert!(
+        check!(
             row_length.is_multiple_of(bw) && row_count.is_multiple_of(bh),
             "{} rows {row_length}x{row_count} are not multiples of the {bw}x{bh} blocks",
             command_name(c)
         );
         let texel = copy_block_size(t.format).max(4) as u64;
-        assert!(
+        check!(
             offset.is_multiple_of(texel),
             "{} buffer offset {offset} is not a multiple of {texel}",
             command_name(c)
         );
         let row = if row_length == 0 { w } else { row_length };
         let rows = if row_count == 0 { h } else { row_count };
-        assert!(
+        check!(
             row >= w && rows >= h,
             "{} rows {row}x{rows} are smaller than the region {w}x{h}",
             command_name(c)
@@ -545,10 +547,13 @@ impl<'a> Check<'a> {
     }
 
     pub fn step(&mut self, c: &Command) -> Result<(), String> {
+        if !cfg!(feature = "validation") {
+            return Ok(());
+        }
         let scope = c.scope();
         let open = self.open;
         let name = &command_name(c);
-        assert!(
+        check!(
             scope.is_empty() || scope.split(' ').any(|s| s == open),
             "{name} runs only in {scope}, not {open}"
         );
@@ -559,7 +564,7 @@ impl<'a> Check<'a> {
                 height,
                 layers,
             } => {
-                assert!(
+                check!(
                     width > 0 && height > 0 && layers > 0,
                     "begin_render_pass size {width}x{height}x{layers} has a zero"
                 );
@@ -568,21 +573,21 @@ impl<'a> Check<'a> {
                     .iter()
                     .map(|&(t, _)| self.table.textures.get(t).samples)
                     .collect();
-                assert!(
+                check!(
                     samples.windows(2).all(|w| w[0] == w[1]),
                     "begin_render_pass attachments have different sample counts {samples:?}; give them one count"
                 );
                 self.samples = samples.first().copied().unwrap_or(0);
                 for &(texture, clear) in &self.targets {
                     let t = self.table.textures.get(texture);
-                    assert!(
+                    check!(
                         width <= t.width && height <= t.height && layers <= t.layers,
                         "begin_render_pass {width}x{height}x{layers} is larger than {texture} ({}x{}x{})",
                         t.width,
                         t.height,
                         t.layers
                     );
-                    assert!(
+                    check!(
                         !clear || (width == t.width && height == t.height),
                         "begin_render_pass {width}x{height} clears {texture} ({}x{}) but does not cover it; match its size or use load_op::LOAD",
                         t.width,
@@ -611,7 +616,7 @@ impl<'a> Check<'a> {
                 self.compute = false;
             }
             Command::EndComputePass => {
-                assert_ne!(
+                check_ne!(
                     self.labels.last(),
                     Some(&"compute"),
                     "the compute pass ends with a debug label open; call end_debug_label first"
@@ -619,7 +624,7 @@ impl<'a> Check<'a> {
                 self.open = "outside";
             }
             Command::EndRenderPass => {
-                assert_ne!(
+                check_ne!(
                     self.labels.last(),
                     Some(&"render"),
                     "the render pass ends with a debug label open; call end_debug_label first"
@@ -638,18 +643,18 @@ impl<'a> Check<'a> {
             }
             Command::Dispatch { .. } => {
                 self.require(c, caps.compute, "compute")?;
-                assert!(
+                check!(
                     self.compute,
                     "dispatch needs bind_compute_pipeline earlier in this pass"
                 );
             }
             Command::DispatchIndirect { buffer, offset } => {
                 self.require(c, caps.compute, "compute")?;
-                assert!(
+                check!(
                     self.compute,
                     "dispatch_indirect needs bind_compute_pipeline earlier in this pass"
                 );
-                assert!(
+                check!(
                     offset.is_multiple_of(4),
                     "dispatch_indirect offset {offset} is not a multiple of 4"
                 );
@@ -662,7 +667,7 @@ impl<'a> Check<'a> {
                 dst_offset,
                 size,
             } => {
-                assert!(size > 0, "copy_buffer size is 0");
+                check!(size > 0, "copy_buffer size is 0");
                 self.buffer_range(name, src, src_offset, size);
                 self.buffer_range(name, dst, dst_offset, size);
             }
@@ -673,7 +678,7 @@ impl<'a> Check<'a> {
                 ..
             } => {
                 self.require(c, caps.buffer_clear, "buffer_clear")?;
-                assert!(
+                check!(
                     offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
                 );
@@ -703,7 +708,7 @@ impl<'a> Check<'a> {
                 assert_known(name, "before", text, valid);
                 let (text, valid) = layout(after);
                 assert_known(name, "after", text, valid);
-                assert_ne!(
+                check_ne!(
                     after,
                     texture_layout::UNDEFINED,
                     "{name} after is texture_layout::UNDEFINED; transition to a defined layout"
@@ -741,7 +746,7 @@ impl<'a> Check<'a> {
                 self.texture_with_usage(name, src, texture_usage::COPY_SRC, "COPY_SRC");
                 self.texture_with_usage(name, dst, texture_usage::COPY_DST, "COPY_DST");
                 let size = [width, height, d];
-                assert!(
+                check!(
                     size.iter().all(|&n| n > 0),
                     "copy_texture region {width}x{height}x{d} has a zero"
                 );
@@ -749,26 +754,28 @@ impl<'a> Check<'a> {
                 let s = self.texture_region(name, src, from, [src_x, src_y, src_z], size);
                 let to = (dst_mip, dst_layer, layers);
                 let t = self.texture_region(name, dst, to, [dst_x, dst_y, dst_z], size);
-                assert_eq!(
+                check_eq!(
                     format::block(s.format),
                     format::block(t.format),
                     "copy_texture formats {} and {} have different blocks",
                     s.format,
                     t.format
                 );
-                assert!(
+                check!(
                     s.format == t.format
                         || !is_depth_format(s.format) && !is_depth_format(t.format),
                     "copy_texture between depth formats {} and {} needs one format",
                     s.format,
                     t.format
                 );
-                assert_eq!(
-                    s.samples, t.samples,
+                check_eq!(
+                    s.samples,
+                    t.samples,
                     "copy_texture sample counts {} and {} differ",
-                    s.samples, t.samples
+                    s.samples,
+                    t.samples
                 );
-                assert!(
+                check!(
                     src != dst
                         || src_mip != dst_mip
                         || disjoint(src_layer, dst_layer, layers)
@@ -783,15 +790,17 @@ impl<'a> Check<'a> {
                         texture_dimension::D1 | texture_dimension::D1_ARRAY
                     )
                 };
-                assert_eq!(
+                check_eq!(
                     line(s),
                     line(t),
                     "copy_texture cannot copy between a 1D texture and a 2D or 3D one"
                 );
-                assert_eq!(
-                    s.format, t.format,
+                check_eq!(
+                    s.format,
+                    t.format,
                     "copy_texture from format {} to {}; to reinterpret, copy through a texture view in the other format",
-                    s.format, t.format
+                    s.format,
+                    t.format
                 );
             }
             Command::ColorAttachment {
@@ -815,15 +824,15 @@ impl<'a> Check<'a> {
                     self.resolves.push(resolve);
                     let r = self.texture_with_usage(name, resolve, texture_usage::COLOR, "COLOR");
                     let s = self.table.textures.get(texture);
-                    assert!(
+                    check!(
                         s.samples > 1 && r.samples == 1,
                         "{name} resolve needs multisampled {texture} and single-sample {resolve}"
                     );
-                    assert!(
+                    check!(
                         s.format == r.format && s.width == r.width && s.height == r.height,
                         "{name} resolve {resolve} differs in format or size from {texture}"
                     );
-                    assert!(
+                    check!(
                         !format::uint(s.format) && !format::sint(s.format),
                         "{name} resolves integer format {}, which no backend can average",
                         s.format
@@ -848,7 +857,7 @@ impl<'a> Check<'a> {
                     store_op::valid(stencil_store),
                 );
                 assert_known(name, "stencil_store", text, valid);
-                assert!(
+                check!(
                     (0.0..=1.0).contains(&depth),
                     "{name} clear depth {depth} is outside 0..1"
                 );
@@ -862,7 +871,7 @@ impl<'a> Check<'a> {
                 let entry = *self.table.renders.get(pipeline);
                 let samples = entry.samples;
                 self.reads = entry.reads;
-                assert!(
+                check!(
                     self.samples == 0 || samples == self.samples,
                     "bind_render_pipeline {pipeline} has {samples} samples but the pass has {}",
                     self.samples
@@ -884,11 +893,11 @@ impl<'a> Check<'a> {
             } => {
                 self.require(c, caps.tiles, "tiles")?;
                 let sizes = [8, 16, 32];
-                assert!(
+                check!(
                     sizes.contains(&width) && sizes.contains(&height),
                     "{name} size {width}x{height} is not 8, 16 or 32 on each side"
                 );
-                assert!(
+                check!(
                     shared.is_multiple_of(16),
                     "{name} shared memory {shared} is not a multiple of 16"
                 );
@@ -903,11 +912,11 @@ impl<'a> Check<'a> {
             Command::DispatchTile { pipeline } => {
                 self.require(c, caps.tiles, "tiles")?;
                 let samples = *self.table.tile_pipelines.get(pipeline);
-                assert!(
+                check!(
                     self.tile.is_some(),
                     "dispatch_tile needs RenderPassInfo.tile set in begin_render_pass"
                 );
-                assert!(
+                check!(
                     self.samples == 0 || samples == self.samples,
                     "dispatch_tile {pipeline} has {samples} samples but the pass has {}",
                     self.samples
@@ -935,7 +944,7 @@ impl<'a> Check<'a> {
                 height,
             } => {
                 let end = (x as u64 + width as u64).max(y as u64 + height as u64);
-                assert!(
+                check!(
                     end <= i32::MAX as u64,
                     "set_scissor {x},{y} {width}x{height} ends past i32::MAX"
                 );
@@ -1017,7 +1026,7 @@ impl<'a> Check<'a> {
                     index_type::valid(kind),
                 );
                 let size = if kind == index_type::U16 { 2 } else { 4 };
-                assert!(
+                check!(
                     offset.is_multiple_of(size),
                     "bind_index_buffer offset {offset} is not a multiple of {size}"
                 );
@@ -1046,7 +1055,7 @@ impl<'a> Check<'a> {
                 if count > 1 {
                     self.require(c, caps.multi_draw, "multi_draw")?;
                 }
-                assert!(
+                check!(
                     first as u64 + count as u64 <= draws as u64,
                     "execute_indirect draws {first}..{} past the {draws} draws of {indirect}",
                     first as u64 + count as u64
@@ -1060,7 +1069,7 @@ impl<'a> Check<'a> {
                 if self.indirect_list(c, indirect)? > 1 {
                     self.require(c, caps.multi_draw, "multi_draw")?;
                 }
-                assert!(
+                check!(
                     offset.is_multiple_of(4),
                     "execute_indirect_count offset {offset} is not a multiple of 4"
                 );
@@ -1092,7 +1101,7 @@ impl<'a> Check<'a> {
                 self.query_range(name, pool, &[], first, count);
             }
             Command::WriteTimestamp { pool, index, stage } => {
-                assert_eq!(
+                check_eq!(
                     stage.count_ones(),
                     1,
                     "write_timestamp stage {stage:#x} must be one stage"
@@ -1104,7 +1113,7 @@ impl<'a> Check<'a> {
             Command::BeginOcclusionQuery { pool, index }
             | Command::EndOcclusionQuery { pool, index } => {
                 self.require(c, caps.occlusion, "occlusion")?;
-                assert_eq!(
+                check_eq!(
                     self.heap,
                     Some(pool),
                     "{name} needs RenderPassInfo.occlusion set to {pool} in begin_render_pass"
@@ -1132,7 +1141,7 @@ impl<'a> Check<'a> {
                     &[query_kind::OCCLUSION, query_kind::PRECISE]
                 };
                 self.query_range(name, pool, kinds, first, count);
-                assert!(
+                check!(
                     offset.is_multiple_of(8),
                     "{name} offset {offset} is not a multiple of 8"
                 );
@@ -1142,7 +1151,7 @@ impl<'a> Check<'a> {
                 self.labels.push(open);
             }
             Command::EndDebugLabel => {
-                assert_eq!(
+                check_eq!(
                     self.labels.pop(),
                     Some(open),
                     "end_debug_label has no begin_debug_label open in this pass"
@@ -1170,7 +1179,7 @@ impl<'a> Check<'a> {
                 assert_rects(name, scissors.len(), caps.viewports);
                 for r in scissors {
                     let end = (r.x as u64 + r.width as u64).max(r.y as u64 + r.height as u64);
-                    assert!(
+                    check!(
                         end <= i32::MAX as u64,
                         "set_scissors {r:?} ends past i32::MAX"
                     );

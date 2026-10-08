@@ -32,12 +32,12 @@ public class VkDevice extends Device {
 
     private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
-    public synchronized Buffer importBuffer(long raw, long size) {
+    public synchronized Buffer importBuffer(long raw, long size, long data) {
         idle("importBuffer");
-        return Buffer.of(nImportBuffer(handle(), raw, size));
+        return Buffer.of(nImportBuffer(handle(), raw, size, data));
     }
 
-    private static native long nImportBuffer(long device, long raw, long size);
+    private static native long nImportBuffer(long device, long raw, long size, long data);
 
     public synchronized Texture importTexture(long image, TextureInfo info) {
         idle("importTexture");

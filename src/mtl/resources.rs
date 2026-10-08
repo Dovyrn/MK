@@ -9,7 +9,6 @@ use objc2_metal::{
     MTLBuffer, MTLDepthStencilState, MTLRenderPipelineState, MTLResidencySet, MTLSamplerState,
     MTLSharedEvent,
 };
-use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Resources {
@@ -24,6 +23,5 @@ pub struct Resources {
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
     pub indirects: Slots<crate::mtl::indirect::Indirect>,
     pub sets: Slots<Retained<ProtocolObject<dyn MTLResidencySet>>>,
-    pub imports: HashSet<crate::Buffer>,
     pub table: crate::table::Table,
 }

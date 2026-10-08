@@ -34,7 +34,7 @@ impl Timeline {
     }
 
     fn healthy(&self) -> Result<(), String> {
-        assert_eq!(
+        check_eq!(
             std::thread::current().id(),
             self.thread,
             "GL timeline used from another thread"

@@ -21,6 +21,7 @@ use objc2_metal::{
     MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
     MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
+use std::sync::Mutex;
 
 fn mtl_blend_factor(f: u32) -> MTLBlendFactor {
     match f {
@@ -158,6 +159,8 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
     }
 }
 
+static COMPILE: Mutex<()> = Mutex::new(());
+
 fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
     if on {
         MTL4IndirectCommandBufferSupportState::Enabled
@@ -171,6 +174,7 @@ impl Device {
         &self,
         desc: &MTL4PipelineDescriptor,
     ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, String> {
+        let _held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
         self.compiler
             .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
                 desc,
@@ -201,6 +205,7 @@ impl Device {
             let shape = group(&groups, info.entry)?;
             let desc = MTL4ComputePipelineDescriptor::new();
             desc.setComputeFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
+            let held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
             let state = self
                 .compiler
                 .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
@@ -208,6 +213,7 @@ impl Device {
                     Some(&self.options),
                 )
                 .map_err(|e| e.localizedDescription().to_string())?;
+            drop(held);
             check_threads(shape, state.maxTotalThreadsPerThreadgroup())?;
             let group = size(shape);
             let id = self.res.pipelines.insert(Pipeline { state, group });
@@ -237,7 +243,8 @@ impl Device {
                 .and_then(|f| f.vertexAttributes());
             for input in inputs.iter().flat_map(|a| a.iter()) {
                 let location = input.attributeIndex() as u32;
-                if input.isActive() && !info.attributes.iter().any(|a| a.location == location) {
+                let known = info.attributes.iter().any(|a| a.location == location);
+                if cfg!(feature = "validation") && input.isActive() && !known {
                     return Err(format!("vertex input {location} has no attribute"));
                 }
             }
@@ -375,7 +382,7 @@ impl Device {
     ) -> Result<TilePipeline, String> {
         autoreleasepool(|_| {
             crate::caps::check_tile_pipeline(info);
-            if !self.caps.tiles {
+            if cfg!(feature = "validation") && !self.caps.tiles {
                 return Err("create_tile_pipeline needs caps.tiles".into());
             }
             let (library, _) = self.library(info.code)?;

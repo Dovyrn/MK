@@ -176,12 +176,12 @@ impl Device {
         let flags = unsafe { instance.get_physical_device_queue_family_properties(physical) };
         let max: u32 = flags.iter().map(|f| f.queue_count).sum();
         let count = queues.len();
-        assert!(
+        check!(
             count > 0 && count <= max as usize,
             "queue count {count} is outside 1..={max}"
         );
         for &(f, i) in queues {
-            assert!(
+            check!(
                 flags.get(f as usize).is_some_and(|p| i < p.queue_count),
                 "queue {i} of family {f} is not on this device"
             );
@@ -386,7 +386,7 @@ impl Device {
 
     pub fn raw_queue(&self, queue: usize) -> vk::Queue {
         let count = self.queues.len();
-        assert!(queue < count, "queue {queue} is outside 0..{count}");
+        check!(queue < count, "queue {queue} is outside 0..{count}");
         self.queues[queue].raw
     }
 
@@ -496,7 +496,7 @@ impl Device {
         let signals = &table.timeline_points(signals);
         let recording = &mut commands.recording;
         recording.check.finish();
-        assert!(
+        check!(
             !recording.recorder.imported,
             "an imported command buffer is submitted by its owner; call finish instead"
         );

@@ -63,7 +63,7 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String
             && args[2] == 0
             && (old || used.contains(&args[0]))
     });
-    if zero && !slots {
+    if cfg!(feature = "validation") && zero && !slots {
         return Err("slot bindings need caps.slots".into());
     }
     Ok(words)

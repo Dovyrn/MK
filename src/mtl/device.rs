@@ -24,12 +24,11 @@ use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTL4CommandBuffer, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
-    MTL4CompilerTaskOptions, MTL4ComputeCommandEncoder, MTL4FunctionDescriptor,
-    MTL4LibraryFunctionDescriptor, MTL4RenderCommandEncoder, MTLCompareFunction,
-    MTLComputePipelineState, MTLDevice, MTLGPUFamily, MTLLibrary, MTLResourceID,
-    MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
-    MTLVertexFormat,
+    MTL4CommandBuffer, MTL4CommandQueue, MTL4Compiler, MTL4CompilerTaskOptions,
+    MTL4ComputeCommandEncoder, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
+    MTL4RenderCommandEncoder, MTLCompareFunction, MTLComputePipelineState, MTLDevice, MTLGPUFamily,
+    MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
+    MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::Cell;
 use std::sync::{Arc, Mutex};
@@ -213,19 +212,17 @@ impl Drop for Device {
 impl Device {
     pub fn adopt(
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
+        compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
         queues: usize,
     ) -> Result<Self, String> {
         autoreleasepool(|_| {
-            assert!(
+            check!(
                 (1..=32).contains(&queues),
                 "queue count {queues} is outside 1..=32"
             );
             if !raw.supportsFamily(MTLGPUFamily::Metal4) {
                 return Err("the device does not support Metal 4".into());
             }
-            let compiler = raw
-                .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
-                .map_err(|e| e.localizedDescription().to_string())?;
             let lost = Arc::new(Mutex::new(None));
             let queues = (0..queues)
                 .map(|_| Queue::new(&raw, lost.clone()))
@@ -244,9 +241,15 @@ impl Device {
         })
     }
 
-    pub fn adopt_raw(device: u64, queues: usize) -> Result<Self, String> {
+    pub fn adopt_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, String> {
         let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
-        Self::adopt(raw.ok_or("null Metal device")?, queues)
+        let compiler =
+            unsafe { Retained::retain(compiler as *mut ProtocolObject<dyn MTL4Compiler>) };
+        Self::adopt(
+            raw.ok_or("null Metal device")?,
+            compiler.ok_or("null Metal compiler")?,
+            queues,
+        )
     }
 
     pub fn device_name(&self) -> String {
@@ -260,7 +263,7 @@ impl Device {
 
     fn check_queue(&self, queue: usize) {
         let count = self.queues.len();
-        assert!(queue < count, "queue {queue} is outside 0..{count}");
+        check!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
     pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
@@ -359,7 +362,7 @@ impl Device {
             let signals = &table.timeline_points(signals);
             let recording = &mut commands.recording;
             recording.check.finish();
-            assert!(
+            check!(
                 recording.recorder.kind() == Kind::Owned,
                 "an imported command buffer is submitted by its owner; call finish instead"
             );

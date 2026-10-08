@@ -8,7 +8,6 @@ pub struct BufferObject {
     pub address: u64,
     pub data: *mut u8,
     pub own: bool,
-    pub device: bool,
 }
 
 impl BufferObject {

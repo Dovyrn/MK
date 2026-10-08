@@ -38,7 +38,7 @@ impl Device {
             .find(|(stage, _)| *stage == vk::ShaderStageFlags::FRAGMENT)
             .map_or("", |e| e.1);
         let reads = spirv::reads(&words, fragment);
-        if reads != 0 && !self.caps.attachment_reads {
+        if cfg!(feature = "validation") && reads != 0 && !self.caps.attachment_reads {
             return Err(
                 "the fragment shader reads input attachments, which needs caps.attachment_reads"
                     .into(),
@@ -65,7 +65,7 @@ impl Device {
             let missing = inputs
                 .iter()
                 .find(|&&l| !v.attributes.iter().any(|a| a.location == l));
-            if let Some(location) = missing {
+            if let Some(location) = missing.filter(|_| cfg!(feature = "validation")) {
                 return Err(format!("vertex input {location} has no attribute"));
             }
         }

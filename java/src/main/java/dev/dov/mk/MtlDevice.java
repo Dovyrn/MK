@@ -21,11 +21,11 @@ public class MtlDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
-    public static MtlDevice adoptRaw(long device, int queues) {
-        return new MtlDevice(nAdoptRaw(device, queues));
+    public static MtlDevice adoptRaw(long device, long compiler, int queues) {
+        return new MtlDevice(nAdoptRaw(device, compiler, queues));
     }
 
-    private static native long nAdoptRaw(long device, int queues);
+    private static native long nAdoptRaw(long device, long compiler, int queues);
 
     public synchronized Buffer importBuffer(long raw) {
         idle("importBuffer");

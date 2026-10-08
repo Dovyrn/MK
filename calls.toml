@@ -248,7 +248,7 @@ fails = true
 [[call]]
 name = "import_buffer"
 backend = "vk"
-params = [["raw", "handle"], ["size", "u64"]]
+params = [["raw", "handle"], ["size", "u64"], ["data", "pointer"]]
 result = "Buffer"
 
 [[call]]
@@ -304,7 +304,7 @@ shared = true
 [[call]]
 name = "adopt_raw"
 backend = "mtl"
-params = [["device", "u64"], ["queues", "usize"]]
+params = [["device", "u64"], ["compiler", "u64"], ["queues", "usize"]]
 result = "device"
 fails = true
 

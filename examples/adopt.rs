@@ -53,7 +53,8 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
     desc.setUsage(MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead);
     desc.setStorageMode(MTLStorageMode::Private);
     let texture = raw.newTextureWithDescriptor(&desc).unwrap();
-    let mut device = Device::adopt(raw, 1).unwrap();
+    let compiler = host::compiler(&raw);
+    let mut device = Device::adopt(raw, compiler, 1).unwrap();
     let slot = device.import_texture(texture, format::RGBA8_UNORM).unwrap();
     (device, slot, ())
 }

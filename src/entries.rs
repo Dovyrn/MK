@@ -54,11 +54,14 @@ impl<H: Handle, T> Entries<H, T> {
     }
 
     pub fn get(&self, h: H) -> &T {
+        if !cfg!(feature = "validation") {
+            return &self.items[h.index() as usize].as_ref().unwrap().1;
+        }
         if let Some(item) = self.find(h) {
             return item;
         }
         let kind = H::KIND;
-        assert!(
+        check!(
             h.generation() != 0,
             "got a null {kind}; pass one that create_{} returned",
             kind.replace(' ', "_")
