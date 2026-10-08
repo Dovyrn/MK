@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::handle::TimelineId;
 use crate::mtl::resources::Resources;
 use block2::RcBlock;
@@ -18,16 +19,16 @@ impl Queue {
     pub fn new(
         device: &ProtocolObject<dyn MTLDevice>,
         lost: Arc<Mutex<Option<String>>>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let raw = device
             .newMTL4CommandQueue()
-            .ok_or("command queue allocation failed")?;
+            .ok_or_else(|| Error::OutOfMemory("command queue allocation failed".into()))?;
         Ok(Self { raw, lost })
     }
 
-    pub fn lost(&self) -> Result<(), String> {
+    pub fn lost(&self) -> Result<(), Error> {
         match self.lost.lock().unwrap().clone() {
-            Some(e) => Err(e),
+            Some(e) => Err(Error::DeviceLost(e)),
             None => Ok(()),
         }
     }

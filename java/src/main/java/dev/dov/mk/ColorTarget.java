@@ -8,14 +8,14 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class ColorTarget {
-    public int format = Format.NONE;
+    public Format format = Format.NONE;
     public boolean blend = false;
-    public int src = BlendFactor.ONE;
-    public int dst = BlendFactor.ZERO;
-    public int op = BlendOp.ADD;
-    public int srcAlpha = BlendFactor.ONE;
-    public int dstAlpha = BlendFactor.ZERO;
-    public int opAlpha = BlendOp.ADD;
+    public BlendFactor src = BlendFactor.ONE;
+    public BlendFactor dst = BlendFactor.ZERO;
+    public BlendOp op = BlendOp.ADD;
+    public BlendFactor srcAlpha = BlendFactor.ONE;
+    public BlendFactor dstAlpha = BlendFactor.ZERO;
+    public BlendOp opAlpha = BlendOp.ADD;
     public int mask = ColorMask.ALL;
 
     public static final int SIZE = 36;
@@ -25,21 +25,21 @@ public class ColorTarget {
     }
 
     long encode(long p) {
-        memPutInt(p, format);
+        memPutInt(p, format.value);
         p += 4;
         memPutInt(p, blend ? 1 : 0);
         p += 4;
-        memPutInt(p, src);
+        memPutInt(p, src.value);
         p += 4;
-        memPutInt(p, dst);
+        memPutInt(p, dst.value);
         p += 4;
-        memPutInt(p, op);
+        memPutInt(p, op.value);
         p += 4;
-        memPutInt(p, srcAlpha);
+        memPutInt(p, srcAlpha.value);
         p += 4;
-        memPutInt(p, dstAlpha);
+        memPutInt(p, dstAlpha.value);
         p += 4;
-        memPutInt(p, opAlpha);
+        memPutInt(p, opAlpha.value);
         p += 4;
         memPutInt(p, mask);
         p += 4;
@@ -48,21 +48,21 @@ public class ColorTarget {
 
     static ColorTarget decode(long p) {
         var r = new ColorTarget();
-        r.format = memGetInt(p);
+        r.format = Format.of(memGetInt(p));
         p += 4;
         r.blend = memGetInt(p) != 0;
         p += 4;
-        r.src = memGetInt(p);
+        r.src = BlendFactor.of(memGetInt(p));
         p += 4;
-        r.dst = memGetInt(p);
+        r.dst = BlendFactor.of(memGetInt(p));
         p += 4;
-        r.op = memGetInt(p);
+        r.op = BlendOp.of(memGetInt(p));
         p += 4;
-        r.srcAlpha = memGetInt(p);
+        r.srcAlpha = BlendFactor.of(memGetInt(p));
         p += 4;
-        r.dstAlpha = memGetInt(p);
+        r.dstAlpha = BlendFactor.of(memGetInt(p));
         p += 4;
-        r.opAlpha = memGetInt(p);
+        r.opAlpha = BlendOp.of(memGetInt(p));
         p += 4;
         r.mask = memGetInt(p);
         p += 4;

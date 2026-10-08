@@ -1,4 +1,4 @@
-use mk::{memory, stage};
+use mk::{Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -13,7 +13,7 @@ pub fn main() {
     }
     let n = 1024u32;
     let buffer = device
-        .create_buffer(n as u64 * 4, memory::READBACK)
+        .create_buffer(n as u64 * 4, Memory::Readback)
         .unwrap();
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
@@ -34,12 +34,12 @@ pub fn main() {
     c.begin_debug_label("fill");
     let mut pass = c.begin_compute_pass().unwrap();
     pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff);
-    pass.memory_barrier(stage::COPY, stage::COMPUTE);
+    pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4);
     pass.dispatch(n / 64, 1, 1);
-    pass.memory_barrier(stage::COMPUTE, stage::HOST);
+    pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
     pass.end();
     c.end_debug_label();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
@@ -52,8 +52,7 @@ pub fn main() {
     #[cfg(feature = "gl")]
     let (waited, name) = (timeline.wait(1, 1000).unwrap(), device.device_name());
     assert!(waited, "the wait timed out");
-    let data =
-        unsafe { std::slice::from_raw_parts(device.map_buffer(buffer).cast::<u32>(), n as usize) };
+    let data = unsafe { device.map_buffer::<u32>(buffer) };
     for (i, v) in data.iter().enumerate() {
         assert_eq!(*v, 100 + i as u32);
     }

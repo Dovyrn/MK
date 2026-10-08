@@ -1,9 +1,10 @@
 use super::Device;
+use crate::Error;
 use crate::residency::Members;
 use crate::{ResidencySet, Resource};
 
 impl Device {
-    pub fn create_residency_set(&mut self) -> Result<ResidencySet, String> {
+    pub fn create_residency_set(&mut self) -> Result<ResidencySet, Error> {
         let id = self.res.sets.insert(());
         self.res.table.residency.create(id);
         Ok(id)

@@ -1,9 +1,25 @@
 package dev.dov.mk;
 
-public interface Topology {
-    int POINT = 0;
-    int LINE = 1;
-    int LINE_STRIP = 2;
-    int TRIANGLE = 3;
-    int TRIANGLE_STRIP = 4;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public enum Topology {
+    POINT(0),
+    LINE(1),
+    LINE_STRIP(2),
+    TRIANGLE(3),
+    TRIANGLE_STRIP(4);
+
+    final int value;
+
+    static Topology of(int v) {
+        return switch (v) {
+            case 0 -> POINT;
+            case 1 -> LINE;
+            case 2 -> LINE_STRIP;
+            case 3 -> TRIANGLE;
+            case 4 -> TRIANGLE_STRIP;
+            default -> throw new IllegalArgumentException(v + " is no Topology");
+        };
+    }
 }

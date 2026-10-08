@@ -1,9 +1,10 @@
 use super::{Recorder, origin, size};
+use crate::Error;
 use crate::command::Command;
 use objc2_metal::MTL4ComputeCommandEncoder;
 
 impl Recorder<'_> {
-    pub(super) fn copy_texture(&mut self, c: Command) -> Result<(), String> {
+    pub(super) fn copy_texture(&mut self, c: Command) -> Result<(), Error> {
         let Command::CopyTexture {
             src,
             src_mip,

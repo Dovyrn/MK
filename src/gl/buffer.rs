@@ -1,34 +1,40 @@
+use crate::Error;
+use crate::Memory;
 use crate::gl::errors::{drain, raise};
 use crate::gl::extra::Extra;
 use crate::gl::state::buffer;
-use crate::memory;
 use glow::HasContext;
 use std::cell::Cell;
 
 pub struct BufferObject {
     pub raw: glow::Buffer,
     pub size: u64,
-    pub memory: u32,
+    pub memory: Memory,
     pub data: Cell<*mut u8>,
     pub persistent: bool,
     pub own: bool,
 }
 
 impl BufferObject {
-    pub fn new(gl: &glow::Context, extra: &Extra, size: u64, memory: u32) -> Result<Self, String> {
+    pub fn new(
+        gl: &glow::Context,
+        extra: &Extra,
+        size: u64,
+        memory: Memory,
+    ) -> Result<Self, Error> {
         let persistent = extra.storage.is_some();
         let (flags, usage) = match memory {
-            memory::DEVICE => (0, glow::STATIC_DRAW),
-            memory::UPLOAD => (glow::MAP_WRITE_BIT, glow::STREAM_DRAW),
-            memory::READBACK => (glow::MAP_READ_BIT, glow::STREAM_READ),
+            Memory::Device => (0, glow::STATIC_DRAW),
+            Memory::Upload => (glow::MAP_WRITE_BIT, glow::STREAM_DRAW),
+            Memory::Readback => (glow::MAP_READ_BIT, glow::STREAM_READ),
             m => panic!("unknown memory {m}"),
         };
-        let length =
-            isize::try_from(size).map_err(|_| format!("buffer size {size} is too large"))?;
+        let length = isize::try_from(size)
+            .map_err(|_| Error::Invalid(format!("buffer size {size} is too large")))?;
         let target = glow::COPY_WRITE_BUFFER;
         unsafe {
             let host = drain(gl);
-            let raw = gl.create_buffer()?;
+            let raw = gl.create_buffer().map_err(Error::Driver)?;
             let old = buffer(gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
             gl.bind_buffer(target, Some(raw));
             let mut data: *mut u8 = std::ptr::null_mut();
@@ -54,9 +60,9 @@ impl BufferObject {
             }
             raise(gl, extra, &host);
             if failed {
-                return Err(format!(
+                return Err(Error::OutOfMemory(format!(
                     "buffer allocation of {size} bytes failed ({error:#x})"
-                ));
+                )));
             }
             Ok(Self {
                 raw,

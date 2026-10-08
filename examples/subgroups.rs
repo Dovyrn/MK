@@ -1,4 +1,4 @@
-use mk::{ComputePipelineInfo, memory, stage, subgroup_op};
+use mk::{ComputePipelineInfo, Memory, Stage, SubgroupOp};
 
 #[path = "support/host.rs"]
 mod host;
@@ -7,21 +7,21 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    let need = subgroup_op::BASIC
-        | subgroup_op::VOTE
-        | subgroup_op::ARITHMETIC
-        | subgroup_op::BALLOT
-        | subgroup_op::SHUFFLE
-        | subgroup_op::QUAD;
+    let need = SubgroupOp::BASIC
+        | SubgroupOp::VOTE
+        | SubgroupOp::ARITHMETIC
+        | SubgroupOp::BALLOT
+        | SubgroupOp::SHUFFLE
+        | SubgroupOp::QUAD;
     if !caps.compute || !caps.storage || caps.subgroup_ops & need != need {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
     }
-    if caps.subgroup_stages & stage::COMPUTE == 0 {
+    if !caps.subgroup_stages.contains(Stage::COMPUTE) {
         println!("no subgroup ops in compute shaders");
         return;
     }
-    let buffer = device.create_buffer(64 * 11 * 4, memory::READBACK).unwrap();
+    let buffer = device.create_buffer(64 * 11 * 4, Memory::Readback).unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
@@ -52,13 +52,11 @@ pub fn main() {
         pass.bind_compute_pipeline(pipeline);
         pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4);
         pass.dispatch(1, 1, 1);
-        pass.memory_barrier(stage::COMPUTE, stage::HOST);
+        pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
         device.submit(c, &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
-        let r = unsafe {
-            std::slice::from_raw_parts(device.map_buffer(buffer).cast::<[u32; 11]>(), 64)
-        };
+        let r = unsafe { device.map_buffer::<[u32; 11]>(buffer) };
         let count = r[0][0];
         assert!(
             size == 0 || count == size,

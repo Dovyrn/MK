@@ -1,19 +1,23 @@
 use super::Device;
+use crate::Error;
+use crate::QueryKind;
 use crate::QueryPool;
-use crate::query_kind;
 use crate::vk::query::Query;
 use ash::vk;
 
 impl Device {
-    pub fn create_query_pool(&mut self, kind: u32, count: u32) -> Result<QueryPool, String> {
+    pub fn create_query_pool(
+        &mut self,
+        kind: crate::QueryKind,
+        count: u32,
+    ) -> Result<QueryPool, Error> {
         self.caps.check_query_pool(kind, count)?;
         let none = vk::QueryControlFlags::empty();
         let wanted = kind;
         let (kind, flags) = match kind {
-            query_kind::TIMESTAMP => (vk::QueryType::TIMESTAMP, none),
-            query_kind::OCCLUSION => (vk::QueryType::OCCLUSION, none),
-            query_kind::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
-            _ => unreachable!(),
+            QueryKind::Timestamp => (vk::QueryType::TIMESTAMP, none),
+            QueryKind::Occlusion => (vk::QueryType::OCCLUSION, none),
+            QueryKind::Precise => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
         };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
@@ -21,7 +25,7 @@ impl Device {
         let pool = unsafe {
             self.raw
                 .create_query_pool(&info, None)
-                .map_err(|e| e.to_string())?
+                .map_err(Error::from)?
         };
         let id = self.res.queries.insert(Query { pool, flags });
         self.res.table.queries.set(id, (wanted, count));

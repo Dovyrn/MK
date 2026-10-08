@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 public class VertexAttribute {
     public int location = 0;
     public int buffer = 0;
-    public int format = 0;
+    public Format format = Format.NONE;
     public int offset = 0;
 
     public static final int SIZE = 16;
@@ -24,7 +24,7 @@ public class VertexAttribute {
         p += 4;
         memPutInt(p, buffer);
         p += 4;
-        memPutInt(p, format);
+        memPutInt(p, format.value);
         p += 4;
         memPutInt(p, offset);
         p += 4;
@@ -37,7 +37,7 @@ public class VertexAttribute {
         p += 4;
         r.buffer = memGetInt(p);
         p += 4;
-        r.format = memGetInt(p);
+        r.format = Format.of(memGetInt(p));
         p += 4;
         r.offset = memGetInt(p);
         p += 4;

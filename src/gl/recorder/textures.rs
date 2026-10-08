@@ -1,11 +1,11 @@
 use super::Recorder;
 use crate::command::Command;
 use crate::gl::texture::TextureObject;
-use crate::{format, slot};
+use crate::{Format, slot};
 use glow::HasContext;
 
-fn attachment_point(f: u32) -> u32 {
-    match format::gl(f)[1] {
+fn attachment_point(f: Format) -> u32 {
+    match f.gl()[1] {
         glow::DEPTH_STENCIL => glow::DEPTH_STENCIL_ATTACHMENT,
         glow::DEPTH_COMPONENT => glow::DEPTH_ATTACHMENT,
         glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,

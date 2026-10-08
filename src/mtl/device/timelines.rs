@@ -1,16 +1,17 @@
 use super::Device;
+use crate::Error;
 use crate::mtl::Timeline;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLSharedEvent};
 
 impl Device {
-    pub fn create_timeline(&mut self) -> Result<Timeline, String> {
+    pub fn create_timeline(&mut self) -> Result<Timeline, Error> {
         autoreleasepool(|_| {
             let raw = self
                 .raw
                 .newSharedEvent()
-                .ok_or("timeline allocation failed")?;
+                .ok_or_else(|| Error::OutOfMemory("timeline allocation failed".into()))?;
             Ok(self.import_timeline(raw))
         })
     }

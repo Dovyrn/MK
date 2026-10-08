@@ -1,8 +1,9 @@
 use super::Device;
+use crate::Error;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, ComputePipelineInfo, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo,
-    TilePipelineInfo, fill_mode, format, stage, topology,
+    ColorTarget, ComputePipelineInfo, DepthStateInfo, FillMode, Format, MeshPipelineInfo,
+    RenderPipelineInfo, Stage, TilePipelineInfo, Topology,
 };
 use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use ash::vk;
@@ -18,15 +19,15 @@ impl Device {
         entries: &[(vk::ShaderStageFlags, &str)],
         vertex: Option<&RenderPipelineInfo>,
         colors: &[ColorTarget],
-        depth: u32,
-        stencil: u32,
+        depth: Option<Format>,
+        stencil: Option<Format>,
         samples: u32,
-        fill: u32,
+        fill: FillMode,
         coverage: bool,
         clamp: bool,
         ordered: bool,
         indirect: bool,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         let used: Vec<_> = entries
             .iter()
             .map(|(_, name)| *name)
@@ -39,23 +40,23 @@ impl Device {
             .map_or("", |e| e.1);
         let reads = spirv::reads(&words, fragment);
         if cfg!(feature = "validation") && reads != 0 && !self.caps.attachment_reads {
-            return Err(
+            return Err(Error::Unsupported(
                 "the fragment shader reads input attachments, which needs caps.attachment_reads"
                     .into(),
-            );
+            ));
         }
         let ops = spirv::subgroups(&words);
         self.capabilities(&words)?;
         for (flag, name) in entries {
             let stage = [
-                (vk::ShaderStageFlags::VERTEX, stage::VERTEX),
-                (vk::ShaderStageFlags::FRAGMENT, stage::FRAGMENT),
-                (vk::ShaderStageFlags::TASK_EXT, stage::TASK),
-                (vk::ShaderStageFlags::MESH_EXT, stage::MESH),
+                (vk::ShaderStageFlags::VERTEX, Stage::VERTEX),
+                (vk::ShaderStageFlags::FRAGMENT, Stage::FRAGMENT),
+                (vk::ShaderStageFlags::TASK_EXT, Stage::TASK),
+                (vk::ShaderStageFlags::MESH_EXT, Stage::MESH),
             ]
             .into_iter()
             .find(|(f, _)| f == flag)
-            .map_or(0, |(_, s)| s);
+            .map_or(Stage::default(), |(_, s)| s);
             if !name.is_empty() {
                 self.caps.check_subgroups(ops, stage)?;
             }
@@ -66,7 +67,9 @@ impl Device {
                 .iter()
                 .find(|&&l| !v.attributes.iter().any(|a| a.location == l));
             if let Some(location) = missing.filter(|_| cfg!(feature = "validation")) {
-                return Err(format!("vertex input {location} has no attribute"));
+                return Err(Error::Shader(format!(
+                    "vertex input {location} has no attribute"
+                )));
             }
         }
         let module = self.module(&words)?;
@@ -105,7 +108,7 @@ impl Device {
             .map(|a| vk::VertexInputAttributeDescription {
                 location: a.location,
                 binding: a.buffer,
-                format: format::vk(a.format),
+                format: a.format.vk(),
                 offset: a.offset,
             })
             .collect();
@@ -114,20 +117,18 @@ impl Device {
             .vertex_attribute_descriptions(&attributes);
         let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(
             match vertex.map(|v| v.topology) {
-                Some(topology::POINT) => vk::PrimitiveTopology::POINT_LIST,
-                Some(topology::LINE | topology::LINE_STRIP) => vk::PrimitiveTopology::LINE_LIST,
-                None | Some(topology::TRIANGLE | topology::TRIANGLE_STRIP) => {
+                Some(Topology::Point) => vk::PrimitiveTopology::POINT_LIST,
+                Some(Topology::Line | Topology::LineStrip) => vk::PrimitiveTopology::LINE_LIST,
+                None | Some(Topology::Triangle | Topology::TriangleStrip) => {
                     vk::PrimitiveTopology::TRIANGLE_LIST
                 }
-                Some(t) => panic!("unknown topology {t}"),
             },
         );
         let viewport = vk::PipelineViewportStateCreateInfo::default();
         let raster = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(match fill {
-                fill_mode::LINE => vk::PolygonMode::LINE,
-                fill_mode::FILL => vk::PolygonMode::FILL,
-                f => panic!("unknown fill {f}"),
+                FillMode::Line => vk::PolygonMode::LINE,
+                FillMode::Fill => vk::PolygonMode::FILL,
             })
             .depth_clamp_enable(clamp)
             .line_width(1.0);
@@ -145,7 +146,7 @@ impl Device {
                 src_alpha_blend_factor: vk::BlendFactor::from_raw(c.src_alpha as i32),
                 dst_alpha_blend_factor: vk::BlendFactor::from_raw(c.dst_alpha as i32),
                 alpha_blend_op: vk::BlendOp::from_raw(c.op_alpha as i32),
-                color_write_mask: vk::ColorComponentFlags::from_raw(c.mask),
+                color_write_mask: vk::ColorComponentFlags::from_raw(c.mask.0),
             })
             .collect();
         let flags = if ordered {
@@ -177,11 +178,11 @@ impl Device {
             states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
         }
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
-        let formats: Vec<_> = colors.iter().map(|c| format::vk(c.format)).collect();
+        let formats: Vec<_> = colors.iter().map(|c| c.format.vk()).collect();
         let mut rendering = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&formats)
-            .depth_attachment_format(format::vk(depth))
-            .stencil_attachment_format(format::vk(stencil));
+            .depth_attachment_format(depth.map_or(vk::Format::UNDEFINED, Format::vk))
+            .stencil_attachment_format(stencil.map_or(vk::Format::UNDEFINED, Format::vk));
         let mut pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&stages)
             .viewport_state(&viewport)
@@ -202,10 +203,10 @@ impl Device {
                 .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
-        let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
+        let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
         let topology = vertex.map(|v| vk::PrimitiveTopology::from_raw(v.topology as i32));
         let id = self.res.renders.insert((pipeline, topology));
-        let shape = vertex.map_or(topology::TRIANGLE, |v| v.topology);
+        let shape = vertex.map_or(Topology::Triangle, |v| v.topology);
         self.res.table.renders.set(
             id,
             crate::table::RenderEntry {
@@ -223,7 +224,7 @@ impl Device {
     pub fn create_render_pipeline(
         &mut self,
         info: &RenderPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         self.caps.check_render_pipeline(info)?;
         self.graphics(
             info.code,
@@ -247,7 +248,7 @@ impl Device {
     pub fn create_mesh_pipeline(
         &mut self,
         info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         self.caps.check_mesh_pipeline(info)?;
         self.graphics(
             info.code,
@@ -275,20 +276,18 @@ impl Device {
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
-    pub fn create_tile_pipeline(
-        &mut self,
-        info: &TilePipelineInfo,
-    ) -> Result<TilePipeline, String> {
+    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         crate::caps::check_tile_pipeline(info);
-        Err("create_tile_pipeline needs caps.tiles".into())
+        Err(Error::Unsupported(
+            "create_tile_pipeline needs caps.tiles".into(),
+        ))
     }
 
     pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, String> {
-        self.caps.check_depth_state(info);
+    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
@@ -299,30 +298,30 @@ impl Device {
         self.res.depths.remove(state);
     }
 
-    fn capabilities(&self, words: &[u32]) -> Result<(), String> {
+    fn capabilities(&self, words: &[u32]) -> Result<(), Error> {
         self.caps.check_atomics(spirv::atomics(words))?;
         if spirv::declares(words, MODEL) && !self.ext.model {
-            return Err(
+            return Err(Error::Unsupported(
                 "the shader uses the Vulkan memory model, which the host did not enable".into(),
-            );
+            ));
         }
         Ok(())
     }
 
-    pub(super) fn module(&self, words: &[u32]) -> Result<vk::ShaderModule, String> {
+    pub(super) fn module(&self, words: &[u32]) -> Result<vk::ShaderModule, Error> {
         let info = vk::ShaderModuleCreateInfo::default().code(words);
-        unsafe { self.raw.create_shader_module(&info, None) }.map_err(|e| e.to_string())
+        unsafe { self.raw.create_shader_module(&info, None) }.map_err(Error::from)
     }
 
     pub fn create_compute_pipeline(
         &mut self,
         info: &ComputePipelineInfo,
-    ) -> Result<ComputePipeline, String> {
+    ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
         let (code, entry) = (info.code, info.entry);
         let words = spirv::read(code, &[entry], self.caps.slots)?;
         self.caps
-            .check_subgroups(spirv::subgroups(&words), stage::COMPUTE)?;
+            .check_subgroups(spirv::subgroups(&words), Stage::COMPUTE)?;
         self.capabilities(&words)?;
         if info.full {
             let size = if info.subgroup == 0 {
@@ -358,7 +357,7 @@ impl Device {
                 .create_compute_pipelines(vk::PipelineCache::null(), &[info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
-        let pipeline = result.map_err(|(_, e)| e.to_string())?[0];
+        let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
         let id = self.res.pipelines.insert(pipeline);
         self.res.table.pipelines.set(id, ());
         Ok(id)

@@ -36,6 +36,7 @@ mod caps;
 mod check;
 mod command;
 mod entries;
+mod error;
 #[cfg(feature = "gl")]
 pub mod gl;
 mod handle;
@@ -55,6 +56,7 @@ mod wire;
 
 #[cfg(feature = "vk")]
 pub use ash;
+pub use error::Error;
 #[cfg(feature = "gl")]
 pub use gl::{Device, Timeline};
 #[cfg(feature = "gl")]

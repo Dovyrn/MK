@@ -11,8 +11,8 @@ public class TextureBarrier {
     public Texture texture = null;
     public int srcStage = 0;
     public int dstStage = 0;
-    public int before = TextureLayout.GENERAL;
-    public int after = TextureLayout.GENERAL;
+    public TextureLayout before = TextureLayout.GENERAL;
+    public TextureLayout after = TextureLayout.GENERAL;
     public int baseMip = 0;
     public int mips = -1;
     public int baseLayer = 0;
@@ -31,9 +31,9 @@ public class TextureBarrier {
         p += 4;
         memPutInt(p, dstStage);
         p += 4;
-        memPutInt(p, before);
+        memPutInt(p, before.value);
         p += 4;
-        memPutInt(p, after);
+        memPutInt(p, after.value);
         p += 4;
         memPutInt(p, baseMip);
         p += 4;
@@ -54,9 +54,9 @@ public class TextureBarrier {
         p += 4;
         r.dstStage = memGetInt(p);
         p += 4;
-        r.before = memGetInt(p);
+        r.before = TextureLayout.of(memGetInt(p));
         p += 4;
-        r.after = memGetInt(p);
+        r.after = TextureLayout.of(memGetInt(p));
         p += 4;
         r.baseMip = memGetInt(p);
         p += 4;

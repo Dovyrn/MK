@@ -13,7 +13,7 @@ public class IndirectBufferInfo {
     public boolean indexed = false;
     public Buffer indices = null;
     public long offset = 0;
-    public int kind = IndexType.U16;
+    public IndexType kind = IndexType.U16;
 
     public static final int SIZE = 36;
 
@@ -32,7 +32,7 @@ public class IndirectBufferInfo {
         p += 8;
         memPutLong(p, offset);
         p += 8;
-        memPutInt(p, kind);
+        memPutInt(p, kind.value);
         p += 4;
         return p;
     }
@@ -49,7 +49,7 @@ public class IndirectBufferInfo {
         p += 8;
         r.offset = memGetLong(p);
         p += 8;
-        r.kind = memGetInt(p);
+        r.kind = IndexType.of(memGetInt(p));
         p += 4;
         return r;
     }

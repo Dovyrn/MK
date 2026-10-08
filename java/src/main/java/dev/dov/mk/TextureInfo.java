@@ -8,8 +8,8 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class TextureInfo {
-    public int dimension = TextureDimension.D2;
-    public int format = Format.NONE;
+    public TextureDimension dimension = TextureDimension.D2;
+    public Format format = Format.NONE;
     public int width = 1;
     public int height = 1;
     public int depth = 1;
@@ -17,7 +17,7 @@ public class TextureInfo {
     public int mips = 1;
     public int samples = 1;
     public int usage = 0;
-    public int memory = Memory.DEVICE;
+    public Memory memory = Memory.DEVICE;
 
     public static final int SIZE = 40;
 
@@ -26,9 +26,9 @@ public class TextureInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, dimension);
+        memPutInt(p, dimension.value);
         p += 4;
-        memPutInt(p, format);
+        memPutInt(p, format.value);
         p += 4;
         memPutInt(p, width);
         p += 4;
@@ -44,16 +44,16 @@ public class TextureInfo {
         p += 4;
         memPutInt(p, usage);
         p += 4;
-        memPutInt(p, memory);
+        memPutInt(p, memory.value);
         p += 4;
         return p;
     }
 
     static TextureInfo decode(long p) {
         var r = new TextureInfo();
-        r.dimension = memGetInt(p);
+        r.dimension = TextureDimension.of(memGetInt(p));
         p += 4;
-        r.format = memGetInt(p);
+        r.format = Format.of(memGetInt(p));
         p += 4;
         r.width = memGetInt(p);
         p += 4;
@@ -69,7 +69,7 @@ public class TextureInfo {
         p += 4;
         r.usage = memGetInt(p);
         p += 4;
-        r.memory = memGetInt(p);
+        r.memory = Memory.of(memGetInt(p));
         p += 4;
         return r;
     }

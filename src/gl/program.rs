@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::register;
 use glow::HasContext;
 
@@ -7,17 +8,17 @@ pub struct Program {
     pub instance: Option<glow::UniformLocation>,
 }
 
-fn entry_section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
+fn entry_section<'a>(text: &'a str, entry: &str) -> Result<&'a str, Error> {
     let marker = format!("//@ entry {entry}\n");
     let Some(start) = text.find(&marker) else {
         let list: Vec<&str> = text
             .lines()
             .filter_map(|l| l.strip_prefix("//@ entry "))
             .collect();
-        return Err(format!(
+        return Err(Error::Shader(format!(
             "no entry {entry} in the code; it has {}",
             list.join(", ")
-        ));
+        )));
     };
     let start = start + marker.len();
     let end = text[start..]
@@ -31,12 +32,12 @@ pub unsafe fn link(
     raw: glow::Program,
     text: &str,
     stages: &[(u32, &str)],
-) -> Result<(), String> {
+) -> Result<(), Error> {
     unsafe {
         let mut shaders = Vec::new();
         let mut failure = None;
         for &(kind, entry) in stages {
-            let shader = gl.create_shader(kind)?;
+            let shader = gl.create_shader(kind).map_err(Error::Driver)?;
             shaders.push(shader);
             match entry_section(text, entry) {
                 Ok(s) => gl.shader_source(shader, &s[..s.find("//@ ").unwrap_or(s.len())]),
@@ -47,7 +48,10 @@ pub unsafe fn link(
             }
             gl.compile_shader(shader);
             if !gl.get_shader_compile_status(shader) {
-                failure = Some(format!("{entry}: {}", gl.get_shader_info_log(shader)));
+                failure = Some(Error::Shader(format!(
+                    "{entry}: {}",
+                    gl.get_shader_info_log(shader)
+                )));
                 break;
             }
             gl.attach_shader(raw, shader);
@@ -55,7 +59,7 @@ pub unsafe fn link(
         if failure.is_none() {
             gl.link_program(raw);
             if !gl.get_program_link_status(raw) {
-                failure = Some(gl.get_program_info_log(raw));
+                failure = Some(Error::Shader(gl.get_program_info_log(raw)));
             }
         }
         for shader in shaders {
@@ -66,10 +70,10 @@ pub unsafe fn link(
 }
 
 impl Program {
-    pub fn new(gl: &glow::Context, code: &[u8], stages: &[(u32, &str)]) -> Result<Self, String> {
-        let text = std::str::from_utf8(code).map_err(|e| e.to_string())?;
+    pub fn new(gl: &glow::Context, code: &[u8], stages: &[(u32, &str)]) -> Result<Self, Error> {
+        let text = std::str::from_utf8(code).map_err(|e| Error::Shader(e.to_string()))?;
         unsafe {
-            let raw = gl.create_program()?;
+            let raw = gl.create_program().map_err(Error::Driver)?;
             if let Err(e) = link(gl, raw, text, stages) {
                 gl.delete_program(raw);
                 return Err(e);

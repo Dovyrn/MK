@@ -8,7 +8,7 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class Resource {
-    public int kind = ResourceKind.BUFFER;
+    public ResourceKind kind = ResourceKind.BUFFER;
     public long handle = 0;
 
     public static final int SIZE = 12;
@@ -18,7 +18,7 @@ public class Resource {
     }
 
     long encode(long p) {
-        memPutInt(p, kind);
+        memPutInt(p, kind.value);
         p += 4;
         memPutLong(p, handle);
         p += 8;
@@ -27,7 +27,7 @@ public class Resource {
 
     static Resource decode(long p) {
         var r = new Resource();
-        r.kind = memGetInt(p);
+        r.kind = ResourceKind.of(memGetInt(p));
         p += 4;
         r.handle = memGetLong(p);
         p += 8;

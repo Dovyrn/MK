@@ -1,8 +1,9 @@
 use super::{Device, id, texture_desc, texture_type};
+use crate::Error;
 use crate::Texture;
 use crate::caps;
 use crate::mtl::texture::TextureObject;
-use crate::{TextureInfo, TextureViewInfo, format, memory, texture_dimension, texture_usage};
+use crate::{Format, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
@@ -11,17 +12,17 @@ use objc2_metal::{
 };
 
 impl Device {
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
-            if info.usage & texture_usage::HOST != 0 {
+            if info.usage.contains(TextureUsage::HOST) {
                 desc.setStorageMode(MTLStorageMode::Shared);
             }
             let raw = self
                 .raw
                 .newTextureWithDescriptor(&desc)
-                .ok_or("texture allocation failed")?;
+                .ok_or_else(|| Error::OutOfMemory("texture allocation failed".into()))?;
             let id = self.res.textures.insert(TextureObject {
                 raw,
                 format: info.format,
@@ -34,51 +35,56 @@ impl Device {
     pub fn import_texture(
         &mut self,
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
-        format: u32,
-    ) -> Result<Texture, String> {
+        format: Format,
+    ) -> Result<Texture, Error> {
         autoreleasepool(|_| {
-            if format::mtl(format) != raw.pixelFormat() {
-                return Err(format!(
+            if format.mtl() != raw.pixelFormat() {
+                return Err(Error::Invalid(format!(
                     "format {format} does not match the texture's pixel format"
-                ));
+                )));
             }
             let (dimension, faces) = match raw.textureType() {
-                MTLTextureType::Type1D => (texture_dimension::D1, 1),
-                MTLTextureType::Type1DArray => (texture_dimension::D1_ARRAY, 1),
+                MTLTextureType::Type1D => (TextureDimension::D1, 1),
+                MTLTextureType::Type1DArray => (TextureDimension::D1Array, 1),
                 MTLTextureType::Type2D | MTLTextureType::Type2DMultisample => {
-                    (texture_dimension::D2, 1)
+                    (TextureDimension::D2, 1)
                 }
                 MTLTextureType::Type2DArray | MTLTextureType::Type2DMultisampleArray => {
-                    (texture_dimension::D2_ARRAY, 1)
+                    (TextureDimension::D2Array, 1)
                 }
-                MTLTextureType::Type3D => (texture_dimension::D3, 1),
-                MTLTextureType::TypeCube => (texture_dimension::CUBE, 6),
-                MTLTextureType::TypeCubeArray => (texture_dimension::CUBE_ARRAY, 6),
-                t => return Err(format!("texture type {} cannot be imported", t.0)),
+                MTLTextureType::Type3D => (TextureDimension::D3, 1),
+                MTLTextureType::TypeCube => (TextureDimension::Cube, 6),
+                MTLTextureType::TypeCubeArray => (TextureDimension::CubeArray, 6),
+                t => {
+                    return Err(Error::Unsupported(format!(
+                        "texture type {} cannot be imported",
+                        t.0
+                    )));
+                }
             };
             let flags = raw.usage();
-            let mut usage = texture_usage::COPY_SRC | texture_usage::COPY_DST;
-            let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
+            let mut usage = TextureUsage::COPY_SRC | TextureUsage::COPY_DST;
+            let depth = (Format::D16Unorm..=Format::S8Uint).contains(&format);
             let mode = raw.storageMode();
             let shared = mode == MTLStorageMode::Shared || mode == MTLStorageMode::Managed;
             if !depth && raw.sampleCount() == 1 && shared {
-                usage |= texture_usage::HOST;
+                usage |= TextureUsage::HOST;
             }
             if flags.contains(MTLTextureUsage::ShaderRead) {
-                usage |= texture_usage::SAMPLED;
+                usage |= TextureUsage::SAMPLED;
             }
             if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite) {
-                usage |= texture_usage::STORAGE;
+                usage |= TextureUsage::STORAGE;
             }
             if flags.contains(MTLTextureUsage::RenderTarget) {
                 usage |= if depth {
-                    texture_usage::DEPTH
+                    TextureUsage::DEPTH
                 } else {
-                    texture_usage::COLOR
+                    TextureUsage::COLOR
                 };
             }
             if flags.contains(MTLTextureUsage::PixelFormatView) {
-                usage |= texture_usage::VIEW;
+                usage |= TextureUsage::VIEW;
             }
             let info = TextureInfo {
                 dimension,
@@ -91,9 +97,9 @@ impl Device {
                 samples: raw.sampleCount() as u32,
                 usage,
                 memory: if mode == MTLStorageMode::Memoryless {
-                    memory::TRANSIENT
+                    Memory::Transient
                 } else {
-                    memory::DEVICE
+                    Memory::Device
                 },
             };
             let id = self.res.textures.insert(TextureObject { raw, format });
@@ -112,7 +118,7 @@ impl Device {
         &mut self,
         texture: Texture,
         info: &TextureViewInfo,
-    ) -> Result<Texture, String> {
+    ) -> Result<Texture, Error> {
         autoreleasepool(|_| {
             let info = &self.res.table.resolve_view(texture, info);
             self.caps.check_view(info.dimension)?;
@@ -127,28 +133,28 @@ impl Device {
                 counts,
             )?;
             let parent = self.res.textures.get(texture);
-            if format::block(parent.format) != format::block(info.format)
+            if parent.format.block() != info.format.block()
                 || parent.format != info.format
                     && !parent
                         .raw
                         .usage()
                         .contains(MTLTextureUsage::PixelFormatView)
             {
-                return Err(format!(
+                return Err(Error::Unsupported(format!(
                     "format {} cannot view a texture of format {}",
                     info.format, parent.format
-                ));
+                )));
             }
             let parent = &parent.raw;
             let raw = unsafe {
                 parent
                     .newTextureViewWithPixelFormat_textureType_levels_slices(
-                        format::mtl(info.format),
+                        info.format.mtl(),
                         texture_type(info.dimension, parent.sampleCount() as u32),
                         NSRange::new(info.base_mip as usize, info.mips as usize),
                         NSRange::new(info.base_layer as usize, info.layers as usize),
                     )
-                    .ok_or("view allocation failed")?
+                    .ok_or_else(|| Error::OutOfMemory("view allocation failed".into()))?
             };
             let id = self.res.textures.insert(TextureObject {
                 raw,

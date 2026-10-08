@@ -1,6 +1,7 @@
 use super::Device;
+use crate::Error;
 use crate::{
-    Caps, TextureInfo, atomic64, format, stage, subgroup_op, texture_dimension, texture_usage,
+    Atomic64, Caps, Format, Stage, SubgroupOp, TextureDimension, TextureInfo, TextureUsage,
 };
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
@@ -20,8 +21,8 @@ impl Device {
         Caps {
             subgroup: width,
             subgroup_sizes: width,
-            subgroup_ops: subgroup_op::BITS & !subgroup_op::CLUSTERED,
-            subgroup_stages: stage::COMPUTE | stage::FRAGMENT,
+            subgroup_ops: !SubgroupOp::CLUSTERED,
+            subgroup_stages: Stage::COMPUTE | Stage::FRAGMENT,
             full_subgroups: false,
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
@@ -33,9 +34,9 @@ impl Device {
             atomics64: if apple9
                 || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
             {
-                atomic64::MIN_MAX | atomic64::IMAGE
+                Atomic64::MIN_MAX | Atomic64::IMAGE
             } else {
-                0
+                Atomic64::default()
             },
             mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
             task: raw.supportsFamily(MTLGPUFamily::Apple7),
@@ -94,76 +95,84 @@ impl Device {
         self.caps
     }
 
-    pub fn format_usage(&self, format: u32) -> u32 {
+    pub fn format_usage(&self, format: Format) -> TextureUsage {
         let usage = match format {
-            format::B5G6R5_UNORM
-            | format::A1BGR5_UNORM
-            | format::ABGR4_UNORM
-            | format::BGR5A1_UNORM => texture_usage::SAMPLED | texture_usage::COLOR,
-            format::R8_UNORM
-            | format::R8_UINT
-            | format::R8_SINT
-            | format::R16_FLOAT
-            | format::R16_UINT
-            | format::R16_SINT
-            | format::R32_FLOAT
-            | format::RGBA8_UNORM
-            | format::RGBA8_UINT
-            | format::RGBA8_SINT
-            | format::RGBA16_FLOAT
-            | format::RGBA16_UINT
-            | format::RGBA16_SINT
-            | format::RGBA32_FLOAT
-            | format::RGBA32_UINT
-            | format::RGBA32_SINT => {
-                texture_usage::SAMPLED | texture_usage::STORAGE | texture_usage::COLOR
+            Format::B5g6r5Unorm
+            | Format::A1bgr5Unorm
+            | Format::Abgr4Unorm
+            | Format::Bgr5a1Unorm => TextureUsage::SAMPLED | TextureUsage::COLOR,
+            Format::R8Unorm
+            | Format::R8Uint
+            | Format::R8Sint
+            | Format::R16Float
+            | Format::R16Uint
+            | Format::R16Sint
+            | Format::R32Float
+            | Format::Rgba8Unorm
+            | Format::Rgba8Uint
+            | Format::Rgba8Sint
+            | Format::Rgba16Float
+            | Format::Rgba16Uint
+            | Format::Rgba16Sint
+            | Format::Rgba32Float
+            | Format::Rgba32Uint
+            | Format::Rgba32Sint => {
+                TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::COLOR
             }
-            format::R32_UINT | format::R32_SINT => {
-                texture_usage::SAMPLED
-                    | texture_usage::STORAGE
-                    | texture_usage::ATOMIC
-                    | texture_usage::COLOR
+            Format::R32Uint | Format::R32Sint => {
+                TextureUsage::SAMPLED
+                    | TextureUsage::STORAGE
+                    | TextureUsage::ATOMIC
+                    | TextureUsage::COLOR
             }
-            format::A8_UNORM..=format::RGBA32_FLOAT => {
-                texture_usage::SAMPLED | texture_usage::COLOR
+            f if (Format::A8Unorm..=Format::Rgba32Float).contains(&f) => {
+                TextureUsage::SAMPLED | TextureUsage::COLOR
             }
-            format::R64_UINT if self.caps.atomics64 & atomic64::IMAGE != 0 => {
-                texture_usage::STORAGE | texture_usage::ATOMIC
+            Format::R64Uint if self.caps.atomics64.contains(Atomic64::IMAGE) => {
+                TextureUsage::STORAGE | TextureUsage::ATOMIC
             }
-            format::D24_UNORM_S8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => 0,
-            format::D16_UNORM..=format::S8_UINT => texture_usage::SAMPLED | texture_usage::DEPTH,
-            format::BC1_UNORM..=format::BC7_SRGB if !self.raw.supportsBCTextureCompression() => 0,
-            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => texture_usage::SAMPLED,
-            _ => 0,
+            Format::D24UnormS8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => {
+                TextureUsage::default()
+            }
+            f if (Format::D16Unorm..=Format::S8Uint).contains(&f) => {
+                TextureUsage::SAMPLED | TextureUsage::DEPTH
+            }
+            f if (Format::Bc1Unorm..=Format::Bc7Srgb).contains(&f)
+                && !self.raw.supportsBCTextureCompression() =>
+            {
+                TextureUsage::default()
+            }
+            f if (Format::Bc1Unorm..=Format::Astc12x12Float).contains(&f) => TextureUsage::SAMPLED,
+            _ => TextureUsage::default(),
         };
-        if usage == 0 {
-            return 0;
+        if usage.is_empty() {
+            return usage;
         }
-        let usage = if usage & texture_usage::COLOR != 0 {
-            usage | texture_usage::INPUT
+        let usage = if usage.contains(TextureUsage::COLOR) {
+            usage | TextureUsage::INPUT
         } else {
             usage
         };
-        let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
+        let depth = (Format::D16Unorm..=Format::S8Uint).contains(&format);
         let host = if depth || !self.raw.hasUnifiedMemory() {
-            0
+            TextureUsage::default()
         } else {
-            texture_usage::HOST
+            TextureUsage::HOST
         };
-        usage | texture_usage::COPY_SRC | texture_usage::COPY_DST | texture_usage::VIEW | host
+        usage | TextureUsage::COPY_SRC | TextureUsage::COPY_DST | TextureUsage::VIEW | host
     }
 
-    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
-        if self.format_usage(format) & usage != usage {
+    pub fn format_samples(&self, format: Format, usage: TextureUsage) -> u32 {
+        if !self.format_usage(format).contains(usage) {
             return 0;
         }
-        let msaa = usage & texture_usage::STORAGE == 0
+        let msaa = !usage.contains(TextureUsage::STORAGE)
             && match format {
-                format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
-                format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
+                f if (Format::Bc1Unorm..=Format::Astc12x12Float).contains(&f) => false,
+                Format::R32Uint | Format::R32Sint | Format::Rgba32Uint | Format::Rgba32Sint => {
                     self.raw.supports32BitMSAA()
                 }
-                format::R32_FLOAT | format::RG32_FLOAT | format::RGBA32_FLOAT => {
+                Format::R32Float | Format::Rg32Float | Format::Rgba32Float => {
                     self.raw.supports32BitMSAA() && self.raw.supports32BitFloatFiltering()
                 }
                 _ => true,
@@ -174,17 +183,19 @@ impl Device {
             .fold(1, |m, n| m | n as u32)
     }
 
-    pub(super) fn supports(&self, info: &TextureInfo) -> Result<(), String> {
+    pub(super) fn supports(&self, info: &TextureInfo) -> Result<(), Error> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.check_texture(info, usable, counts)?;
         let line = matches!(
             info.dimension,
-            texture_dimension::D1 | texture_dimension::D1_ARRAY
+            TextureDimension::D1 | TextureDimension::D1Array
         );
-        let target = info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0;
+        let target = !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty();
         if cfg!(feature = "validation") && line && target {
-            return Err("a 1D texture cannot be a render target on Metal".into());
+            return Err(Error::Unsupported(
+                "a 1D texture cannot be a render target on Metal".into(),
+            ));
         }
         Ok(())
     }

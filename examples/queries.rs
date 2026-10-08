@@ -1,7 +1,7 @@
 use mk::{
-    ColorAttachment, ColorTarget, RenderPassInfo, RenderPipelineInfo, Scissor, TextureBarrier,
-    TextureInfo, VertexAttribute, VertexBufferLayout, Viewport, format, memory, query_kind, stage,
-    texture_layout, texture_usage,
+    ColorAttachment, ColorTarget, Format, Memory, QueryKind, RenderPassInfo, RenderPipelineInfo,
+    Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage, VertexAttribute,
+    VertexBufferLayout, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -18,15 +18,15 @@ pub fn main() {
     }
     let times = caps
         .timestamps
-        .then(|| device.create_query_pool(query_kind::TIMESTAMP, 2).unwrap());
+        .then(|| device.create_query_pool(QueryKind::Timestamp, 2).unwrap());
     let kind = if caps.precise {
-        query_kind::PRECISE
+        QueryKind::Precise
     } else {
-        query_kind::OCCLUSION
+        QueryKind::Occlusion
     };
     let samples = device.create_query_pool(kind, 1).unwrap();
-    let out = device.create_buffer(24, memory::READBACK).unwrap();
-    let data = device.create_buffer(1 << 20, memory::DEVICE).unwrap();
+    let out = device.create_buffer(24, Memory::Readback).unwrap();
+    let data = device.create_buffer(1 << 20, Memory::Device).unwrap();
     let fill = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("count"),
@@ -36,15 +36,15 @@ pub fn main() {
         .unwrap();
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::COLOR,
+            usage: TextureUsage::COLOR,
             ..Default::default()
         })
         .unwrap();
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let triangle = device
@@ -61,13 +61,13 @@ pub fn main() {
                 VertexAttribute {
                     location: 0,
                     buffer: 0,
-                    format: format::RG32_FLOAT,
+                    format: Format::Rg32Float,
                     offset: 0,
                 },
                 VertexAttribute {
                     location: 1,
                     buffer: 0,
-                    format: format::RGB32_FLOAT,
+                    format: Format::Rgb32Float,
                     offset: 8,
                 },
             ],
@@ -80,15 +80,9 @@ pub fn main() {
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
     let vbuf = device
-        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .create_buffer(size_of_val(&vertices) as u64, Memory::Upload)
         .unwrap();
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            vertices.as_ptr().cast(),
-            device.map_buffer(vbuf),
-            size_of_val(&vertices),
-        );
-    }
+    unsafe { device.map_buffer::<[f32; 5]>(vbuf) }.copy_from_slice(&vertices);
     device.unmap_buffer(vbuf);
     let count = 1u32 << 18;
     let mut push = count.to_le_bytes().to_vec();
@@ -115,21 +109,21 @@ pub fn main() {
     c.reset_queries(samples, 0, 1);
     let mut pass = c.begin_compute_pass().unwrap();
     if let Some(times) = times {
-        pass.write_timestamp(times, 0, stage::COMPUTE);
+        pass.write_timestamp(times, 0, Stage::COMPUTE);
     }
     pass.bind_compute_pipeline(fill);
     pass.bind_storage_buffer(0, data, 0, count as u64 * 4);
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
-        pass.write_timestamp(times, 1, stage::COMPUTE);
+        pass.write_timestamp(times, 1, Stage::COMPUTE);
     }
     pass.end();
     c.texture_barrier(&TextureBarrier {
         texture: color,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -141,7 +135,7 @@ pub fn main() {
                 a: 1.0,
                 ..Default::default()
             }],
-            occlusion: samples,
+            occlusion: Some(samples),
             ..Default::default()
         })
         .unwrap();
@@ -163,17 +157,17 @@ pub fn main() {
     pass.draw(3, 1, 0, 0);
     pass.end_occlusion_query(samples, 0);
     pass.end();
-    c.memory_barrier(stage::FRAGMENT, stage::COPY);
+    c.memory_barrier(Stage::FRAGMENT, Stage::COPY);
     if let Some(times) = times {
         c.resolve_timestamps(times, 0, 2, out, 0);
     }
     let mut pass = c.begin_compute_pass().unwrap();
     pass.resolve_occlusion(samples, 0, 1, out, 16);
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let r = unsafe { std::slice::from_raw_parts(device.map_buffer(out).cast::<u64>(), 3) };
+    let r = unsafe { device.map_buffer::<u64>(out) };
     let ns = (r[1] - r[0]) as f32 * caps.tick;
     println!(
         "fill of {count} u32: {:.1} us, triangle covered {} samples",

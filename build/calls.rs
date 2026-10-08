@@ -1,6 +1,6 @@
 use crate::field::Field;
 use crate::infos::{java_type, list_put, list_size, reader};
-use crate::{camel, class, handle, list, member, pascal};
+use crate::{camel, class, enumerated, flags, handle, list, member, pascal, word};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -23,6 +23,7 @@ const RECORDINGS: [&str; 3] = ["CommandBuffer", "RenderPass", "ComputePass"];
 fn info(kind: &str) -> bool {
     kind.chars().next().is_some_and(char::is_uppercase)
         && !handle(kind)
+        && !word(kind)
         && !RECORDINGS.contains(&kind)
 }
 
@@ -50,6 +51,7 @@ fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
     };
     match p.kind.as_str() {
         "u32" | "usize" | "i32" => one("int", "jint"),
+        k if word(k) => one("int", "jint"),
         k if handle(k) => one("long", "jlong"),
         "u64" | "handle" | "object" | "objref" | "f32x12" | "pointer" | "timeline" | "taken"
         | "commands" => one("long", "jlong"),
@@ -68,6 +70,7 @@ fn outs(call: &Call) -> bool {
 fn result_types(call: &Call) -> (&'static str, &'static str) {
     match call.result.as_str() {
         "u32" | "i32" => ("int", "jint"),
+        k if flags(k) => ("int", "jint"),
         k if handle(k) || RECORDINGS.contains(&k) => ("long", "jlong"),
         "u64" | "pointer" | "handle" | "object" | "device" | "timeline" => ("long", "jlong"),
         "str" => ("String", "jni::objects::JString<'local>"),
@@ -81,6 +84,7 @@ fn rust_arg(p: &Field) -> String {
     let j = "crate::java";
     match p.kind.as_str() {
         k if handle(k) => format!("crate::{k}::from_raw({n} as u64)"),
+        k if word(k) => format!("crate::{k}::of({n} as u32)"),
         "u32" => format!("{n} as u32"),
         "i32" => n,
         "pointer" => format!("{n} as usize as *mut u8"),
@@ -178,6 +182,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         let body = match call.result.as_str() {
             "" => format!("{invoke};\n        Ok(())"),
             "u32" | "i32" => format!("Ok({invoke} as jint)"),
+            k if flags(k) => format!("Ok({invoke}.0 as jint)"),
             k if handle(k) => format!("Ok({invoke}.to_raw() as jlong)"),
             "CommandBuffer" => format!("Ok(crate::java::new_command_buffer({invoke}))"),
             "RenderPass" => format!("Ok(crate::java::new_render_pass({invoke}))"),
@@ -190,7 +195,9 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             }
             "u64" => format!("Ok({invoke} as jlong)"),
             "bool" => format!("Ok({invoke} as jboolean)"),
-            "pointer" => format!("Ok({invoke} as usize as jlong)"),
+            "pointer" => format!(
+                "let r: &mut [u8] = unsafe {{ {invoke} }};\n        Ok(r.as_mut_ptr() as usize as jlong)"
+            ),
             "handle" => format!("Ok(ash::vk::Handle::as_raw({invoke}) as jlong)"),
             "object" => format!("Ok(crate::java::pointer({invoke}))"),
             "device" | "timeline" => format!("Ok(Box::into_raw(Box::new({invoke})) as jlong)"),
@@ -231,6 +238,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
 
 fn direct(kind: &str) -> bool {
     handle(kind)
+        || word(kind)
         || matches!(
             kind,
             "u32"
@@ -273,6 +281,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         for p in &call.params {
             let t = match p.kind.as_str() {
                 k if handle(k) => k.to_string(),
+                k if flags(k) => "int".into(),
                 "usize" | "i32" => "int".into(),
                 "handle" | "object" | "objref" | "pointer" => "long".into(),
                 "f32x12" => "float[]".into(),
@@ -291,6 +300,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let (java_ret, _) = result_types(call);
         let ret = match call.result.as_str() {
             k if handle(k) || RECORDINGS.contains(&k) => k.to_string(),
+            k if flags(k) => "int".into(),
             "pair" | "handles" => "long[]".to_string(),
             "u32x3" | "u32x8" => "int[]".into(),
             "device" => name.clone(),
@@ -326,6 +336,8 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             let n = camel(&p.name);
             match p.kind.as_str() {
                 k if handle(k) => args.push(format!("{k}.raw({n})")),
+                k if enumerated(k) => args.push(format!("{n}.value")),
+                k if flags(k) => args.push(n),
                 "u32" | "usize" | "i32" | "u64" | "handle" | "object" | "objref" | "pointer"
                 | "f32" | "bool" => args.push(n),
                 k if list(k).is_some() => {

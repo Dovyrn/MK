@@ -34,9 +34,9 @@ public class MtlDevice extends Device {
 
     private static native long nImportBuffer(long device, long raw);
 
-    public synchronized Texture importTexture(long raw, int format) {
+    public synchronized Texture importTexture(long raw, Format format) {
         idle("importTexture");
-        return Texture.of(nImportTexture(handle(), raw, format));
+        return Texture.of(nImportTexture(handle(), raw, format.value));
     }
 
     private static native long nImportTexture(long device, long raw, int format);

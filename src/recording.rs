@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::RenderPassInfo;
 use crate::check::Check;
 use crate::command::Command;
@@ -16,7 +17,7 @@ pub struct Recording<'d> {
 }
 
 impl Recording<'_> {
-    pub(crate) fn record(&mut self, command: Command) -> Result<(), String> {
+    pub(crate) fn record(&mut self, command: Command) -> Result<(), Error> {
         self.check.step(&command)?;
         self.recorder.step(command)
     }
@@ -27,7 +28,7 @@ impl Recording<'_> {
         }
     }
 
-    fn begin_render(&mut self, info: &RenderPassInfo) -> Result<(), String> {
+    fn begin_render(&mut self, info: &RenderPassInfo) -> Result<(), Error> {
         for (i, c) in info.colors.iter().enumerate() {
             if c.texture.is_null() {
                 continue;
@@ -44,8 +45,7 @@ impl Recording<'_> {
                 resolve: c.resolve,
             })?;
         }
-        let d = &info.depth;
-        if !d.texture.is_null() {
+        if let Some(d) = &info.depth {
             self.record(Command::DepthAttachment {
                 texture: d.texture,
                 load: d.load,
@@ -56,13 +56,10 @@ impl Recording<'_> {
                 stencil: d.stencil,
             })?;
         }
-        if !info.occlusion.is_null() {
-            self.record(Command::OcclusionPool {
-                pool: info.occlusion,
-            })?;
+        if let Some(pool) = info.occlusion {
+            self.record(Command::OcclusionPool { pool })?;
         }
-        let t = &info.tile;
-        if t.width != 0 || t.height != 0 || t.shared != 0 {
+        if let Some(t) = &info.tile {
             self.record(Command::TileMemory {
                 width: t.width,
                 height: t.height,
@@ -107,7 +104,7 @@ pub struct CommandBuffer<'d> {
 }
 
 impl<'d> CommandBuffer<'d> {
-    pub fn begin_compute_pass(&mut self) -> Result<ComputePass<'_, 'd>, String> {
+    pub fn begin_compute_pass(&mut self) -> Result<ComputePass<'_, 'd>, Error> {
         self.recording.record(Command::BeginComputePass)?;
         Ok(ComputePass {
             recording: Held::Borrowed(&mut self.recording),
@@ -117,14 +114,14 @@ impl<'d> CommandBuffer<'d> {
     pub fn begin_render_pass(
         &mut self,
         info: &RenderPassInfo,
-    ) -> Result<RenderPass<'_, 'd>, String> {
+    ) -> Result<RenderPass<'_, 'd>, Error> {
         self.recording.begin_render(info)?;
         Ok(RenderPass {
             recording: Held::Borrowed(&mut self.recording),
         })
     }
 
-    pub fn finish(mut self) -> Result<(), String> {
+    pub fn finish(mut self) -> Result<(), Error> {
         self.recording.check.finish();
         self.recording.recorder.finish()
     }

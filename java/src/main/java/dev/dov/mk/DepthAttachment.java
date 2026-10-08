@@ -9,11 +9,11 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class DepthAttachment {
     public Texture texture = null;
-    public int load = LoadOp.CLEAR;
-    public int store = StoreOp.STORE;
+    public LoadOp load = LoadOp.CLEAR;
+    public StoreOp store = StoreOp.STORE;
     public float depth = 1.0f;
-    public int stencilLoad = LoadOp.DONT_CARE;
-    public int stencilStore = StoreOp.DONT_CARE;
+    public LoadOp stencilLoad = LoadOp.DONT_CARE;
+    public StoreOp stencilStore = StoreOp.DONT_CARE;
     public int stencil = 0;
 
     public static final int SIZE = 32;
@@ -25,15 +25,15 @@ public class DepthAttachment {
     long encode(long p) {
         memPutLong(p, Texture.raw(texture));
         p += 8;
-        memPutInt(p, load);
+        memPutInt(p, load.value);
         p += 4;
-        memPutInt(p, store);
+        memPutInt(p, store.value);
         p += 4;
         memPutFloat(p, depth);
         p += 4;
-        memPutInt(p, stencilLoad);
+        memPutInt(p, stencilLoad.value);
         p += 4;
-        memPutInt(p, stencilStore);
+        memPutInt(p, stencilStore.value);
         p += 4;
         memPutInt(p, stencil);
         p += 4;
@@ -44,15 +44,15 @@ public class DepthAttachment {
         var r = new DepthAttachment();
         r.texture = Texture.of(memGetLong(p));
         p += 8;
-        r.load = memGetInt(p);
+        r.load = LoadOp.of(memGetInt(p));
         p += 4;
-        r.store = memGetInt(p);
+        r.store = StoreOp.of(memGetInt(p));
         p += 4;
         r.depth = memGetFloat(p);
         p += 4;
-        r.stencilLoad = memGetInt(p);
+        r.stencilLoad = LoadOp.of(memGetInt(p));
         p += 4;
-        r.stencilStore = memGetInt(p);
+        r.stencilStore = StoreOp.of(memGetInt(p));
         p += 4;
         r.stencil = memGetInt(p);
         p += 4;

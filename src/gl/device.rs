@@ -4,6 +4,7 @@ mod host;
 mod indirect;
 mod residency;
 
+use crate::Error;
 use crate::caps;
 use crate::check::Check;
 use crate::gl::buffer::BufferObject;
@@ -20,13 +21,13 @@ use crate::gl::texture::{TextureObject, target};
 use crate::handle::TimelineId;
 use crate::recording::{Held, Recording};
 use crate::{
-    Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
-    RenderPass, RenderPipeline, Sampler, Texture, TilePipeline,
+    Atomic64, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory, MeshPipelineInfo,
+    RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureDimension, TextureInfo,
+    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, Topology, slot,
 };
 use crate::{
-    Caps, ComputePipelineInfo, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo, SamplerInfo,
-    TextureInfo, TextureViewInfo, TilePipelineInfo, Timeline, atomic64, format, memory, slot,
-    stage, subgroup_op, texture_dimension, texture_usage, topology,
+    Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
+    RenderPass, RenderPipeline, Sampler, Texture, TilePipeline,
 };
 use glow::HasContext;
 use std::cell::{Cell, RefCell};
@@ -70,11 +71,10 @@ const MESH_SHADER_BIT: u32 = 0x40;
 
 const TASK_SHADER_BIT: u32 = 0x80;
 
-pub fn compare(c: u32) -> u32 {
+pub fn compare(c: crate::CompareOp) -> u32 {
     match c {
-        crate::compare_op::NONE => glow::ALWAYS,
-        crate::compare_op::NEVER..=crate::compare_op::ALWAYS => glow::NEVER + c - 1,
-        c => panic!("unknown compare {c}"),
+        crate::CompareOp::None => glow::ALWAYS,
+        c => glow::NEVER + c as u32 - 1,
     }
 }
 
@@ -86,13 +86,13 @@ fn has(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bo
 }
 
 impl Device {
-    pub fn adopt(proc: impl Fn(&str) -> *const c_void) -> Result<Self, String> {
+    pub fn adopt(proc: impl Fn(&str) -> *const c_void) -> Result<Self, Error> {
         Self::load(&proc)
     }
 
-    pub fn adopt_raw(proc: u64) -> Result<Self, String> {
+    pub fn adopt_raw(proc: u64) -> Result<Self, Error> {
         if proc == 0 {
-            return Err("null GL loader".into());
+            return Err(Error::Invalid("null GL loader".into()));
         }
         let get = unsafe {
             std::mem::transmute::<usize, unsafe extern "C" fn(*const c_char) -> *const c_void>(
@@ -105,7 +105,7 @@ impl Device {
         })
     }
 
-    fn load(proc: &dyn Fn(&str) -> *const c_void) -> Result<Self, String> {
+    fn load(proc: &dyn Fn(&str) -> *const c_void) -> Result<Self, Error> {
         let proc = &|name: &str| {
             let p = proc(name);
             if matches!(p as isize, 1..=3 | -1) {
@@ -115,7 +115,9 @@ impl Device {
             }
         };
         if proc("glGetIntegerv").is_null() {
-            return Err("the GL loader returned no glGetIntegerv".into());
+            return Err(Error::Driver(
+                "the GL loader returned no glGetIntegerv".into(),
+            ));
         }
         unsafe {
             let gl = glow::Context::from_loader_function(|name| proc(name));
@@ -123,7 +125,9 @@ impl Device {
             let minor = gl.get_parameter_i32(glow::MINOR_VERSION) as u32;
             let version = major * 10 + minor;
             if version < 33 {
-                return Err(format!("GL {major}.{minor} is below 3.3"));
+                return Err(Error::Unsupported(format!(
+                    "GL {major}.{minor} is below 3.3"
+                )));
             }
             let count = gl.get_parameter_i32(glow::NUM_EXTENSIONS) as u32;
             let mut extensions: Vec<String> = (0..count)
@@ -139,15 +143,15 @@ impl Device {
             let groups = has(99, "GL_KHR_shader_subgroup");
             let group = |p| if groups { int(p) as u32 } else { 0 };
             let stages = [
-                (glow::VERTEX_SHADER_BIT, stage::VERTEX),
-                (glow::FRAGMENT_SHADER_BIT, stage::FRAGMENT),
-                (glow::COMPUTE_SHADER_BIT, stage::COMPUTE),
-                (MESH_SHADER_BIT, stage::MESH),
-                (TASK_SHADER_BIT, stage::TASK),
+                (glow::VERTEX_SHADER_BIT, Stage::VERTEX),
+                (glow::FRAGMENT_SHADER_BIT, Stage::FRAGMENT),
+                (glow::COMPUTE_SHADER_BIT, Stage::COMPUTE),
+                (MESH_SHADER_BIT, Stage::MESH),
+                (TASK_SHADER_BIT, Stage::TASK),
             ]
             .into_iter()
             .filter(|(g, _)| group(SUBGROUP_STAGES) & g != 0)
-            .fold(0, |m, (_, s)| m | s);
+            .fold(Stage::default(), |m, (_, s)| m | s);
             let caps = Caps {
                 queues: 1,
                 tick: 1.0,
@@ -203,7 +207,7 @@ impl Device {
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
                 subgroup: group(SUBGROUP_SIZE),
                 subgroup_sizes: group(SUBGROUP_SIZE),
-                subgroup_ops: group(SUBGROUP_FEATURES) & subgroup_op::BITS,
+                subgroup_ops: SubgroupOp(group(SUBGROUP_FEATURES) & SubgroupOp::BITS),
                 subgroup_stages: stages,
                 max_threads: if compute {
                     int(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS) as u32
@@ -216,9 +220,9 @@ impl Device {
                     0
                 },
                 atomics64: if has(99, "GL_NV_shader_atomic_int64") {
-                    atomic64::MIN_MAX | atomic64::SIGNED
+                    Atomic64::MIN_MAX | Atomic64::SIGNED
                 } else {
-                    0
+                    Atomic64::default()
                 },
                 mesh: extra.mesh.is_some(),
                 task: extra.mesh.is_some(),
@@ -259,8 +263,8 @@ impl Device {
                     0
                 },
             ];
-            let fbo = gl.create_framebuffer()?;
-            let read = gl.create_framebuffer()?;
+            let fbo = gl.create_framebuffer().map_err(Error::Driver)?;
+            let read = gl.create_framebuffer().map_err(Error::Driver)?;
             Ok(Self {
                 gl: Rc::new(gl),
                 extra,
@@ -300,7 +304,7 @@ impl Device {
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
+    pub fn create_buffer(&mut self, size: u64, memory: Memory) -> Result<Buffer, Error> {
         self.thread();
         self.caps.check_buffer(size, memory)?;
         let id = self
@@ -309,7 +313,7 @@ impl Device {
             .insert(BufferObject::new(&self.gl, &self.extra, size, memory)?);
         self.res
             .table
-            .add_buffer(id, size, memory != memory::DEVICE);
+            .add_buffer(id, size, memory != Memory::Device);
         Ok(id)
     }
 
@@ -319,7 +323,7 @@ impl Device {
         let id = self.res.buffers.insert(BufferObject {
             raw,
             size,
-            memory: memory::DEVICE,
+            memory: Memory::Device,
             data: Cell::new(std::ptr::null_mut()),
             persistent: false,
             own: false,
@@ -341,17 +345,18 @@ impl Device {
         self.res.buffers.remove(buffer).delete(&self.gl);
     }
 
-    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    pub unsafe fn map_buffer<T: Copy>(&self, buffer: Buffer) -> &mut [T] {
         self.thread();
-        self.res.table.buffers.get(buffer);
         self.res.table.assert_mappable(buffer);
         let b = self.res.buffers.get(buffer);
         if b.persistent || !b.data.get().is_null() {
-            return b.data.get();
+            return unsafe { self.res.table.mapping(buffer, b.data.get()) };
         }
         let access = match (b.own, b.memory) {
             (false, _) => glow::MAP_READ_BIT | glow::MAP_WRITE_BIT,
-            (_, memory::UPLOAD) => glow::MAP_WRITE_BIT | glow::MAP_UNSYNCHRONIZED_BIT,
+            (_, Memory::Upload) => glow::MAP_WRITE_BIT | glow::MAP_UNSYNCHRONIZED_BIT,
             _ => glow::MAP_READ_BIT,
         };
         unsafe {
@@ -361,7 +366,7 @@ impl Device {
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
             b.data.set(data.cast());
         }
-        b.data.get()
+        unsafe { self.res.table.mapping(buffer, b.data.get()) }
     }
 
     pub fn unmap_buffer(&self, buffer: Buffer) {
@@ -390,7 +395,7 @@ impl Device {
     pub fn create_compute_pipeline(
         &mut self,
         info: &ComputePipelineInfo,
-    ) -> Result<ComputePipeline, String> {
+    ) -> Result<ComputePipeline, Error> {
         self.thread();
         self.caps.check_compute_pipeline(info)?;
         self.check_host_programs()?;
@@ -410,7 +415,7 @@ impl Device {
     pub fn create_render_pipeline(
         &mut self,
         info: &RenderPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_render_pipeline(info)?;
         let stages = [
@@ -423,7 +428,7 @@ impl Device {
     pub fn create_mesh_pipeline(
         &mut self,
         info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_mesh_pipeline(info)?;
         let mut stages = Vec::new();
@@ -435,7 +440,7 @@ impl Device {
         let render = RenderPipelineInfo {
             code: info.code,
             colors: info.colors,
-            topology: topology::TRIANGLE,
+            topology: Topology::Triangle,
             fill: info.fill,
             coverage: info.coverage,
             clamp: info.clamp,
@@ -450,7 +455,7 @@ impl Device {
         &mut self,
         info: &RenderPipelineInfo,
         stages: &[(u32, &str)],
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
         let p = Pipeline::new(&self.gl, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
@@ -476,13 +481,12 @@ impl Device {
         self.res.renders.remove(pipeline).delete(&self.gl);
     }
 
-    pub fn create_tile_pipeline(
-        &mut self,
-        info: &TilePipelineInfo,
-    ) -> Result<TilePipeline, String> {
+    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         self.thread();
         crate::caps::check_tile_pipeline(info);
-        Err("create_tile_pipeline needs caps.tiles".into())
+        Err(Error::Unsupported(
+            "create_tile_pipeline needs caps.tiles".into(),
+        ))
     }
 
     pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
@@ -490,9 +494,8 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, String> {
+    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         self.thread();
-        self.caps.check_depth_state(info);
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
@@ -504,7 +507,7 @@ impl Device {
         self.res.depths.remove(state);
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
         self.thread();
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
@@ -516,7 +519,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<Texture, String> {
+    pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<Texture, Error> {
         self.thread();
         let id = self.res.textures.insert(TextureObject {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
@@ -544,8 +547,8 @@ impl Device {
         if t.image.get() == 0 {
             let b = self.extra.bindless.as_ref().unwrap();
             let raw = t.raw.map_or(0, |r| r.0.get());
-            let layered = info.layers > 1 || info.dimension == texture_dimension::D3;
-            let internal = format::gl(t.format)[0];
+            let layered = info.layers > 1 || info.dimension == TextureDimension::D3;
+            let internal = t.format.gl()[0];
             let root = self
                 .res
                 .table
@@ -564,74 +567,79 @@ impl Device {
         t.image.get()
     }
 
-    pub fn format_usage(&self, format: u32) -> u32 {
+    pub fn format_usage(&self, format: Format) -> TextureUsage {
         self.thread();
         let s3tc = self.has(99, "GL_EXT_texture_compression_s3tc");
         let present = match format {
-            format::BC1_UNORM | format::BC2_UNORM | format::BC3_UNORM => s3tc,
-            format::BC1_SRGB | format::BC2_SRGB | format::BC3_SRGB => {
+            Format::Bc1Unorm | Format::Bc2Unorm | Format::Bc3Unorm => s3tc,
+            Format::Bc1Srgb | Format::Bc2Srgb | Format::Bc3Srgb => {
                 s3tc && self.has(99, "GL_EXT_texture_sRGB")
             }
-            format::BC6H_UFLOAT..=format::BC7_SRGB => {
+            f if (Format::Bc6hUfloat..=Format::Bc7Srgb).contains(&f) => {
                 self.has(42, "GL_ARB_texture_compression_bptc")
             }
-            format::ETC2_RGB8_UNORM..=format::EAC_RG11_SNORM => {
+            f if (Format::Etc2Rgb8Unorm..=Format::EacRg11Snorm).contains(&f) => {
                 self.has(43, "GL_ARB_ES3_compatibility")
             }
-            format::ASTC_4X4_UNORM..=format::ASTC_12X12_FLOAT => {
+            f if (Format::Astc4x4Unorm..=Format::Astc12x12Float).contains(&f) => {
                 self.has(99, "GL_KHR_texture_compression_astc_ldr")
             }
-            format::B5G6R5_UNORM => self.has(41, "GL_ARB_ES2_compatibility"),
-            format::S8_UINT => self.has(44, "GL_ARB_texture_stencil8"),
+            Format::B5g6r5Unorm => self.has(41, "GL_ARB_ES2_compatibility"),
+            Format::S8Uint => self.has(44, "GL_ARB_texture_stencil8"),
             _ => true,
         };
-        let [internal, kind, _] = format::gl(format);
+        let [internal, kind, _] = format.gl();
         if !present || internal == 0 {
-            return 0;
+            return TextureUsage::default();
         }
         let views = self.has(43, "GL_ARB_texture_view") && self.has(42, "GL_ARB_texture_storage");
-        let base = texture_usage::SAMPLED | if views { texture_usage::VIEW } else { 0 };
-        let copies = texture_usage::COPY_SRC | texture_usage::COPY_DST;
+        let base = TextureUsage::SAMPLED
+            | if views {
+                TextureUsage::VIEW
+            } else {
+                TextureUsage::default()
+            };
+        let copies = TextureUsage::COPY_SRC | TextureUsage::COPY_DST;
         let readable = self.extra.compressed_sub.is_some() && self.extra.copy_image.is_some();
         match kind {
-            0 if readable => base | copies | texture_usage::HOST,
-            0 => base | texture_usage::COPY_DST | texture_usage::HOST,
-            glow::DEPTH_STENCIL if format == format::D24_UNORM_S8 => base | texture_usage::DEPTH,
+            0 if readable => base | copies | TextureUsage::HOST,
+            0 => base | TextureUsage::COPY_DST | TextureUsage::HOST,
+            glow::DEPTH_STENCIL if format == Format::D24UnormS8 => base | TextureUsage::DEPTH,
             glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
-                base | texture_usage::DEPTH | copies
+                base | TextureUsage::DEPTH | copies
             }
             _ => {
                 let unrenderable = matches!(
                     format,
-                    format::R8_SNORM
-                        | format::RG8_SNORM
-                        | format::RGBA8_SNORM
-                        | format::R16_SNORM
-                        | format::RG16_SNORM
-                        | format::RGBA16_SNORM
-                        | format::RGB9E5_FLOAT
-                        | format::RGB32_UINT
-                        | format::RGB32_SINT
-                        | format::RGB32_FLOAT
+                    Format::R8Snorm
+                        | Format::Rg8Snorm
+                        | Format::Rgba8Snorm
+                        | Format::R16Snorm
+                        | Format::Rg16Snorm
+                        | Format::Rgba16Snorm
+                        | Format::Rgb9e5Float
+                        | Format::Rgb32Uint
+                        | Format::Rgb32Sint
+                        | Format::Rgb32Float
                 );
                 let unstorable = matches!(
                     format,
-                    format::RGBA8_SRGB
-                        | format::BGRA8_SRGB
-                        | format::B5G6R5_UNORM
-                        | format::RGB9E5_FLOAT
-                        | format::RGB32_UINT
-                        | format::RGB32_SINT
-                        | format::RGB32_FLOAT
+                    Format::Rgba8Srgb
+                        | Format::Bgra8Srgb
+                        | Format::B5g6r5Unorm
+                        | Format::Rgb9e5Float
+                        | Format::Rgb32Uint
+                        | Format::Rgb32Sint
+                        | Format::Rgb32Float
                 );
-                let mut u = base | texture_usage::COPY_DST | texture_usage::HOST;
+                let mut u = base | TextureUsage::COPY_DST | TextureUsage::HOST;
                 if !unrenderable {
-                    u |= texture_usage::COLOR | texture_usage::COPY_SRC;
+                    u |= TextureUsage::COLOR | TextureUsage::COPY_SRC;
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
-                    u |= texture_usage::STORAGE;
-                    if matches!(format, format::R32_UINT | format::R32_SINT) {
-                        u |= texture_usage::ATOMIC;
+                    u |= TextureUsage::STORAGE;
+                    if matches!(format, Format::R32Uint | Format::R32Sint) {
+                        u |= TextureUsage::ATOMIC;
                     }
                 }
                 u
@@ -639,19 +647,19 @@ impl Device {
         }
     }
 
-    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
+    pub fn format_samples(&self, format: Format, usage: TextureUsage) -> u32 {
         self.thread();
-        if self.format_usage(format) & usage != usage {
+        if !self.format_usage(format).contains(usage) {
             return 0;
         }
         let [depth, integer, color, image] = self.samples;
-        let mut max = match format::gl(format)[1] {
+        let mut max = match format.gl()[1] {
             0 => 1,
             glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => depth,
-            _ if format::uint(format) || format::sint(format) => integer,
+            _ if format.uint() || format.sint() => integer,
             _ => color,
         };
-        if usage & texture_usage::STORAGE != 0 {
+        if usage.contains(TextureUsage::STORAGE) {
             max = max.min(image);
         }
         (0..7)
@@ -664,18 +672,21 @@ impl Device {
         &mut self,
         texture: Texture,
         info: &TextureViewInfo,
-    ) -> Result<Texture, String> {
+    ) -> Result<Texture, Error> {
         self.thread();
         let info = &self.res.table.resolve_view(texture, info);
         self.caps.check_view(info.dimension)?;
-        let view = self.extra.view.ok_or("texture views need GL 4.3")?;
+        let view = self
+            .extra
+            .view
+            .ok_or_else(|| Error::Unsupported("texture views need GL 4.3".into()))?;
         let parent = self.res.textures.get(texture);
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         caps::check_support(
             "create_texture_view",
             info.format,
-            info.usage | texture_usage::VIEW,
+            info.usage | TextureUsage::VIEW,
             1,
             usable,
             counts,
@@ -692,7 +703,7 @@ impl Device {
         self.res.textures.remove(texture).delete(&self.gl);
     }
 
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, String> {
+    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, Error> {
         self.thread();
         self.caps.check_sampler(info)?;
         let raw = sampler::create(&self.gl, info)?;
@@ -707,7 +718,11 @@ impl Device {
         sampler::delete(&self.gl, self.res.samplers.remove(sampler));
     }
 
-    pub fn create_query_pool(&mut self, kind: u32, count: u32) -> Result<QueryPool, String> {
+    pub fn create_query_pool(
+        &mut self,
+        kind: crate::QueryKind,
+        count: u32,
+    ) -> Result<QueryPool, Error> {
         self.thread();
         self.caps.check_query_pool(kind, count)?;
         let id = self.res.queries.insert(Query::new(&self.gl, kind, count)?);
@@ -721,7 +736,7 @@ impl Device {
         self.res.queries.remove(heap).delete(&self.gl);
     }
 
-    pub fn create_timeline(&mut self) -> Result<Timeline, String> {
+    pub fn create_timeline(&mut self) -> Result<Timeline, Error> {
         self.thread();
         let fences = Rc::new(RefCell::new(Fences {
             fences: Vec::new(),
@@ -745,14 +760,14 @@ impl Device {
         fences.borrow().delete(&self.gl);
     }
 
-    fn healthy(&self) -> Result<(), String> {
+    fn healthy(&self) -> Result<(), Error> {
         match self.extra.reset.map(|f| unsafe { f() }) {
             Some(0) | None => Ok(()),
-            Some(status) => Err(format!("GL context lost ({status:#x})")),
+            Some(status) => Err(Error::DeviceLost(format!("GL context lost ({status:#x})"))),
         }
     }
 
-    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
+    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, Error> {
         self.thread();
         check_eq!(queue, 0, "GL has one queue");
         let pool = self.res.pools.insert(());
@@ -760,7 +775,7 @@ impl Device {
         Ok(pool)
     }
 
-    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), String> {
+    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), Error> {
         self.thread();
         self.res.table.pools.get(pool);
         Ok(())
@@ -777,7 +792,7 @@ impl Device {
         pool: CommandPool,
         base: &'static str,
         samples: u32,
-    ) -> Result<Recording<'_>, String> {
+    ) -> Result<Recording<'_>, Error> {
         self.thread();
         check!(
             !self.open.get(),
@@ -791,7 +806,9 @@ impl Device {
             .find(|b| !b.persistent && !b.data.get().is_null())
         {
             let _ = b;
-            return Err("a buffer is mapped; unmap it before recording".into());
+            return Err(Error::Invalid(
+                "a buffer is mapped; unmap it before recording".into(),
+            ));
         }
         self.check_host_programs()?;
         self.check_host_queries()?;
@@ -821,7 +838,7 @@ impl Device {
         Ok(Recording { check, recorder })
     }
 
-    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, String> {
+    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
         let mut recording = self.recording(pool, "outside", 0)?;
         recording.recorder.begin()?;
         Ok(CommandBuffer { recording })
@@ -831,7 +848,7 @@ impl Device {
         &self,
         pool: CommandPool,
         info: &ImportedPassInfo,
-    ) -> Result<RenderPass<'_, '_>, String> {
+    ) -> Result<RenderPass<'_, '_>, Error> {
         let mut recording = self.recording(pool, "render", info.samples)?;
         recording.recorder.import(info.width, info.height);
         Ok(RenderPass {
@@ -844,7 +861,7 @@ impl Device {
         mut commands: CommandBuffer<'_>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.thread();
         let table = &self.res.table;
         let waits = &table.timeline_points(waits);

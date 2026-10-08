@@ -1,11 +1,12 @@
 use super::Device;
+use crate::Error;
 use crate::{IndirectBuffer, IndirectBufferInfo};
 
 impl Device {
     pub fn create_indirect_buffer(
         &mut self,
         info: &IndirectBufferInfo,
-    ) -> Result<IndirectBuffer, String> {
+    ) -> Result<IndirectBuffer, Error> {
         self.thread();
         let entry = self.res.table.check_indirect(info);
         self.caps.check_indirect(entry.mesh, info.draws)?;

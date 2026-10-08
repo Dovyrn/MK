@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::command::Command;
 mod copy;
 mod draw;
@@ -14,8 +15,8 @@ use crate::gl::state::{State, set_enabled};
 use crate::register;
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    Caps, DepthAttachment, DepthStateInfo, cull_mode, format, front_face, index_type, slot, stage,
-    topology,
+    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, Format, FrontFace, IndexType,
+    LoadOp, Stage, StoreOp, Topology, slot,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -52,13 +53,13 @@ const OFFSETS: [u32; 3] = [
 pub struct Color {
     pub index: u32,
     pub texture: Texture,
-    pub load: u32,
-    pub store: u32,
+    pub load: LoadOp,
+    pub store: StoreOp,
     pub r: f32,
     pub g: f32,
     pub b: f32,
     pub a: f32,
-    pub resolve: Texture,
+    pub resolve: Option<Texture>,
 }
 
 pub struct Recorder<'a> {
@@ -94,18 +95,17 @@ pub struct Recorder<'a> {
     fed: Option<glow::VertexArray>,
 }
 
-fn gl_primitive_mode(t: u32) -> u32 {
+fn gl_primitive_mode(t: crate::Topology) -> u32 {
     match t {
-        topology::POINT => glow::POINTS,
-        topology::LINE => glow::LINES,
-        topology::LINE_STRIP => glow::LINE_STRIP,
-        topology::TRIANGLE => glow::TRIANGLES,
-        topology::TRIANGLE_STRIP => glow::TRIANGLE_STRIP,
-        t => panic!("unknown topology {t}"),
+        Topology::Point => glow::POINTS,
+        Topology::Line => glow::LINES,
+        Topology::LineStrip => glow::LINE_STRIP,
+        Topology::Triangle => glow::TRIANGLES,
+        Topology::TriangleStrip => glow::TRIANGLE_STRIP,
     }
 }
 
-fn gl_stencil_op(op: u32) -> u32 {
+fn gl_stencil_op(op: crate::StencilOp) -> u32 {
     [
         glow::KEEP,
         glow::ZERO,
@@ -118,7 +118,7 @@ fn gl_stencil_op(op: u32) -> u32 {
     ][op as usize]
 }
 
-fn gl_blend_factor(f: u32) -> u32 {
+fn gl_blend_factor(f: crate::BlendFactor) -> u32 {
     [
         glow::ZERO,
         glow::ONE,
@@ -142,7 +142,7 @@ fn gl_blend_factor(f: u32) -> u32 {
     ][f as usize]
 }
 
-fn gl_blend_equation(op: u32) -> u32 {
+fn gl_blend_equation(op: crate::BlendOp) -> u32 {
     [
         glow::FUNC_ADD,
         glow::FUNC_SUBTRACT,
@@ -152,42 +152,42 @@ fn gl_blend_equation(op: u32) -> u32 {
     ][op as usize]
 }
 
-fn is_integer_format(f: u32) -> bool {
-    format::uint(f) || format::sint(f)
+fn is_integer_format(f: Format) -> bool {
+    f.uint() || f.sint()
 }
 
-fn gl_barrier_bits(stages: u32) -> u32 {
+fn gl_barrier_bits(stages: Stage) -> u32 {
     let shader = glow::UNIFORM_BARRIER_BIT
         | glow::SHADER_STORAGE_BARRIER_BIT
         | glow::SHADER_IMAGE_ACCESS_BARRIER_BIT
         | glow::TEXTURE_FETCH_BARRIER_BIT;
     let map = [
-        (stage::INDIRECT, glow::COMMAND_BARRIER_BIT),
+        (Stage::INDIRECT, glow::COMMAND_BARRIER_BIT),
         (
-            stage::VERTEX,
+            Stage::VERTEX,
             shader | glow::ELEMENT_ARRAY_BARRIER_BIT | glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT,
         ),
         (
-            stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE,
+            Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE,
             shader,
         ),
-        (stage::DEPTH | stage::COLOR, glow::FRAMEBUFFER_BARRIER_BIT),
+        (Stage::DEPTH | Stage::COLOR, glow::FRAMEBUFFER_BARRIER_BIT),
         (
-            stage::COPY,
+            Stage::COPY,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::TEXTURE_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::FRAMEBUFFER_BARRIER_BIT,
         ),
         (
-            stage::HOST,
+            Stage::HOST,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::CLIENT_MAPPED_BUFFER_BARRIER_BIT,
         ),
     ];
     map.iter()
-        .filter(|(b, _)| stages & b != 0)
+        .filter(|(b, _)| !(stages & *b).is_empty())
         .fold(0, |m, (_, g)| m | g)
 }
 
@@ -235,7 +235,7 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    pub fn begin(&mut self) -> Result<(), String> {
+    pub fn begin(&mut self) -> Result<(), Error> {
         self.reset_state();
         self.check_errors("begin_commands")
     }
@@ -248,7 +248,7 @@ impl<'a> Recorder<'a> {
         self.layers = 1;
     }
 
-    pub fn step(&mut self, command: Command) -> Result<(), String> {
+    pub fn step(&mut self, command: Command) -> Result<(), Error> {
         if !cfg!(debug_assertions) {
             return self.apply(command);
         }
@@ -257,7 +257,7 @@ impl<'a> Recorder<'a> {
         self.check_errors(&name)
     }
 
-    fn check_errors(&self, what: &str) -> Result<(), String> {
+    fn check_errors(&self, what: &str) -> Result<(), Error> {
         if !cfg!(debug_assertions) {
             return Ok(());
         }
@@ -265,10 +265,10 @@ impl<'a> Recorder<'a> {
         if errors.is_empty() {
             return Ok(());
         }
-        Err(format!("GL errors {errors:#x?} in {what}"))
+        Err(Error::Driver(format!("GL errors {errors:#x?} in {what}")))
     }
 
-    pub fn finish(&mut self) -> Result<(), String> {
+    pub fn finish(&mut self) -> Result<(), Error> {
         let Some(host) = self.host.take() else {
             return Ok(());
         };
@@ -288,7 +288,9 @@ impl<'a> Recorder<'a> {
         if mine.is_empty() {
             Ok(())
         } else {
-            Err(format!("recording raised GL errors {mine:#x?}"))
+            Err(Error::Driver(format!(
+                "recording raised GL errors {mine:#x?}"
+            )))
         }
     }
 
@@ -305,7 +307,13 @@ impl<'a> Recorder<'a> {
             for (i, c) in p.colors.iter().enumerate() {
                 let i = i as u32;
                 let m = c.mask;
-                gl.color_mask_draw_buffer(i, m & 1 != 0, m & 2 != 0, m & 4 != 0, m & 8 != 0);
+                gl.color_mask_draw_buffer(
+                    i,
+                    m.contains(ColorMask::R),
+                    m.contains(ColorMask::G),
+                    m.contains(ColorMask::B),
+                    m.contains(ColorMask::A),
+                );
                 if !c.blend {
                     gl.disable_draw_buffer(glow::BLEND, i);
                     continue;
@@ -403,7 +411,7 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn apply(&mut self, command: Command) -> Result<(), String> {
+    fn apply(&mut self, command: Command) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
@@ -476,12 +484,12 @@ impl<'a> Recorder<'a> {
                     dst_stage,
                     ..
                 } => {
-                    let shaders = stage::VERTEX
-                        | stage::FRAGMENT
-                        | stage::TASK
-                        | stage::MESH
-                        | stage::COMPUTE;
-                    if src_stage & shaders != 0 && self.caps.storage {
+                    let shaders = Stage::VERTEX
+                        | Stage::FRAGMENT
+                        | Stage::TASK
+                        | Stage::MESH
+                        | Stage::COMPUTE;
+                    if !(src_stage & shaders).is_empty() && self.caps.storage {
                         gl.memory_barrier(gl_barrier_bits(dst_stage));
                     }
                 }
@@ -494,7 +502,7 @@ impl<'a> Recorder<'a> {
                         depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH)
                     };
                     if cfg!(feature = "validation") && full() {
-                        return Err("the debug group stack is full".into());
+                        return Err(Error::Invalid("the debug group stack is full".into()));
                     }
                     gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
                     self.labels += 1;
@@ -577,7 +585,7 @@ impl<'a> Recorder<'a> {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
                     self.mode = gl_primitive_mode(p.topology);
-                    let fill = if p.fill == crate::fill_mode::LINE {
+                    let fill = if p.fill == crate::FillMode::Line {
                         glow::LINE
                     } else {
                         glow::FILL
@@ -588,21 +596,19 @@ impl<'a> Recorder<'a> {
                     self.apply_blend_state(p);
                 }
                 Command::SetCullMode { cull: c } => match c {
-                    cull_mode::NONE => gl.disable(glow::CULL_FACE),
-                    cull_mode::FRONT | cull_mode::BACK => {
+                    CullMode::None => gl.disable(glow::CULL_FACE),
+                    CullMode::Front | CullMode::Back => {
                         gl.enable(glow::CULL_FACE);
-                        gl.cull_face(if c == cull_mode::FRONT {
+                        gl.cull_face(if c == CullMode::Front {
                             glow::FRONT
                         } else {
                             glow::BACK
                         });
                     }
-                    c => panic!("unknown cull {c}"),
                 },
                 Command::SetFrontFace { face: f } => gl.front_face(match f {
-                    front_face::CCW => glow::CW,
-                    front_face::CW => glow::CCW,
-                    f => panic!("unknown face {f}"),
+                    FrontFace::Ccw => glow::CW,
+                    FrontFace::Cw => glow::CCW,
                 }),
                 Command::SetPrimitiveTopology { topology } => {
                     self.mode = gl_primitive_mode(topology)
@@ -612,7 +618,7 @@ impl<'a> Recorder<'a> {
                     set_enabled(
                         gl,
                         glow::DEPTH_TEST,
-                        d.compare != crate::compare_op::NONE || d.write,
+                        d.compare != crate::CompareOp::None || d.write,
                     );
                     gl.depth_func(compare(d.compare));
                     gl.depth_mask(d.write);
@@ -653,9 +659,8 @@ impl<'a> Recorder<'a> {
                     kind,
                 } => {
                     let kind = match kind {
-                        index_type::U16 => glow::UNSIGNED_SHORT,
-                        index_type::U32 => glow::UNSIGNED_INT,
-                        k => panic!("unknown index {k}"),
+                        IndexType::U16 => glow::UNSIGNED_SHORT,
+                        IndexType::U32 => glow::UNSIGNED_INT,
                     };
                     self.index = Some((buffer, offset, kind));
                     self.fed = None;
@@ -840,7 +845,7 @@ impl<'a> Recorder<'a> {
                         layered,
                         0,
                         glow::READ_WRITE,
-                        format::gl(t.format)[0],
+                        t.format.gl()[0],
                     );
                 }
                 Command::BindTexture { slot, texture } => {

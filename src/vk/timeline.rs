@@ -1,3 +1,4 @@
+use crate::Error;
 use ash::vk;
 use std::sync::Arc;
 
@@ -13,11 +14,11 @@ impl Timeline {
         self.raw
     }
 
-    pub fn value(&self) -> Result<u64, String> {
-        unsafe { self.device.get_semaphore_counter_value(self.raw) }.map_err(|e| e.to_string())
+    pub fn value(&self) -> Result<u64, Error> {
+        unsafe { self.device.get_semaphore_counter_value(self.raw) }.map_err(Error::from)
     }
 
-    pub fn wait(&self, value: u64, ms: u64) -> Result<bool, String> {
+    pub fn wait(&self, value: u64, ms: u64) -> Result<bool, Error> {
         let semaphores = [self.raw];
         let values = [value];
         let info = vk::SemaphoreWaitInfo::default()
@@ -29,15 +30,15 @@ impl Timeline {
         } {
             Ok(()) => Ok(true),
             Err(vk::Result::TIMEOUT) => Ok(false),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(Error::from(e)),
         }
     }
 
-    pub fn signal(&self, value: u64) -> Result<(), String> {
+    pub fn signal(&self, value: u64) -> Result<(), Error> {
         crate::table::assert_rising(self.value()?, value);
         let info = vk::SemaphoreSignalInfo::default()
             .semaphore(self.raw)
             .value(value);
-        unsafe { self.device.signal_semaphore(&info) }.map_err(|e| e.to_string())
+        unsafe { self.device.signal_semaphore(&info) }.map_err(Error::from)
     }
 }

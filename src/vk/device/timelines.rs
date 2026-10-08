@@ -1,12 +1,13 @@
 use super::Device;
+use crate::Error;
 use crate::vk::Timeline;
 use crate::vk::queue::timeline;
 use crate::vk::semaphore::Semaphore;
 use ash::vk;
 
 impl Device {
-    pub fn create_timeline(&mut self) -> Result<Timeline, String> {
-        let raw = timeline(&self.raw).map_err(|e| e.to_string())?;
+    pub fn create_timeline(&mut self) -> Result<Timeline, Error> {
+        let raw = timeline(&self.raw).map_err(Error::from)?;
         Ok(self.add_timeline(raw, true))
     }
 

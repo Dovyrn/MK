@@ -1,13 +1,14 @@
 mod textures;
 
 use crate::Buffer;
+use crate::Error;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 
 use crate::command::Command;
-use crate::{format, front_face, index_type, load_op, stage, store_op};
+use crate::{Format, FrontFace, IndexType, LoadOp, Stage, StoreOp};
 use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -64,22 +65,22 @@ const RENDER: MTLStages = MTLStages(
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
-fn mtl_stages(bits: u32) -> MTLStages {
+fn mtl_stages(bits: Stage) -> MTLStages {
     let same =
-        stage::VERTEX | stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE | stage::COPY;
+        Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE | Stage::COPY;
     let mut s = bits & same;
-    if bits & stage::INDIRECT != 0 {
-        s |= stage::VERTEX | stage::TASK | stage::MESH | stage::COMPUTE;
+    if bits.contains(Stage::INDIRECT) {
+        s |= Stage::VERTEX | Stage::TASK | Stage::MESH | Stage::COMPUTE;
     }
-    if bits & (stage::DEPTH | stage::COLOR) != 0 {
-        s |= stage::FRAGMENT;
+    if !(bits & (Stage::DEPTH | Stage::COLOR)).is_empty() {
+        s |= Stage::FRAGMENT;
     }
-    let tile = if s & stage::FRAGMENT != 0 {
+    let tile = if s.contains(Stage::FRAGMENT) {
         MTLStages::Tile.0
     } else {
         0
     };
-    MTLStages(s as usize | tile)
+    MTLStages(s.0 as usize | tile)
 }
 
 fn order_barrier(
@@ -92,11 +93,11 @@ fn order_barrier(
     }
 }
 
-fn mtl_render_stage(bits: u32) -> MTLRenderStages {
+fn mtl_render_stage(bits: crate::Stage) -> MTLRenderStages {
     match bits {
-        stage::VERTEX | stage::INDIRECT => MTLRenderStages::Vertex,
-        stage::TASK => MTLRenderStages::Object,
-        stage::MESH => MTLRenderStages::Mesh,
+        Stage::VERTEX | Stage::INDIRECT => MTLRenderStages::Vertex,
+        Stage::TASK => MTLRenderStages::Object,
+        Stage::MESH => MTLRenderStages::Mesh,
         _ => MTLRenderStages::Fragment,
     }
 }
@@ -118,15 +119,15 @@ fn size(x: u32, y: u32, z: u32) -> MTLSize {
 }
 
 fn row_pitch(
-    format: u32,
+    format: Format,
     width: u32,
     length: u32,
     height: u32,
     count: u32,
 ) -> (usize, usize, MTLBlitOption) {
-    let [bytes, w, h] = format::block(format);
+    let [bytes, w, h] = format.block();
     let (bytes, option) = match format {
-        format::D24_UNORM_S8 | format::D32_FLOAT_S8 => (4, MTLBlitOption::DepthFromDepthStencil),
+        Format::D24UnormS8 | Format::D32FloatS8 => (4, MTLBlitOption::DepthFromDepthStencil),
         _ => (bytes, MTLBlitOption::None),
     };
     let length = if length == 0 { width } else { length };
@@ -135,22 +136,20 @@ fn row_pitch(
     (row, count.div_ceil(h) as usize * row, option)
 }
 
-fn mtl_load_action(l: u32) -> MTLLoadAction {
+fn mtl_load_action(l: crate::LoadOp) -> MTLLoadAction {
     match l {
-        load_op::LOAD => MTLLoadAction::Load,
-        load_op::CLEAR => MTLLoadAction::Clear,
-        load_op::DONT_CARE => MTLLoadAction::DontCare,
-        l => panic!("unknown load {l}"),
+        LoadOp::Load => MTLLoadAction::Load,
+        LoadOp::Clear => MTLLoadAction::Clear,
+        LoadOp::DontCare => MTLLoadAction::DontCare,
     }
 }
 
-fn mtl_store_action(s: u32, resolve: bool) -> MTLStoreAction {
+fn mtl_store_action(s: StoreOp, resolve: bool) -> MTLStoreAction {
     match (s, resolve) {
-        (store_op::STORE, false) => MTLStoreAction::Store,
-        (store_op::STORE, true) => MTLStoreAction::StoreAndMultisampleResolve,
-        (store_op::DONT_CARE, true) => MTLStoreAction::MultisampleResolve,
-        (store_op::DONT_CARE, false) => MTLStoreAction::DontCare,
-        (s, _) => panic!("unknown store {s}"),
+        (StoreOp::Store, false) => MTLStoreAction::Store,
+        (StoreOp::Store, true) => MTLStoreAction::StoreAndMultisampleResolve,
+        (StoreOp::DontCare, true) => MTLStoreAction::MultisampleResolve,
+        (StoreOp::DontCare, false) => MTLStoreAction::DontCare,
     }
 }
 
@@ -240,7 +239,7 @@ impl<'a> Recorder<'a> {
         self.compute = Some(encoder);
     }
 
-    pub fn end(&mut self) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, String> {
+    pub fn end(&mut self) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, Error> {
         self.close();
         self.ended = true;
         let buffer = self.buffer.clone().unwrap();
@@ -248,7 +247,7 @@ impl<'a> Recorder<'a> {
         Ok(buffer)
     }
 
-    pub fn finish(&mut self) -> Result<(), String> {
+    pub fn finish(&mut self) -> Result<(), Error> {
         self.close();
         Ok(())
     }
@@ -279,13 +278,12 @@ impl<'a> Recorder<'a> {
         &self,
         buffer: Buffer,
         offset: u64,
-        kind: u32,
+        kind: crate::IndexType,
     ) -> (u64, usize, MTLIndexType, u64) {
         let b = self.res.buffers.get(buffer);
         let (kind, size) = match kind {
-            index_type::U16 => (MTLIndexType::UInt16, 2),
-            index_type::U32 => (MTLIndexType::UInt32, 4),
-            k => panic!("unknown index {k}"),
+            IndexType::U16 => (MTLIndexType::UInt16, 2),
+            IndexType::U32 => (MTLIndexType::UInt32, 4),
         };
         (
             b.gpuAddress() + offset,
@@ -306,13 +304,15 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    pub fn step(&mut self, command: Command) -> Result<(), String> {
+    pub fn step(&mut self, command: Command) -> Result<(), Error> {
         match command {
             Command::BeginComputePass => {
                 let encoder = self
                     .command_buffer()
                     .computeCommandEncoder()
-                    .ok_or("compute encoder allocation failed")?;
+                    .ok_or_else(|| {
+                        Error::OutOfMemory("compute encoder allocation failed".into())
+                    })?;
                 encoder.setArgumentTable(Some(self.table));
                 self.apply_pending(ProtocolObject::from_ref(&*encoder), COMPUTE);
                 self.compute_pipeline = None;
@@ -511,14 +511,14 @@ impl<'a> Recorder<'a> {
                 attachment.setTexture(Some(&t.raw));
                 unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
                 attachment.setLoadAction(mtl_load_action(l));
-                attachment.setStoreAction(mtl_store_action(s, !resolve.is_null()));
+                attachment.setStoreAction(mtl_store_action(s, resolve.is_some()));
                 attachment.setClearColor(MTLClearColor {
                     red: r as f64,
                     green: g as f64,
                     blue: b as f64,
                     alpha: a as f64,
                 });
-                if !resolve.is_null() {
+                if let Some(resolve) = resolve {
                     attachment.setResolveTexture(Some(&res.textures.get(resolve).raw));
                 }
             }
@@ -541,7 +541,7 @@ impl<'a> Recorder<'a> {
                 attachment.setClearDepth(depth as f64);
                 if matches!(
                     t.format,
-                    format::D24_UNORM_S8 | format::D32_FLOAT_S8 | format::S8_UINT
+                    Format::D24UnormS8 | Format::D32FloatS8 | Format::S8Uint
                 ) {
                     let attachment = self.pass.stencilAttachment();
                     attachment.setTexture(Some(&t.raw));
@@ -564,7 +564,7 @@ impl<'a> Recorder<'a> {
                 let encoder = self
                     .command_buffer()
                     .renderCommandEncoderWithDescriptor(&self.pass)
-                    .ok_or("render encoder allocation failed")?;
+                    .ok_or_else(|| Error::OutOfMemory("render encoder allocation failed".into()))?;
                 self.bind_argument_table(&encoder);
                 self.apply_pending(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
@@ -590,9 +590,8 @@ impl<'a> Recorder<'a> {
                 .setCullMode(MTLCullMode(cull as usize)),
             Command::SetFrontFace { face: f } => {
                 self.render_encoder().setFrontFacingWinding(match f {
-                    front_face::CCW => MTLWinding::CounterClockwise,
-                    front_face::CW => MTLWinding::Clockwise,
-                    f => panic!("unknown face {f}"),
+                    FrontFace::Ccw => MTLWinding::CounterClockwise,
+                    FrontFace::Cw => MTLWinding::Clockwise,
                 })
             }
             Command::SetPrimitiveTopology { topology } => {

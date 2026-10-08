@@ -128,7 +128,7 @@ public class ComputePass implements AutoCloseable {
 
     public void textureBarrier(TextureBarrier info) {
         synchronized (device) {
-            nTextureBarrier(handle(), Texture.raw(info.texture), info.srcStage, info.dstStage, info.before, info.after, info.baseMip, info.mips, info.baseLayer, info.layers);
+            nTextureBarrier(handle(), Texture.raw(info.texture), info.srcStage, info.dstStage, info.before.value, info.after.value, info.baseMip, info.mips, info.baseLayer, info.layers);
         }
     }
 

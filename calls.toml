@@ -10,7 +10,7 @@ shared = true
 
 [[call]]
 name = "create_buffer"
-params = [["size", "u64"], ["memory", "u32"]]
+params = [["size", "u64"], ["memory", "Memory"]]
 result = "Buffer"
 fails = true
 
@@ -105,13 +105,13 @@ fails = true
 
 [[call]]
 name = "format_usage"
-params = [["format", "u32"]]
-result = "u32"
+params = [["format", "Format"]]
+result = "TextureUsage"
 shared = true
 
 [[call]]
 name = "format_samples"
-params = [["format", "u32"], ["usage", "u32"]]
+params = [["format", "Format"], ["usage", "TextureUsage"]]
 result = "u32"
 shared = true
 
@@ -157,7 +157,7 @@ shared = true
 
 [[call]]
 name = "create_query_pool"
-params = [["kind", "u32"], ["count", "u32"]]
+params = [["kind", "QueryKind"], ["count", "u32"]]
 result = "QueryPool"
 fails = true
 
@@ -317,7 +317,7 @@ result = "Buffer"
 [[call]]
 name = "import_texture"
 backend = "mtl"
-params = [["raw", "object"], ["format", "u32"]]
+params = [["raw", "object"], ["format", "Format"]]
 result = "Texture"
 fails = true
 

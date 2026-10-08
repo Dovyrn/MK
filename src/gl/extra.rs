@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::gl::bindless::Bindless;
 use std::ffi::c_void;
 
@@ -121,7 +122,7 @@ impl Extra {
     pub fn load(
         proc: &dyn Fn(&str) -> *const c_void,
         has: &dyn Fn(u32, &str) -> bool,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let get = |name: &str, version, extension| {
             let p = proc(name);
             (has(version, extension) && !p.is_null()).then_some(p)
@@ -129,7 +130,7 @@ impl Extra {
         let need = |name: &str| {
             let p = proc(name);
             if p.is_null() {
-                Err(format!("{name} is missing"))
+                Err(Error::Invalid(format!("{name} is missing")))
             } else {
                 Ok(p)
             }

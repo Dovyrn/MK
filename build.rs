@@ -38,6 +38,21 @@ fn main() {
     let mut table: toml::Table = fs::read_to_string("handles.toml").unwrap().parse().unwrap();
     let names: Vec<String> = table.remove("handles").unwrap().try_into().unwrap();
     HANDLES.set(names.clone()).unwrap();
+    let constants: toml::Table = fs::read_to_string("constants.toml")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut enums: Vec<String> = constants::groups(&constants, "enum")
+        .into_iter()
+        .map(|g| g.0)
+        .collect();
+    enums.push("Format".into());
+    ENUMS.set(enums).unwrap();
+    let flags = constants::groups(&constants, "flags")
+        .into_iter()
+        .map(|g| g.0)
+        .collect();
+    FLAGS.set(flags).unwrap();
     let infos: Vec<infos::Info> = load("infos.toml", "info");
     let mut list = load("commands.toml", "command");
     ops::resolve(&mut list, &infos);
@@ -58,13 +73,12 @@ fn main() {
     for name in &names {
         save(&dir.join(format!("{name}.java")), &handles::java(name));
     }
-    let table = fs::read_to_string("constants.toml")
-        .unwrap()
-        .parse()
-        .unwrap();
-    fs::write(out.join("constants.rs"), constants::rust(&table)).unwrap();
-    save(Path::new("shaders/mk.slangh"), &constants::slang(&table));
-    for (name, text) in constants::java(&table) {
+    fs::write(out.join("constants.rs"), constants::rust(&constants)).unwrap();
+    save(
+        Path::new("shaders/mk.slangh"),
+        &constants::slang(&constants),
+    );
+    for (name, text) in constants::java(&constants) {
         save(&dir.join(format!("{name}.java")), &text);
     }
     let table = fs::read_to_string("formats.toml").unwrap().parse().unwrap();
@@ -106,6 +120,42 @@ static HANDLES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
 fn handle(kind: &str) -> bool {
     HANDLES.get().unwrap().iter().any(|h| h == kind)
+}
+
+static ENUMS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn enumerated(kind: &str) -> bool {
+    ENUMS.get().unwrap().iter().any(|h| h == kind)
+}
+
+static FLAGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn flags(kind: &str) -> bool {
+    FLAGS.get().unwrap().iter().any(|h| h == kind)
+}
+
+fn optional(kind: &str) -> Option<&str> {
+    kind.strip_suffix('?')
+}
+
+fn java_kind(kind: &str) -> &str {
+    match optional(kind) {
+        Some(inner) if handle(inner) => inner,
+        _ => kind,
+    }
+}
+
+fn word(kind: &str) -> bool {
+    enumerated(kind) || flags(kind)
+}
+
+fn constant(value: &str) -> String {
+    let (module, name) = value.split_once("::").unwrap();
+    let kind = pascal(module);
+    match flags(&kind) {
+        true => format!("{kind}::{name}"),
+        false => format!("{kind}::{}", variant(name)),
+    }
 }
 
 static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
@@ -155,6 +205,12 @@ fn class(backend: Option<&str>, kind: &str) -> String {
 fn pascal(name: &str) -> String {
     name.split('_')
         .map(|w| w[..1].to_uppercase() + &w[1..])
+        .collect()
+}
+
+fn variant(name: &str) -> String {
+    name.split('_')
+        .map(|w| w[..1].to_uppercase() + &w[1..].to_lowercase())
         .collect()
 }
 

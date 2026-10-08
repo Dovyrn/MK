@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{memory, stage};
+use mk::{Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -16,9 +16,9 @@ pub fn main() {
         return;
     };
     let n = 1u32 << 16;
-    let data = device.create_buffer(n as u64 * 4, memory::DEVICE).unwrap();
+    let data = device.create_buffer(n as u64 * 4, Memory::Device).unwrap();
     let back = device
-        .create_buffer(n as u64 * 4, memory::READBACK)
+        .create_buffer(n as u64 * 4, Memory::Readback)
         .unwrap();
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
@@ -48,15 +48,14 @@ pub fn main() {
     copy.use_residency_set(set);
     let mut pass = copy.begin_compute_pass().unwrap();
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device
         .submit(copy, &[(&timeline, 1)], &[(&timeline, 2)])
         .unwrap();
     device.submit(compute, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(2, 5000).unwrap());
-    let values =
-        unsafe { std::slice::from_raw_parts(device.map_buffer(back).cast::<u32>(), n as usize) };
+    let values = unsafe { device.map_buffer::<u32>(back) };
     for (i, v) in values.iter().enumerate() {
         assert_eq!(*v, 3 + i as u32, "value {i}");
     }

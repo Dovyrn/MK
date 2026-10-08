@@ -1,7 +1,8 @@
 use super::Recorder;
+use crate::BufferTextureCopy;
+use crate::Error;
 use crate::command::Command;
 use crate::gl::texture::aspect;
-use crate::{BufferTextureCopy, format};
 use glow::HasContext;
 
 impl Recorder<'_> {
@@ -48,7 +49,7 @@ impl Recorder<'_> {
         }
     }
 
-    pub fn readback(&self, c: Command) -> Result<(), String> {
+    pub fn readback(&self, c: Command) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
         let Command::CopyTextureToBuffer {
@@ -75,12 +76,13 @@ impl Recorder<'_> {
             let (f, ty) = aspect(t.format);
             let raw = res.buffers.get(buffer).raw;
             if f == 0 {
-                let read = self
-                    .extra
-                    .compressed_sub
-                    .ok_or("compressed readback needs GL_ARB_get_texture_sub_image")?;
+                let read = self.extra.compressed_sub.ok_or_else(|| {
+                    Error::Unsupported(
+                        "compressed readback needs GL_ARB_get_texture_sub_image".into(),
+                    )
+                })?;
                 gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw));
-                let [bytes, bw, bh] = format::block(t.format);
+                let [bytes, bw, bh] = t.format.block();
                 let store = [
                     (glow::PACK_ROW_LENGTH, row_length),
                     (glow::PACK_IMAGE_HEIGHT, row_count),
@@ -133,8 +135,8 @@ impl Recorder<'_> {
             gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
             gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
             let texel = match f {
-                glow::DEPTH_COMPONENT => 4.min(format::block(t.format)[0]),
-                _ => format::block(t.format)[0],
+                glow::DEPTH_COMPONENT => 4.min(t.format.block()[0]),
+                _ => t.format.block()[0],
             } as u64;
             let slice = (row_length.max(width) * row_count.max(height)) as u64 * texel;
             for s in 0..depth {

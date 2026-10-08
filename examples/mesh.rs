@@ -1,6 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, MeshPipelineInfo, RenderPassInfo, Scissor,
-    TextureBarrier, TextureInfo, Viewport, format, memory, stage, texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, MeshPipelineInfo,
+    RenderPassInfo, Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -12,18 +13,18 @@ pub fn main() {
     let pool = device.create_command_pool(0).unwrap();
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let pipeline = match device.create_mesh_pipeline(&MeshPipelineInfo {
@@ -52,11 +53,9 @@ pub fn main() {
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let listed = device.caps().mesh_indirect;
-    let groups = device.create_buffer(12, memory::UPLOAD).unwrap();
-    unsafe {
-        let words = device.map_buffer(groups).cast::<[u32; 3]>();
-        *words = [1, 1, 1];
-    }
+    let groups = device.create_buffer(12, Memory::Upload).unwrap();
+    let words = unsafe { device.map_buffer::<[u32; 3]>(groups) };
+    words[0] = [1, 1, 1];
     device.unmap_buffer(groups);
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
@@ -72,9 +71,9 @@ pub fn main() {
         c.use_residency_set(set);
         c.texture_barrier(&TextureBarrier {
             texture: color,
-            src_stage: stage::COLOR,
-            dst_stage: stage::COLOR,
-            before: texture_layout::UNDEFINED,
+            src_stage: Stage::COLOR,
+            dst_stage: Stage::COLOR,
+            before: TextureLayout::Undefined,
             ..Default::default()
         });
         let mut pass = c
@@ -109,7 +108,7 @@ pub fn main() {
             pass.draw_mesh_tasks(1, 1, 1);
         }
         pass.end();
-        c.memory_barrier(stage::COLOR, stage::COPY);
+        c.memory_barrier(Stage::COLOR, Stage::COPY);
         let mut pass = c.begin_compute_pass().unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: color,
@@ -118,13 +117,11 @@ pub fn main() {
             buffer: back,
             ..Default::default()
         });
-        pass.memory_barrier(stage::COPY, stage::HOST);
+        pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
         device.submit(c, &[], &[(&timeline, round + 1)]).unwrap();
         assert!(timeline.wait(round + 1, 1000).unwrap());
-        let pixels = unsafe {
-            std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-        };
+        let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
         let red = [255, 0, 0, 255];
         let blue = [0, 0, 255, 255];
@@ -158,19 +155,19 @@ fn executed(
     let n = 64u32;
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
-    let range = device.create_buffer(8, memory::DEVICE).unwrap();
+    let range = device.create_buffer(8, Memory::Device).unwrap();
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let single = device
@@ -223,12 +220,12 @@ fn executed(
     pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
     pass.dispatch(1, 1, 1);
     pass.end();
-    c.memory_barrier(stage::COMPUTE, stage::INDIRECT);
+    c.memory_barrier(Stage::COMPUTE, Stage::INDIRECT);
     c.texture_barrier(&TextureBarrier {
         texture: color,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -259,7 +256,7 @@ fn executed(
     pass.bind_uniform_buffer(0, half, 0, 4);
     pass.execute_indirect(list, 0, 1);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -268,13 +265,11 @@ fn executed(
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     assert_eq!(
         pixels[(32 * n + 32) as usize],
         [255, 0, 0, 255],

@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo, RenderPassInfo,
-    RenderPipelineInfo, SamplerInfo, Scissor, TextureBarrier, TextureInfo, Viewport, address_mode,
-    filter, format, memory, stage, texture_layout, texture_usage,
+    AddressMode, BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo, Filter,
+    Format, Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage,
+    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -9,12 +9,12 @@ mod host;
 
 const CODE: &[u8] = host::code!("slots");
 
-fn discard(texture: mk::Texture, stage: u32) -> TextureBarrier {
+fn discard(texture: mk::Texture, stage: Stage) -> TextureBarrier {
     TextureBarrier {
         texture,
         src_stage: stage,
         dst_stage: stage,
-        before: texture_layout::UNDEFINED,
+        before: TextureLayout::Undefined,
         ..Default::default()
     }
 }
@@ -28,45 +28,43 @@ pub fn main() {
         return;
     }
     let texel = |usage| TextureInfo {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         width: 4,
         height: 1,
         usage,
         ..Default::default()
     };
     let source = device
-        .create_texture(&texel(texture_usage::SAMPLED | texture_usage::COPY_DST))
+        .create_texture(&texel(TextureUsage::SAMPLED | TextureUsage::COPY_DST))
         .unwrap();
     let target = device
         .create_texture(&TextureInfo {
             height: 4,
-            ..texel(texture_usage::COLOR | texture_usage::COPY_SRC)
+            ..texel(TextureUsage::COLOR | TextureUsage::COPY_SRC)
         })
         .unwrap();
     let sampler = device
         .create_sampler(&SamplerInfo {
-            min: filter::NEAREST,
-            mag: filter::NEAREST,
-            mip: filter::NEAREST,
-            u: address_mode::CLAMP,
-            v: address_mode::CLAMP,
-            w: address_mode::CLAMP,
+            min: Filter::Nearest,
+            mag: Filter::Nearest,
+            mip: Filter::Nearest,
+            u: AddressMode::Clamp,
+            v: AddressMode::Clamp,
+            w: AddressMode::Clamp,
             ..Default::default()
         })
         .unwrap();
     let at = caps.bind_alignment.max(16) as u64;
-    let upload = device.create_buffer(at + 16, memory::UPLOAD).unwrap();
-    let back = device.create_buffer(64, memory::READBACK).unwrap();
-    unsafe {
-        let p = device.map_buffer(upload);
-        let texels: [u8; 16] = [0, 0, 0, 255, 60, 0, 0, 255, 120, 0, 0, 255, 180, 0, 0, 255];
-        std::ptr::copy_nonoverlapping(texels.as_ptr(), p, 16);
-        let tint = [0.5f32, 1.0, 1.0, 1.0];
-        std::ptr::copy_nonoverlapping(tint.as_ptr().cast(), p.add(at as usize), 16);
-    }
+    let upload = device.create_buffer(at + 16, Memory::Upload).unwrap();
+    let back = device.create_buffer(64, Memory::Readback).unwrap();
+    let p = unsafe { device.map_buffer::<u8>(upload) };
+    let texels: [u8; 16] = [0, 0, 0, 255, 60, 0, 0, 255, 120, 0, 0, 255, 180, 0, 0, 255];
+    p[..16].copy_from_slice(&texels);
+    let tint = [0.5f32, 1.0, 1.0, 1.0].map(f32::to_le_bytes).concat();
+    p[at as usize..].copy_from_slice(&tint);
     device.unmap_buffer(upload);
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let draw = device
@@ -88,7 +86,7 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(source, stage::COPY));
+    pass.texture_barrier(&discard(source, Stage::COPY));
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
@@ -96,8 +94,8 @@ pub fn main() {
         ..Default::default()
     });
     pass.end();
-    c.memory_barrier(stage::COPY, stage::FRAGMENT | stage::COMPUTE);
-    c.texture_barrier(&discard(target, stage::COLOR));
+    c.memory_barrier(Stage::COPY, Stage::FRAGMENT | Stage::COMPUTE);
+    c.texture_barrier(&discard(target, Stage::COLOR));
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -126,7 +124,7 @@ pub fn main() {
     pass.bind_sampler(0, sampler);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: target,
@@ -135,11 +133,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe { std::slice::from_raw_parts(device.map_buffer(back), 64) }.to_vec();
+    let pixels = unsafe { device.map_buffer::<u8>(back) }.to_vec();
     device.unmap_buffer(back);
     for (i, p) in pixels.chunks(4).enumerate() {
         let red = (i % 4 * 30) as u8;
@@ -152,12 +150,12 @@ pub fn main() {
     }
     let image = device
         .create_texture(&TextureInfo {
-            format: format::RGBA32_FLOAT,
-            ..texel(texture_usage::STORAGE | texture_usage::COPY_SRC)
+            format: Format::Rgba32Float,
+            ..texel(TextureUsage::STORAGE | TextureUsage::COPY_SRC)
         })
         .unwrap();
-    let data = device.create_buffer(64 * 4, memory::DEVICE).unwrap();
-    let out = device.create_buffer(64 * 4 + 64, memory::READBACK).unwrap();
+    let data = device.create_buffer(64 * 4, Memory::Device).unwrap();
+    let out = device.create_buffer(64 * 4 + 64, Memory::Readback).unwrap();
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: CODE,
@@ -174,7 +172,7 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(image, stage::COMPUTE));
+    pass.texture_barrier(&discard(image, Stage::COMPUTE));
     pass.bind_compute_pipeline(fill);
     pass.bind_uniform_buffer(1, upload, at, 16);
     pass.bind_storage_buffer(0, data, 0, 64 * 4);
@@ -183,7 +181,7 @@ pub fn main() {
     pass.bind_sampler(0, sampler);
     pass.bind_uniform_buffer(0, constants, 0, 4);
     pass.dispatch(1, 1, 1);
-    pass.memory_barrier(stage::COMPUTE, stage::COPY);
+    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_buffer(data, 0, out, 0, 64 * 4);
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: image,
@@ -192,11 +190,11 @@ pub fn main() {
         offset: 256,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 2)]).unwrap();
     assert!(timeline.wait(2, 1000).unwrap());
-    let bytes = unsafe { std::slice::from_raw_parts(device.map_buffer(out), 64 * 4 + 64) }.to_vec();
+    let bytes = unsafe { device.map_buffer::<u8>(out) }.to_vec();
     device.unmap_buffer(out);
     let words: Vec<u32> = bytes[..256]
         .chunks(4)

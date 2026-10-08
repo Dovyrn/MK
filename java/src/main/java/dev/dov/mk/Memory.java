@@ -1,8 +1,23 @@
 package dev.dov.mk;
 
-public interface Memory {
-    int DEVICE = 0;
-    int UPLOAD = 1;
-    int READBACK = 2;
-    int TRANSIENT = 3;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public enum Memory {
+    DEVICE(0),
+    UPLOAD(1),
+    READBACK(2),
+    TRANSIENT(3);
+
+    final int value;
+
+    static Memory of(int v) {
+        return switch (v) {
+            case 0 -> DEVICE;
+            case 1 -> UPLOAD;
+            case 2 -> READBACK;
+            case 3 -> TRANSIENT;
+            default -> throw new IllegalArgumentException(v + " is no Memory");
+        };
+    }
 }

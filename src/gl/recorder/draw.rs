@@ -1,11 +1,11 @@
 use super::{Recorder, is_integer_format};
 use crate::Buffer;
-use crate::format;
+use crate::Error;
 use crate::gl::pipeline::Pipeline;
 use glow::HasContext;
 
 impl Recorder<'_> {
-    pub fn bind_draw_state(&mut self, render: bool) -> Result<bool, String> {
+    pub fn bind_draw_state(&mut self, render: bool) -> Result<bool, Error> {
         let gl = self.gl;
         let program = if render {
             self.render.map(|p| &p.program)
@@ -67,7 +67,7 @@ impl Recorder<'_> {
                 };
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.res.buffers.get(buffer).raw));
                 let layout = p.buffers[a.buffer as usize];
-                let [_, f, ty] = format::gl(a.format);
+                let [_, f, ty] = a.format.gl();
                 let size = match f {
                     glow::RED | glow::RED_INTEGER => 1,
                     glow::RG | glow::RG_INTEGER => 2,

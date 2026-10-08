@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::mtl::recorder::VERTICES;
 use crate::{register, slot};
 use objc2::rc::Retained;
@@ -16,7 +17,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(device: &ProtocolObject<dyn MTLDevice>) -> Result<Self, String> {
+    pub fn new(device: &ProtocolObject<dyn MTLDevice>) -> Result<Self, Error> {
         let desc = MTL4ArgumentTableDescriptor::new();
         desc.setMaxBufferBindCount(VERTICES + slot::VERTICES as usize);
         desc.setMaxTextureBindCount((register::IMAGE + slot::IMAGES) as usize);
@@ -24,10 +25,10 @@ impl Pool {
         Ok(Self {
             allocator: device
                 .newCommandAllocator()
-                .ok_or("command allocator allocation failed")?,
+                .ok_or_else(|| Error::OutOfMemory("command allocator allocation failed".into()))?,
             table: device
                 .newArgumentTableWithDescriptor_error(&desc)
-                .map_err(|e| e.localizedDescription().to_string())?,
+                .map_err(Error::from)?,
             buffers: RefCell::new(Vec::new()),
             used: Cell::new(0),
         })
@@ -36,14 +37,14 @@ impl Pool {
     pub fn next(
         &self,
         device: &ProtocolObject<dyn MTLDevice>,
-    ) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, String> {
+    ) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, Error> {
         let mut buffers = self.buffers.borrow_mut();
         let i = self.used.get();
         if i == buffers.len() {
             buffers.push(
                 device
                     .newCommandBuffer()
-                    .ok_or("command buffer allocation failed")?,
+                    .ok_or_else(|| Error::OutOfMemory("command buffer allocation failed".into()))?,
             );
         }
         self.used.set(i + 1);

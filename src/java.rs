@@ -84,7 +84,9 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
 ) -> jlong {
     call(&mut env, |_| {
         Ok(new_compute_pass(
-            command_buffer(commands).begin_compute_pass()?,
+            command_buffer(commands)
+                .begin_compute_pass()
+                .map_err(|e| e.to_string())?,
         ))
     })
 }
@@ -101,7 +103,8 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginRenderPass(
         let commands = command_buffer(commands);
         let pass = crate::RenderPassInfo::decode(&mut bytes(info, length as i64), |info| {
             commands.begin_render_pass(info)
-        })?;
+        })
+        .map_err(|e| e.to_string())?;
         Ok(new_render_pass(pass))
     })
 }
@@ -112,7 +115,9 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nFinish(
     _: JClass,
     commands: jlong,
 ) {
-    call(&mut env, |_| take_commands(commands).finish())
+    call(&mut env, |_| {
+        take_commands(commands).finish().map_err(|e| e.to_string())
+    })
 }
 
 #[unsafe(no_mangle)]

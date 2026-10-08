@@ -1,4 +1,5 @@
-use crate::atomic64;
+use crate::Atomic64;
+use crate::Error;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
 use ash::khr::push_descriptor;
 use ash::vk;
@@ -10,7 +11,7 @@ pub struct Extensions {
     pub sizes: bool,
     pub count: bool,
     pub full: bool,
-    pub atomics: u32,
+    pub atomics: Atomic64,
     pub model: bool,
     pub moltenvk: bool,
     pub features: vk::PhysicalDeviceFeatures,
@@ -53,7 +54,7 @@ impl Extensions {
         physical: vk::PhysicalDevice,
         raw: &ash::Device,
         features: &vk::PhysicalDeviceFeatures2,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         unsafe {
             let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
             let v13 = chained::<vk::PhysicalDeviceVulkan13Features>(features);
@@ -97,7 +98,10 @@ impl Extensions {
                 .map(|(name, _)| *name)
                 .collect();
             if !missing.is_empty() {
-                return Err(format!("adopt needs {}", missing.join(", ")));
+                return Err(Error::Unsupported(format!(
+                    "adopt needs {}",
+                    missing.join(", ")
+                )));
             }
             let has = |name: &std::ffi::CStr| {
                 (instance.fp_v1_0().get_device_proc_addr)(raw.handle(), name.as_ptr()).is_some()
@@ -163,16 +167,16 @@ impl Extensions {
                 sizes: v13.is_some_and(|f| f.subgroup_size_control != 0),
                 count: v12.is_some_and(|f| f.draw_indirect_count != 0),
                 full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
-                atomics: v12.map_or(0, |f| {
+                atomics: v12.map_or(Atomic64::default(), |f| {
                     let buffer = if f.shader_buffer_int64_atomics != 0 {
-                        atomic64::MIN_MAX | atomic64::ALL | atomic64::SIGNED
+                        Atomic64::MIN_MAX | Atomic64::ALL | Atomic64::SIGNED
                     } else {
-                        0
+                        Atomic64::default()
                     };
                     let shared = if f.shader_shared_int64_atomics != 0 {
-                        atomic64::SHARED
+                        Atomic64::SHARED
                     } else {
-                        0
+                        Atomic64::default()
                     };
                     buffer | shared
                 }) | if chained::<vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT>(
@@ -180,9 +184,9 @@ impl Extensions {
                 )
                 .is_some_and(|f| f.shader_image_int64_atomics != 0)
                 {
-                    atomic64::IMAGE
+                    Atomic64::IMAGE
                 } else {
-                    0
+                    Atomic64::default()
                 },
                 model: v12.is_some_and(|f| f.vulkan_memory_model != 0),
                 moltenvk,

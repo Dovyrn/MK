@@ -1,4 +1,4 @@
-[stage]
+[flags.stage]
 VERTEX = 1
 FRAGMENT = 2
 TASK = 8
@@ -10,7 +10,7 @@ HOST = 256
 COMPUTE = 134217728
 COPY = 268435456
 
-[texture_layout]
+[enum.texture_layout]
 UNDEFINED = 0
 GENERAL = 1
 READ = 2
@@ -21,13 +21,13 @@ COPY_SRC = 6
 COPY_DST = 7
 PRESENT = 8
 
-[resource_kind]
+[enum.resource_kind]
 BUFFER = 0
 TEXTURE = 1
 QUERY_POOL = 2
 INDIRECT_BUFFER = 3
 
-[texture_usage]
+[flags.texture_usage]
 SAMPLED = 1
 STORAGE = 2
 COLOR = 4
@@ -39,13 +39,13 @@ HOST = 128
 ATOMIC = 1024
 INPUT = 2048
 
-[memory]
+[enum.memory]
 DEVICE = 0
 UPLOAD = 1
 READBACK = 2
 TRANSIENT = 3
 
-[texture_dimension]
+[enum.texture_dimension]
 D1 = 0
 D2 = 1
 D3 = 2
@@ -54,18 +54,18 @@ D1_ARRAY = 4
 D2_ARRAY = 5
 CUBE_ARRAY = 6
 
-[filter]
+[enum.filter]
 NEAREST = 0
 LINEAR = 1
 
-[address_mode]
+[enum.address_mode]
 REPEAT = 0
 MIRROR = 1
 CLAMP = 2
 BORDER = 3
 MIRROR_CLAMP = 4
 
-[compare_op]
+[enum.compare_op]
 NONE = 0
 NEVER = 1
 LESS = 2
@@ -76,19 +76,19 @@ NOT_EQUAL = 6
 GREATER_EQUAL = 7
 ALWAYS = 8
 
-[border_color]
+[enum.border_color]
 TRANSPARENT_BLACK = 0
 OPAQUE_BLACK = 1
 OPAQUE_WHITE = 2
 
-[topology]
+[enum.topology]
 POINT = 0
 LINE = 1
 LINE_STRIP = 2
 TRIANGLE = 3
 TRIANGLE_STRIP = 4
 
-[blend_factor]
+[enum.blend_factor]
 ZERO = 0
 ONE = 1
 SRC_COLOR = 2
@@ -109,40 +109,40 @@ ONE_MINUS_SRC1_COLOR = 16
 SRC1_ALPHA = 17
 ONE_MINUS_SRC1_ALPHA = 18
 
-[blend_op]
+[enum.blend_op]
 ADD = 0
 SUBTRACT = 1
 REVERSE_SUBTRACT = 2
 MIN = 3
 MAX = 4
 
-[cull_mode]
+[enum.cull_mode]
 NONE = 0
 FRONT = 1
 BACK = 2
 
-[front_face]
+[enum.front_face]
 CCW = 0
 CW = 1
 
-[fill_mode]
+[enum.fill_mode]
 FILL = 0
 LINE = 1
 
-[load_op]
+[enum.load_op]
 LOAD = 0
 CLEAR = 1
 DONT_CARE = 2
 
-[store_op]
+[enum.store_op]
 STORE = 0
 DONT_CARE = 1
 
-[index_type]
+[enum.index_type]
 U16 = 0
 U32 = 1
 
-[stencil_op]
+[enum.stencil_op]
 KEEP = 0
 ZERO = 1
 REPLACE = 2
@@ -152,19 +152,19 @@ INVERT = 5
 INCREMENT_WRAP = 6
 DECREMENT_WRAP = 7
 
-[color_mask]
+[flags.color_mask]
 R = 1
 G = 2
 B = 4
 A = 8
 ALL = 15
 
-[query_kind]
+[enum.query_kind]
 TIMESTAMP = 0
 OCCLUSION = 1
 PRECISE = 4
 
-[subgroup_op]
+[flags.subgroup_op]
 BASIC = 1
 VOTE = 2
 ARITHMETIC = 4
@@ -175,7 +175,7 @@ CLUSTERED = 64
 QUAD = 128
 ROTATE = 512
 
-[atomic64]
+[flags.atomic64]
 MIN_MAX = 1
 ALL = 2
 SHARED = 4

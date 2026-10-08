@@ -1,4 +1,5 @@
 use super::Device;
+use crate::Error;
 use crate::MemoryBudget;
 use glow::HasContext;
 
@@ -11,7 +12,7 @@ const AVAILABLE: u32 = 0x9049;
 const FREE: u32 = 0x87FC;
 
 impl Device {
-    pub fn memory_budget(&self) -> Result<MemoryBudget, String> {
+    pub fn memory_budget(&self) -> Result<MemoryBudget, Error> {
         self.thread();
         let gl = &self.gl;
         let kb = |p| unsafe { gl.get_parameter_i32(p) } as u64 * 1024;
@@ -29,6 +30,8 @@ impl Device {
                 usage: 0,
             });
         }
-        Err("memory budgets need GL_NVX_gpu_memory_info or GL_ATI_meminfo".into())
+        Err(Error::Unsupported(
+            "memory budgets need GL_NVX_gpu_memory_info or GL_ATI_meminfo".into(),
+        ))
     }
 }

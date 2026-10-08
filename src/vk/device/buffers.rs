@@ -1,11 +1,12 @@
 use super::Device;
 use crate::Buffer;
+use crate::Error;
 use crate::vk::buffer::BufferObject;
 use ash::vk;
 use std::rc::Rc;
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
+    pub fn create_buffer(&mut self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
         self.caps.check_buffer(size, memory)?;
         let buffer = self.allocate(size, memory, self.buffer_usage())?;
         Ok(self.insert_buffer(buffer, size))
@@ -14,11 +15,11 @@ impl Device {
     pub(super) fn allocate(
         &self,
         size: u64,
-        memory: u32,
+        memory: crate::Memory,
         usage: vk::BufferUsageFlags,
-    ) -> Result<BufferObject, String> {
+    ) -> Result<BufferObject, Error> {
         let info = self.buffer_info(size, usage);
-        let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
+        let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(Error::from)?;
         let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
         let needs = unsafe { self.raw.get_buffer_memory_requirements(raw) };
         let index = self
@@ -75,11 +76,11 @@ impl Device {
         self.res.buffers.get(buffer).raw
     }
 
-    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
-        self.res.table.buffers.get(buffer);
-        self.res.table.assert_mappable(buffer);
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    pub unsafe fn map_buffer<T: Copy>(&self, buffer: Buffer) -> &mut [T] {
         let b = self.res.buffers.get(buffer);
-        b.data
+        unsafe { self.res.table.mapping(buffer, b.data) }
     }
 
     pub fn unmap_buffer(&self, buffer: Buffer) {

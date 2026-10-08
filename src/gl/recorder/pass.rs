@@ -1,11 +1,12 @@
 use super::Recorder;
+use crate::Error;
 use crate::Texture;
 use crate::gl::state::set_enabled;
-use crate::{format, load_op, slot, store_op};
+use crate::{Format, LoadOp, StoreOp, slot};
 use glow::HasContext;
 
-fn is_srgb(f: u32) -> bool {
-    matches!(format::gl(f)[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
+fn is_srgb(f: Format) -> bool {
+    matches!(f.gl()[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
 }
 
 fn encode(v: f32) -> f32 {
@@ -51,7 +52,7 @@ impl Recorder<'_> {
         })
     }
 
-    pub fn bind(&self, layers: u32) -> Result<(), String> {
+    pub fn bind(&self, layers: u32) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
@@ -86,7 +87,7 @@ impl Recorder<'_> {
                 }
                 gl.draw_buffers(&draws);
                 if let Some(d) = &self.depth {
-                    let point = match format::gl(res.textures.get(d.texture).format)[1] {
+                    let point = match Format::gl(res.textures.get(d.texture).format)[1] {
                         glow::DEPTH_STENCIL => glow::DEPTH_STENCIL_ATTACHMENT,
                         glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,
                         _ => glow::DEPTH_ATTACHMENT,
@@ -94,14 +95,16 @@ impl Recorder<'_> {
                     self.attach(target, point, d.texture, layers);
                 }
                 if gl.check_framebuffer_status(target) != glow::FRAMEBUFFER_COMPLETE {
-                    return Err("render targets form an incomplete framebuffer".into());
+                    return Err(Error::Invalid(
+                        "render targets form an incomplete framebuffer".into(),
+                    ));
                 }
             }
         }
         Ok(())
     }
 
-    pub fn begin_render(&mut self, width: u32, height: u32, layers: u32) -> Result<(), String> {
+    pub fn begin_render(&mut self, width: u32, height: u32, layers: u32) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
         self.bind(layers)?;
@@ -113,16 +116,16 @@ impl Recorder<'_> {
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::FRAMEBUFFER_SRGB);
             for c in &self.colors {
-                if c.load != load_op::CLEAR {
+                if c.load != LoadOp::Clear {
                     continue;
                 }
                 let slot = if default { 0 } else { c.index };
                 let clear = [c.r, c.g, c.b, c.a];
                 let f = res.textures.get(c.texture).format;
-                if format::sint(f) {
+                if f.sint() {
                     let values = clear.map(|v| v as i32);
                     gl.clear_buffer_i32_slice(glow::COLOR, slot, &values);
-                } else if format::uint(f) {
+                } else if f.uint() {
                     let values = clear.map(|v| v as u32);
                     gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
                 } else if is_srgb(f) {
@@ -134,10 +137,10 @@ impl Recorder<'_> {
             }
             set_enabled(gl, glow::FRAMEBUFFER_SRGB, self.srgb());
             if let Some(d) = &self.depth {
-                if d.load == load_op::CLEAR {
+                if d.load == LoadOp::Clear {
                     gl.clear_buffer_f32_slice(glow::DEPTH, 0, &[d.depth]);
                 }
-                if d.stencil_load == load_op::CLEAR {
+                if d.stencil_load == LoadOp::Clear {
                     gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.stencil as i32]);
                 }
             }
@@ -158,33 +161,33 @@ impl Recorder<'_> {
         Ok(())
     }
 
-    pub fn end_render(&mut self) -> Result<(), String> {
+    pub fn end_render(&mut self) -> Result<(), Error> {
         let gl = self.gl;
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
             let mut discard: Vec<u32> = self
                 .colors
                 .iter()
-                .filter(|c| c.store == store_op::DONT_CARE)
+                .filter(|c| c.store == StoreOp::DontCare)
                 .map(|c| glow::COLOR_ATTACHMENT0 + c.index)
                 .collect();
             if self
                 .depth
                 .as_ref()
-                .is_some_and(|d| d.store == store_op::DONT_CARE)
+                .is_some_and(|d| d.store == StoreOp::DontCare)
             {
                 discard.push(glow::DEPTH_ATTACHMENT);
             }
             let (w, h) = self.extent;
             for c in &self.colors {
-                if c.resolve.is_null() {
+                let Some(resolve) = c.resolve else {
                     continue;
-                }
+                };
                 gl.disable(glow::SCISSOR_TEST);
                 gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.fbo));
                 gl.read_buffer(glow::COLOR_ATTACHMENT0 + c.index);
                 gl.bind_framebuffer(target, Some(self.read));
-                self.attach(target, glow::COLOR_ATTACHMENT0, c.resolve, 1);
+                self.attach(target, glow::COLOR_ATTACHMENT0, resolve, 1);
                 gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
                 gl.blit_framebuffer(
                     0,

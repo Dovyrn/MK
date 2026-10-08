@@ -1,4 +1,5 @@
 use super::Device;
+use crate::Error;
 use crate::mtl::query::Query;
 use crate::residency::Members;
 use crate::{ResidencySet, Resource};
@@ -7,12 +8,12 @@ use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
 
 impl Device {
-    pub fn create_residency_set(&mut self) -> Result<ResidencySet, String> {
+    pub fn create_residency_set(&mut self) -> Result<ResidencySet, Error> {
         autoreleasepool(|_| {
             let raw = self
                 .raw
                 .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
-                .map_err(|e| e.localizedDescription().to_string())?;
+                .map_err(Error::from)?;
             let id = self.res.sets.insert(raw);
             self.res.table.residency.create(id);
             Ok(id)

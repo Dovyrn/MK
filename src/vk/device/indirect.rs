@@ -1,5 +1,6 @@
 use super::Device;
-use crate::{IndirectBuffer, IndirectBufferInfo, memory};
+use crate::Error;
+use crate::{IndirectBuffer, IndirectBufferInfo, Memory};
 
 pub fn indirect_stride(mesh: bool, indexed: bool) -> u32 {
     match (mesh, indexed) {
@@ -13,11 +14,11 @@ impl Device {
     pub fn create_indirect_buffer(
         &mut self,
         info: &IndirectBufferInfo,
-    ) -> Result<IndirectBuffer, String> {
+    ) -> Result<IndirectBuffer, Error> {
         let entry = self.res.table.check_indirect(info);
         self.caps.check_indirect(entry.mesh, info.draws)?;
         let stride = indirect_stride(entry.mesh, info.indexed);
-        let buffer = self.create_buffer(info.draws as u64 * stride as u64, memory::DEVICE)?;
+        let buffer = self.create_buffer(info.draws as u64 * stride as u64, Memory::Device)?;
         let id = self.res.indirects.insert(buffer);
         self.res.table.indirects.set(id, entry);
         Ok(id)

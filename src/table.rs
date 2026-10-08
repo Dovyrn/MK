@@ -2,9 +2,9 @@ use crate::entries::Entries;
 use crate::handle::TimelineId;
 use crate::residency::{Members, Residency};
 use crate::{
-    Buffer, CommandPool, ComputePipeline, DepthState, HostTextureCopy, IndirectBuffer,
-    IndirectBufferInfo, QueryPool, RenderPipeline, ResidencySet, Sampler, Texture, TextureInfo,
-    TextureViewInfo, TilePipeline, format, index_type, memory, texture_dimension, texture_usage,
+    Buffer, CommandPool, ComputePipeline, DepthState, Format, HostTextureCopy, IndexType,
+    IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
+    Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Weak};
@@ -12,7 +12,7 @@ use std::sync::{Arc, Weak};
 #[derive(Clone, Copy)]
 pub struct RenderEntry {
     pub samples: u32,
-    pub topology: u32,
+    pub topology: crate::Topology,
     pub mesh: bool,
     pub indirect: bool,
     pub vertices: u32,
@@ -30,7 +30,7 @@ pub struct Table {
     pub renders: Entries<RenderPipeline, RenderEntry>,
     pub tile_pipelines: Entries<TilePipeline, u32>,
     pub states: Entries<DepthState, ()>,
-    pub queries: Entries<QueryPool, (u32, u32)>,
+    pub queries: Entries<QueryPool, (crate::QueryKind, u32)>,
     pub timelines: RefCell<Entries<TimelineId, Signal>>,
     pub parents: Entries<Texture, Texture>,
     pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
@@ -43,7 +43,7 @@ pub struct Table {
 #[derive(Clone, Copy)]
 pub struct IndirectEntry {
     pub info: IndirectBufferInfo,
-    pub topology: u32,
+    pub topology: crate::Topology,
     pub mesh: bool,
 }
 
@@ -84,12 +84,7 @@ impl Table {
         if info.indexed {
             check!(!entry.mesh, "{name} of mesh {pipeline} cannot be indexed");
             let kind = info.kind;
-            check!(
-                index_type::valid(kind),
-                "{name} kind is {}",
-                index_type::name(kind)
-            );
-            let size = if kind == index_type::U16 { 2 } else { 4 };
+            let size = if kind == IndexType::U16 { 2 } else { 4 };
             check!(
                 info.offset.is_multiple_of(size),
                 "{name} index offset {} is not a multiple of {size}",
@@ -127,11 +122,11 @@ impl Table {
             words[2..6].copy_from_slice(&[
                 indices as u32,
                 (indices >> 32) as u32,
-                e.topology,
-                kind,
+                e.topology as u32,
+                kind as u32,
             ]);
         } else {
-            words[2] = e.topology;
+            words[2] = e.topology as u32;
         }
         crate::IndirectShaderHandle(words)
     }
@@ -150,8 +145,21 @@ impl Table {
     pub fn assert_mappable(&self, buffer: Buffer) {
         check!(
             *self.mappable.get(buffer),
-            "map_buffer on {buffer}, which has no host mapping; create it with memory::UPLOAD or memory::READBACK, or import a mapped buffer"
+            "map_buffer on {buffer}, which has no host mapping; create it with Memory::Upload or Memory::Readback, or import a mapped buffer"
         );
+    }
+
+    pub unsafe fn mapping<'a, T>(&self, buffer: Buffer, data: *mut u8) -> &'a mut [T] {
+        let size = *self.buffers.get(buffer);
+        self.assert_mappable(buffer);
+        check!(
+            data.cast::<T>().is_aligned(),
+            "map_buffer of {buffer} as {} needs {}-byte alignment",
+            std::any::type_name::<T>(),
+            align_of::<T>()
+        );
+        let count = size as usize / size_of::<T>();
+        unsafe { std::slice::from_raw_parts_mut(data.cast(), count) }
     }
 
     pub fn drop_query(&mut self, pool: QueryPool) {
@@ -172,8 +180,8 @@ impl Table {
             );
             check_ne!(
                 self.textures.get(t).memory,
-                memory::TRANSIENT,
-                "{t} is memory::TRANSIENT and has no memory to make resident"
+                Memory::Transient,
+                "{t} is Memory::Transient and has no memory to make resident"
             );
         }
         for &q in &items.queries {
@@ -187,10 +195,10 @@ impl Table {
 
     pub fn add_texture(&mut self, texture: Texture, info: &TextureInfo) {
         self.textures.set(texture, *info);
-        if info.memory == memory::TRANSIENT {
+        if info.memory == Memory::Transient {
             self.residency.exempt_texture(texture);
         }
-        if info.usage & texture_usage::HOST == 0 {
+        if !info.usage.contains(TextureUsage::HOST) {
             self.undefined.get_mut().push(texture);
         }
     }
@@ -207,7 +215,7 @@ impl Table {
         let root = self.parents.find(texture).copied().unwrap_or(texture);
         check!(
             !undefined.contains(&root),
-            "{name} uses {texture} before its first texture_barrier; record one with before: texture_layout::UNDEFINED"
+            "{name} uses {texture} before its first texture_barrier; record one with before: TextureLayout::Undefined"
         );
     }
 
@@ -227,39 +235,30 @@ impl Table {
 
     pub fn resolve_view(&self, texture: Texture, info: &TextureViewInfo) -> TextureViewInfo {
         let t = self.textures.get(texture);
+        check_ne!(info.format, Format::None, "view format is Format::None");
         check!(
-            texture_dimension::valid(info.dimension),
-            "unknown dimension {}",
-            info.dimension
-        );
-        check!(
-            info.format > 0 && format::block(info.format)[0] > 0,
-            "unknown format {}",
-            info.format
-        );
-        check!(
-            info.usage != 0 && info.usage & !t.usage == 0,
+            !info.usage.is_empty() && t.usage.contains(info.usage),
             "view usage {:#x} is not part of {texture} usage {:#x}",
             info.usage,
             t.usage
         );
         check!(
-            info.format == t.format || t.usage & texture_usage::VIEW != 0,
-            "a view of {texture} in format {} needs texture_usage::VIEW",
+            info.format == t.format || t.usage.contains(TextureUsage::VIEW),
+            "a view of {texture} in format {} needs TextureUsage::VIEW",
             info.format
         );
         check_eq!(
-            format::block(info.format),
-            format::block(t.format),
+            info.format.block(),
+            t.format.block(),
             "format {} has a different block than format {}",
             info.format,
             t.format
         );
         let mips = rest(info.base_mip, info.mips, t.mips, "mip", texture);
         let layers = rest(info.base_layer, info.layers, t.layers, "layer", texture);
-        let family = |d: u32| match d {
-            texture_dimension::D1 | texture_dimension::D1_ARRAY => 1,
-            texture_dimension::D3 => 3,
+        let family = |d: TextureDimension| match d {
+            TextureDimension::D1 | TextureDimension::D1Array => 1,
+            TextureDimension::D3 => 3,
             _ => 2,
         };
         check_eq!(
@@ -271,21 +270,21 @@ impl Table {
         );
         let cube = matches!(
             t.dimension,
-            texture_dimension::CUBE | texture_dimension::CUBE_ARRAY
+            TextureDimension::Cube | TextureDimension::CubeArray
         );
         match info.dimension {
-            texture_dimension::D1 | texture_dimension::D2 | texture_dimension::D3 => {
+            TextureDimension::D1 | TextureDimension::D2 | TextureDimension::D3 => {
                 check_eq!(
                     layers,
                     1,
                     "a view without layers has one layer, not {layers}"
                 )
             }
-            texture_dimension::CUBE => check!(
+            TextureDimension::Cube => check!(
                 cube && layers == 6,
                 "a cube view needs a cube texture and 6 layers"
             ),
-            texture_dimension::CUBE_ARRAY => check!(
+            TextureDimension::CubeArray => check!(
                 cube && layers.is_multiple_of(6),
                 "a cube array view needs a cube texture and a multiple of 6 layers"
             ),
@@ -320,13 +319,12 @@ impl Table {
     pub fn check_host_copy(&self, c: &HostTextureCopy, size: usize) -> (u64, u64) {
         let texture = c.texture;
         let t = self.textures.get(texture);
-        check_ne!(
-            t.usage & texture_usage::HOST,
-            0,
-            "write_texture and read_texture need {texture} created with texture_usage::HOST"
+        check!(
+            t.usage.contains(TextureUsage::HOST),
+            "write_texture and read_texture need {texture} created with TextureUsage::HOST"
         );
         check!(
-            t.samples == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&t.format),
+            t.samples == 1 && !(Format::D16Unorm..=Format::S8Uint).contains(&t.format),
             "write_texture and read_texture need a single-sampled color texture, not {texture}"
         );
         let (w, h, d) = (c.width, c.height, c.depth);
@@ -343,7 +341,7 @@ impl Table {
             t.layers
         );
         let sizes = [t.width, t.height, t.depth].map(|n| (n >> c.mip).max(1));
-        let [_, bw, bh] = format::block(t.format);
+        let [_, bw, bh] = t.format.block();
         let fits = |at: u32, n: u32, end: u32| at as u64 + n as u64 <= end as u64;
         let edge = |at: u32, n: u32, end: u32, b: u32| {
             at.is_multiple_of(b) && (n.is_multiple_of(b) || at + n == end)
@@ -375,7 +373,7 @@ impl Table {
             rows >= h && (rows.is_multiple_of(bh) || rows == h),
             "row count {rows} is below height {h} or not a multiple of block height {bh}"
         );
-        let pitch = row.div_ceil(bw) as u64 * format::block(t.format)[0] as u64;
+        let pitch = row.div_ceil(bw) as u64 * t.format.block()[0] as u64;
         let image = pitch * rows.div_ceil(bh) as u64;
         let need = image
             .checked_mul(d as u64)

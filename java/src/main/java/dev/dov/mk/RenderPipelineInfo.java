@@ -14,11 +14,11 @@ public class RenderPipelineInfo {
     public String vertex = "";
     public String fragment = "";
     public ColorTarget[] colors = new ColorTarget[0];
-    public int depth = Format.NONE;
-    public int stencil = Format.NONE;
+    public Format depth = null;
+    public Format stencil = null;
     public int samples = 1;
-    public int topology = Topology.TRIANGLE;
-    public int fill = FillMode.FILL;
+    public Topology topology = Topology.TRIANGLE;
+    public FillMode fill = FillMode.FILL;
     public boolean coverage = false;
     public boolean clamp = false;
     public boolean ordered = false;
@@ -39,7 +39,7 @@ public class RenderPipelineInfo {
         for (var x : attributes) {
             attributesSize += x.encodedSize();
         }
-        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + buffersSize + attributesSize;
+        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize;
     }
 
     long encode(long p) {
@@ -59,15 +59,23 @@ public class RenderPipelineInfo {
         for (var x : colors) {
             p = x.encode(p);
         }
-        memPutInt(p, depth);
+        memPutInt(p, depth == null ? 0 : 1);
         p += 4;
-        memPutInt(p, stencil);
+        if (depth != null) {
+            memPutInt(p, depth.value);
+            p += 4;
+        }
+        memPutInt(p, stencil == null ? 0 : 1);
         p += 4;
+        if (stencil != null) {
+            memPutInt(p, stencil.value);
+            p += 4;
+        }
         memPutInt(p, samples);
         p += 4;
-        memPutInt(p, topology);
+        memPutInt(p, topology.value);
         p += 4;
-        memPutInt(p, fill);
+        memPutInt(p, fill.value);
         p += 4;
         memPutInt(p, coverage ? 1 : 0);
         p += 4;

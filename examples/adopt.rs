@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, Device, RenderPassInfo, Scissor, TextureBarrier, Viewport,
-    format, memory, stage, texture_layout,
+    BufferTextureCopy, ColorAttachment, Device, Format, Memory, RenderPassInfo, Scissor, Stage,
+    TextureBarrier, TextureLayout, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -24,10 +24,10 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
         .import_texture(
             texture,
             &mk::TextureInfo {
-                format: format::RGBA8_UNORM,
+                format: Format::Rgba8Unorm,
                 width: n,
                 height: n,
-                usage: mk::texture_usage::COLOR | mk::texture_usage::COPY_SRC,
+                usage: mk::TextureUsage::COLOR | mk::TextureUsage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -55,7 +55,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
     let texture = raw.newTextureWithDescriptor(&desc).unwrap();
     let compiler = host::compiler(&raw);
     let mut device = Device::adopt(raw, compiler, 1).unwrap();
-    let slot = device.import_texture(texture, format::RGBA8_UNORM).unwrap();
+    let slot = device.import_texture(texture, Format::Rgba8Unorm).unwrap();
     (device, slot, ())
 }
 
@@ -135,10 +135,10 @@ fn native(
         .import_texture(
             image,
             &mk::TextureInfo {
-                format: format::RGBA8_UNORM,
+                format: Format::Rgba8Unorm,
                 width: n,
                 height: n,
-                usage: mk::texture_usage::COLOR | mk::texture_usage::COPY_SRC,
+                usage: mk::TextureUsage::COLOR | mk::TextureUsage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -213,14 +213,11 @@ pub fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let (source, native) = imported(&mut device, &host);
-    let words = device.create_buffer(16, memory::READBACK).unwrap();
-    unsafe {
-        let data = device.map_buffer(source).cast::<u32>();
-        std::ptr::copy_nonoverlapping([7u32, 8, 9, 10].as_ptr(), data, 4);
-    }
+    let words = device.create_buffer(16, Memory::Readback).unwrap();
+    unsafe { device.map_buffer::<u32>(source) }.copy_from_slice(&[7, 8, 9, 10]);
     device.unmap_buffer(source);
     let timeline = device.create_timeline().unwrap();
     let pool = device.create_command_pool(0).unwrap();
@@ -234,9 +231,9 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -268,8 +265,8 @@ pub fn main() {
     pass.end();
     c.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COPY,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COPY,
         ..Default::default()
     });
     let mut pass = c.begin_compute_pass().unwrap();
@@ -281,20 +278,18 @@ pub fn main() {
         ..Default::default()
     });
     pass.copy_buffer(source, 0, words, 0, 16);
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     assert!(
         pixels.iter().all(|p| *p == [51, 153, 255, 255]),
         "{:?}",
         pixels[0]
     );
     device.unmap_buffer(back);
-    let copied = unsafe { *device.map_buffer(words).cast::<[u32; 4]>() };
+    let copied = unsafe { device.map_buffer::<[u32; 4]>(words) }[0];
     assert_eq!(
         copied,
         [7, 8, 9, 10],

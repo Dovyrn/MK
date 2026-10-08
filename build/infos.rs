@@ -1,5 +1,5 @@
 use crate::field::Field;
-use crate::{camel, handle, list, pascal};
+use crate::{camel, constant, enumerated, flags, handle, java_kind, list, optional, pascal, word};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -20,6 +20,9 @@ pub fn borrows(info: &Info) -> bool {
 }
 
 fn rust_type(kind: &str) -> String {
+    if let Some(inner) = optional(kind) {
+        return format!("Option<{}>", rust_type(inner));
+    }
     match kind {
         "bytes" => "&'a [u8]".into(),
         "str" => "&'a str".into(),
@@ -34,9 +37,11 @@ fn rust_type(kind: &str) -> String {
 
 fn rust_value(f: &Field) -> String {
     match f.kind.as_str() {
+        k if optional(k).is_some() => "None".into(),
         "str" => "\"\"".into(),
         "bytes" => "&[]".into(),
         k if list(k).is_some() => "&[]".into(),
+        k if word(k) && f.value.contains("::") => constant(&f.value),
         k if !scalar(k) => format!("{k}::default()"),
         _ => f.value.clone(),
     }
@@ -121,6 +126,15 @@ pub fn reader(kind: &str) -> String {
 }
 
 fn rust_read(kind: &str) -> String {
+    if let Some(inner) = optional(kind) {
+        return match handle(inner) {
+            true => format!(
+                "{{\n            let h = {}(b);\n            (!h.is_null()).then_some(h)\n        }}",
+                reader(inner)
+            ),
+            false => format!("crate::wire::bool(b).then(|| {}(b))", reader(inner)),
+        };
+    }
     match list(kind) {
         Some(item) => format!("crate::wire::list(b, {})", reader(item)),
         None => format!("{}(b)", reader(kind)),
@@ -129,6 +143,10 @@ fn rust_read(kind: &str) -> String {
 
 fn rust_write(kind: &str, value: &str) -> String {
     match kind {
+        k if optional(k).is_some() => {
+            assert!(handle(optional(k).unwrap()), "{k} needs a borrowing info");
+            format!("{value}.unwrap_or_default().write(out)")
+        }
         "u32" | "u64" | "f32" | "bool" | "u32x3" => {
             format!("crate::wire::put_{kind}(out, {value})")
         }
@@ -137,6 +155,9 @@ fn rust_write(kind: &str, value: &str) -> String {
 }
 
 pub fn java_type(kind: &str) -> String {
+    if let Some(inner) = optional(kind) {
+        return java_type(inner);
+    }
     match kind {
         "u32" => "int".into(),
         "u64" => "long".into(),
@@ -145,6 +166,7 @@ pub fn java_type(kind: &str) -> String {
         "bytes" => "long".into(),
         "str" => "String".into(),
         "u32x3" | "[u32]" => "int[]".into(),
+        k if flags(k) => "int".into(),
         "[str]" => "String[]".into(),
         k => match list(k) {
             Some(item) => format!("{item}[]"),
@@ -155,6 +177,7 @@ pub fn java_type(kind: &str) -> String {
 
 fn java_value(f: &Field) -> String {
     match f.kind.as_str() {
+        k if optional(k).is_some() => "null".into(),
         "bytes" => "0".into(),
         "str" => "\"\"".into(),
         "u32x3" => format!(
@@ -166,7 +189,7 @@ fn java_value(f: &Field) -> String {
         "[u32]" => "new int[0]".into(),
         k if list(k).is_some() => format!("new {}[0]", list(k).unwrap()),
         k if handle(k) => "null".into(),
-        k if !scalar(k) => format!("new {k}()"),
+        k if !scalar(k) && !word(k) => format!("new {k}()"),
         _ => match f.value.split_once("::") {
             Some((module, name)) => format!("{}.{name}", pascal(module)),
             None if f.value == "!0" => "-1".into(),
@@ -244,11 +267,12 @@ pub fn java(info: &Info) -> String {
         let mut fixed = 0;
         let mut parts = Vec::new();
         for f in &info.fields {
-            match f.kind.as_str() {
+            match java_kind(&f.kind) {
                 "u64" => fixed += 8,
                 "u32x3" => fixed += 12,
                 "u32" | "f32" | "bool" => fixed += 4,
                 k if handle(k) => fixed += 8,
+                k if word(k) => fixed += 4,
                 k => parts.push(format!("{k}.SIZE")),
             }
         }
@@ -265,11 +289,20 @@ pub fn java(info: &Info) -> String {
     let mut parts = Vec::new();
     for f in &info.fields {
         let n = camel(&f.name);
-        match f.kind.as_str() {
+        match java_kind(&f.kind) {
+            k if optional(k).is_some() => {
+                fixed += 4;
+                let size = match word(optional(k).unwrap()) {
+                    true => "4".to_string(),
+                    false => format!("{n}.encodedSize()"),
+                };
+                parts.push(format!("({n} == null ? 0 : {size})"));
+            }
             "u32" | "f32" | "bool" => fixed += 4,
             "u64" => fixed += 8,
             "u32x3" => fixed += 12,
             k if handle(k) => fixed += 8,
+            k if word(k) => fixed += 4,
             "bytes" => fixed += 16,
             "str" => {
                 fixed += 4;
@@ -287,8 +320,19 @@ pub fn java(info: &Info) -> String {
     s += "\n    long encode(long p) {\n";
     for f in &info.fields {
         let n = camel(&f.name);
-        match f.kind.as_str() {
-            "u32" => writeln!(s, "        memPutInt(p, {n});\n        p += 4;"),
+        match java_kind(&f.kind) {
+            k if optional(k).is_some() => {
+                let inner = match enumerated(optional(k).unwrap()) {
+                    true => format!("memPutInt(p, {n}.value);\n            p += 4;"),
+                    false => format!("p = {n}.encode(p);"),
+                };
+                writeln!(
+                    s,
+                    "        memPutInt(p, {n} == null ? 0 : 1);\n        p += 4;\n        if ({n} != null) {{\n            {inner}\n        }}"
+                )
+            }
+            k if k == "u32" || flags(k) => writeln!(s, "        memPutInt(p, {n});\n        p += 4;"),
+            k if enumerated(k) => writeln!(s, "        memPutInt(p, {n}.value);\n        p += 4;"),
             "f32" => writeln!(s, "        memPutFloat(p, {n});\n        p += 4;"),
             "bool" => writeln!(s, "        memPutInt(p, {n} ? 1 : 0);\n        p += 4;"),
             "u64" => writeln!(s, "        memPutLong(p, {n});\n        p += 8;"),
@@ -320,8 +364,9 @@ pub fn java(info: &Info) -> String {
         .unwrap();
         for f in &info.fields {
             let n = camel(&f.name);
-            match f.kind.as_str() {
-                "u32" => writeln!(s, "        r.{n} = memGetInt(p);\n        p += 4;"),
+            match java_kind(&f.kind) {
+                k if k == "u32" || flags(k) => writeln!(s, "        r.{n} = memGetInt(p);\n        p += 4;"),
+                k if enumerated(k) => writeln!(s, "        r.{n} = {k}.of(memGetInt(p));\n        p += 4;"),
                 "f32" => writeln!(s, "        r.{n} = memGetFloat(p);\n        p += 4;"),
                 "bool" => writeln!(s, "        r.{n} = memGetInt(p) != 0;\n        p += 4;"),
                 "u64" => writeln!(s, "        r.{n} = memGetLong(p);\n        p += 8;"),

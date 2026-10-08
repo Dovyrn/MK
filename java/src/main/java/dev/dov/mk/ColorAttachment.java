@@ -9,8 +9,8 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class ColorAttachment {
     public Texture texture = null;
-    public int load = LoadOp.CLEAR;
-    public int store = StoreOp.STORE;
+    public LoadOp load = LoadOp.CLEAR;
+    public StoreOp store = StoreOp.STORE;
     public float r = 0.0f;
     public float g = 0.0f;
     public float b = 0.0f;
@@ -26,9 +26,9 @@ public class ColorAttachment {
     long encode(long p) {
         memPutLong(p, Texture.raw(texture));
         p += 8;
-        memPutInt(p, load);
+        memPutInt(p, load.value);
         p += 4;
-        memPutInt(p, store);
+        memPutInt(p, store.value);
         p += 4;
         memPutFloat(p, r);
         p += 4;
@@ -47,9 +47,9 @@ public class ColorAttachment {
         var r = new ColorAttachment();
         r.texture = Texture.of(memGetLong(p));
         p += 8;
-        r.load = memGetInt(p);
+        r.load = LoadOp.of(memGetInt(p));
         p += 4;
-        r.store = memGetInt(p);
+        r.store = StoreOp.of(memGetInt(p));
         p += 4;
         r.r = memGetFloat(p);
         p += 4;

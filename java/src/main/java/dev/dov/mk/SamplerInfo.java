@@ -8,17 +8,17 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class SamplerInfo {
-    public int min = Filter.LINEAR;
-    public int mag = Filter.LINEAR;
-    public int mip = Filter.LINEAR;
-    public int u = AddressMode.REPEAT;
-    public int v = AddressMode.REPEAT;
-    public int w = AddressMode.REPEAT;
+    public Filter min = Filter.LINEAR;
+    public Filter mag = Filter.LINEAR;
+    public Filter mip = Filter.LINEAR;
+    public AddressMode u = AddressMode.REPEAT;
+    public AddressMode v = AddressMode.REPEAT;
+    public AddressMode w = AddressMode.REPEAT;
     public int anisotropy = 1;
-    public int compare = CompareOp.NONE;
+    public CompareOp compare = CompareOp.NONE;
     public float minLod = 0.0f;
     public float maxLod = 1000.0f;
-    public int border = BorderColor.TRANSPARENT_BLACK;
+    public BorderColor border = BorderColor.TRANSPARENT_BLACK;
 
     public static final int SIZE = 44;
 
@@ -27,54 +27,54 @@ public class SamplerInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, min);
+        memPutInt(p, min.value);
         p += 4;
-        memPutInt(p, mag);
+        memPutInt(p, mag.value);
         p += 4;
-        memPutInt(p, mip);
+        memPutInt(p, mip.value);
         p += 4;
-        memPutInt(p, u);
+        memPutInt(p, u.value);
         p += 4;
-        memPutInt(p, v);
+        memPutInt(p, v.value);
         p += 4;
-        memPutInt(p, w);
+        memPutInt(p, w.value);
         p += 4;
         memPutInt(p, anisotropy);
         p += 4;
-        memPutInt(p, compare);
+        memPutInt(p, compare.value);
         p += 4;
         memPutFloat(p, minLod);
         p += 4;
         memPutFloat(p, maxLod);
         p += 4;
-        memPutInt(p, border);
+        memPutInt(p, border.value);
         p += 4;
         return p;
     }
 
     static SamplerInfo decode(long p) {
         var r = new SamplerInfo();
-        r.min = memGetInt(p);
+        r.min = Filter.of(memGetInt(p));
         p += 4;
-        r.mag = memGetInt(p);
+        r.mag = Filter.of(memGetInt(p));
         p += 4;
-        r.mip = memGetInt(p);
+        r.mip = Filter.of(memGetInt(p));
         p += 4;
-        r.u = memGetInt(p);
+        r.u = AddressMode.of(memGetInt(p));
         p += 4;
-        r.v = memGetInt(p);
+        r.v = AddressMode.of(memGetInt(p));
         p += 4;
-        r.w = memGetInt(p);
+        r.w = AddressMode.of(memGetInt(p));
         p += 4;
         r.anisotropy = memGetInt(p);
         p += 4;
-        r.compare = memGetInt(p);
+        r.compare = CompareOp.of(memGetInt(p));
         p += 4;
         r.minLod = memGetFloat(p);
         p += 4;
         r.maxLod = memGetFloat(p);
         p += 4;
-        r.border = memGetInt(p);
+        r.border = BorderColor.of(memGetInt(p));
         p += 4;
         return r;
     }

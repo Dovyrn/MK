@@ -1,37 +1,34 @@
+use crate::Error;
 use crate::gl::device::compare;
-use crate::{SamplerInfo, address_mode, border_color, filter};
+use crate::{AddressMode, BorderColor, Filter, SamplerInfo};
 use glow::HasContext;
 
-pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, String> {
+pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, Error> {
     let anisotropy = info.anisotropy as f32;
     let filter = |f| match f {
-        filter::NEAREST => glow::NEAREST,
-        filter::LINEAR => glow::LINEAR,
-        f => panic!("unknown filter {f}"),
+        Filter::Nearest => glow::NEAREST,
+        Filter::Linear => glow::LINEAR,
     };
     let min = match (info.min, info.mip) {
-        (filter::NEAREST, filter::NEAREST) => glow::NEAREST_MIPMAP_NEAREST,
-        (filter::NEAREST, filter::LINEAR) => glow::NEAREST_MIPMAP_LINEAR,
-        (filter::LINEAR, filter::NEAREST) => glow::LINEAR_MIPMAP_NEAREST,
-        (filter::LINEAR, filter::LINEAR) => glow::LINEAR_MIPMAP_LINEAR,
-        (m, p) => panic!("unknown filter {m} {p}"),
+        (Filter::Nearest, Filter::Nearest) => glow::NEAREST_MIPMAP_NEAREST,
+        (Filter::Nearest, Filter::Linear) => glow::NEAREST_MIPMAP_LINEAR,
+        (Filter::Linear, Filter::Nearest) => glow::LINEAR_MIPMAP_NEAREST,
+        (Filter::Linear, Filter::Linear) => glow::LINEAR_MIPMAP_LINEAR,
     };
     let address = |a| match a {
-        address_mode::REPEAT => glow::REPEAT,
-        address_mode::MIRROR => glow::MIRRORED_REPEAT,
-        address_mode::CLAMP => glow::CLAMP_TO_EDGE,
-        address_mode::BORDER => glow::CLAMP_TO_BORDER,
-        address_mode::MIRROR_CLAMP => glow::MIRROR_CLAMP_TO_EDGE,
-        a => panic!("unknown address {a}"),
+        AddressMode::Repeat => glow::REPEAT,
+        AddressMode::Mirror => glow::MIRRORED_REPEAT,
+        AddressMode::Clamp => glow::CLAMP_TO_EDGE,
+        AddressMode::Border => glow::CLAMP_TO_BORDER,
+        AddressMode::MirrorClamp => glow::MIRROR_CLAMP_TO_EDGE,
     } as i32;
     let color = match info.border {
-        border_color::TRANSPARENT_BLACK => [0.0, 0.0, 0.0, 0.0],
-        border_color::OPAQUE_BLACK => [0.0, 0.0, 0.0, 1.0],
-        border_color::OPAQUE_WHITE => [1.0, 1.0, 1.0, 1.0],
-        b => panic!("unknown border {b}"),
+        BorderColor::TransparentBlack => [0.0, 0.0, 0.0, 0.0],
+        BorderColor::OpaqueBlack => [0.0, 0.0, 0.0, 1.0],
+        BorderColor::OpaqueWhite => [1.0, 1.0, 1.0, 1.0],
     };
     unsafe {
-        let raw = gl.create_sampler()?;
+        let raw = gl.create_sampler().map_err(Error::Driver)?;
         gl.sampler_parameter_i32(raw, glow::TEXTURE_MIN_FILTER, min as i32);
         gl.sampler_parameter_i32(raw, glow::TEXTURE_MAG_FILTER, filter(info.mag) as i32);
         gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_S, address(info.u));
@@ -43,7 +40,7 @@ pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, S
         if anisotropy > 1.0 {
             gl.sampler_parameter_f32(raw, glow::TEXTURE_MAX_ANISOTROPY, anisotropy);
         }
-        if info.compare != crate::compare_op::NONE {
+        if info.compare != crate::CompareOp::None {
             let mode = glow::COMPARE_REF_TO_TEXTURE as i32;
             gl.sampler_parameter_i32(raw, glow::TEXTURE_COMPARE_MODE, mode);
             gl.sampler_parameter_i32(

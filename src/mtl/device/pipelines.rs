@@ -1,10 +1,11 @@
 use super::{Device, function_descriptor, mtl_compare, size, vertex_format};
+use crate::Error;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::VERTICES;
 use crate::mtl::render::Render;
 use crate::{
-    ColorTarget, ComputePipelineInfo, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo,
-    StencilFace, TilePipelineInfo, blend_factor, color_mask, fill_mode, format, topology,
+    BlendFactor, ColorMask, ColorTarget, ComputePipelineInfo, DepthStateInfo, FillMode,
+    MeshPipelineInfo, RenderPipelineInfo, StencilFace, TilePipelineInfo, Topology,
 };
 use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use dispatch2::DispatchData;
@@ -23,28 +24,27 @@ use objc2_metal::{
 };
 use std::sync::Mutex;
 
-fn mtl_blend_factor(f: u32) -> MTLBlendFactor {
+fn mtl_blend_factor(f: crate::BlendFactor) -> MTLBlendFactor {
     match f {
-        blend_factor::ZERO => MTLBlendFactor::Zero,
-        blend_factor::ONE => MTLBlendFactor::One,
-        blend_factor::SRC_COLOR => MTLBlendFactor::SourceColor,
-        blend_factor::ONE_MINUS_SRC_COLOR => MTLBlendFactor::OneMinusSourceColor,
-        blend_factor::DST_COLOR => MTLBlendFactor::DestinationColor,
-        blend_factor::ONE_MINUS_DST_COLOR => MTLBlendFactor::OneMinusDestinationColor,
-        blend_factor::SRC_ALPHA => MTLBlendFactor::SourceAlpha,
-        blend_factor::ONE_MINUS_SRC_ALPHA => MTLBlendFactor::OneMinusSourceAlpha,
-        blend_factor::DST_ALPHA => MTLBlendFactor::DestinationAlpha,
-        blend_factor::ONE_MINUS_DST_ALPHA => MTLBlendFactor::OneMinusDestinationAlpha,
-        blend_factor::CONSTANT_COLOR => MTLBlendFactor::BlendColor,
-        blend_factor::ONE_MINUS_CONSTANT_COLOR => MTLBlendFactor::OneMinusBlendColor,
-        blend_factor::CONSTANT_ALPHA => MTLBlendFactor::BlendAlpha,
-        blend_factor::ONE_MINUS_CONSTANT_ALPHA => MTLBlendFactor::OneMinusBlendAlpha,
-        blend_factor::SRC_ALPHA_SATURATE => MTLBlendFactor::SourceAlphaSaturated,
-        blend_factor::SRC1_COLOR => MTLBlendFactor::Source1Color,
-        blend_factor::ONE_MINUS_SRC1_COLOR => MTLBlendFactor::OneMinusSource1Color,
-        blend_factor::SRC1_ALPHA => MTLBlendFactor::Source1Alpha,
-        blend_factor::ONE_MINUS_SRC1_ALPHA => MTLBlendFactor::OneMinusSource1Alpha,
-        f => panic!("unknown blend factor {f}"),
+        BlendFactor::Zero => MTLBlendFactor::Zero,
+        BlendFactor::One => MTLBlendFactor::One,
+        BlendFactor::SrcColor => MTLBlendFactor::SourceColor,
+        BlendFactor::OneMinusSrcColor => MTLBlendFactor::OneMinusSourceColor,
+        BlendFactor::DstColor => MTLBlendFactor::DestinationColor,
+        BlendFactor::OneMinusDstColor => MTLBlendFactor::OneMinusDestinationColor,
+        BlendFactor::SrcAlpha => MTLBlendFactor::SourceAlpha,
+        BlendFactor::OneMinusSrcAlpha => MTLBlendFactor::OneMinusSourceAlpha,
+        BlendFactor::DstAlpha => MTLBlendFactor::DestinationAlpha,
+        BlendFactor::OneMinusDstAlpha => MTLBlendFactor::OneMinusDestinationAlpha,
+        BlendFactor::ConstantColor => MTLBlendFactor::BlendColor,
+        BlendFactor::OneMinusConstantColor => MTLBlendFactor::OneMinusBlendColor,
+        BlendFactor::ConstantAlpha => MTLBlendFactor::BlendAlpha,
+        BlendFactor::OneMinusConstantAlpha => MTLBlendFactor::OneMinusBlendAlpha,
+        BlendFactor::SrcAlphaSaturate => MTLBlendFactor::SourceAlphaSaturated,
+        BlendFactor::Src1Color => MTLBlendFactor::Source1Color,
+        BlendFactor::OneMinusSrc1Color => MTLBlendFactor::OneMinusSource1Color,
+        BlendFactor::Src1Alpha => MTLBlendFactor::Source1Alpha,
+        BlendFactor::OneMinusSrc1Alpha => MTLBlendFactor::OneMinusSource1Alpha,
     }
 }
 
@@ -80,12 +80,16 @@ fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
     Some((groups, code))
 }
 
-fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], String> {
+fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], Error> {
     groups
         .iter()
         .find(|(name, ..)| name == entry)
         .map(|&(_, size, _)| size)
-        .ok_or_else(|| format!("entry {entry} has no thread group size in its code"))
+        .ok_or_else(|| {
+            Error::Shader(format!(
+                "entry {entry} has no thread group size in its code"
+            ))
+        })
 }
 
 fn attachment_reads(groups: &Groups, entry: &str) -> u32 {
@@ -95,21 +99,20 @@ fn attachment_reads(groups: &Groups, entry: &str) -> u32 {
         .map_or(0, |&(.., reads)| reads)
 }
 
-fn check_threads(group: [u32; 3], max: usize) -> Result<(), String> {
+fn check_threads(group: [u32; 3], max: usize) -> Result<(), Error> {
     let count = group.iter().map(|&g| g as usize).product::<usize>();
     if count > max {
-        return Err(format!(
+        return Err(Error::Invalid(format!(
             "group {group:?} has {count} threads, the pipeline allows {max}"
-        ));
+        )));
     }
     Ok(())
 }
 
-fn mtl_fill_mode(f: u32) -> MTLTriangleFillMode {
+fn mtl_fill_mode(f: crate::FillMode) -> MTLTriangleFillMode {
     match f {
-        fill_mode::LINE => MTLTriangleFillMode::Lines,
-        fill_mode::FILL => MTLTriangleFillMode::Fill,
-        f => panic!("unknown fill {f}"),
+        FillMode::Line => MTLTriangleFillMode::Lines,
+        FillMode::Fill => MTLTriangleFillMode::Fill,
     }
 }
 
@@ -132,7 +135,7 @@ fn alpha_coverage(on: bool) -> MTL4AlphaToCoverageState {
 fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[ColorTarget]) {
     for (i, c) in targets.iter().enumerate() {
         let a = unsafe { array.objectAtIndexedSubscript(i) };
-        a.setPixelFormat(format::mtl(c.format));
+        a.setPixelFormat(c.format.mtl());
         a.setBlendingState(if c.blend {
             MTL4BlendState::Enabled
         } else {
@@ -146,12 +149,12 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
         a.setAlphaBlendOperation(MTLBlendOperation(c.op_alpha as usize));
         let mut m = MTLColorWriteMask::None;
         for (bit, flag) in [
-            (color_mask::R, MTLColorWriteMask::Red),
-            (color_mask::G, MTLColorWriteMask::Green),
-            (color_mask::B, MTLColorWriteMask::Blue),
-            (color_mask::A, MTLColorWriteMask::Alpha),
+            (ColorMask::R, MTLColorWriteMask::Red),
+            (ColorMask::G, MTLColorWriteMask::Green),
+            (ColorMask::B, MTLColorWriteMask::Blue),
+            (ColorMask::A, MTLColorWriteMask::Alpha),
         ] {
-            if c.mask & bit != 0 {
+            if c.mask.contains(bit) {
                 m |= flag;
             }
         }
@@ -173,32 +176,33 @@ impl Device {
     fn compile(
         &self,
         desc: &MTL4PipelineDescriptor,
-    ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, String> {
+    ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, Error> {
         let _held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
         self.compiler
             .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
                 desc,
                 Some(&self.options),
             )
-            .map_err(|e| e.localizedDescription().to_string())
+            .map_err(|e| Error::Shader(e.localizedDescription().to_string()))
     }
 
     fn library(
         &self,
         code: &[u8],
-    ) -> Result<(Retained<ProtocolObject<dyn MTLLibrary>>, Groups), String> {
-        let (groups, lib) = split(code).ok_or("code was not built by the MK compiler")?;
+    ) -> Result<(Retained<ProtocolObject<dyn MTLLibrary>>, Groups), Error> {
+        let (groups, lib) = split(code)
+            .ok_or_else(|| Error::Shader("code was not built by the MK compiler".into()))?;
         let library = self
             .raw
             .newLibraryWithData_error(&DispatchData::from_bytes(lib))
-            .map_err(|e| e.localizedDescription().to_string())?;
+            .map_err(|e| Error::Shader(e.localizedDescription().to_string()))?;
         Ok((library, groups))
     }
 
     pub fn create_compute_pipeline(
         &mut self,
         info: &ComputePipelineInfo,
-    ) -> Result<ComputePipeline, String> {
+    ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
         autoreleasepool(|_| {
             let (library, groups) = self.library(info.code)?;
@@ -212,7 +216,7 @@ impl Device {
                     &desc,
                     Some(&self.options),
                 )
-                .map_err(|e| e.localizedDescription().to_string())?;
+                .map_err(|e| Error::Shader(e.localizedDescription().to_string()))?;
             drop(held);
             check_threads(shape, state.maxTotalThreadsPerThreadgroup())?;
             let group = size(shape);
@@ -231,7 +235,7 @@ impl Device {
     pub fn create_render_pipeline(
         &mut self,
         info: &RenderPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
             self.caps.check_render_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
@@ -245,7 +249,9 @@ impl Device {
                 let location = input.attributeIndex() as u32;
                 let known = info.attributes.iter().any(|a| a.location == location);
                 if cfg!(feature = "validation") && input.isActive() && !known {
-                    return Err(format!("vertex input {location} has no attribute"));
+                    return Err(Error::Shader(format!(
+                        "vertex input {location} has no attribute"
+                    )));
                 }
             }
             if !info.fragment.is_empty() {
@@ -282,12 +288,9 @@ impl Device {
             colors(&desc.colorAttachments(), info.colors);
             unsafe { desc.setRasterSampleCount(info.samples as usize) };
             desc.setInputPrimitiveTopology(match info.topology {
-                topology::POINT => MTLPrimitiveTopologyClass::Point,
-                topology::LINE | topology::LINE_STRIP => MTLPrimitiveTopologyClass::Line,
-                topology::TRIANGLE | topology::TRIANGLE_STRIP => {
-                    MTLPrimitiveTopologyClass::Triangle
-                }
-                t => panic!("unknown topology {t}"),
+                Topology::Point => MTLPrimitiveTopologyClass::Point,
+                Topology::Line | Topology::LineStrip => MTLPrimitiveTopologyClass::Line,
+                Topology::Triangle | Topology::TriangleStrip => MTLPrimitiveTopologyClass::Triangle,
             });
             desc.setAlphaToCoverageState(alpha_coverage(info.coverage));
             let state = self.compile(&desc)?;
@@ -317,7 +320,7 @@ impl Device {
     pub fn create_mesh_pipeline(
         &mut self,
         info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, String> {
+    ) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
             self.caps.check_mesh_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
@@ -359,7 +362,7 @@ impl Device {
                 id,
                 crate::table::RenderEntry {
                     samples: info.samples,
-                    topology: topology::TRIANGLE,
+                    topology: Topology::Triangle,
                     mesh: true,
                     indirect: info.indirect,
                     vertices: 0,
@@ -376,21 +379,20 @@ impl Device {
         drop(pipeline);
     }
 
-    pub fn create_tile_pipeline(
-        &mut self,
-        info: &TilePipelineInfo,
-    ) -> Result<TilePipeline, String> {
+    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         autoreleasepool(|_| {
             crate::caps::check_tile_pipeline(info);
             if cfg!(feature = "validation") && !self.caps.tiles {
-                return Err("create_tile_pipeline needs caps.tiles".into());
+                return Err(Error::Unsupported(
+                    "create_tile_pipeline needs caps.tiles".into(),
+                ));
             }
             let (library, _) = self.library(info.code)?;
             let desc = MTL4TileRenderPipelineDescriptor::new();
             desc.setTileFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
             for (i, c) in info.colors.iter().enumerate() {
                 let a = unsafe { desc.colorAttachments().objectAtIndexedSubscript(i) };
-                a.setPixelFormat(format::mtl(c.format));
+                a.setPixelFormat(c.format.mtl());
             }
             unsafe { desc.setRasterSampleCount(info.samples as usize) };
             desc.setThreadgroupSizeMatchesTileSize(true);
@@ -407,9 +409,8 @@ impl Device {
         drop(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, String> {
+    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         autoreleasepool(|_| {
-            self.caps.check_depth_state(info);
             let desc = MTLDepthStencilDescriptor::new();
             desc.setDepthCompareFunction(mtl_compare(info.compare));
             desc.setDepthWriteEnabled(info.write);
@@ -420,7 +421,7 @@ impl Device {
             let state = self
                 .raw
                 .newDepthStencilStateWithDescriptor(&desc)
-                .ok_or("depth state allocation failed")?;
+                .ok_or_else(|| Error::OutOfMemory("depth state allocation failed".into()))?;
             let id = self.res.depths.insert(state);
             self.res.table.states.set(id, ());
             Ok(id)

@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, HostTextureCopy, TextureInfo, format, memory, stage, texture_dimension,
-    texture_usage,
+    BufferTextureCopy, Format, HostTextureCopy, Memory, Stage, TextureDimension, TextureInfo,
+    TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -14,8 +14,11 @@ pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if device.format_usage(format::RGBA8_UNORM) & texture_usage::HOST == 0 {
-        println!("no texture_usage::HOST for RGBA8_UNORM");
+    if !device
+        .format_usage(Format::Rgba8Unorm)
+        .contains(TextureUsage::HOST)
+    {
+        println!("no TextureUsage::HOST for RGBA8_UNORM");
         return;
     }
     if !device.caps().host_read {
@@ -24,11 +27,11 @@ pub fn main() {
     }
     let texture = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
             mips: 2,
-            usage: texture_usage::SAMPLED | texture_usage::HOST,
+            usage: TextureUsage::SAMPLED | TextureUsage::HOST,
             ..Default::default()
         })
         .unwrap();
@@ -41,7 +44,7 @@ pub fn main() {
     };
     device.write_texture(&whole, &pixels).unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
@@ -49,7 +52,7 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.memory_barrier(stage::HOST, stage::COPY);
+    c.memory_barrier(Stage::HOST, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         buffer: back,
@@ -58,11 +61,11 @@ pub fn main() {
         height: n,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 5000).unwrap());
-    let seen = unsafe { std::slice::from_raw_parts(device.map_buffer(back), pixels.len()) };
+    let seen = unsafe { device.map_buffer::<u8>(back) };
     assert_eq!(seen, pixels, "the GPU copy differs from the host write");
     device.unmap_buffer(back);
     let mut read = vec![0; pixels.len()];
@@ -125,12 +128,12 @@ pub fn main() {
     }
     let layers = device
         .create_texture(&TextureInfo {
-            dimension: texture_dimension::D2_ARRAY,
-            format: format::R32_FLOAT,
+            dimension: TextureDimension::D2Array,
+            format: Format::R32Float,
             width: 16,
             height: 16,
             layers: 3,
-            usage: texture_usage::HOST,
+            usage: TextureUsage::HOST,
             ..Default::default()
         })
         .unwrap();
@@ -150,16 +153,24 @@ pub fn main() {
         device.read_texture(&slice(i as u32), &mut out).unwrap();
         assert_eq!(&out, s, "layer {i}");
     }
-    let bc = device.format_usage(format::BC1_UNORM) & texture_usage::HOST != 0;
-    let readable = device.format_usage(format::BC1_UNORM) & texture_usage::COPY_SRC != 0;
+    let bc = device
+        .format_usage(Format::Bc1Unorm)
+        .contains(TextureUsage::HOST);
+    let readable = device
+        .format_usage(Format::Bc1Unorm)
+        .contains(TextureUsage::COPY_SRC);
     if bc {
-        let source = if readable { texture_usage::COPY_SRC } else { 0 };
+        let source = if readable {
+            TextureUsage::COPY_SRC
+        } else {
+            TextureUsage::default()
+        };
         let blocks = device
             .create_texture(&TextureInfo {
-                format: format::BC1_UNORM,
+                format: Format::Bc1Unorm,
                 width: 16,
                 height: 16,
-                usage: texture_usage::SAMPLED | texture_usage::HOST | source,
+                usage: TextureUsage::SAMPLED | TextureUsage::HOST | source,
                 ..Default::default()
             })
             .unwrap();
@@ -189,13 +200,13 @@ pub fn main() {
             );
         }
         if readable {
-            let back = device.create_buffer(2 * 2 * 8, memory::READBACK).unwrap();
+            let back = device.create_buffer(2 * 2 * 8, Memory::Readback).unwrap();
             device.add_residency(set, &[back.into(), blocks.into()]);
             device.commit_residency(set);
             let timeline = device.create_timeline().unwrap();
             let mut c = device.begin_commands(pool).unwrap();
             c.use_residency_set(set);
-            c.memory_barrier(stage::HOST, stage::COPY);
+            c.memory_barrier(Stage::HOST, Stage::COPY);
             let mut pass = c.begin_compute_pass().unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {
                 buffer: back,
@@ -206,11 +217,11 @@ pub fn main() {
                 height: 8,
                 ..Default::default()
             });
-            pass.memory_barrier(stage::COPY, stage::HOST);
+            pass.memory_barrier(Stage::COPY, Stage::HOST);
             pass.end();
             device.submit(c, &[], &[(&timeline, 1)]).unwrap();
             assert!(timeline.wait(1, 5000).unwrap());
-            let seen = unsafe { std::slice::from_raw_parts(device.map_buffer(back), out.len()) };
+            let seen = unsafe { device.map_buffer::<u8>(back) };
             assert_eq!(seen, out, "bc1 readback differs from the host read");
             device.unmap_buffer(back);
         }
@@ -222,7 +233,7 @@ pub fn main() {
         }
         Err(e) => {
             assert!(!device.caps().budget, "{e}");
-            e
+            e.to_string()
         }
     };
     println!(

@@ -1,9 +1,10 @@
 use super::{Device, vk_image_usage};
+use crate::Error;
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, TextureInfo, format, slot, stage, subgroup_op, texture_usage};
+use crate::{Caps, Format, Stage, SubgroupOp, TextureInfo, TextureUsage, slot};
 use ash::vk;
 
 pub(super) fn probe(
@@ -39,15 +40,15 @@ pub(super) fn probe(
         groups.subgroup_size
     };
     let stages = [
-        (vk::ShaderStageFlags::VERTEX, stage::VERTEX),
-        (vk::ShaderStageFlags::FRAGMENT, stage::FRAGMENT),
-        (vk::ShaderStageFlags::COMPUTE, stage::COMPUTE),
-        (vk::ShaderStageFlags::TASK_EXT, stage::TASK),
-        (vk::ShaderStageFlags::MESH_EXT, stage::MESH),
+        (vk::ShaderStageFlags::VERTEX, Stage::VERTEX),
+        (vk::ShaderStageFlags::FRAGMENT, Stage::FRAGMENT),
+        (vk::ShaderStageFlags::COMPUTE, Stage::COMPUTE),
+        (vk::ShaderStageFlags::TASK_EXT, Stage::TASK),
+        (vk::ShaderStageFlags::MESH_EXT, Stage::MESH),
     ]
     .into_iter()
     .filter(|(v, _)| groups.subgroup_supported_stages.contains(*v))
-    .fold(0, |m, (_, s)| m | s);
+    .fold(Stage::default(), |m, (_, s)| m | s);
     let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
     let transients = memory.memory_types[..memory.memory_type_count as usize]
         .iter()
@@ -64,7 +65,7 @@ pub(super) fn probe(
         tiles: false,
         subgroup: groups.subgroup_size,
         subgroup_sizes: sizes,
-        subgroup_ops: groups.subgroup_supported_operations.as_raw() & subgroup_op::BITS,
+        subgroup_ops: SubgroupOp(groups.subgroup_supported_operations.as_raw() & SubgroupOp::BITS),
         subgroup_stages: stages,
         full_subgroups: ext.full,
         max_threads: limits.max_compute_work_group_invocations,
@@ -153,10 +154,10 @@ impl Device {
         self.caps
     }
 
-    pub fn format_usage(&self, format: u32) -> u32 {
-        let raw = format::vk(format);
+    pub fn format_usage(&self, format: Format) -> TextureUsage {
+        let raw = format.vk();
         if raw == vk::Format::UNDEFINED {
-            return 0;
+            return TextureUsage::default();
         }
         let features = unsafe {
             self.instance
@@ -164,57 +165,45 @@ impl Device {
         }
         .optimal_tiling_features;
         if features.is_empty() {
-            return 0;
+            return TextureUsage::default();
         }
         [
-            (
-                vk::FormatFeatureFlags::SAMPLED_IMAGE,
-                texture_usage::SAMPLED,
-            ),
-            (
-                vk::FormatFeatureFlags::STORAGE_IMAGE,
-                texture_usage::STORAGE,
-            ),
+            (vk::FormatFeatureFlags::SAMPLED_IMAGE, TextureUsage::SAMPLED),
+            (vk::FormatFeatureFlags::STORAGE_IMAGE, TextureUsage::STORAGE),
             (
                 vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC,
-                texture_usage::ATOMIC,
+                TextureUsage::ATOMIC,
             ),
             (
                 vk::FormatFeatureFlags::COLOR_ATTACHMENT,
-                texture_usage::COLOR,
+                TextureUsage::COLOR,
             ),
             (
                 vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
-                texture_usage::DEPTH,
+                TextureUsage::DEPTH,
             ),
-            (
-                vk::FormatFeatureFlags::TRANSFER_SRC,
-                texture_usage::COPY_SRC,
-            ),
-            (
-                vk::FormatFeatureFlags::TRANSFER_DST,
-                texture_usage::COPY_DST,
-            ),
+            (vk::FormatFeatureFlags::TRANSFER_SRC, TextureUsage::COPY_SRC),
+            (vk::FormatFeatureFlags::TRANSFER_DST, TextureUsage::COPY_DST),
         ]
         .into_iter()
         .filter(|(f, _)| features.contains(*f))
-        .fold(texture_usage::VIEW, |u, (_, b)| u | b)
+        .fold(TextureUsage::VIEW, |u, (_, b)| u | b)
             | self.host_copy_usage(format, raw)
             | self.input(features)
     }
 
-    fn input(&self, features: vk::FormatFeatureFlags) -> u32 {
+    fn input(&self, features: vk::FormatFeatureFlags) -> TextureUsage {
         let color = features.contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT);
         if color && self.caps.attachment_reads {
-            texture_usage::INPUT
+            TextureUsage::INPUT
         } else {
-            0
+            TextureUsage::default()
         }
     }
 
-    fn host_copy_usage(&self, format: u32, raw: vk::Format) -> u32 {
+    fn host_copy_usage(&self, format: Format, raw: vk::Format) -> TextureUsage {
         if self.ext.copy.is_none() || aspect(format) != vk::ImageAspectFlags::COLOR {
-            return 0;
+            return TextureUsage::default();
         }
         let mut three = vk::FormatProperties3::default();
         let mut properties = vk::FormatProperties2::default().push_next(&mut three);
@@ -227,14 +216,14 @@ impl Device {
         };
         let host = vk::FormatFeatureFlags2::HOST_IMAGE_TRANSFER_EXT;
         if three.optimal_tiling_features.contains(host) {
-            texture_usage::HOST
+            TextureUsage::HOST
         } else {
-            0
+            TextureUsage::default()
         }
     }
 
-    pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
-        if self.format_usage(format) & usage != usage {
+    pub fn format_samples(&self, format: Format, usage: TextureUsage) -> u32 {
+        if !self.format_usage(format).contains(usage) {
             return 0;
         }
         let flags = vk_image_usage(usage);
@@ -244,7 +233,7 @@ impl Device {
         unsafe {
             self.instance.get_physical_device_image_format_properties(
                 self.physical,
-                format::vk(format),
+                format.vk(),
                 vk::ImageType::TYPE_2D,
                 vk::ImageTiling::OPTIMAL,
                 flags,
@@ -254,7 +243,7 @@ impl Device {
         .map_or(0, |p| p.sample_counts.as_raw())
     }
 
-    pub(super) fn texture(&self, info: &TextureInfo) -> Result<(), String> {
+    pub(super) fn texture(&self, info: &TextureInfo) -> Result<(), Error> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.check_texture(info, usable, counts)

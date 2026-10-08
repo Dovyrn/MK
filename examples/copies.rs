@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, DepthAttachment, RenderPassInfo, TextureBarrier,
-    TextureCopy, TextureInfo, TextureViewInfo, format, load_op, memory, stage, texture_dimension,
-    texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, DepthAttachment, Format, LoadOp, Memory, RenderPassInfo,
+    Stage, TextureBarrier, TextureCopy, TextureDimension, TextureInfo, TextureLayout, TextureUsage,
+    TextureViewInfo,
 };
 
 #[path = "support/host.rs"]
@@ -25,38 +25,39 @@ pub fn main() {
                 width,
                 height,
                 layers,
-                usage: bits | texture_usage::COPY_SRC | texture_usage::COPY_DST,
+                usage: bits | TextureUsage::COPY_SRC | TextureUsage::COPY_DST,
                 ..Default::default()
             })
             .unwrap()
     };
-    let plain = texture_dimension::D2;
+    let plain = TextureDimension::D2;
     let view = if caps.texture_views {
-        texture_usage::VIEW
+        TextureUsage::VIEW
     } else {
-        0
+        TextureUsage::default()
     };
-    let a = make(plain, format::RGBA8_UNORM, [N, N, 1], view);
-    let cast = make(plain, format::R32_UINT, [N, N, 1], 0);
+    let a = make(plain, Format::Rgba8Unorm, [N, N, 1], view);
+    let cast = make(plain, Format::R32Uint, [N, N, 1], TextureUsage::default());
     let array = make(
-        texture_dimension::D2_ARRAY,
-        format::RGBA8_UNORM,
+        TextureDimension::D2Array,
+        Format::Rgba8Unorm,
         [8, 8, 3],
-        0,
+        TextureUsage::default(),
     );
-    let depth = make(plain, format::D32_FLOAT, [8, 8, 1], texture_usage::DEPTH);
-    let depth2 = make(plain, format::D32_FLOAT, [8, 8, 1], texture_usage::DEPTH);
-    let srgb = make(plain, format::RGBA8_SRGB, [4, 4, 1], texture_usage::COLOR);
-    let line = make(texture_dimension::D1, format::RGBA8_UNORM, [8, 1, 1], 0);
+    let depth = make(plain, Format::D32Float, [8, 8, 1], TextureUsage::DEPTH);
+    let depth2 = make(plain, Format::D32Float, [8, 8, 1], TextureUsage::DEPTH);
+    let srgb = make(plain, Format::Rgba8Srgb, [4, 4, 1], TextureUsage::COLOR);
+    let line = make(
+        TextureDimension::D1,
+        Format::Rgba8Unorm,
+        [8, 1, 1],
+        TextureUsage::default(),
+    );
     let texels = (N * N) as usize;
     let size = texels as u64 * 4;
-    let upload = device.create_buffer(size, memory::UPLOAD).unwrap();
+    let upload = device.create_buffer(size, Memory::Upload).unwrap();
     let pixels: Vec<[u8; 4]> = (0..texels as u32).map(|i| pattern(i % N, i / N)).collect();
-    unsafe {
-        let data =
-            std::slice::from_raw_parts_mut(device.map_buffer(upload).cast::<[u8; 4]>(), texels);
-        data.copy_from_slice(&pixels);
-    }
+    unsafe { device.map_buffer::<[u8; 4]>(upload) }.copy_from_slice(&pixels);
     device.unmap_buffer(upload);
     let slots = [
         (a, 0, N, N),
@@ -74,14 +75,14 @@ pub fn main() {
         offsets.push(total);
         total += (s.2 * s.3 * 4) as u64;
     }
-    let back = device.create_buffer(total, memory::READBACK).unwrap();
+    let back = device.create_buffer(total, Memory::Readback).unwrap();
     let words = caps.texture_views.then(|| {
         device
             .create_texture_view(
                 a,
                 &TextureViewInfo {
-                    format: format::R32_UINT,
-                    usage: texture_usage::COPY_SRC,
+                    format: Format::R32Uint,
+                    usage: TextureUsage::COPY_SRC,
                     ..Default::default()
                 },
             )
@@ -100,9 +101,9 @@ pub fn main() {
     for texture in [a, cast, array, depth, depth2, srgb, line] {
         pass.texture_barrier(&TextureBarrier {
             texture,
-            src_stage: stage::COPY,
-            dst_stage: stage::COPY | stage::COLOR | stage::DEPTH,
-            before: texture_layout::UNDEFINED,
+            src_stage: Stage::COPY,
+            dst_stage: Stage::COPY | Stage::COLOR | Stage::DEPTH,
+            before: TextureLayout::Undefined,
             ..Default::default()
         });
     }
@@ -126,7 +127,7 @@ pub fn main() {
             ..Default::default()
         });
     }
-    pass.memory_barrier(stage::COPY, stage::COPY);
+    pass.memory_barrier(Stage::COPY, Stage::COPY);
     if let Some(words) = words {
         pass.copy_texture(&TextureCopy {
             src: words,
@@ -150,11 +151,11 @@ pub fn main() {
     c.begin_render_pass(&RenderPassInfo {
         width: 8,
         height: 8,
-        depth: DepthAttachment {
+        depth: Some(DepthAttachment {
             texture: depth,
             depth: 0.25,
             ..Default::default()
-        },
+        }),
         ..Default::default()
     })
     .unwrap()
@@ -164,7 +165,7 @@ pub fn main() {
         height: 4,
         colors: &[ColorAttachment {
             texture: srgb,
-            load: load_op::CLEAR,
+            load: LoadOp::Clear,
             r: 0.5,
             g: 0.5,
             b: 0.5,
@@ -175,7 +176,7 @@ pub fn main() {
     })
     .unwrap()
     .end();
-    c.memory_barrier(stage::COLOR | stage::DEPTH | stage::COPY, stage::COPY);
+    c.memory_barrier(Stage::COLOR | Stage::DEPTH | Stage::COPY, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture(&TextureCopy {
         src: depth,
@@ -184,7 +185,7 @@ pub fn main() {
         height: 8,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::COPY);
+    pass.memory_barrier(Stage::COPY, Stage::COPY);
     for (s, &offset) in slots.iter().zip(&offsets) {
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             buffer: back,
@@ -196,11 +197,11 @@ pub fn main() {
             ..Default::default()
         });
     }
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let data = unsafe { std::slice::from_raw_parts(device.map_buffer(back), total as usize) };
+    let data = unsafe { device.map_buffer::<u8>(back) };
     let texel = |slot: usize, x: u32, y: u32| {
         let at = (offsets[slot] + ((y * slots[slot].2 + x) * 4) as u64) as usize;
         [data[at], data[at + 1], data[at + 2], data[at + 3]]

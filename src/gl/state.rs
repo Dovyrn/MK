@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::gl::extra::Extra;
 use crate::{Caps, register, slot};
 use glow::HasContext;
@@ -480,7 +481,7 @@ impl State {
         }
     }
 
-    pub fn restore(&self, gl: &glow::Context, extra: &Extra) -> Result<(), String> {
+    pub fn restore(&self, gl: &glow::Context, extra: &Extra) -> Result<(), Error> {
         let check = |what: &str| {
             let errors = if cfg!(debug_assertions) {
                 crate::gl::errors::drain(gl)
@@ -490,7 +491,9 @@ impl State {
             if errors.is_empty() {
                 Ok(())
             } else {
-                Err(format!("GL errors {errors:#x?} restoring host {what}"))
+                Err(Error::Driver(format!(
+                    "GL errors {errors:#x?} restoring host {what}"
+                )))
             }
         };
         unsafe {

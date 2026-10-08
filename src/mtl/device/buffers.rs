@@ -1,17 +1,18 @@
 use super::{Device, resource_options};
 use crate::Buffer;
+use crate::Error;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
+    pub fn create_buffer(&mut self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
         autoreleasepool(|_| {
             self.caps.check_buffer(size, memory)?;
             let buffer = self
                 .raw
                 .newBufferWithLength_options(size as usize, resource_options(memory))
-                .ok_or("buffer allocation failed")?;
+                .ok_or_else(|| Error::OutOfMemory("buffer allocation failed".into()))?;
             let mappable = buffer.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(buffer);
             self.res.table.add_buffer(id, size, mappable);
@@ -40,11 +41,11 @@ impl Device {
         self.res.buffers.remove(buffer);
     }
 
-    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
-        self.res.table.buffers.get(buffer);
-        self.res.table.assert_mappable(buffer);
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
+    pub unsafe fn map_buffer<T: Copy>(&self, buffer: Buffer) -> &mut [T] {
         let b = self.res.buffers.get(buffer);
-        b.contents().as_ptr().cast()
+        unsafe { self.res.table.mapping(buffer, b.contents().as_ptr().cast()) }
     }
 
     pub fn unmap_buffer(&self, buffer: Buffer) {

@@ -1,6 +1,19 @@
 package dev.dov.mk;
 
-public interface Filter {
-    int NEAREST = 0;
-    int LINEAR = 1;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public enum Filter {
+    NEAREST(0),
+    LINEAR(1);
+
+    final int value;
+
+    static Filter of(int v) {
+        return switch (v) {
+            case 0 -> NEAREST;
+            case 1 -> LINEAR;
+            default -> throw new IllegalArgumentException(v + " is no Filter");
+        };
+    }
 }

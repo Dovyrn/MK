@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorTarget, CommandPool, Device, ImportedPassInfo, RenderPipeline,
-    RenderPipelineInfo, ResidencySet, Scissor, Texture, TextureBarrier, TextureInfo, Viewport,
-    format, memory, stage, texture_layout, texture_usage,
+    BufferTextureCopy, ColorTarget, CommandPool, Device, Format, ImportedPassInfo, Memory,
+    RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture, TextureBarrier,
+    TextureInfo, TextureLayout, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -27,10 +27,10 @@ fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
 fn to_color(texture: Texture) -> TextureBarrier {
     TextureBarrier {
         texture,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
-        after: texture_layout::COLOR,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
+        after: TextureLayout::Color,
         ..Default::default()
     }
 }
@@ -44,9 +44,9 @@ fn read_back(
     commands.use_residency_set(set);
     commands.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COPY,
-        before: texture_layout::COLOR,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COPY,
+        before: TextureLayout::Color,
         ..Default::default()
     });
     let mut pass = commands.begin_compute_pass().unwrap();
@@ -57,7 +57,7 @@ fn read_back(
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
 }
 
@@ -261,18 +261,18 @@ pub fn main() {
     let pool = device.create_command_pool(0).unwrap();
     let texture = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: N,
             height: N,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((N * N * 4) as u64, memory::READBACK)
+        .create_buffer((N * N * 4) as u64, Memory::Readback)
         .unwrap();
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let pipeline = device
@@ -289,9 +289,7 @@ pub fn main() {
     device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);
     host_frame(&device, pool, texture, back, pipeline, &timeline, set);
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (N * N) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * N + x) as usize];
     assert_eq!(
         at(N / 2, N / 2),

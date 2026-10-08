@@ -15,10 +15,10 @@ public class MeshPipelineInfo {
     public String mesh = "";
     public String fragment = "";
     public ColorTarget[] colors = new ColorTarget[0];
-    public int depth = Format.NONE;
-    public int stencil = Format.NONE;
+    public Format depth = null;
+    public Format stencil = null;
     public int samples = 1;
-    public int fill = FillMode.FILL;
+    public FillMode fill = FillMode.FILL;
     public boolean coverage = false;
     public boolean clamp = false;
     public boolean ordered = false;
@@ -29,7 +29,7 @@ public class MeshPipelineInfo {
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 60 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 60 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4);
     }
 
     long encode(long p) {
@@ -53,13 +53,21 @@ public class MeshPipelineInfo {
         for (var x : colors) {
             p = x.encode(p);
         }
-        memPutInt(p, depth);
+        memPutInt(p, depth == null ? 0 : 1);
         p += 4;
-        memPutInt(p, stencil);
+        if (depth != null) {
+            memPutInt(p, depth.value);
+            p += 4;
+        }
+        memPutInt(p, stencil == null ? 0 : 1);
         p += 4;
+        if (stencil != null) {
+            memPutInt(p, stencil.value);
+            p += 4;
+        }
         memPutInt(p, samples);
         p += 4;
-        memPutInt(p, fill);
+        memPutInt(p, fill.value);
         p += 4;
         memPutInt(p, coverage ? 1 : 0);
         p += 4;

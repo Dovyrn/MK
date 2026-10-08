@@ -1,3 +1,5 @@
+use crate::constants::{Rows, java_enum, rust_enum};
+use crate::variant;
 use std::fmt::Write;
 
 struct Row<'a> {
@@ -30,48 +32,63 @@ fn rows(table: &toml::Table) -> Vec<Row<'_>> {
         .collect()
 }
 
+fn list(rows: &[Row]) -> Rows {
+    let mut list = vec![("NONE".to_string(), 0)];
+    for (i, r) in rows.iter().enumerate() {
+        list.push((r.name.to_string(), i as i64 + 1));
+    }
+    list
+}
+
 pub fn rust(table: &toml::Table) -> String {
     let rows = rows(table);
-    let mut s = String::from("pub mod format {\n    pub const NONE: u32 = 0;\n");
-    for (i, r) in rows.iter().enumerate() {
-        writeln!(s, "    pub const {}: u32 = {};", r.name, i + 1).unwrap();
-    }
-    s += "\n    pub fn block(format: u32) -> [u32; 3] {\n        match format {\n";
-    for (i, r) in rows.iter().enumerate() {
+    let mut s = rust_enum("Format", &list(&rows));
+    s += "impl Format {\n    pub fn block(self) -> [u32; 3] {\n        match self {\n";
+    for r in &rows {
         let [b, w, h] = r.block;
-        writeln!(s, "            {} => [{b}, {w}, {h}],", i + 1).unwrap();
+        writeln!(
+            s,
+            "            Self::{} => [{b}, {w}, {h}],",
+            variant(r.name)
+        )
+        .unwrap();
     }
-    s += "            _ => [0, 1, 1],\n        }\n    }\n";
+    s += "            Self::None => [0, 1, 1],\n        }\n    }\n";
     for kind in ["uint", "sint"] {
-        let ids: Vec<String> = rows
+        let names: Vec<String> = rows
             .iter()
-            .enumerate()
-            .filter(|(_, r)| r.name.ends_with(&format!("_{}", kind.to_uppercase())))
-            .map(|(i, _)| (i + 1).to_string())
+            .filter(|r| r.name.ends_with(&format!("_{}", kind.to_uppercase())))
+            .map(|r| format!("Self::{}", variant(r.name)))
             .collect();
         writeln!(
             s,
-            "\n    pub(crate) fn {kind}(format: u32) -> bool {{\n        matches!(format, {})\n    }}",
-            ids.join(" | ")
+            "\n    pub(crate) fn {kind}(self) -> bool {{\n        matches!(self, {})\n    }}",
+            names.join(" | ")
         )
         .unwrap();
     }
     s += "\n    #[cfg(feature = \"vk\")]\n";
-    s += "    pub(crate) fn vk(format: u32) -> ash::vk::Format {\n        match format {\n";
-    for (i, r) in rows.iter().enumerate() {
+    s += "    pub(crate) fn vk(self) -> ash::vk::Format {\n        match self {\n";
+    for r in &rows {
         if r.vk != "-" {
-            writeln!(s, "            {} => ash::vk::Format::{},", i + 1, r.vk).unwrap();
+            writeln!(
+                s,
+                "            Self::{} => ash::vk::Format::{},",
+                variant(r.name),
+                r.vk
+            )
+            .unwrap();
         }
     }
     s += "            _ => ash::vk::Format::UNDEFINED,\n        }\n    }\n";
     s += "\n    #[cfg(feature = \"mtl\")]\n";
-    s += "    pub(crate) fn mtl(format: u32) -> objc2_metal::MTLPixelFormat {\n        match format {\n";
-    for (i, r) in rows.iter().enumerate() {
+    s += "    pub(crate) fn mtl(self) -> objc2_metal::MTLPixelFormat {\n        match self {\n";
+    for r in &rows {
         if r.mtl != "-" {
             writeln!(
                 s,
-                "            {} => objc2_metal::MTLPixelFormat::{},",
-                i + 1,
+                "            Self::{} => objc2_metal::MTLPixelFormat::{},",
+                variant(r.name),
                 r.mtl
             )
             .unwrap();
@@ -79,8 +96,8 @@ pub fn rust(table: &toml::Table) -> String {
     }
     s += "            _ => objc2_metal::MTLPixelFormat::Invalid,\n        }\n    }\n";
     s += "\n    #[cfg(feature = \"gl\")]\n";
-    s += "    pub(crate) fn gl(format: u32) -> [u32; 3] {\n        match format {\n";
-    for (i, r) in rows.iter().enumerate() {
+    s += "    pub(crate) fn gl(self) -> [u32; 3] {\n        match self {\n";
+    for r in &rows {
         if r.gl == "-" {
             continue;
         }
@@ -89,18 +106,12 @@ pub fn rust(table: &toml::Table) -> String {
             1 => format!("{}, 0, 0", parts[0]),
             _ => parts.join(", "),
         };
-        writeln!(s, "            {} => [{parts}],", i + 1).unwrap();
+        writeln!(s, "            Self::{} => [{parts}],", variant(r.name)).unwrap();
     }
     s += "            _ => [0, 0, 0],\n        }\n    }\n}\n";
     s
 }
 
 pub fn java(table: &toml::Table) -> String {
-    let mut s =
-        String::from("package dev.dov.mk;\n\npublic interface Format {\n    int NONE = 0;\n");
-    for (i, r) in rows(table).iter().enumerate() {
-        writeln!(s, "    int {} = {};", r.name, i + 1).unwrap();
-    }
-    s += "}\n";
-    s
+    java_enum("Format", &list(&rows(table)))
 }

@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, RenderPassInfo, Scissor, TextureBarrier, TextureInfo,
-    TextureViewInfo, Viewport, format, memory, stage, texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, Format, Memory, RenderPassInfo, Scissor, Stage,
+    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, TextureViewInfo, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -15,11 +15,11 @@ pub fn main() {
     }
     let texture = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: 8,
             height: 8,
             mips: 2,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -27,14 +27,14 @@ pub fn main() {
         .create_texture_view(
             texture,
             &TextureViewInfo {
-                format: format::RGBA8_UNORM,
+                format: Format::Rgba8Unorm,
                 base_mip: 1,
-                usage: texture_usage::COLOR,
+                usage: TextureUsage::COLOR,
                 ..Default::default()
             },
         )
         .unwrap();
-    let back = device.create_buffer(16 * 4, memory::READBACK).unwrap();
+    let back = device.create_buffer(16 * 4, Memory::Readback).unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);
@@ -43,9 +43,9 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         base_mip: 1,
         mips: 1,
         layers: 1,
@@ -78,7 +78,7 @@ pub fn main() {
         height: 4,
     }]);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
@@ -88,12 +88,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels =
-        unsafe { std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), 16) };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     assert!(
         pixels.iter().all(|p| *p == [255, 51, 153, 255]),
         "{:?}",

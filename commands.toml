@@ -35,7 +35,7 @@ fields = [["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"], ["value", "u
 [[command]]
 name = "memory_barrier"
 scope = "outside compute"
-fields = [["src_stage", "u32"], ["dst_stage", "u32"]]
+fields = [["src_stage", "Stage"], ["dst_stage", "Stage"]]
 
 [[command]]
 name = "begin_debug_label"
@@ -69,7 +69,7 @@ info = "TextureCopy"
 [[command]]
 name = "color_attachment"
 internal = true
-fields = [["index", "u32"], ["texture", "Texture"], ["load", "u32"], ["store", "u32"], ["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"], ["resolve", "Texture"]]
+fields = [["index", "u32"], ["texture", "Texture"], ["load", "LoadOp"], ["store", "StoreOp"], ["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"], ["resolve", "Texture?"]]
 
 [[command]]
 name = "depth_attachment"
@@ -94,17 +94,17 @@ fields = [["pipeline", "RenderPipeline"]]
 [[command]]
 name = "set_cull_mode"
 scope = "render"
-fields = [["cull", "u32"]]
+fields = [["cull", "CullMode"]]
 
 [[command]]
 name = "set_front_face"
 scope = "render"
-fields = [["face", "u32"]]
+fields = [["face", "FrontFace"]]
 
 [[command]]
 name = "set_primitive_topology"
 scope = "render"
-fields = [["topology", "u32"]]
+fields = [["topology", "Topology"]]
 
 [[command]]
 name = "set_depth_state"
@@ -164,7 +164,7 @@ fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 [[command]]
 name = "bind_index_buffer"
 scope = "render"
-fields = [["buffer", "Buffer"], ["offset", "u64"], ["kind", "u32"]]
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["kind", "IndexType"]]
 
 [[command]]
 name = "draw"
@@ -219,7 +219,7 @@ fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"]]
 [[command]]
 name = "write_timestamp"
 scope = "outside compute render"
-fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "u32"]]
+fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "Stage"]]
 
 [[command]]
 name = "begin_occlusion_query"

@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, RenderPassInfo, Scissor, TextureBarrier,
-    TextureInfo, TileMemory, TilePipelineInfo, Viewport, format, memory, stage, texture_layout,
-    texture_usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo, Scissor,
+    Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage, TileMemory, TilePipelineInfo,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -16,7 +16,7 @@ pub fn main() {
     #[cfg(not(feature = "mtl"))]
     let code: &[u8] = &[];
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let made = device.create_tile_pipeline(&TilePipelineInfo {
@@ -35,15 +35,15 @@ pub fn main() {
     };
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
@@ -53,9 +53,9 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture: color,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -67,11 +67,11 @@ pub fn main() {
                 a: 1.0,
                 ..Default::default()
             }],
-            tile: TileMemory {
+            tile: Some(TileMemory {
                 width: 16,
                 height: 16,
                 shared: 512,
-            },
+            }),
             ..Default::default()
         })
         .unwrap();
@@ -88,7 +88,7 @@ pub fn main() {
     }]);
     pass.dispatch_tile(stamp);
     pass.end();
-    c.memory_barrier(stage::COLOR | stage::FRAGMENT, stage::COPY);
+    c.memory_barrier(Stage::COLOR | Stage::FRAGMENT, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -97,13 +97,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     for y in 0..n {
         for x in 0..n {
             let (lx, ly) = (x % 16, y % 16);

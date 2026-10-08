@@ -1,4 +1,4 @@
-use mk::{Device, memory, stage};
+use mk::{Device, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -44,8 +44,8 @@ pub fn main() {
     let n = 4096u64;
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let data = device.create_buffer(n, memory::DEVICE).unwrap();
-    let back = device.create_buffer(n, memory::READBACK).unwrap();
+    let data = device.create_buffer(n, Memory::Device).unwrap();
+    let back = device.create_buffer(n, Memory::Readback).unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into()]);
@@ -54,13 +54,13 @@ pub fn main() {
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
     fill(&device, &mut pass, data, n);
-    pass.memory_barrier(stage::COPY, stage::COPY);
+    pass.memory_barrier(Stage::COPY, Stage::COPY);
     pass.copy_buffer(data, 0, back, 0, n);
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let bytes = unsafe { std::slice::from_raw_parts(device.map_buffer(back), n as usize) };
+    let bytes = unsafe { device.map_buffer::<u8>(back) };
     assert!(bytes.iter().all(|b| *b == 7), "first byte {}", bytes[0]);
     device.unmap_buffer(back);
     println!("native fill inside the stream, {n} bytes match");

@@ -1,13 +1,14 @@
 use super::Device;
+use crate::Error;
 use crate::gl::errors::{drain, raise};
 use crate::gl::state::{BLOCKS, PIXELS, binding, buffer};
 use crate::gl::texture::aspect;
-use crate::{BufferTextureCopy, HostTextureCopy, format};
+use crate::{BufferTextureCopy, HostTextureCopy};
 use glow::HasContext;
 use std::ffi::c_void;
 
 impl Device {
-    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), String> {
+    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), Error> {
         self.thread();
         self.res.table.check_host_copy(copy, data.len());
         let t = self.res.textures.get(copy.texture);
@@ -30,16 +31,18 @@ impl Device {
         })
     }
 
-    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), String> {
+    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
         self.thread();
         self.res.table.check_host_copy(copy, data.len());
         if !self.caps.host_read {
-            return Err("read_texture needs caps.host_read".into());
+            return Err(Error::Unsupported(
+                "read_texture needs caps.host_read".into(),
+            ));
         }
         let t = self.res.textures.get(copy.texture);
         let raw = t.raw.map_or(0, |r| r.0.get());
         let (f, ty) = aspect(t.format);
-        let [bytes, bw, bh] = format::block(t.format);
+        let [bytes, bw, bh] = t.format.block();
         let (x, w, mip) = (copy.x as i32, copy.width as i32, copy.mip as i32);
         let (y, h, z, d) = match t.target {
             glow::TEXTURE_1D_ARRAY => (copy.layer, 1, 0, 1),
@@ -71,7 +74,7 @@ impl Device {
         target: u32,
         unpack: bool,
         f: impl FnOnce(&glow::Context),
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let gl = &self.gl;
         let (point, bound, half) = if unpack {
             (
@@ -110,7 +113,7 @@ impl Device {
             let errors = drain(gl);
             raise(gl, &self.extra, &host);
             match errors.first() {
-                Some(e) => Err(format!("host texture copy failed ({e:#x})")),
+                Some(e) => Err(Error::Driver(format!("host texture copy failed ({e:#x})"))),
                 None => Ok(()),
             }
         }

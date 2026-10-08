@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, RenderPassInfo, Scissor, TextureBarrier, TextureInfo,
-    Viewport, format, load_op, memory, stage, texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, Format, LoadOp, Memory, RenderPassInfo, Scissor, Stage,
+    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -11,7 +11,7 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
@@ -24,14 +24,14 @@ pub fn main() {
     } else {
         n
     };
-    for f in [format::RGBA8_UNORM, format::RGBA8_SRGB] {
+    for f in [Format::Rgba8Unorm, Format::Rgba8Srgb] {
         let created = device
             .create_texture(&TextureInfo {
                 format: f,
                 width: n,
                 height: n,
                 samples: 4,
-                usage: texture_usage::COLOR,
+                usage: TextureUsage::COLOR,
                 ..Default::default()
             })
             .and_then(|ms| {
@@ -39,7 +39,7 @@ pub fn main() {
                     format: f,
                     width: n,
                     height: n,
-                    usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+                    usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
                     ..Default::default()
                 })?;
                 Ok((ms, dst))
@@ -55,9 +55,9 @@ pub fn main() {
         for t in [ms, dst] {
             c.texture_barrier(&TextureBarrier {
                 texture: t,
-                src_stage: stage::COLOR,
-                dst_stage: stage::COLOR,
-                before: texture_layout::UNDEFINED,
+                src_stage: Stage::COLOR,
+                dst_stage: Stage::COLOR,
+                before: TextureLayout::Undefined,
                 ..Default::default()
             });
         }
@@ -86,7 +86,7 @@ pub fn main() {
             height: n,
         }]);
         pass.end();
-        c.memory_barrier(stage::COLOR, stage::COLOR);
+        c.memory_barrier(Stage::COLOR, Stage::COLOR);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: n,
@@ -112,15 +112,15 @@ pub fn main() {
             height: n,
         }]);
         pass.end();
-        c.memory_barrier(stage::COLOR, stage::COLOR);
+        c.memory_barrier(Stage::COLOR, Stage::COLOR);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: area,
                 height: area,
                 colors: &[ColorAttachment {
                     texture: ms,
-                    load: load_op::LOAD,
-                    resolve: dst,
+                    load: LoadOp::Load,
+                    resolve: Some(dst),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -138,7 +138,7 @@ pub fn main() {
             height: area,
         }]);
         pass.end();
-        c.memory_barrier(stage::COLOR, stage::COPY);
+        c.memory_barrier(Stage::COLOR, Stage::COPY);
         let mut pass = c.begin_compute_pass().unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: dst,
@@ -147,14 +147,12 @@ pub fn main() {
             buffer: back,
             ..Default::default()
         });
-        pass.memory_barrier(stage::COPY, stage::HOST);
+        pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
         value += 1;
         device.submit(c, &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
-        let pixels = unsafe {
-            std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-        };
+        let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         assert_eq!(
             pixels[(8 * n + 8) as usize],
             [255, 0, 0, 255],

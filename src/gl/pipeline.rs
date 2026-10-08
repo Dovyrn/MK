@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::gl::program::Program;
 use crate::{ColorTarget, RenderPipelineInfo, VertexAttribute, VertexBufferLayout};
 use glow::HasContext;
@@ -8,8 +9,8 @@ pub struct Pipeline {
     pub buffers: Vec<VertexBufferLayout>,
     pub attributes: Vec<VertexAttribute>,
     pub colors: Vec<ColorTarget>,
-    pub topology: u32,
-    pub fill: u32,
+    pub topology: crate::Topology,
+    pub fill: crate::FillMode,
     pub clamp: bool,
     pub coverage: bool,
 }
@@ -19,7 +20,7 @@ impl Pipeline {
         gl: &glow::Context,
         info: &RenderPipelineInfo,
         stages: &[(u32, &str)],
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let program = Program::new(gl, info.code, stages)?;
         let raw = program.raw;
         let validate = cfg!(feature = "validation");
@@ -35,8 +36,8 @@ impl Pipeline {
                 .find(|&l| !info.attributes.iter().any(|a| a.location == l))
         };
         let vao = match missing {
-            Some(l) => Err(format!("vertex input {l} has no attribute")),
-            None => unsafe { gl.create_vertex_array() },
+            Some(l) => Err(Error::Shader(format!("vertex input {l} has no attribute"))),
+            None => unsafe { gl.create_vertex_array() }.map_err(Error::Driver),
         };
         let vao = vao.inspect_err(|_| program.delete(gl))?;
         Ok(Self {

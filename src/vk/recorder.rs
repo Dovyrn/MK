@@ -1,5 +1,6 @@
 mod textures;
 
+use crate::Error;
 use crate::command::Command;
 use crate::vk::bindings;
 use crate::vk::device::indirect_stride;
@@ -8,8 +9,8 @@ use crate::vk::resources::Resources;
 use crate::vk::texture::{TextureObject, count};
 use crate::{Buffer, Texture};
 use crate::{
-    DepthStateInfo, compare_op, format, front_face, index_type, load_op, slot, stage, store_op,
-    texture_layout, texture_usage,
+    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, TextureLayout,
+    TextureUsage, slot,
 };
 use ash::vk;
 use std::ffi::CString;
@@ -37,67 +38,64 @@ pub struct Recorder<'a> {
     pub imported: bool,
 }
 
-fn vk_load_op(l: u32) -> vk::AttachmentLoadOp {
+fn vk_load_op(l: crate::LoadOp) -> vk::AttachmentLoadOp {
     match l {
-        load_op::LOAD => vk::AttachmentLoadOp::LOAD,
-        load_op::CLEAR => vk::AttachmentLoadOp::CLEAR,
-        load_op::DONT_CARE => vk::AttachmentLoadOp::DONT_CARE,
-        l => panic!("unknown load {l}"),
+        LoadOp::Load => vk::AttachmentLoadOp::LOAD,
+        LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
+        LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
     }
 }
 
-fn vk_store_op(s: u32) -> vk::AttachmentStoreOp {
+fn vk_store_op(s: crate::StoreOp) -> vk::AttachmentStoreOp {
     match s {
-        store_op::STORE => vk::AttachmentStoreOp::STORE,
-        store_op::DONT_CARE => vk::AttachmentStoreOp::DONT_CARE,
-        s => panic!("unknown store {s}"),
+        StoreOp::Store => vk::AttachmentStoreOp::STORE,
+        StoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
     }
 }
 
-fn vk_compare_op(c: u32) -> vk::CompareOp {
+fn vk_compare_op(c: crate::CompareOp) -> vk::CompareOp {
     match c {
-        compare_op::NONE => vk::CompareOp::ALWAYS,
-        compare_op::NEVER..=compare_op::ALWAYS => vk::CompareOp::from_raw(c as i32 - 1),
-        c => panic!("unknown compare {c}"),
+        CompareOp::None => vk::CompareOp::ALWAYS,
+        c => vk::CompareOp::from_raw(c as i32 - 1),
     }
 }
 
-fn vk_stages(bits: u32) -> vk::PipelineStageFlags2 {
+fn vk_stages(bits: Stage) -> vk::PipelineStageFlags2 {
     let map = [
         (
-            stage::VERTEX,
+            Stage::VERTEX,
             vk::PipelineStageFlags2::INDEX_INPUT
                 | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
                 | vk::PipelineStageFlags2::VERTEX_SHADER,
         ),
-        (stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
-        (stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
-        (stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
-        (stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
+        (Stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
+        (Stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
+        (Stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
+        (Stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
         (
-            stage::DEPTH,
+            Stage::DEPTH,
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
                 | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
         ),
         (
-            stage::COLOR,
+            Stage::COLOR,
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
         ),
-        (stage::HOST, vk::PipelineStageFlags2::HOST),
-        (stage::COMPUTE, vk::PipelineStageFlags2::COMPUTE_SHADER),
-        (stage::COPY, vk::PipelineStageFlags2::ALL_TRANSFER),
+        (Stage::HOST, vk::PipelineStageFlags2::HOST),
+        (Stage::COMPUTE, vk::PipelineStageFlags2::COMPUTE_SHADER),
+        (Stage::COPY, vk::PipelineStageFlags2::ALL_TRANSFER),
     ];
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
-        if bits & bit != 0 {
+        if bits.contains(bit) {
             flags |= f;
         }
     }
     flags
 }
 
-fn vk_access(bits: u32, reads: bool) -> vk::AccessFlags2 {
-    let shader = stage::VERTEX | stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE;
+fn vk_access(bits: Stage, reads: bool) -> vk::AccessFlags2 {
+    let shader = Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE;
     let map = [
         (
             shader,
@@ -105,44 +103,44 @@ fn vk_access(bits: u32, reads: bool) -> vk::AccessFlags2 {
             vk::AccessFlags2::SHADER_STORAGE_WRITE,
         ),
         (
-            stage::VERTEX,
+            Stage::VERTEX,
             vk::AccessFlags2::INDEX_READ | vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            stage::FRAGMENT,
+            Stage::FRAGMENT,
             vk::AccessFlags2::INPUT_ATTACHMENT_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            stage::INDIRECT,
+            Stage::INDIRECT,
             vk::AccessFlags2::INDIRECT_COMMAND_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            stage::DEPTH,
+            Stage::DEPTH,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
         (
-            stage::COLOR,
+            Stage::COLOR,
             vk::AccessFlags2::COLOR_ATTACHMENT_READ,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
         (
-            stage::COPY,
+            Stage::COPY,
             vk::AccessFlags2::TRANSFER_READ,
             vk::AccessFlags2::TRANSFER_WRITE,
         ),
         (
-            stage::HOST,
+            Stage::HOST,
             vk::AccessFlags2::HOST_READ,
             vk::AccessFlags2::HOST_WRITE,
         ),
     ];
     let mut flags = vk::AccessFlags2::NONE;
     for (bit, read, write) in map {
-        if bits & bit != 0 {
+        if bits.contains(bit) {
             flags |= write;
             if reads {
                 flags |= read;
@@ -152,18 +150,17 @@ fn vk_access(bits: u32, reads: bool) -> vk::AccessFlags2 {
     flags
 }
 
-pub fn vk_layout(l: u32) -> vk::ImageLayout {
+pub fn vk_layout(l: crate::TextureLayout) -> vk::ImageLayout {
     match l {
-        texture_layout::UNDEFINED => vk::ImageLayout::UNDEFINED,
-        texture_layout::GENERAL => vk::ImageLayout::GENERAL,
-        texture_layout::READ => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        texture_layout::COLOR => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        texture_layout::DEPTH => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        texture_layout::DEPTH_READ => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        texture_layout::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        texture_layout::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        texture_layout::PRESENT => vk::ImageLayout::PRESENT_SRC_KHR,
-        l => panic!("unknown layout {l}"),
+        TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
+        TextureLayout::General => vk::ImageLayout::GENERAL,
+        TextureLayout::Read => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        TextureLayout::Color => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        TextureLayout::Depth => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        TextureLayout::DepthRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
     }
 }
 
@@ -186,14 +183,14 @@ impl Recorder<'_> {
         slot: u32,
         buffer: vk::DescriptorBufferInfo,
         image: vk::DescriptorImageInfo,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let binding = bindings::binding(kind, slot);
         self.slots[binding as usize] = (kind, buffer, image);
         self.stale = self.stale.map(|s| s | 1 << binding);
         Ok(())
     }
 
-    fn push_stale_slots(&mut self, point: vk::PipelineBindPoint) -> Result<(), String> {
+    fn push_stale_slots(&mut self, point: vk::PipelineBindPoint) -> Result<(), Error> {
         let Some(i) = self.points.iter().position(|&p| p == point) else {
             return Ok(());
         };
@@ -201,11 +198,10 @@ impl Recorder<'_> {
         if stale == 0 {
             return Ok(());
         }
-        let push = self
-            .ext
-            .push
-            .as_ref()
-            .ok_or("VK_KHR_push_descriptor is not enabled")?;
+        let push =
+            self.ext.push.as_ref().ok_or_else(|| {
+                Error::Unsupported("VK_KHR_push_descriptor is not enabled".into())
+            })?;
         let mut writes = [vk::WriteDescriptorSet::default(); bindings::SLOTS];
         let mut n = 0;
         while stale != 0 {
@@ -227,7 +223,7 @@ impl Recorder<'_> {
         buffer: Buffer,
         offset: u64,
         size: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let info = vk::DescriptorBufferInfo::default()
             .buffer(self.res.buffers.get(buffer).raw)
             .offset(offset)
@@ -240,7 +236,7 @@ impl Recorder<'_> {
         kind: vk::DescriptorType,
         slot: u32,
         info: vk::DescriptorImageInfo,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.store_slot(kind, slot, vk::DescriptorBufferInfo::default(), info)
     }
 
@@ -259,19 +255,19 @@ impl Recorder<'_> {
         }
     }
 
-    fn timestamp_stage(&self, bit: u32) -> vk::PipelineStageFlags2 {
+    fn timestamp_stage(&self, bit: Stage) -> vk::PipelineStageFlags2 {
         let graphics = self.points.contains(&vk::PipelineBindPoint::GRAPHICS);
         let mesh = graphics && self.ext.mesh.is_some();
         let (flag, valid) = match bit {
-            stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
-            stage::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
-            stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
-            stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
-            stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
-            stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
-            stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
-            stage::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
-            stage::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
+            Stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
+            Stage::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
+            Stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
+            Stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
+            Stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
+            Stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
+            Stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
+            Stage::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
+            Stage::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
         };
         if valid {
@@ -284,7 +280,7 @@ impl Recorder<'_> {
     fn record_depth_state(&self, d: &DepthStateInfo) {
         let (dev, b) = (self.device, self.buffer);
         unsafe {
-            dev.cmd_set_depth_test_enable(b, d.compare != compare_op::NONE || d.write);
+            dev.cmd_set_depth_test_enable(b, d.compare != CompareOp::None || d.write);
             dev.cmd_set_depth_write_enable(b, d.write);
             dev.cmd_set_depth_compare_op(b, vk_compare_op(d.compare));
             dev.cmd_set_stencil_test_enable(b, d.stencil);
@@ -309,8 +305,8 @@ impl Recorder<'_> {
     fn attachment_info(
         &self,
         texture: Texture,
-        load: u32,
-        store: u32,
+        load: LoadOp,
+        store: StoreOp,
         clear: vk::ClearValue,
     ) -> vk::RenderingAttachmentInfo<'static> {
         vk::RenderingAttachmentInfo::default()
@@ -371,7 +367,7 @@ impl Recorder<'_> {
         self.buffer
     }
 
-    pub fn finish(&mut self) -> Result<(), String> {
+    pub fn finish(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
@@ -389,7 +385,7 @@ impl Recorder<'_> {
         self.record_depth_state(&DepthStateInfo::default());
     }
 
-    pub fn step(&mut self, command: Command) -> Result<(), String> {
+    pub fn step(&mut self, command: Command) -> Result<(), Error> {
         let (d, b) = (self.device, self.buffer);
         match command {
             Command::Dispatch { .. } | Command::DispatchIndirect { .. } => {
@@ -575,11 +571,11 @@ impl Recorder<'_> {
                     let f = self.res.textures.get(texture).format;
                     let color = [r, g, blue, a];
                     let clear = vk::ClearValue {
-                        color: if format::sint(f) {
+                        color: if f.sint() {
                             vk::ClearColorValue {
                                 int32: color.map(|v| v as i32),
                             }
-                        } else if format::uint(f) {
+                        } else if f.uint() {
                             vk::ClearColorValue {
                                 uint32: color.map(|v| v as u32),
                             }
@@ -588,7 +584,7 @@ impl Recorder<'_> {
                         },
                     };
                     let mut info = self.attachment_info(texture, load, store, clear);
-                    if !resolve.is_null() {
+                    if let Some(resolve) = resolve {
                         info = info
                             .resolve_mode(vk::ResolveModeFlags::AVERAGE)
                             .resolve_image_view(self.res.textures.get(resolve).target)
@@ -601,7 +597,7 @@ impl Recorder<'_> {
                     }
                     self.colors[i] = info;
                     let t = self.res.textures.get(texture);
-                    if t.usage & texture_usage::INPUT != 0 {
+                    if t.usage.contains(TextureUsage::INPUT) {
                         let image = vk::DescriptorImageInfo::default()
                             .image_view(t.target)
                             .image_layout(vk::ImageLayout::GENERAL);
@@ -705,14 +701,13 @@ impl Recorder<'_> {
                     }
                 }
                 Command::SetCullMode { cull } => {
-                    d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull))
+                    d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull as u32))
                 }
                 Command::SetFrontFace { face: f } => d.cmd_set_front_face(
                     b,
                     match f {
-                        front_face::CCW => vk::FrontFace::COUNTER_CLOCKWISE,
-                        front_face::CW => vk::FrontFace::CLOCKWISE,
-                        f => panic!("unknown face {f}"),
+                        FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
+                        FrontFace::Cw => vk::FrontFace::CLOCKWISE,
                     },
                 ),
                 Command::SetPrimitiveTopology { topology } => d.cmd_set_primitive_topology(
@@ -798,9 +793,8 @@ impl Recorder<'_> {
                     self.res.buffers.get(buffer).raw,
                     offset,
                     match kind {
-                        index_type::U16 => vk::IndexType::UINT16,
-                        index_type::U32 => vk::IndexType::UINT32,
-                        k => panic!("unknown index {k}"),
+                        IndexType::U16 => vk::IndexType::UINT16,
+                        IndexType::U32 => vk::IndexType::UINT32,
                     },
                 ),
                 Command::Draw {

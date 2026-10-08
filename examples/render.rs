@@ -1,8 +1,8 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, DepthAttachment, DepthStateInfo,
-    RenderPassInfo, RenderPipelineInfo, Scissor, TextureBarrier, TextureInfo, VertexAttribute,
-    VertexBufferLayout, Viewport, compare_op, format, index_type, memory, stage, store_op,
-    texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, CompareOp, DepthAttachment, DepthStateInfo,
+    Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp,
+    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, VertexAttribute, VertexBufferLayout,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -21,12 +21,12 @@ pub fn main() {
     };
     let color = device
         .create_texture(&target(
-            format::RGBA8_UNORM,
-            texture_usage::COLOR | texture_usage::COPY_SRC,
+            Format::Rgba8Unorm,
+            TextureUsage::COLOR | TextureUsage::COPY_SRC,
         ))
         .unwrap();
     let depth = device
-        .create_texture(&target(format::D32_FLOAT, texture_usage::DEPTH))
+        .create_texture(&target(Format::D32Float, TextureUsage::DEPTH))
         .unwrap();
     let vertices: [[f32; 5]; 6] = [
         [-0.5, -0.5, 1.0, 0.0, 0.0],
@@ -38,30 +38,20 @@ pub fn main() {
     ];
     let indices: [u16; 3] = [0, 1, 2];
     let vbuf = device
-        .create_buffer(size_of_val(&vertices) as u64, memory::UPLOAD)
+        .create_buffer(size_of_val(&vertices) as u64, Memory::Upload)
         .unwrap();
     let ibuf = device
-        .create_buffer(size_of_val(&indices) as u64, memory::UPLOAD)
+        .create_buffer(size_of_val(&indices) as u64, Memory::Upload)
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            vertices.as_ptr().cast(),
-            device.map_buffer(vbuf),
-            size_of_val(&vertices),
-        );
-        std::ptr::copy_nonoverlapping(
-            indices.as_ptr().cast(),
-            device.map_buffer(ibuf),
-            size_of_val(&indices),
-        );
-    }
+    unsafe { device.map_buffer::<[f32; 5]>(vbuf) }.copy_from_slice(&vertices);
+    unsafe { device.map_buffer::<u16>(ibuf) }.copy_from_slice(&indices);
     device.unmap_buffer(vbuf);
     device.unmap_buffer(ibuf);
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let pipeline = device
@@ -70,7 +60,7 @@ pub fn main() {
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
-            depth: format::D32_FLOAT,
+            depth: Some(Format::D32Float),
             buffers: &[VertexBufferLayout {
                 stride: 20,
                 instance: false,
@@ -79,13 +69,13 @@ pub fn main() {
                 VertexAttribute {
                     location: 0,
                     buffer: 0,
-                    format: format::RG32_FLOAT,
+                    format: Format::Rg32Float,
                     offset: 0,
                 },
                 VertexAttribute {
                     location: 1,
                     buffer: 0,
-                    format: format::RGB32_FLOAT,
+                    format: Format::Rgb32Float,
                     offset: 8,
                 },
             ],
@@ -94,7 +84,7 @@ pub fn main() {
         .unwrap();
     let less = device
         .create_depth_state(&DepthStateInfo {
-            compare: compare_op::LESS,
+            compare: CompareOp::Less,
             write: true,
             ..Default::default()
         })
@@ -117,12 +107,12 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    for (texture, stage) in [(color, stage::COLOR), (depth, stage::DEPTH)] {
+    for (texture, stage) in [(color, Stage::COLOR), (depth, Stage::DEPTH)] {
         c.texture_barrier(&TextureBarrier {
             texture,
             src_stage: stage,
             dst_stage: stage,
-            before: texture_layout::UNDEFINED,
+            before: TextureLayout::Undefined,
             ..Default::default()
         });
     }
@@ -136,11 +126,11 @@ pub fn main() {
                 a: 1.0,
                 ..Default::default()
             }],
-            depth: DepthAttachment {
+            depth: Some(DepthAttachment {
                 texture: depth,
-                store: store_op::DONT_CARE,
+                store: StoreOp::DontCare,
                 ..Default::default()
-            },
+            }),
             ..Default::default()
         })
         .unwrap();
@@ -158,13 +148,13 @@ pub fn main() {
     pass.bind_render_pipeline(pipeline);
     pass.set_depth_state(less);
     pass.bind_vertex_buffer(0, vbuf, 0);
-    pass.bind_index_buffer(ibuf, 0, index_type::U16);
+    pass.bind_index_buffer(ibuf, 0, IndexType::U16);
     pass.bind_uniform_buffer(0, constants, 0, 4);
     pass.draw_indexed(3, 1, 0, 0, 0);
     pass.bind_uniform_buffer(0, constants, stride, 4);
     pass.draw_indexed(3, 1, 0, 3, 0);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -173,13 +163,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
     let red = [255, 0, 0, 255];
     let green = [0, 255, 0, 255];

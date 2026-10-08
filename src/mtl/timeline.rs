@@ -1,3 +1,4 @@
+use crate::Error;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::MTLSharedEvent;
@@ -15,25 +16,25 @@ impl Timeline {
         &self.raw
     }
 
-    pub fn value(&self) -> Result<u64, String> {
+    pub fn value(&self) -> Result<u64, Error> {
         self.healthy()?;
         Ok(self.raw.signaledValue())
     }
 
-    pub fn wait(&self, value: u64, ms: u64) -> Result<bool, String> {
+    pub fn wait(&self, value: u64, ms: u64) -> Result<bool, Error> {
         let done = self.raw.waitUntilSignaledValue_timeoutMS(value, ms);
         self.healthy()?;
         Ok(done)
     }
 
-    fn healthy(&self) -> Result<(), String> {
+    fn healthy(&self) -> Result<(), Error> {
         match self.lost.lock().unwrap().clone() {
-            Some(e) => Err(e),
+            Some(e) => Err(Error::DeviceLost(e)),
             None => Ok(()),
         }
     }
 
-    pub fn signal(&self, value: u64) -> Result<(), String> {
+    pub fn signal(&self, value: u64) -> Result<(), Error> {
         crate::table::assert_rising(self.raw.signaledValue(), value);
         self.raw.setSignaledValue(value);
         Ok(())

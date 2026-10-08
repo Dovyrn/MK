@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ComputePipelineInfo, Device, TextureBarrier, TextureInfo, Timeline,
-    atomic64, format, memory, stage, texture_layout, texture_usage,
+    Atomic64, BufferTextureCopy, ComputePipelineInfo, Device, Format, Memory, Stage,
+    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Timeline,
 };
 
 #[path = "support/host.rs"]
@@ -15,36 +15,41 @@ pub fn main() {
         return;
     }
     let timeline = device.create_timeline().unwrap();
-    let texels = if device.format_usage(format::R32_UINT) & texture_usage::ATOMIC != 0 {
-        textures(&mut device, pool, &timeline, format::R32_UINT, 1);
+    let texels = if device
+        .format_usage(Format::R32Uint)
+        .contains(TextureUsage::ATOMIC)
+    {
+        textures(&mut device, pool, &timeline, Format::R32Uint, 1);
         "texture adds match"
     } else {
         "no texture atomics"
     };
-    let wide = caps.atomics64 & atomic64::IMAGE != 0
-        && device.format_usage(format::R64_UINT) & texture_usage::ATOMIC != 0;
+    let wide = caps.atomics64.contains(Atomic64::IMAGE)
+        && device
+            .format_usage(Format::R64Uint)
+            .contains(TextureUsage::ATOMIC);
     if wide {
-        textures(&mut device, pool, &timeline, format::R64_UINT, 2);
+        textures(&mut device, pool, &timeline, Format::R64Uint, 2);
     }
     let texels = if wide {
         format!("{texels}, 64-bit texture max matches")
     } else {
         texels.to_string()
     };
-    if caps.atomics64 & atomic64::MIN_MAX == 0 {
+    if !caps.atomics64.contains(Atomic64::MIN_MAX) {
         println!("{texels}, no 64-bit atomics: {:#x}", caps.atomics64);
         device.destroy_timeline(timeline);
         return;
     }
-    let buffer = device.create_buffer(16, memory::READBACK).unwrap();
+    let buffer = device.create_buffer(16, Memory::Readback).unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
     let mut entries = vec![("extremes", [0, u64::MAX], [63 << 33, 63])];
-    if caps.atomics64 & atomic64::ALL != 0 {
+    if caps.atomics64.contains(Atomic64::ALL) {
         entries.push(("sums", [0, 0], [64 << 32, u64::MAX]));
     }
-    if caps.atomics64 & atomic64::SIGNED != 0 {
+    if caps.atomics64.contains(Atomic64::SIGNED) {
         let low = (-1i64 << 40) as u64;
         entries.push(("counts", [0, low], [(-64i64 << 32) as u64, 0]));
     }
@@ -56,8 +61,8 @@ pub fn main() {
                 ..Default::default()
             })
             .unwrap();
-        let data = device.map_buffer(buffer).cast::<[u64; 2]>();
-        unsafe { *data = *start };
+        let data = unsafe { device.map_buffer::<[u64; 2]>(buffer) };
+        data[0] = *start;
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
@@ -65,12 +70,16 @@ pub fn main() {
         pass.bind_storage_buffer(0, buffer, 0, 16);
         pass.bind_storage_buffer(1, buffer, 0, 16);
         pass.dispatch(1, 1, 1);
-        pass.memory_barrier(stage::COMPUTE, stage::HOST);
+        pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
         let value = value + 2;
         device.submit(c, &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
-        assert_eq!(unsafe { *data }, *want, "{entry}");
+        assert_eq!(
+            unsafe { device.map_buffer::<[u64; 2]>(buffer) }[0],
+            *want,
+            "{entry}"
+        );
         device.unmap_buffer(buffer);
         device.destroy_compute_pipeline(pipeline);
     }
@@ -83,28 +92,28 @@ fn textures(
     device: &mut Device,
     pool: mk::CommandPool,
     timeline: &Timeline,
-    format: u32,
+    format: Format,
     value: u64,
 ) {
-    let wide = format == format::R64_UINT;
+    let wide = format == Format::R64Uint;
     let texel = if wide { 8 } else { 4 };
     let texture = device
         .create_texture(&TextureInfo {
             format,
             width: 4,
             height: 4,
-            usage: texture_usage::STORAGE
-                | texture_usage::ATOMIC
-                | texture_usage::COPY_SRC
-                | texture_usage::COPY_DST,
+            usage: TextureUsage::STORAGE
+                | TextureUsage::ATOMIC
+                | TextureUsage::COPY_SRC
+                | TextureUsage::COPY_DST,
             ..Default::default()
         })
         .unwrap();
     let size = 16 * texel;
-    let zeros = device.create_buffer(size, memory::UPLOAD).unwrap();
-    unsafe { std::ptr::write_bytes(device.map_buffer(zeros), 0, size as usize) };
+    let zeros = device.create_buffer(size, Memory::Upload).unwrap();
+    unsafe { device.map_buffer::<u8>(zeros) }.fill(0);
     device.unmap_buffer(zeros);
-    let back = device.create_buffer(size, memory::READBACK).unwrap();
+    let back = device.create_buffer(size, Memory::Readback).unwrap();
     let (code, entry): (&[u8], &str) = if wide {
         (host::code!("wide"), "wide")
     } else {
@@ -131,36 +140,38 @@ fn textures(
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COPY,
-        dst_stage: stage::COPY,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COPY,
+        dst_stage: Stage::COPY,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_buffer_to_texture(&BufferTextureCopy { ..copy(zeros) });
     pass.end();
-    c.memory_barrier(stage::COPY, stage::COMPUTE);
+    c.memory_barrier(Stage::COPY, Stage::COMPUTE);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.bind_compute_pipeline(pipeline);
     pass.bind_storage_texture(0, texture);
     pass.dispatch(1, 1, 1);
     pass.end();
-    c.memory_barrier(stage::COMPUTE, stage::COPY);
+    c.memory_barrier(Stage::COMPUTE, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy { ..copy(back) });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
-    let data = device.map_buffer(back);
     for t in 0..16u64 {
         let (got, want) = if wide {
             let x = 60 + t % 4;
             let want = if t < 4 { x << 40 | x } else { 0 };
-            (unsafe { *data.cast::<u64>().add(t as usize) }, want)
+            (unsafe { device.map_buffer::<u64>(back) }[t as usize], want)
         } else {
             let want: u64 = (0..64).filter(|i| i % 16 == t).sum();
-            (unsafe { *data.cast::<u32>().add(t as usize) } as u64, want)
+            (
+                unsafe { device.map_buffer::<u32>(back) }[t as usize] as u64,
+                want,
+            )
         };
         assert_eq!(got, want, "texel {t} of format {format}");
     }

@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, SamplerInfo, TextureBarrier, TextureInfo, address_mode, filter, format,
-    memory, stage, texture_layout, texture_usage,
+    AddressMode, BufferTextureCopy, Filter, Format, Memory, SamplerInfo, Stage, TextureBarrier,
+    TextureInfo, TextureLayout, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -19,35 +19,35 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let info = |usage| TextureInfo {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         width: n,
         height: n,
         usage,
         ..Default::default()
     };
     let src = device
-        .create_texture(&info(texture_usage::SAMPLED | texture_usage::COPY_DST))
+        .create_texture(&info(TextureUsage::SAMPLED | TextureUsage::COPY_DST))
         .unwrap();
     let dst = device
-        .create_texture(&info(texture_usage::STORAGE | texture_usage::COPY_SRC))
+        .create_texture(&info(TextureUsage::STORAGE | TextureUsage::COPY_SRC))
         .unwrap();
     let upload = device
-        .create_buffer(texels as u64 * 4, memory::UPLOAD)
+        .create_buffer(texels as u64 * 4, Memory::Upload)
         .unwrap();
     let out = device
-        .create_buffer(texels as u64 * 16, memory::READBACK)
+        .create_buffer(texels as u64 * 16, Memory::Readback)
         .unwrap();
     let back = device
-        .create_buffer(texels as u64 * 4, memory::READBACK)
+        .create_buffer(texels as u64 * 4, Memory::Readback)
         .unwrap();
     let sampler = device
         .create_sampler(&SamplerInfo {
-            min: filter::NEAREST,
-            mag: filter::NEAREST,
-            mip: filter::NEAREST,
-            u: address_mode::CLAMP,
-            v: address_mode::CLAMP,
-            w: address_mode::CLAMP,
+            min: Filter::Nearest,
+            mag: Filter::Nearest,
+            mip: Filter::Nearest,
+            u: AddressMode::Clamp,
+            v: AddressMode::Clamp,
+            w: AddressMode::Clamp,
             ..Default::default()
         })
         .unwrap();
@@ -69,11 +69,7 @@ pub fn main() {
             ]
         })
         .collect();
-    unsafe {
-        let data =
-            std::slice::from_raw_parts_mut(device.map_buffer(upload).cast::<[u8; 4]>(), texels);
-        data.copy_from_slice(&pattern);
-    }
+    unsafe { device.map_buffer::<[u8; 4]>(upload) }.copy_from_slice(&pattern);
     let mut push = device.buffer_address(out).to_le_bytes().to_vec();
     push.extend(device.bindless_texture(src).to_le_bytes());
     push.extend(device.bindless_sampler(sampler).to_le_bytes());
@@ -99,9 +95,9 @@ pub fn main() {
     for texture in [src, dst] {
         pass.texture_barrier(&TextureBarrier {
             texture,
-            src_stage: stage::COPY,
-            dst_stage: stage::COPY | stage::COMPUTE,
-            before: texture_layout::UNDEFINED,
+            src_stage: Stage::COPY,
+            dst_stage: Stage::COPY | Stage::COMPUTE,
+            before: TextureLayout::Undefined,
             ..Default::default()
         });
     }
@@ -112,11 +108,11 @@ pub fn main() {
         height: n,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::COMPUTE);
+    pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.dispatch(n / 8, n / 8, 1);
-    pass.memory_barrier(stage::COMPUTE, stage::COPY);
+    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: dst,
         width: n,
@@ -124,14 +120,12 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COMPUTE | stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COMPUTE | Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let sampled =
-        unsafe { std::slice::from_raw_parts(device.map_buffer(out).cast::<[f32; 4]>(), texels) };
-    let written =
-        unsafe { std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), texels) };
+    let sampled = unsafe { device.map_buffer::<[f32; 4]>(out) };
+    let written = unsafe { device.map_buffer::<[u8; 4]>(back) };
     for i in 0..texels {
         let p = pattern[i];
         let expect = p.map(|v| v as f32 / 255.0);

@@ -1,4 +1,4 @@
-use crate::format;
+use crate::Format;
 use crate::vk::Device;
 use ash::vk;
 use std::rc::Rc;
@@ -10,8 +10,8 @@ pub struct TextureObject {
     pub view: vk::ImageView,
     pub target: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
-    pub format: u32,
-    pub usage: u32,
+    pub format: crate::Format,
+    pub usage: crate::TextureUsage,
     pub base_mip: u32,
     pub mips: u32,
     pub base_layer: u32,
@@ -34,13 +34,13 @@ impl TextureObject {
     }
 }
 
-pub fn aspect(f: u32) -> vk::ImageAspectFlags {
+pub fn aspect(f: crate::Format) -> vk::ImageAspectFlags {
     match f {
-        format::D16_UNORM | format::D32_FLOAT => vk::ImageAspectFlags::DEPTH,
-        format::D24_UNORM_S8 | format::D32_FLOAT_S8 => {
+        Format::D16Unorm | Format::D32Float => vk::ImageAspectFlags::DEPTH,
+        Format::D24UnormS8 | Format::D32FloatS8 => {
             vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
         }
-        format::S8_UINT => vk::ImageAspectFlags::STENCIL,
+        Format::S8Uint => vk::ImageAspectFlags::STENCIL,
         _ => vk::ImageAspectFlags::COLOR,
     }
 }

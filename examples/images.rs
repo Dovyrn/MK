@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ComputePipelineInfo, TextureBarrier, TextureInfo, format, memory, stage,
-    texture_layout, texture_usage,
+    BufferTextureCopy, ComputePipelineInfo, Format, Memory, Stage, TextureBarrier, TextureInfo,
+    TextureLayout, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -16,24 +16,18 @@ pub fn main() {
     }
     let texture = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::STORAGE | texture_usage::COPY_SRC | texture_usage::COPY_DST,
+            usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC | TextureUsage::COPY_DST,
             ..Default::default()
         })
         .unwrap();
     let size = (n * n * 4) as u64;
-    let upload = device.create_buffer(size, memory::UPLOAD).unwrap();
-    unsafe {
-        let texels = std::slice::from_raw_parts_mut(
-            device.map_buffer(upload).cast::<[u8; 4]>(),
-            (n * n) as usize,
-        );
-        texels.fill([0, 0, 64, 255]);
-    }
+    let upload = device.create_buffer(size, Memory::Upload).unwrap();
+    unsafe { device.map_buffer::<[u8; 4]>(upload) }.fill([0, 0, 64, 255]);
     device.unmap_buffer(upload);
-    let back = device.create_buffer(size, memory::READBACK).unwrap();
+    let back = device.create_buffer(size, Memory::Readback).unwrap();
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("images"),
@@ -58,9 +52,9 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
-        src_stage: stage::COPY,
-        dst_stage: stage::COPY,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COPY,
+        dst_stage: Stage::COPY,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c.begin_compute_pass().unwrap();
@@ -72,13 +66,13 @@ pub fn main() {
         ..Default::default()
     });
     pass.end();
-    c.memory_barrier(stage::COPY, stage::COMPUTE);
+    c.memory_barrier(Stage::COPY, Stage::COMPUTE);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.bind_compute_pipeline(pipeline);
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.dispatch(n / 8, n / 8, 1);
     pass.end();
-    c.memory_barrier(stage::COMPUTE, stage::COPY);
+    c.memory_barrier(Stage::COMPUTE, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         buffer: back,
@@ -87,13 +81,11 @@ pub fn main() {
         height: n,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 2000).unwrap());
-    let texels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let texels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     for y in 0..n {
         for x in 0..n {
             let [r, g, b, a] = texels[(y * n + x) as usize];

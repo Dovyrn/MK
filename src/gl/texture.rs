@@ -1,40 +1,40 @@
+use crate::Error;
 use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::buffer;
 use crate::gl::state::{PIXELS, binding};
-use crate::{BufferTextureCopy, TextureInfo, TextureViewInfo, format, texture_dimension};
+use crate::{BufferTextureCopy, Format, TextureDimension, TextureInfo, TextureViewInfo};
 use glow::HasContext;
 use std::cell::Cell;
 
 pub struct TextureObject {
     pub raw: Option<glow::Texture>,
     pub target: u32,
-    pub format: u32,
+    pub format: crate::Format,
     pub own: bool,
     pub image: Cell<u64>,
 }
 
-pub fn target(dimension: u32, samples: u32) -> u32 {
+pub fn target(dimension: crate::TextureDimension, samples: u32) -> u32 {
     match (dimension, samples > 1) {
-        (texture_dimension::D1, _) => glow::TEXTURE_1D,
-        (texture_dimension::D1_ARRAY, _) => glow::TEXTURE_1D_ARRAY,
-        (texture_dimension::D2, false) => glow::TEXTURE_2D,
-        (texture_dimension::D2, true) => glow::TEXTURE_2D_MULTISAMPLE,
-        (texture_dimension::D2_ARRAY, false) => glow::TEXTURE_2D_ARRAY,
-        (texture_dimension::D2_ARRAY, true) => glow::TEXTURE_2D_MULTISAMPLE_ARRAY,
-        (texture_dimension::D3, _) => glow::TEXTURE_3D,
-        (texture_dimension::CUBE, _) => glow::TEXTURE_CUBE_MAP,
-        (texture_dimension::CUBE_ARRAY, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
-        (d, _) => panic!("unknown dimension {d}"),
+        (TextureDimension::D1, _) => glow::TEXTURE_1D,
+        (TextureDimension::D1Array, _) => glow::TEXTURE_1D_ARRAY,
+        (TextureDimension::D2, false) => glow::TEXTURE_2D,
+        (TextureDimension::D2, true) => glow::TEXTURE_2D_MULTISAMPLE,
+        (TextureDimension::D2Array, false) => glow::TEXTURE_2D_ARRAY,
+        (TextureDimension::D2Array, true) => glow::TEXTURE_2D_MULTISAMPLE_ARRAY,
+        (TextureDimension::D3, _) => glow::TEXTURE_3D,
+        (TextureDimension::Cube, _) => glow::TEXTURE_CUBE_MAP,
+        (TextureDimension::CubeArray, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
     }
 }
 
-pub fn aspect(f: u32) -> (u32, u32) {
+pub fn aspect(f: crate::Format) -> (u32, u32) {
     match f {
-        format::D24_UNORM_S8 => (glow::DEPTH_COMPONENT, glow::UNSIGNED_INT),
-        format::D32_FLOAT_S8 => (glow::DEPTH_COMPONENT, glow::FLOAT),
+        Format::D24UnormS8 => (glow::DEPTH_COMPONENT, glow::UNSIGNED_INT),
+        Format::D32FloatS8 => (glow::DEPTH_COMPONENT, glow::FLOAT),
         f => {
-            let [_, f, ty] = format::gl(f);
+            let [_, f, ty] = f.gl();
             (f, ty)
         }
     }
@@ -46,15 +46,15 @@ impl TextureObject {
         extra: &Extra,
         info: &TextureInfo,
         storage: bool,
-    ) -> Result<Self, String> {
-        let [internal, layout, kind_of] = format::gl(info.format);
+    ) -> Result<Self, Error> {
+        let [internal, layout, kind_of] = info.format.gl();
         let kind = target(info.dimension, info.samples);
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
         let (mips, layers) = (info.mips as i32, info.layers as i32);
         let samples = info.samples as i32;
         unsafe {
             let host = drain(gl);
-            let raw = gl.create_texture()?;
+            let raw = gl.create_texture().map_err(Error::Driver)?;
             let old = gl.get_parameter_i32(binding(kind)) as u32;
             let unpack = buffer(gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING));
             gl.bind_texture(kind, Some(raw));
@@ -69,7 +69,7 @@ impl TextureObject {
                 for &p in unpack {
                     gl.pixel_store_i32(p, (p == glow::UNPACK_ALIGNMENT) as i32);
                 }
-                let [bytes, bw, bh] = format::block(info.format);
+                let [bytes, bw, bh] = info.format.block();
                 let internal = internal as i32;
                 for m in 0..mips {
                     let (w, h, d) = ((w >> m).max(1), (h >> m).max(1), (d >> m).max(1));
@@ -165,7 +165,7 @@ impl TextureObject {
             }
             raise(gl, extra, &host);
             if failed {
-                return Err("texture allocation failed".into());
+                return Err(Error::OutOfMemory("texture allocation failed".into()));
             }
             Ok(Self {
                 raw: Some(raw),
@@ -183,8 +183,8 @@ impl TextureObject {
         view: View,
         parent: &TextureObject,
         info: &TextureViewInfo,
-    ) -> Result<Self, String> {
-        let [internal, _, _] = format::gl(info.format);
+    ) -> Result<Self, Error> {
+        let [internal, _, _] = info.format.gl();
         let multisample = matches!(
             parent.target,
             glow::TEXTURE_2D_MULTISAMPLE | glow::TEXTURE_2D_MULTISAMPLE_ARRAY
@@ -192,7 +192,7 @@ impl TextureObject {
         let kind = target(info.dimension, if multisample { 2 } else { 1 });
         unsafe {
             let host = drain(gl);
-            let raw = gl.create_texture()?;
+            let raw = gl.create_texture().map_err(Error::Driver)?;
             view(
                 raw.0.get(),
                 kind,
@@ -209,7 +209,7 @@ impl TextureObject {
             }
             raise(gl, extra, &host);
             if error != glow::NO_ERROR {
-                return Err(format!("texture view failed ({error:#x})"));
+                return Err(Error::Driver(format!("texture view failed ({error:#x})")));
             }
             Ok(Self {
                 raw: Some(raw),
@@ -228,7 +228,7 @@ impl TextureObject {
         c: &BufferTextureCopy,
         base: *const u8,
     ) {
-        let internal = format::gl(self.format)[0];
+        let internal = self.format.gl()[0];
         let (f, ty) = aspect(self.format);
         let (width, height, depth) = (c.width, c.height, c.depth);
         let (row_length, row_count, layer, z) = (c.row_length, c.row_count, c.layer, c.z);
@@ -242,7 +242,7 @@ impl TextureObject {
             let (w, h, d) = (width as i32, height as i32, depth as i32);
             let (mip, x, y) = (c.mip as i32, c.x as i32, c.y as i32);
             if f == 0 {
-                let [bytes, bw, bh] = format::block(self.format);
+                let [bytes, bw, bh] = self.format.block();
                 let wide = width.div_ceil(bw);
                 let pitch = row_length.max(width).div_ceil(bw) as usize * bytes as usize;
                 let rows = row_count.max(height).div_ceil(bh) as usize;

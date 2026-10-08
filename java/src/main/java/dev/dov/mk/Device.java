@@ -54,9 +54,9 @@ public class Device implements AutoCloseable {
 
     private static native String nDeviceName(long device);
 
-    public synchronized Buffer createBuffer(long size, int memory) {
+    public synchronized Buffer createBuffer(long size, Memory memory) {
         idle("createBuffer");
-        return Buffer.of(nCreateBuffer(handle(), size, memory));
+        return Buffer.of(nCreateBuffer(handle(), size, memory.value));
     }
 
     private static native long nCreateBuffer(long device, long size, int memory);
@@ -212,14 +212,14 @@ public class Device implements AutoCloseable {
 
     private static native void nReadTexture(long device, long copy, int copyLength, long data, long dataLength);
 
-    public synchronized int formatUsage(int format) {
-        return nFormatUsage(handle(), format);
+    public synchronized int formatUsage(Format format) {
+        return nFormatUsage(handle(), format.value);
     }
 
     private static native int nFormatUsage(long device, int format);
 
-    public synchronized int formatSamples(int format, int usage) {
-        return nFormatSamples(handle(), format, usage);
+    public synchronized int formatSamples(Format format, int usage) {
+        return nFormatSamples(handle(), format.value, usage);
     }
 
     private static native int nFormatSamples(long device, int format, int usage);
@@ -266,9 +266,9 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroySampler(long device, long sampler);
 
-    public synchronized QueryPool createQueryPool(int kind, int count) {
+    public synchronized QueryPool createQueryPool(QueryKind kind, int count) {
         idle("createQueryPool");
-        return QueryPool.of(nCreateQueryPool(handle(), kind, count));
+        return QueryPool.of(nCreateQueryPool(handle(), kind.value, count));
     }
 
     private static native long nCreateQueryPool(long device, int kind, int count);

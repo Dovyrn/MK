@@ -10,6 +10,7 @@ mod samplers;
 mod textures;
 mod timelines;
 
+use crate::Error;
 use crate::check::Check;
 use crate::mtl::pool::Pool;
 use crate::mtl::queue::Queue;
@@ -17,7 +18,7 @@ use crate::mtl::recorder::{Kind, Recorder};
 use crate::mtl::resources::Resources;
 use crate::recording::{Held, Recording};
 use crate::slots::Slots;
-use crate::{Caps, TextureInfo, Timeline, format, memory, texture_dimension, texture_usage};
+use crate::{Caps, Format, Memory, TextureDimension, TextureInfo, TextureUsage, Timeline};
 use crate::{CommandBuffer, CommandPool, ComputePass, ImportedPassInfo, RenderPass};
 use objc2::Message;
 use objc2::rc::{Retained, autoreleasepool};
@@ -33,59 +34,58 @@ use objc2_metal::{
 use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 
-fn mtl_compare(c: u32) -> MTLCompareFunction {
+fn mtl_compare(c: crate::CompareOp) -> MTLCompareFunction {
     match c {
-        crate::compare_op::NONE => MTLCompareFunction::Always,
-        crate::compare_op::NEVER..=crate::compare_op::ALWAYS => MTLCompareFunction(c as usize - 1),
-        c => panic!("unknown compare {c}"),
+        crate::CompareOp::None => MTLCompareFunction::Always,
+        c => MTLCompareFunction(c as usize - 1),
     }
 }
 
-fn vertex_format(f: u32) -> MTLVertexFormat {
+fn vertex_format(f: Format) -> MTLVertexFormat {
     match f {
-        format::R8_UNORM => MTLVertexFormat::UCharNormalized,
-        format::R8_SNORM => MTLVertexFormat::CharNormalized,
-        format::R8_UINT => MTLVertexFormat::UChar,
-        format::R8_SINT => MTLVertexFormat::Char,
-        format::RG8_UNORM => MTLVertexFormat::UChar2Normalized,
-        format::RG8_SNORM => MTLVertexFormat::Char2Normalized,
-        format::RG8_UINT => MTLVertexFormat::UChar2,
-        format::RG8_SINT => MTLVertexFormat::Char2,
-        format::RGBA8_UNORM => MTLVertexFormat::UChar4Normalized,
-        format::RGBA8_SNORM => MTLVertexFormat::Char4Normalized,
-        format::RGBA8_UINT => MTLVertexFormat::UChar4,
-        format::RGBA8_SINT => MTLVertexFormat::Char4,
-        format::BGRA8_UNORM => MTLVertexFormat::UChar4Normalized_BGRA,
-        format::RGB10A2_UNORM => MTLVertexFormat::UInt1010102Normalized,
-        format::RG11B10_FLOAT => MTLVertexFormat::FloatRG11B10,
-        format::RGB9E5_FLOAT => MTLVertexFormat::FloatRGB9E5,
-        format::R16_UNORM => MTLVertexFormat::UShortNormalized,
-        format::R16_SNORM => MTLVertexFormat::ShortNormalized,
-        format::R16_UINT => MTLVertexFormat::UShort,
-        format::R16_SINT => MTLVertexFormat::Short,
-        format::R16_FLOAT => MTLVertexFormat::Half,
-        format::RG16_UNORM => MTLVertexFormat::UShort2Normalized,
-        format::RG16_SNORM => MTLVertexFormat::Short2Normalized,
-        format::RG16_UINT => MTLVertexFormat::UShort2,
-        format::RG16_SINT => MTLVertexFormat::Short2,
-        format::RG16_FLOAT => MTLVertexFormat::Half2,
-        format::RGBA16_UNORM => MTLVertexFormat::UShort4Normalized,
-        format::RGBA16_SNORM => MTLVertexFormat::Short4Normalized,
-        format::RGBA16_UINT => MTLVertexFormat::UShort4,
-        format::RGBA16_SINT => MTLVertexFormat::Short4,
-        format::RGBA16_FLOAT => MTLVertexFormat::Half4,
-        format::R32_UINT => MTLVertexFormat::UInt,
-        format::R32_SINT => MTLVertexFormat::Int,
-        format::R32_FLOAT => MTLVertexFormat::Float,
-        format::RG32_UINT => MTLVertexFormat::UInt2,
-        format::RG32_SINT => MTLVertexFormat::Int2,
-        format::RG32_FLOAT => MTLVertexFormat::Float2,
-        format::RGB32_UINT => MTLVertexFormat::UInt3,
-        format::RGB32_SINT => MTLVertexFormat::Int3,
-        format::RGB32_FLOAT => MTLVertexFormat::Float3,
-        format::RGBA32_UINT => MTLVertexFormat::UInt4,
-        format::RGBA32_SINT => MTLVertexFormat::Int4,
-        format::RGBA32_FLOAT => MTLVertexFormat::Float4,
+        Format::R8Unorm => MTLVertexFormat::UCharNormalized,
+        Format::R8Snorm => MTLVertexFormat::CharNormalized,
+        Format::R8Uint => MTLVertexFormat::UChar,
+        Format::R8Sint => MTLVertexFormat::Char,
+        Format::Rg8Unorm => MTLVertexFormat::UChar2Normalized,
+        Format::Rg8Snorm => MTLVertexFormat::Char2Normalized,
+        Format::Rg8Uint => MTLVertexFormat::UChar2,
+        Format::Rg8Sint => MTLVertexFormat::Char2,
+        Format::Rgba8Unorm => MTLVertexFormat::UChar4Normalized,
+        Format::Rgba8Snorm => MTLVertexFormat::Char4Normalized,
+        Format::Rgba8Uint => MTLVertexFormat::UChar4,
+        Format::Rgba8Sint => MTLVertexFormat::Char4,
+        Format::Bgra8Unorm => MTLVertexFormat::UChar4Normalized_BGRA,
+        Format::Rgb10a2Unorm => MTLVertexFormat::UInt1010102Normalized,
+        Format::Rg11b10Float => MTLVertexFormat::FloatRG11B10,
+        Format::Rgb9e5Float => MTLVertexFormat::FloatRGB9E5,
+        Format::R16Unorm => MTLVertexFormat::UShortNormalized,
+        Format::R16Snorm => MTLVertexFormat::ShortNormalized,
+        Format::R16Uint => MTLVertexFormat::UShort,
+        Format::R16Sint => MTLVertexFormat::Short,
+        Format::R16Float => MTLVertexFormat::Half,
+        Format::Rg16Unorm => MTLVertexFormat::UShort2Normalized,
+        Format::Rg16Snorm => MTLVertexFormat::Short2Normalized,
+        Format::Rg16Uint => MTLVertexFormat::UShort2,
+        Format::Rg16Sint => MTLVertexFormat::Short2,
+        Format::Rg16Float => MTLVertexFormat::Half2,
+        Format::Rgba16Unorm => MTLVertexFormat::UShort4Normalized,
+        Format::Rgba16Snorm => MTLVertexFormat::Short4Normalized,
+        Format::Rgba16Uint => MTLVertexFormat::UShort4,
+        Format::Rgba16Sint => MTLVertexFormat::Short4,
+        Format::Rgba16Float => MTLVertexFormat::Half4,
+        Format::R32Uint => MTLVertexFormat::UInt,
+        Format::R32Sint => MTLVertexFormat::Int,
+        Format::R32Float => MTLVertexFormat::Float,
+        Format::Rg32Uint => MTLVertexFormat::UInt2,
+        Format::Rg32Sint => MTLVertexFormat::Int2,
+        Format::Rg32Float => MTLVertexFormat::Float2,
+        Format::Rgb32Uint => MTLVertexFormat::UInt3,
+        Format::Rgb32Sint => MTLVertexFormat::Int3,
+        Format::Rgb32Float => MTLVertexFormat::Float3,
+        Format::Rgba32Uint => MTLVertexFormat::UInt4,
+        Format::Rgba32Sint => MTLVertexFormat::Int4,
+        Format::Rgba32Float => MTLVertexFormat::Float4,
         f => panic!("format {f} is not a Metal vertex format"),
     }
 }
@@ -93,17 +93,17 @@ fn vertex_format(f: u32) -> MTLVertexFormat {
 fn function_descriptor(
     library: &ProtocolObject<dyn MTLLibrary>,
     name: &str,
-) -> Result<Retained<MTL4FunctionDescriptor>, String> {
+) -> Result<Retained<MTL4FunctionDescriptor>, Error> {
     let names: Vec<String> = library
         .functionNames()
         .iter()
         .map(|n| n.to_string())
         .collect();
     if !names.iter().any(|n| n == name) {
-        return Err(format!(
+        return Err(Error::Shader(format!(
             "no entry {name} in the code; it has {}",
             names.join(", ")
-        ));
+        )));
     }
     let f = MTL4LibraryFunctionDescriptor::new();
     f.setName(Some(&NSString::from_str(name)));
@@ -119,44 +119,43 @@ fn size(s: [u32; 3]) -> MTLSize {
     }
 }
 
-fn resource_options(memory: u32) -> MTLResourceOptions {
+fn resource_options(memory: Memory) -> MTLResourceOptions {
     MTLResourceOptions::HazardTrackingModeUntracked
         | match memory {
-            memory::DEVICE => MTLResourceOptions::StorageModePrivate,
-            memory::UPLOAD => {
+            Memory::Device => MTLResourceOptions::StorageModePrivate,
+            Memory::Upload => {
                 MTLResourceOptions::StorageModeShared
                     | MTLResourceOptions::CPUCacheModeWriteCombined
             }
-            memory::READBACK => MTLResourceOptions::StorageModeShared,
-            memory::TRANSIENT => MTLResourceOptions::StorageModeMemoryless,
-            _ => panic!("unknown memory {memory}"),
+            Memory::Readback => MTLResourceOptions::StorageModeShared,
+            Memory::Transient => MTLResourceOptions::StorageModeMemoryless,
         }
 }
 
 fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     let cube = matches!(
         info.dimension,
-        texture_dimension::CUBE | texture_dimension::CUBE_ARRAY
+        TextureDimension::Cube | TextureDimension::CubeArray
     );
     let mut flags = MTLTextureUsage::Unknown;
-    if info.usage & texture_usage::SAMPLED != 0 {
+    if info.usage.contains(TextureUsage::SAMPLED) {
         flags |= MTLTextureUsage::ShaderRead;
     }
-    if info.usage & texture_usage::STORAGE != 0 {
+    if info.usage.contains(TextureUsage::STORAGE) {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
     }
-    if info.usage & texture_usage::ATOMIC != 0 {
+    if info.usage.contains(TextureUsage::ATOMIC) {
         flags |= MTLTextureUsage::ShaderAtomic;
     }
-    if info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0 {
+    if !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty() {
         flags |= MTLTextureUsage::RenderTarget;
     }
-    if info.usage & texture_usage::VIEW != 0 {
+    if info.usage.contains(TextureUsage::VIEW) {
         flags |= MTLTextureUsage::PixelFormatView;
     }
     let desc = MTLTextureDescriptor::new();
     desc.setTextureType(texture_type(info.dimension, info.samples));
-    desc.setPixelFormat(format::mtl(info.format));
+    desc.setPixelFormat(info.format.mtl());
     desc.setUsage(flags);
     desc.setResourceOptions(resource_options(info.memory));
     unsafe {
@@ -170,18 +169,17 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     desc
 }
 
-fn texture_type(dimension: u32, samples: u32) -> MTLTextureType {
+fn texture_type(dimension: TextureDimension, samples: u32) -> MTLTextureType {
     match (dimension, samples > 1) {
-        (texture_dimension::D1, _) => MTLTextureType::Type1D,
-        (texture_dimension::D1_ARRAY, _) => MTLTextureType::Type1DArray,
-        (texture_dimension::D2, false) => MTLTextureType::Type2D,
-        (texture_dimension::D2, true) => MTLTextureType::Type2DMultisample,
-        (texture_dimension::D2_ARRAY, false) => MTLTextureType::Type2DArray,
-        (texture_dimension::D2_ARRAY, true) => MTLTextureType::Type2DMultisampleArray,
-        (texture_dimension::D3, _) => MTLTextureType::Type3D,
-        (texture_dimension::CUBE, _) => MTLTextureType::TypeCube,
-        (texture_dimension::CUBE_ARRAY, _) => MTLTextureType::TypeCubeArray,
-        (d, _) => panic!("unknown dimension {d}"),
+        (TextureDimension::D1, _) => MTLTextureType::Type1D,
+        (TextureDimension::D1Array, _) => MTLTextureType::Type1DArray,
+        (TextureDimension::D2, false) => MTLTextureType::Type2D,
+        (TextureDimension::D2, true) => MTLTextureType::Type2DMultisample,
+        (TextureDimension::D2Array, false) => MTLTextureType::Type2DArray,
+        (TextureDimension::D2Array, true) => MTLTextureType::Type2DMultisampleArray,
+        (TextureDimension::D3, _) => MTLTextureType::Type3D,
+        (TextureDimension::Cube, _) => MTLTextureType::TypeCube,
+        (TextureDimension::CubeArray, _) => MTLTextureType::TypeCubeArray,
     }
 }
 
@@ -214,14 +212,16 @@ impl Device {
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
         compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
         queues: usize,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         autoreleasepool(|_| {
             check!(
                 (1..=32).contains(&queues),
                 "queue count {queues} is outside 1..=32"
             );
             if !raw.supportsFamily(MTLGPUFamily::Metal4) {
-                return Err("the device does not support Metal 4".into());
+                return Err(Error::Unsupported(
+                    "the device does not support Metal 4".into(),
+                ));
             }
             let lost = Arc::new(Mutex::new(None));
             let queues = (0..queues)
@@ -241,13 +241,13 @@ impl Device {
         })
     }
 
-    pub fn adopt_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, String> {
+    pub fn adopt_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, Error> {
         let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
         let compiler =
             unsafe { Retained::retain(compiler as *mut ProtocolObject<dyn MTL4Compiler>) };
         Self::adopt(
-            raw.ok_or("null Metal device")?,
-            compiler.ok_or("null Metal compiler")?,
+            raw.ok_or_else(|| Error::Invalid("null Metal device".into()))?,
+            compiler.ok_or_else(|| Error::Invalid("null Metal compiler".into()))?,
             queues,
         )
     }
@@ -266,14 +266,14 @@ impl Device {
         check!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
-    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
+    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, Error> {
         self.check_queue(queue);
         let pool = self.pools.insert(Pool::new(&self.raw)?);
         self.res.table.pools.set(pool, (queue, Cell::new(false)));
         Ok(pool)
     }
 
-    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), String> {
+    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), Error> {
         self.res.table.pools.get(pool);
         self.pools.get(pool).reset();
         Ok(())
@@ -304,7 +304,7 @@ impl Device {
         }
     }
 
-    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, String> {
+    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
         self.res.table.pools.get(pool);
         let p = self.pools.get(pool);
         let buffer = p.next(&self.raw)?;
@@ -317,7 +317,7 @@ impl Device {
         &self,
         pool: CommandPool,
         raw: &ProtocolObject<dyn MTL4CommandBuffer>,
-    ) -> Result<CommandBuffer<'_>, String> {
+    ) -> Result<CommandBuffer<'_>, Error> {
         Ok(CommandBuffer {
             recording: self.recording(pool, Some(raw.retain()), Kind::Buffer, 0),
         })
@@ -328,7 +328,7 @@ impl Device {
         pool: CommandPool,
         raw: &ProtocolObject<dyn MTL4RenderCommandEncoder>,
         info: &ImportedPassInfo,
-    ) -> Result<RenderPass<'_, '_>, String> {
+    ) -> Result<RenderPass<'_, '_>, Error> {
         let mut recording = self.recording(pool, None, Kind::Render, info.samples);
         recording
             .recorder
@@ -342,7 +342,7 @@ impl Device {
         &self,
         pool: CommandPool,
         raw: &ProtocolObject<dyn MTL4ComputeCommandEncoder>,
-    ) -> Result<ComputePass<'_, '_>, String> {
+    ) -> Result<ComputePass<'_, '_>, Error> {
         let mut recording = self.recording(pool, None, Kind::Compute, 0);
         recording.recorder.import_compute(raw.retain());
         Ok(ComputePass {
@@ -355,7 +355,7 @@ impl Device {
         mut commands: CommandBuffer<'_>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         autoreleasepool(|_| {
             let table = &self.res.table;
             let waits = &table.timeline_points(waits);
@@ -377,15 +377,15 @@ impl Device {
     }
 }
 
-fn execution_width(device: &ProtocolObject<dyn MTLDevice>) -> Result<u32, String> {
+fn execution_width(device: &ProtocolObject<dyn MTLDevice>) -> Result<u32, Error> {
     let library = device
         .newLibraryWithSource_options_error(&NSString::from_str("kernel void probe() {}"), None)
-        .map_err(|e| e.localizedDescription().to_string())?;
+        .map_err(Error::from)?;
     let function = library
         .newFunctionWithName(&NSString::from_str("probe"))
-        .ok_or("probe kernel allocation failed")?;
+        .ok_or_else(|| Error::OutOfMemory("probe kernel allocation failed".into()))?;
     let state = device
         .newComputePipelineStateWithFunction_error(&function)
-        .map_err(|e| e.localizedDescription().to_string())?;
+        .map_err(Error::from)?;
     Ok(state.threadExecutionWidth() as u32)
 }

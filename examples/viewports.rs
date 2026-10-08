@@ -1,6 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, RenderPassInfo, RenderPipelineInfo, Scissor,
-    TextureBarrier, TextureInfo, Viewport, format, memory, stage, texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo,
+    RenderPipelineInfo, Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -16,18 +17,18 @@ pub fn main() {
     }
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: w,
             height: h,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((w * h * 4) as u64, memory::READBACK)
+        .create_buffer((w * h * 4) as u64, Memory::Readback)
         .unwrap();
     let colors = [ColorTarget {
-        format: format::RGBA8_UNORM,
+        format: Format::Rgba8Unorm,
         ..Default::default()
     }];
     let pipeline = device
@@ -75,9 +76,9 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture: color,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -98,7 +99,7 @@ pub fn main() {
     pass.set_scissor(&scissors);
     pass.draw(3, 2, 0, 0);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -107,13 +108,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (w * h) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * w + x) as usize];
     assert_eq!(at(w / 4, h / 2), [255, 0, 0, 255], "left viewport");
     assert_eq!(at(3 * w / 4, h / 2), [0, 255, 0, 255], "right viewport");

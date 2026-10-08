@@ -36,6 +36,9 @@ pub fn resolve(ops: &mut [Op], infos: &[Info]) {
 }
 
 pub fn rust_type(kind: &str) -> String {
+    if let Some(inner) = crate::optional(kind) {
+        return format!("Option<{}>", rust_type(inner));
+    }
     match kind {
         "str" => "&'a str".into(),
         k => match list(k) {
@@ -91,7 +94,9 @@ pub fn command(ops: &[Op]) -> String {
             .iter()
             .map(|f| match f.kind.as_str() {
                 "str" => format!(" {0}={{{0}:?}}", f.name),
-                k if list(k).is_some() => format!(" {0}={{{0}:?}}", f.name),
+                k if list(k).is_some() || crate::word(k) || crate::optional(k).is_some() => {
+                    format!(" {0}={{{0}:?}}", f.name)
+                }
                 _ => format!(" {0}={{{0}}}", f.name),
             })
             .collect();
@@ -164,7 +169,7 @@ pub fn methods(ops: &[Op]) -> String {
             if op.fails {
                 writeln!(
                     s,
-                    "    pub fn {}({}) -> Result<(), String> {{\n        self.recording.record({command})\n    }}\n",
+                    "    pub fn {}({}) -> Result<(), crate::Error> {{\n        self.recording.record({command})\n    }}\n",
                     op.name,
                     list.join(", ")
                 )
@@ -195,6 +200,7 @@ fn jni_params(f: &Field) -> Vec<(String, &'static str, &'static str)> {
     let n = crate::camel(&f.name);
     match f.kind.as_str() {
         "u32" | "i32" | "u8" => vec![(n, "int", "jint")],
+        k if crate::word(k) => vec![(n, "int", "jint")],
         "u64" => vec![(n, "long", "jlong")],
         "f32" => vec![(n, "float", "jfloat")],
         "bool" => vec![(n, "boolean", "jboolean")],
@@ -229,6 +235,7 @@ fn rust_value(f: &Field) -> String {
         "bool" => format!("{n} != 0"),
         "str" => format!("crate::java::str({n}, {n}_length as i64)"),
         k if crate::handle(k) => format!("crate::{k}::from_raw({n} as u64)"),
+        k if crate::word(k) => format!("crate::{k}::of({n} as u32)"),
         k => {
             let item = list(k).unwrap();
             format!(
@@ -274,7 +281,7 @@ pub fn jni(ops: &[Op]) -> String {
             };
             let call = format!("crate::java::{getter}(target).{}({args})", op.name);
             let body = if op.fails {
-                call
+                format!("{call}.map_err(|e| e.to_string())")
             } else {
                 format!("{call};\n        Ok(())")
             };
@@ -311,6 +318,8 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
                 .map(|f| {
                     let t = match f.kind.as_str() {
                         "u32" | "i32" | "u8" => "int".to_string(),
+                        k if crate::flags(k) => "int".into(),
+                        k if crate::enumerated(k) => k.into(),
                         "u64" => "long".into(),
                         "f32" => "float".into(),
                         "bool" => "boolean".into(),
@@ -337,6 +346,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
             match f.kind.as_str() {
                 k if crate::handle(k) => args.push(format!("{k}.raw({n})")),
                 "u8" => args.push(format!("{n} & 0xff")),
+                k if crate::enumerated(k) => args.push(format!("{n}.value")),
                 "str" => {
                     arena = true;
                     writeln!(

@@ -1,4 +1,5 @@
 use super::{Device, id};
+use crate::Error;
 use crate::mtl::indirect::Indirect;
 use crate::{IndirectBuffer, IndirectBufferInfo};
 use objc2::rc::autoreleasepool;
@@ -11,7 +12,7 @@ impl Device {
     pub fn create_indirect_buffer(
         &mut self,
         info: &IndirectBufferInfo,
-    ) -> Result<IndirectBuffer, String> {
+    ) -> Result<IndirectBuffer, Error> {
         let entry = self.res.table.check_indirect(info);
         self.caps.check_indirect(entry.mesh, info.draws)?;
         let render = self.res.renders.get(info.pipeline);
@@ -42,7 +43,9 @@ impl Device {
                         MTLResourceOptions::StorageModePrivate
                             | MTLResourceOptions::HazardTrackingModeUntracked,
                     )
-                    .ok_or("indirect command buffer allocation failed")?
+                    .ok_or_else(|| {
+                        Error::OutOfMemory("indirect command buffer allocation failed".into())
+                    })?
             };
             let id = self.res.indirects.insert(Indirect { raw, groups });
             self.res.table.indirects.set(id, entry);

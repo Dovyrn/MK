@@ -8,7 +8,7 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class DepthStateInfo {
-    public int compare = CompareOp.NONE;
+    public CompareOp compare = CompareOp.NONE;
     public boolean write = false;
     public boolean stencil = false;
     public StencilFace front = new StencilFace();
@@ -21,7 +21,7 @@ public class DepthStateInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, compare);
+        memPutInt(p, compare.value);
         p += 4;
         memPutInt(p, write ? 1 : 0);
         p += 4;
@@ -34,7 +34,7 @@ public class DepthStateInfo {
 
     static DepthStateInfo decode(long p) {
         var r = new DepthStateInfo();
-        r.compare = memGetInt(p);
+        r.compare = CompareOp.of(memGetInt(p));
         p += 4;
         r.write = memGetInt(p) != 0;
         p += 4;

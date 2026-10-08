@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::handle::TimelineId;
 use crate::vk::resources::Resources;
 use ash::vk;
@@ -42,8 +43,8 @@ impl Queue {
         res: &Resources,
         waits: &[(TimelineId, u64)],
         signals: &[(TimelineId, u64)],
-    ) -> Result<(), String> {
-        unsafe { device.end_command_buffer(buffer) }.map_err(|e| e.to_string())?;
+    ) -> Result<(), Error> {
+        unsafe { device.end_command_buffer(buffer) }.map_err(Error::from)?;
         let info = |semaphore, value| {
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(semaphore)
@@ -63,7 +64,6 @@ impl Queue {
             .wait_semaphore_infos(&waits)
             .command_buffer_infos(&buffers)
             .signal_semaphore_infos(&signals);
-        unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }
-            .map_err(|e| e.to_string())
+        unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }.map_err(Error::from)
     }
 }

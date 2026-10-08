@@ -8,8 +8,8 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class TextureViewInfo {
-    public int dimension = TextureDimension.D2;
-    public int format = Format.NONE;
+    public TextureDimension dimension = TextureDimension.D2;
+    public Format format = Format.NONE;
     public int baseMip = 0;
     public int mips = 1;
     public int baseLayer = 0;
@@ -23,9 +23,9 @@ public class TextureViewInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, dimension);
+        memPutInt(p, dimension.value);
         p += 4;
-        memPutInt(p, format);
+        memPutInt(p, format.value);
         p += 4;
         memPutInt(p, baseMip);
         p += 4;
@@ -42,9 +42,9 @@ public class TextureViewInfo {
 
     static TextureViewInfo decode(long p) {
         var r = new TextureViewInfo();
-        r.dimension = memGetInt(p);
+        r.dimension = TextureDimension.of(memGetInt(p));
         p += 4;
-        r.format = memGetInt(p);
+        r.format = Format.of(memGetInt(p));
         p += 4;
         r.baseMip = memGetInt(p);
         p += 4;

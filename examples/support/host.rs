@@ -44,13 +44,12 @@ pub(crate) use code;
 pub fn constants(device: &mut mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
     let stride = device.caps().bind_alignment.max(256) as u64;
     let buffer = device
-        .create_buffer(stride * blocks.len() as u64, mk::memory::UPLOAD)
+        .create_buffer(stride * blocks.len() as u64, mk::Memory::Upload)
         .unwrap();
-    let p = device.map_buffer(buffer);
+    let p = unsafe { device.map_buffer::<u8>(buffer) };
     for (i, b) in blocks.iter().enumerate() {
-        unsafe {
-            std::ptr::copy_nonoverlapping(b.as_ptr(), p.add(i * stride as usize), b.len());
-        }
+        let at = i * stride as usize;
+        p[at..at + b.len()].copy_from_slice(b);
     }
     device.unmap_buffer(buffer);
     (buffer, stride)

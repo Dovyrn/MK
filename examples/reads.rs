@@ -1,8 +1,8 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, DepthAttachment, RenderPassInfo,
-    RenderPipelineInfo, Scissor, TextureBarrier, TextureInfo, Viewport, color_mask, format,
-    load_op, memory, stage, store_op, texture_layout, texture_usage,
+    BufferTextureCopy, ColorAttachment, ColorMask, ColorTarget, DepthAttachment, Format, LoadOp,
+    Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp, TextureBarrier,
+    TextureInfo, TextureLayout, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -26,55 +26,55 @@ pub fn main() {
         return;
     }
     let memory = if caps.transient_reads {
-        memory::TRANSIENT
+        Memory::Transient
     } else {
-        memory::DEVICE
+        Memory::Device
     };
     let value = device
         .create_texture(&TextureInfo {
-            format: format::R32_FLOAT,
+            format: Format::R32Float,
             width: n,
             height: n,
-            usage: texture_usage::COLOR | texture_usage::INPUT,
+            usage: TextureUsage::COLOR | TextureUsage::INPUT,
             memory,
             ..Default::default()
         })
         .unwrap();
     let color = device
         .create_texture(&TextureInfo {
-            format: format::RGBA8_UNORM,
+            format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
+            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
     let depth = device
         .create_texture(&TextureInfo {
-            format: format::D32_FLOAT,
+            format: Format::D32Float,
             width: n,
             height: n,
-            usage: texture_usage::DEPTH,
+            usage: TextureUsage::DEPTH,
             memory: if caps.transients {
-                memory::TRANSIENT
+                Memory::Transient
             } else {
-                memory::DEVICE
+                Memory::Device
             },
             ..Default::default()
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, memory::READBACK)
+        .create_buffer((n * n * 4) as u64, Memory::Readback)
         .unwrap();
     let pipeline = |device: &mut mk::Device, fragment, value_mask, color_mask, ordered| {
         let colors = [
             ColorTarget {
-                format: format::R32_FLOAT,
+                format: Format::R32Float,
                 mask: value_mask,
                 ..Default::default()
             },
             ColorTarget {
-                format: format::RGBA8_UNORM,
+                format: Format::Rgba8Unorm,
                 mask: color_mask,
                 ..Default::default()
             },
@@ -84,17 +84,37 @@ pub fn main() {
             vertex: "cover",
             fragment,
             colors: &colors,
-            depth: format::D32_FLOAT,
+            depth: Some(Format::D32Float),
             ordered,
             ..Default::default()
         })
     };
-    let fill = pipeline(&mut device, "fill", color_mask::ALL, 0, false).unwrap();
+    let fill = pipeline(
+        &mut device,
+        "fill",
+        ColorMask::ALL,
+        ColorMask::default(),
+        false,
+    )
+    .unwrap();
     let ordered = caps.ordered_reads;
-    let add = pipeline(&mut device, "add", color_mask::ALL, 0, ordered).unwrap();
-    let copy = pipeline(&mut device, "copy", color_mask::ALL, color_mask::ALL, false).unwrap();
+    let add = pipeline(
+        &mut device,
+        "add",
+        ColorMask::ALL,
+        ColorMask::default(),
+        ordered,
+    )
+    .unwrap();
+    let copy = pipeline(&mut device, "copy", ColorMask::ALL, ColorMask::ALL, false).unwrap();
     if !ordered {
-        let refused = pipeline(&mut device, "add", color_mask::ALL, 0, true);
+        let refused = pipeline(
+            &mut device,
+            "add",
+            ColorMask::ALL,
+            ColorMask::default(),
+            true,
+        );
         assert!(
             refused.is_err(),
             "ordered pipeline made without caps.ordered_reads"
@@ -107,7 +127,7 @@ pub fn main() {
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
     );
     let mut textures = vec![color];
-    if memory != memory::TRANSIENT {
+    if memory != Memory::Transient {
         textures.push(value);
     }
     if !caps.transients {
@@ -122,23 +142,23 @@ pub fn main() {
     c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture: value,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR | stage::FRAGMENT,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR | Stage::FRAGMENT,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     c.texture_barrier(&TextureBarrier {
         texture: depth,
-        src_stage: stage::DEPTH,
-        dst_stage: stage::DEPTH,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::DEPTH,
+        dst_stage: Stage::DEPTH,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     c.texture_barrier(&TextureBarrier {
         texture: color,
-        src_stage: stage::COLOR,
-        dst_stage: stage::COLOR,
-        before: texture_layout::UNDEFINED,
+        src_stage: Stage::COLOR,
+        dst_stage: Stage::COLOR,
+        before: TextureLayout::Undefined,
         ..Default::default()
     });
     let mut pass = c
@@ -148,8 +168,8 @@ pub fn main() {
             colors: &[
                 ColorAttachment {
                     texture: value,
-                    load: load_op::CLEAR,
-                    store: store_op::DONT_CARE,
+                    load: LoadOp::Clear,
+                    store: StoreOp::DontCare,
                     ..Default::default()
                 },
                 ColorAttachment {
@@ -157,11 +177,11 @@ pub fn main() {
                     ..Default::default()
                 },
             ],
-            depth: DepthAttachment {
+            depth: Some(DepthAttachment {
                 texture: depth,
-                store: store_op::DONT_CARE,
+                store: StoreOp::DontCare,
                 ..Default::default()
-            },
+            }),
             ..Default::default()
         })
         .unwrap();
@@ -187,7 +207,7 @@ pub fn main() {
     pass.bind_render_pipeline(copy);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    c.memory_barrier(stage::COLOR, stage::COPY);
+    c.memory_barrier(Stage::COLOR, Stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -196,13 +216,11 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe {
-        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
-    };
+    let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     for (i, p) in pixels.iter().enumerate() {
         assert_eq!(*p, [191, 0, 0, 255], "pixel {i}");
     }

@@ -1,3 +1,4 @@
+use crate::Error;
 use glow::HasContext;
 
 pub struct Fences {
@@ -17,7 +18,7 @@ impl Fences {
         value
     }
 
-    pub fn wait(&self, gl: &glow::Context, value: u64, ms: u64) -> Result<bool, String> {
+    pub fn wait(&self, gl: &glow::Context, value: u64, ms: u64) -> Result<bool, Error> {
         if self.value >= value {
             return Ok(true);
         }
@@ -31,15 +32,18 @@ impl Fences {
                 unsafe { gl.client_wait_sync(fence, glow::SYNC_FLUSH_COMMANDS_BIT, step as i32) };
             match status {
                 glow::ALREADY_SIGNALED | glow::CONDITION_SATISFIED => return Ok(true),
-                glow::WAIT_FAILED => return Err("glClientWaitSync failed".into()),
+                glow::WAIT_FAILED => return Err(Error::Driver("glClientWaitSync failed".into())),
                 _ if left <= step => return Ok(false),
                 _ => left -= step,
             }
         }
     }
 
-    pub fn signal(&mut self, gl: &glow::Context, value: u64) -> Result<(), String> {
-        let fence = unsafe { gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)? };
+    pub fn signal(&mut self, gl: &glow::Context, value: u64) -> Result<(), Error> {
+        let fence = unsafe {
+            gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)
+                .map_err(Error::Driver)?
+        };
         let done: Vec<usize> = self
             .fences
             .iter()

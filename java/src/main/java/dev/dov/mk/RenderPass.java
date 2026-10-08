@@ -86,25 +86,25 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nBindRenderPipeline(long target, long pipeline);
 
-    public void setCullMode(int cull) {
+    public void setCullMode(CullMode cull) {
         synchronized (device) {
-            nSetCullMode(handle(), cull);
+            nSetCullMode(handle(), cull.value);
         }
     }
 
     private static native void nSetCullMode(long target, int cull);
 
-    public void setFrontFace(int face) {
+    public void setFrontFace(FrontFace face) {
         synchronized (device) {
-            nSetFrontFace(handle(), face);
+            nSetFrontFace(handle(), face.value);
         }
     }
 
     private static native void nSetFrontFace(long target, int face);
 
-    public void setPrimitiveTopology(int topology) {
+    public void setPrimitiveTopology(Topology topology) {
         synchronized (device) {
-            nSetPrimitiveTopology(handle(), topology);
+            nSetPrimitiveTopology(handle(), topology.value);
         }
     }
 
@@ -190,9 +190,9 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nBindVertexBuffer(long target, int slot, long buffer, long offset);
 
-    public void bindIndexBuffer(Buffer buffer, long offset, int kind) {
+    public void bindIndexBuffer(Buffer buffer, long offset, IndexType kind) {
         synchronized (device) {
-            nBindIndexBuffer(handle(), Buffer.raw(buffer), offset, kind);
+            nBindIndexBuffer(handle(), Buffer.raw(buffer), offset, kind.value);
         }
     }
 

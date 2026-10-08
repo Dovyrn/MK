@@ -1,4 +1,5 @@
-use crate::{atomic64, subgroup_op};
+use crate::Error;
+use crate::{Atomic64, SubgroupOp};
 use std::io::Cursor;
 
 const ENTRY: u32 = 15;
@@ -37,8 +38,9 @@ fn entries(words: &[u32]) -> impl Iterator<Item = (u32, u32, String, &[u32])> {
         })
 }
 
-pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String> {
-    let words = ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| e.to_string())?;
+pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, Error> {
+    let words =
+        ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| Error::Shader(e.to_string()))?;
     let mut list: Vec<String> = Vec::new();
     for (_, _, name, _) in entries(&words) {
         if !list.contains(&name) {
@@ -46,10 +48,10 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String
         }
     }
     if let Some(name) = names.iter().find(|&&n| !list.iter().any(|e| e == n)) {
-        return Err(format!(
+        return Err(Error::Shader(format!(
             "no entry {name} in the code; it has {}",
             list.join(", ")
-        ));
+        )));
     }
     let old = words.get(1).is_some_and(|&v| v < 0x10400);
     let used: Vec<u32> = entries(&words)
@@ -64,40 +66,40 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, String
             && (old || used.contains(&args[0]))
     });
     if cfg!(feature = "validation") && zero && !slots {
-        return Err("slot bindings need caps.slots".into());
+        return Err(Error::Unsupported("slot bindings need caps.slots".into()));
     }
     Ok(words)
 }
 
-pub fn subgroups(words: &[u32]) -> u32 {
+pub fn subgroups(words: &[u32]) -> SubgroupOp {
     instructions(words)
         .filter(|(op, _)| *op == CAPABILITY)
         .map(|(_, args)| match args[0] {
-            61 => subgroup_op::BASIC,
-            62 => subgroup_op::VOTE,
-            63 => subgroup_op::ARITHMETIC,
-            64 => subgroup_op::BALLOT,
-            65 => subgroup_op::SHUFFLE,
-            66 => subgroup_op::RELATIVE,
-            67 => subgroup_op::CLUSTERED,
-            68 => subgroup_op::QUAD,
-            6026 => subgroup_op::ROTATE,
-            _ => 0,
+            61 => SubgroupOp::BASIC,
+            62 => SubgroupOp::VOTE,
+            63 => SubgroupOp::ARITHMETIC,
+            64 => SubgroupOp::BALLOT,
+            65 => SubgroupOp::SHUFFLE,
+            66 => SubgroupOp::RELATIVE,
+            67 => SubgroupOp::CLUSTERED,
+            68 => SubgroupOp::QUAD,
+            6026 => SubgroupOp::ROTATE,
+            _ => SubgroupOp::default(),
         })
-        .fold(0, |a, b| a | b)
+        .fold(SubgroupOp::default(), |a, b| a | b)
 }
 
-pub fn atomics(words: &[u32]) -> u32 {
+pub fn atomics(words: &[u32]) -> Atomic64 {
     let image = if declares(words, 5016) {
-        atomic64::IMAGE
+        Atomic64::IMAGE
     } else {
-        0
+        Atomic64::default()
     };
     image
         | if declares(words, 12) {
-            atomic64::ALL
+            Atomic64::ALL
         } else {
-            0
+            Atomic64::default()
         }
 }
 

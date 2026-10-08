@@ -1,9 +1,10 @@
 use super::{Device, image_create_info, vk_image_usage, whole_view};
+use crate::Error;
 use crate::Texture;
 use crate::caps::check_support;
 use crate::handle::Handle;
 use crate::vk::texture::{TextureObject, aspect, count};
-use crate::{TextureInfo, TextureViewInfo, format, texture_dimension, texture_usage};
+use crate::{TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use ash::vk;
 use std::rc::Rc;
 
@@ -14,11 +15,11 @@ impl Device {
         (t.image, t.view)
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
         self.texture(info)?;
         let mut create = self.share_image(image_create_info(info));
         self.add_host_usage(info, &mut create)?;
-        let image = unsafe { self.raw.create_image(&create, None) }.map_err(|e| e.to_string())?;
+        let image = unsafe { self.raw.create_image(&create, None) }.map_err(Error::from)?;
         let destroy = || unsafe { self.raw.destroy_image(image, None) };
         let needs = unsafe { self.raw.get_image_memory_requirements(image) };
         let index = self
@@ -35,7 +36,7 @@ impl Device {
             .inspect_err(|_| destroy())?;
         let id = self.create_views(image, Some(Rc::new(memory)), &whole_view(info))?;
         self.res.table.add_texture(id, info);
-        if info.usage & texture_usage::HOST != 0 {
+        if info.usage.contains(TextureUsage::HOST) {
             self.to_general(id)?;
         }
         Ok(id)
@@ -45,7 +46,7 @@ impl Device {
         &mut self,
         image: vk::Image,
         info: &TextureInfo,
-    ) -> Result<Texture, String> {
+    ) -> Result<Texture, Error> {
         let id = self.create_views(image, None, &whole_view(info))?;
         self.res.table.textures.set(id, *info);
         self.res.table.residency.exempt_texture(id);
@@ -56,7 +57,7 @@ impl Device {
         &mut self,
         texture: Texture,
         info: &TextureViewInfo,
-    ) -> Result<Texture, String> {
+    ) -> Result<Texture, Error> {
         let info = &self.res.table.resolve_view(texture, info);
         self.caps.check_view(info.dimension)?;
         let usable = self.format_usage(info.format);
@@ -91,16 +92,15 @@ impl Device {
         image: vk::Image,
         owner: Option<Rc<vk::DeviceMemory>>,
         info: &TextureViewInfo,
-    ) -> Result<Texture, String> {
+    ) -> Result<Texture, Error> {
         let kind = match info.dimension {
-            texture_dimension::D1 => vk::ImageViewType::TYPE_1D,
-            texture_dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
-            texture_dimension::D2 => vk::ImageViewType::TYPE_2D,
-            texture_dimension::D2_ARRAY => vk::ImageViewType::TYPE_2D_ARRAY,
-            texture_dimension::D3 => vk::ImageViewType::TYPE_3D,
-            texture_dimension::CUBE => vk::ImageViewType::CUBE,
-            texture_dimension::CUBE_ARRAY => vk::ImageViewType::CUBE_ARRAY,
-            d => panic!("unknown dimension {d}"),
+            TextureDimension::D1 => vk::ImageViewType::TYPE_1D,
+            TextureDimension::D1Array => vk::ImageViewType::TYPE_1D_ARRAY,
+            TextureDimension::D2 => vk::ImageViewType::TYPE_2D,
+            TextureDimension::D2Array => vk::ImageViewType::TYPE_2D_ARRAY,
+            TextureDimension::D3 => vk::ImageViewType::TYPE_3D,
+            TextureDimension::Cube => vk::ImageViewType::CUBE,
+            TextureDimension::CubeArray => vk::ImageViewType::CUBE_ARRAY,
         };
         let target = match kind {
             vk::ImageViewType::CUBE | vk::ImageViewType::CUBE_ARRAY => {
@@ -124,7 +124,7 @@ impl Device {
             let create = vk::ImageViewCreateInfo::default()
                 .image(image)
                 .view_type(kind)
-                .format(format::vk(info.format))
+                .format(info.format.vk())
                 .subresource_range(vk::ImageSubresourceRange {
                     aspect_mask: aspect,
                     base_mip_level: info.base_mip,
@@ -160,7 +160,7 @@ impl Device {
         };
         if let Err(e) = views() {
             t.free(self);
-            return Err(e.to_string());
+            return Err(Error::from(e));
         }
         Ok(self.res.textures.insert(t))
     }

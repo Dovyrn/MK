@@ -1,13 +1,33 @@
 package dev.dov.mk;
 
-public interface TextureLayout {
-    int UNDEFINED = 0;
-    int GENERAL = 1;
-    int READ = 2;
-    int COLOR = 3;
-    int DEPTH = 4;
-    int DEPTH_READ = 5;
-    int COPY_SRC = 6;
-    int COPY_DST = 7;
-    int PRESENT = 8;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public enum TextureLayout {
+    UNDEFINED(0),
+    GENERAL(1),
+    READ(2),
+    COLOR(3),
+    DEPTH(4),
+    DEPTH_READ(5),
+    COPY_SRC(6),
+    COPY_DST(7),
+    PRESENT(8);
+
+    final int value;
+
+    static TextureLayout of(int v) {
+        return switch (v) {
+            case 0 -> UNDEFINED;
+            case 1 -> GENERAL;
+            case 2 -> READ;
+            case 3 -> COLOR;
+            case 4 -> DEPTH;
+            case 5 -> DEPTH_READ;
+            case 6 -> COPY_SRC;
+            case 7 -> COPY_DST;
+            case 8 -> PRESENT;
+            default -> throw new IllegalArgumentException(v + " is no TextureLayout");
+        };
+    }
 }

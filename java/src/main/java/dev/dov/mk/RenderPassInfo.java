@@ -12,16 +12,16 @@ public class RenderPassInfo {
     public int height = 1;
     public int layers = 1;
     public ColorAttachment[] colors = new ColorAttachment[0];
-    public DepthAttachment depth = new DepthAttachment();
+    public DepthAttachment depth = null;
     public QueryPool occlusion = null;
-    public TileMemory tile = new TileMemory();
+    public TileMemory tile = null;
 
     int encodedSize() {
         var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 20 + colorsSize + depth.encodedSize() + tile.encodedSize();
+        return 28 + colorsSize + (depth == null ? 0 : depth.encodedSize()) + (tile == null ? 0 : tile.encodedSize());
     }
 
     long encode(long p) {
@@ -36,10 +36,18 @@ public class RenderPassInfo {
         for (var x : colors) {
             p = x.encode(p);
         }
-        p = depth.encode(p);
+        memPutInt(p, depth == null ? 0 : 1);
+        p += 4;
+        if (depth != null) {
+            p = depth.encode(p);
+        }
         memPutLong(p, QueryPool.raw(occlusion));
         p += 8;
-        p = tile.encode(p);
+        memPutInt(p, tile == null ? 0 : 1);
+        p += 4;
+        if (tile != null) {
+            p = tile.encode(p);
+        }
         return p;
     }
 }

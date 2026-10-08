@@ -1,11 +1,14 @@
 use super::Device;
+use crate::Error;
 use crate::MemoryBudget;
 use ash::vk;
 
 impl Device {
-    pub fn memory_budget(&self) -> Result<MemoryBudget, String> {
+    pub fn memory_budget(&self) -> Result<MemoryBudget, Error> {
         if !self.ext.budget {
-            return Err("memory budgets need VK_EXT_memory_budget".into());
+            return Err(Error::Unsupported(
+                "memory budgets need VK_EXT_memory_budget".into(),
+            ));
         }
         let mut heaps = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
         let mut properties = vk::PhysicalDeviceMemoryProperties2::default().push_next(&mut heaps);
