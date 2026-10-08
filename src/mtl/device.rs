@@ -291,6 +291,7 @@ impl Device {
         kind: Kind,
         samples: u32,
     ) -> Recording<'_> {
+        self.residency.commit();
         let base = match kind {
             Kind::Render => "render",
             Kind::Compute => "compute",

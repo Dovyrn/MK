@@ -87,13 +87,9 @@ fn order_barrier(
     mask: MTLStages,
     (from, to, options): (MTLStages, MTLStages, MTL4VisibilityOptions),
 ) {
-    if from.is_empty() || to.is_empty() {
-        return;
-    }
-    if !(to & mask).is_empty() {
+    if !from.is_empty() && !(to & mask).is_empty() {
         encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(from, to & mask, options);
     }
-    encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from, to, options);
 }
 
 fn mtl_render_stage(bits: u32) -> MTLRenderStages {
@@ -425,11 +421,6 @@ impl<'a> Recorder<'a> {
                         options,
                     );
                 }
-                order_barrier(
-                    ProtocolObject::from_ref(&**encoder),
-                    COMPUTE,
-                    (from, to, options),
-                );
             }
             Command::CopyBufferToTexture {
                 buffer,
