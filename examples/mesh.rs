@@ -102,7 +102,7 @@ pub fn main() {
         pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
         pass.bind_uniform_buffer(0, half, 0, 4).unwrap();
         if round == 1 {
-            pass.draw_mesh_tasks_indirect(groups, 0, 1, 0).unwrap();
+            pass.draw_mesh_tasks_indirect(groups, 0).unwrap();
         } else {
             pass.draw_mesh_tasks(1, 1, 1).unwrap();
         }

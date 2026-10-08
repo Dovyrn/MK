@@ -115,7 +115,6 @@ pub(super) fn probe(
         },
         depth_clamp: features.depth_clamp != 0,
         line_fill: features.fill_mode_non_solid != 0,
-        multi_draw: features.multi_draw_indirect != 0,
         compute: true,
         texture_views: true,
         occlusion: true,

@@ -262,9 +262,6 @@ impl State {
             if has(44, "GL_ARB_query_buffer_object") {
                 targets.push((glow::QUERY_BUFFER, glow::QUERY_BUFFER_BINDING));
             }
-            if extra.count.is_some() {
-                targets.push((glow::PARAMETER_BUFFER, glow::PARAMETER_BUFFER_BINDING));
-            }
             let buffers = targets.iter().map(|&(t, b)| (t, int(b))).collect();
             let mut points = vec![(
                 glow::UNIFORM_BUFFER,

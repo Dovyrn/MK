@@ -131,7 +131,7 @@ impl Device {
                 .collect();
             extensions.sort();
             let has = |v, e: &str| has(version, &extensions, v, e);
-            let extra = Extra::load(proc, &has, version)?;
+            let extra = Extra::load(proc, &has)?;
             let int = |p| gl.get_parameter_i32(p);
             let storage = has(43, "GL_ARB_shader_storage_buffer_object");
             let results = has(44, "GL_ARB_query_buffer_object");
@@ -169,7 +169,6 @@ impl Device {
                 },
                 depth_clamp: true,
                 line_fill: true,
-                multi_draw: has(43, "GL_ARB_multi_draw_indirect"),
                 slots: true,
                 storage,
                 persistent: has(44, "GL_ARB_buffer_storage"),

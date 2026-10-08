@@ -439,26 +439,12 @@ impl<'a> Check<'a> {
         }
     }
 
-    fn check_indirect_buffer(
-        &self,
-        name: &str,
-        buffer: Buffer,
-        offset: u64,
-        count: u32,
-        stride: u32,
-        size: u64,
-    ) {
+    fn check_indirect_buffer(&self, name: &str, buffer: Buffer, offset: u64, size: u64) {
         assert!(
             offset.is_multiple_of(4),
             "{name} offset {offset} is not a multiple of 4"
         );
-        assert!(
-            stride == 0 || (stride.is_multiple_of(4) && stride as u64 >= size),
-            "{name} stride {stride} must be 0 or a multiple of 4 of at least {size}"
-        );
-        let stride = if stride == 0 { size } else { stride as u64 };
-        let span = stride * count.saturating_sub(1) as u64 + size;
-        self.buffer_range(name, buffer, offset, if count == 0 { 0 } else { span });
+        self.buffer_range(name, buffer, offset, size);
     }
 
     fn check_buffer_copy(&self, c: &Command) {
@@ -1043,34 +1029,18 @@ impl<'a> Check<'a> {
                 self.buffer_range(name, buffer, offset, 0);
                 self.index = Some((buffer, offset, kind));
             }
-            Command::DrawIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawIndirect { buffer, offset } => {
                 self.require(c, caps.indirect, "indirect")?;
-                if count > 1 {
-                    self.require(c, caps.multi_draw, "multi_draw")?;
-                }
                 self.check_draw(c, false);
-                self.check_indirect_buffer(name, buffer, offset, count, stride, 16);
+                self.check_indirect_buffer(name, buffer, offset, 16);
             }
-            Command::DrawIndexedIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawIndexedIndirect { buffer, offset } => {
                 self.require(c, caps.indirect, "indirect")?;
-                if count > 1 {
-                    self.require(c, caps.multi_draw, "multi_draw")?;
-                }
                 self.check_draw(c, true);
                 if self.index.map(|i| i.1) != Some(0) {
                     self.require(c, caps.indirect_offset, "indirect_offset")?;
                 }
-                self.check_indirect_buffer(name, buffer, offset, count, stride, 20);
+                self.check_indirect_buffer(name, buffer, offset, 20);
             }
             Command::ExecuteIndirect {
                 indirect,
@@ -1108,18 +1078,10 @@ impl<'a> Check<'a> {
                     ));
                 }
             }
-            Command::DrawMeshTasksIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawMeshTasksIndirect { buffer, offset } => {
                 self.require(c, caps.mesh_indirect, "mesh_indirect")?;
-                if count > 1 {
-                    self.require(c, caps.multi_draw, "multi_draw")?;
-                }
                 self.check_draw(c, false);
-                self.check_indirect_buffer(name, buffer, offset, count, stride, 12);
+                self.check_indirect_buffer(name, buffer, offset, 12);
             }
             Command::OcclusionPool { pool } => {
                 let kinds = [query_kind::OCCLUSION, query_kind::PRECISE];

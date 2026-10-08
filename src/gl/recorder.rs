@@ -704,24 +704,14 @@ impl<'a> Recorder<'a> {
                         );
                     }
                 }
-                Command::DrawIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => {
-                    if count != 0 && self.bind_draw_state(true)? {
-                        self.draw_indirect_buffer(false, buffer, offset, count, stride, None);
+                Command::DrawIndirect { buffer, offset } => {
+                    if self.bind_draw_state(true)? {
+                        self.draw_indirect_buffer(false, buffer, offset);
                     }
                 }
-                Command::DrawIndexedIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => {
-                    if count != 0 && self.bind_draw_state(true)? {
-                        self.draw_indirect_buffer(true, buffer, offset, count, stride, None);
+                Command::DrawIndexedIndirect { buffer, offset } => {
+                    if self.bind_draw_state(true)? {
+                        self.draw_indirect_buffer(true, buffer, offset);
                     }
                 }
                 Command::DrawMeshTasks { x, y, z } => {
@@ -732,14 +722,9 @@ impl<'a> Recorder<'a> {
                 Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. } => {
                     unreachable!("create_indirect_buffer needs caps.addresses, which GL lacks")
                 }
-                Command::DrawMeshTasksIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => {
-                    if count != 0 && self.bind_draw_state(true)? {
-                        self.draw_mesh_tasks(buffer, offset, count, stride, None)?;
+                Command::DrawMeshTasksIndirect { buffer, offset } => {
+                    if self.bind_draw_state(true)? {
+                        self.draw_mesh_tasks(buffer, offset);
                     }
                 }
                 Command::WriteTimestamp {

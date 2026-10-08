@@ -230,21 +230,21 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nDrawIndexed(long target, int indices, int instances, int firstIndex, int baseVertex, int firstInstance);
 
-    public void drawIndirect(Buffer buffer, long offset, int count, int stride) {
+    public void drawIndirect(Buffer buffer, long offset) {
         synchronized (device) {
-            nDrawIndirect(handle(), Buffer.raw(buffer), offset, count, stride);
+            nDrawIndirect(handle(), Buffer.raw(buffer), offset);
         }
     }
 
-    private static native void nDrawIndirect(long target, long buffer, long offset, int count, int stride);
+    private static native void nDrawIndirect(long target, long buffer, long offset);
 
-    public void drawIndexedIndirect(Buffer buffer, long offset, int count, int stride) {
+    public void drawIndexedIndirect(Buffer buffer, long offset) {
         synchronized (device) {
-            nDrawIndexedIndirect(handle(), Buffer.raw(buffer), offset, count, stride);
+            nDrawIndexedIndirect(handle(), Buffer.raw(buffer), offset);
         }
     }
 
-    private static native void nDrawIndexedIndirect(long target, long buffer, long offset, int count, int stride);
+    private static native void nDrawIndexedIndirect(long target, long buffer, long offset);
 
     public void executeIndirect(IndirectBuffer indirect, int first, int count) {
         synchronized (device) {
@@ -270,13 +270,13 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nDrawMeshTasks(long target, int x, int y, int z);
 
-    public void drawMeshTasksIndirect(Buffer buffer, long offset, int count, int stride) {
+    public void drawMeshTasksIndirect(Buffer buffer, long offset) {
         synchronized (device) {
-            nDrawMeshTasksIndirect(handle(), Buffer.raw(buffer), offset, count, stride);
+            nDrawMeshTasksIndirect(handle(), Buffer.raw(buffer), offset);
         }
     }
 
-    private static native void nDrawMeshTasksIndirect(long target, long buffer, long offset, int count, int stride);
+    private static native void nDrawMeshTasksIndirect(long target, long buffer, long offset);
 
     public void writeTimestamp(QueryPool pool, int index, int stage) {
         synchronized (device) {

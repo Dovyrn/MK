@@ -145,77 +145,27 @@ impl Recorder<'_> {
         }
     }
 
-    pub fn draw_mesh_tasks(
-        &self,
-        buffer: Buffer,
-        offset: u64,
-        count: u32,
-        stride: u32,
-        parameter: Option<(Buffer, u64)>,
-    ) -> Result<(), String> {
-        let gl = self.gl;
-        let extra = self.extra;
+    pub fn draw_mesh_tasks(&self, buffer: Buffer, offset: u64) {
         let raw = self.res.buffers.get(buffer).raw;
         unsafe {
-            gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
-            if let Some((buffer, at)) = parameter {
-                let draw = extra
-                    .mesh_count
-                    .ok_or("mesh count draws need glMultiDrawMeshTasksIndirectCountEXT")?;
-                let raw = self.res.buffers.get(buffer).raw;
-                gl.bind_buffer(glow::PARAMETER_BUFFER, Some(raw));
-                draw(offset as isize, at as isize, count as i32, stride as i32);
-            } else if count == 1 {
-                extra.mesh_indirect.unwrap()(offset as isize);
-            } else {
-                extra.mesh_multi.unwrap()(offset as isize, count as i32, stride as i32);
-            }
+            self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
+            self.extra.mesh_indirect.unwrap()(offset as isize);
         }
-        Ok(())
     }
 
-    pub fn draw_indirect_buffer(
-        &self,
-        indexed: bool,
-        buffer: Buffer,
-        offset: u64,
-        count: u32,
-        stride: u32,
-        parameter: Option<(Buffer, u64)>,
-    ) {
-        let gl = self.gl;
+    pub fn draw_indirect_buffer(&self, indexed: bool, buffer: Buffer, offset: u64) {
         if self.render.is_none() || indexed && self.index.is_none() {
             return;
         }
-        let size = if indexed { 20 } else { 16 };
-        let stride = if stride == 0 { size } else { stride };
         let kind = self.index.map_or(0, |(_, _, k)| k);
-        let extra = self.extra;
+        let raw = self.res.buffers.get(buffer).raw;
+        let pointer = offset as usize as *const std::ffi::c_void;
         unsafe {
-            gl.bind_buffer(
-                glow::DRAW_INDIRECT_BUFFER,
-                Some(self.res.buffers.get(buffer).raw),
-            );
-            let pointer = offset as usize as *const std::ffi::c_void;
-            let (n, step) = (count as i32, stride as i32);
-            if let Some((buffer, at)) = parameter {
-                gl.bind_buffer(
-                    glow::PARAMETER_BUFFER,
-                    Some(self.res.buffers.get(buffer).raw),
-                );
-                let at = at as isize;
-                if indexed {
-                    extra.count_indexed.unwrap()(self.mode, kind, pointer, at, n, step);
-                } else {
-                    extra.count.unwrap()(self.mode, pointer, at, n, step);
-                }
-                return;
-            }
-            match (indexed, count) {
-                (true, 1) => extra.indexed_indirect.unwrap()(self.mode, kind, pointer),
-                (false, 1) => extra.indirect.unwrap()(self.mode, pointer),
-                (true, _) => extra.multi_indexed.unwrap()(self.mode, kind, pointer, n, step),
-                (false, _) => extra.multi.unwrap()(self.mode, pointer, n, step),
+            self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
+            if indexed {
+                self.extra.indexed_indirect.unwrap()(self.mode, kind, pointer);
+            } else {
+                self.extra.indirect.unwrap()(self.mode, pointer);
             }
         }
     }

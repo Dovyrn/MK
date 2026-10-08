@@ -28,7 +28,6 @@ public class Caps {
     public int anisotropy = 1;
     public boolean depthClamp = false;
     public boolean lineFill = false;
-    public boolean multiDraw = false;
     public boolean slots = false;
     public boolean storage = false;
     public boolean persistent = false;
@@ -69,10 +68,10 @@ public class Caps {
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 252;
+    public static final int SIZE = 248;
 
     int encodedSize() {
-        return 252;
+        return 248;
     }
 
     long encode(long p) {
@@ -115,8 +114,6 @@ public class Caps {
         memPutInt(p, depthClamp ? 1 : 0);
         p += 4;
         memPutInt(p, lineFill ? 1 : 0);
-        p += 4;
-        memPutInt(p, multiDraw ? 1 : 0);
         p += 4;
         memPutInt(p, slots ? 1 : 0);
         p += 4;
@@ -240,8 +237,6 @@ public class Caps {
         r.depthClamp = memGetInt(p) != 0;
         p += 4;
         r.lineFill = memGetInt(p) != 0;
-        p += 4;
-        r.multiDraw = memGetInt(p) != 0;
         p += 4;
         r.slots = memGetInt(p) != 0;
         p += 4;

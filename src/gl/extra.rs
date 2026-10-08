@@ -2,16 +2,10 @@ use crate::gl::bindless::Bindless;
 use std::ffi::c_void;
 
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
-type Multi = unsafe extern "system" fn(u32, *const c_void, i32, i32);
-type MultiIndexed = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
-type Count = unsafe extern "system" fn(u32, *const c_void, isize, i32, i32);
-type CountIndexed = unsafe extern "system" fn(u32, u32, *const c_void, isize, i32, i32);
 pub type Reset = unsafe extern "system" fn() -> u32;
 type Clear = unsafe extern "system" fn(u32, u32, isize, isize, u32, u32, *const c_void);
 type Mesh = unsafe extern "system" fn(u32, u32, u32);
 type MeshIndirect = unsafe extern "system" fn(isize);
-type MeshMulti = unsafe extern "system" fn(isize, i32, i32);
-type MeshCount = unsafe extern "system" fn(isize, isize, i32, i32);
 type Data = unsafe extern "system" fn(u32, isize, *const c_void, u32);
 type Sub = unsafe extern "system" fn(u32, isize, isize, *const c_void);
 type Map = unsafe extern "system" fn(u32, isize, isize, u32) -> *mut c_void;
@@ -71,16 +65,10 @@ type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
 pub struct Extra {
     pub view: Option<View>,
-    pub multi: Option<Multi>,
-    pub multi_indexed: Option<MultiIndexed>,
-    pub count: Option<Count>,
-    pub count_indexed: Option<CountIndexed>,
     pub reset: Option<Reset>,
     pub clear: Option<Clear>,
     pub mesh: Option<Mesh>,
     pub mesh_indirect: Option<MeshIndirect>,
-    pub mesh_multi: Option<MeshMulti>,
-    pub mesh_count: Option<MeshCount>,
     pub data: Data,
     pub storage: Option<Data>,
     pub map: Map,
@@ -132,7 +120,6 @@ impl Extra {
     pub fn load(
         proc: &dyn Fn(&str) -> *const c_void,
         has: &dyn Fn(u32, &str) -> bool,
-        version: u32,
     ) -> Result<Self, String> {
         let get = |name: &str, version, extension| {
             let p = proc(name);
@@ -148,43 +135,15 @@ impl Extra {
         };
         let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         let indirect = |name| get(name, 40, "GL_ARB_draw_indirect");
-        let count = |core, arb| {
-            let name = if version >= 46 { core } else { arb };
-            get(name, 46, "GL_ARB_indirect_parameters")
-        };
         let multisample = |name| get(name, 43, "GL_ARB_texture_storage_multisample");
         unsafe {
             Ok(Self {
                 view: get("glTextureView", 43, "GL_ARB_texture_view").map(|p| cast(p)),
-                multi: get(
-                    "glMultiDrawArraysIndirect",
-                    43,
-                    "GL_ARB_multi_draw_indirect",
-                )
-                .map(|p| cast(p)),
-                multi_indexed: get(
-                    "glMultiDrawElementsIndirect",
-                    43,
-                    "GL_ARB_multi_draw_indirect",
-                )
-                .map(|p| cast(p)),
-                count: count(
-                    "glMultiDrawArraysIndirectCount",
-                    "glMultiDrawArraysIndirectCountARB",
-                )
-                .map(|p| cast(p)),
-                count_indexed: count(
-                    "glMultiDrawElementsIndirectCount",
-                    "glMultiDrawElementsIndirectCountARB",
-                )
-                .map(|p| cast(p)),
                 reset: get("glGetGraphicsResetStatus", 45, "GL_KHR_robustness").map(|p| cast(p)),
                 clear: get("glClearBufferSubData", 43, "GL_ARB_clear_buffer_object")
                     .map(|p| cast(p)),
                 mesh: mesh("glDrawMeshTasksEXT").map(|p| cast(p)),
                 mesh_indirect: mesh("glDrawMeshTasksIndirectEXT").map(|p| cast(p)),
-                mesh_multi: mesh("glMultiDrawMeshTasksIndirectEXT").map(|p| cast(p)),
-                mesh_count: mesh("glMultiDrawMeshTasksIndirectCountEXT").map(|p| cast(p)),
                 data: cast(need("glBufferData")?),
                 storage: get("glBufferStorage", 44, "GL_ARB_buffer_storage").map(|p| cast(p)),
                 map: cast(need("glMapBufferRange")?),

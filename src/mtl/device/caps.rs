@@ -61,7 +61,6 @@ impl Device {
             anisotropy: 16,
             depth_clamp: true,
             line_fill: true,
-            multi_draw: false,
             slots: true,
             storage: true,
             persistent: true,

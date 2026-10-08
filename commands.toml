@@ -203,13 +203,13 @@ fields = [["indices", "u32"], ["instances", "u32"], ["first_index", "u32"], ["ba
 name = "draw_indirect"
 scope = "render"
 fails = true
-fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "draw_indexed_indirect"
 scope = "render"
 fails = true
-fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "execute_indirect"
@@ -233,7 +233,7 @@ fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 name = "draw_mesh_tasks_indirect"
 scope = "render"
 fails = true
-fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "occlusion_pool"

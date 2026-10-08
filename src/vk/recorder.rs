@@ -848,27 +848,12 @@ impl Recorder<'_> {
                     base_vertex,
                     first_instance,
                 ),
-                Command::DrawIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => {
-                    let stride = if stride == 0 { 16 } else { stride };
-                    d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, count, stride)
+                Command::DrawIndirect { buffer, offset } => {
+                    d.cmd_draw_indirect(b, self.res.buffers.get(buffer).raw, offset, 1, 16)
                 }
-                Command::DrawIndexedIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => d.cmd_draw_indexed_indirect(
-                    b,
-                    self.res.buffers.get(buffer).raw,
-                    offset,
-                    count,
-                    if stride == 0 { 20 } else { stride },
-                ),
+                Command::DrawIndexedIndirect { buffer, offset } => {
+                    d.cmd_draw_indexed_indirect(b, self.res.buffers.get(buffer).raw, offset, 1, 20)
+                }
                 Command::DrawMeshTasks { x, y, z } => self
                     .ext
                     .mesh
@@ -925,12 +910,7 @@ impl Recorder<'_> {
                         _ => d.cmd_draw_indirect_count(b, raw, 0, range, at, max, stride),
                     }
                 }
-                Command::DrawMeshTasksIndirect {
-                    buffer,
-                    offset,
-                    count,
-                    stride,
-                } => self
+                Command::DrawMeshTasksIndirect { buffer, offset } => self
                     .ext
                     .mesh
                     .as_ref()
@@ -939,8 +919,8 @@ impl Recorder<'_> {
                         b,
                         self.res.buffers.get(buffer).raw,
                         offset,
-                        count,
-                        if stride == 0 { 12 } else { stride },
+                        1,
+                        12,
                     ),
                 Command::OcclusionPool { .. } => {}
                 Command::ResetQueries {
