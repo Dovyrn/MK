@@ -548,9 +548,18 @@ impl Device {
             let raw = t.raw.map_or(0, |r| r.0.get());
             let layered = info.layers > 1 || info.dimension == texture_dimension::D3;
             let internal = format::gl(t.format)[0];
+            let root = self
+                .res
+                .table
+                .parents
+                .find(texture)
+                .copied()
+                .unwrap_or(texture);
             unsafe {
                 let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
-                (b.resident)(handle, glow::READ_WRITE);
+                if self.res.table.residency.texture(root) > 0 {
+                    (b.resident)(handle, glow::READ_WRITE);
+                }
                 t.image.set(handle);
             }
         }

@@ -82,8 +82,15 @@ impl Residency {
         change(name, set, &mut pending.indirects, &items.indirects, add);
     }
 
-    pub fn commit(&mut self, set: ResidencySet) {
+    pub fn commit(&mut self, set: ResidencySet) -> (Vec<Texture>, Vec<Texture>) {
         let (pending, committed) = self.sets.get(set).clone();
+        let touched: Vec<Texture> = pending
+            .textures
+            .iter()
+            .chain(&committed.textures)
+            .copied()
+            .collect();
+        let before: Vec<u32> = touched.iter().map(|&t| self.texture(t)).collect();
         shift(&mut self.buffers, &committed.buffers, false);
         shift(&mut self.textures, &committed.textures, false);
         shift(&mut self.queries, &committed.queries, false);
@@ -93,6 +100,18 @@ impl Residency {
         shift(&mut self.queries, &pending.queries, true);
         shift(&mut self.indirects, &pending.indirects, true);
         self.sets.get_mut(set).1 = pending;
+        let mut entered = Vec::new();
+        let mut left = Vec::new();
+        for (&t, &old) in touched.iter().zip(&before) {
+            let now = self.texture(t);
+            if old == 0 && now > 0 && !entered.contains(&t) {
+                entered.push(t);
+            }
+            if old > 0 && now == 0 && !left.contains(&t) {
+                left.push(t);
+            }
+        }
+        (entered, left)
     }
 
     pub fn assert_set(&self, set: ResidencySet) {
