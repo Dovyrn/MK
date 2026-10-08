@@ -8,7 +8,7 @@ members = [".", "xtask"]
 default-members = ["."]
 
 [features]
-default = ["validation"]
+default = []
 validation = []
 vk = ["dep:ash"]
 mtl = [

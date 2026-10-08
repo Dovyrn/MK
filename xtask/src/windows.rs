@@ -43,7 +43,13 @@ pub fn bundle(root: &Path) -> i32 {
         if let Err(e) = xwin(
             root,
             &dir,
-            &["build", "--features", f, "--test", "examples"],
+            &[
+                "build",
+                "--features",
+                &format!("{f},validation"),
+                "--test",
+                "examples",
+            ],
         ) {
             println!("X windows {f}\n{e}");
             return 1;
