@@ -1,6 +1,4 @@
-use crate::gl::addresses::Addresses;
 use crate::gl::bindless::Bindless;
-use crate::gl::rates::Rates;
 use std::ffi::c_void;
 
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
@@ -68,8 +66,6 @@ type CopyImage = unsafe extern "system" fn(
     i32,
     i32,
 );
-type ClearImage =
-    unsafe extern "system" fn(u32, i32, i32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
 
@@ -125,10 +121,7 @@ pub struct Extra {
     pub storage2: Option<Samples2>,
     pub storage3: Option<Samples3>,
     pub copy_image: Option<CopyImage>,
-    pub clear_image: Option<ClearImage>,
     pub bindless: Option<Bindless>,
-    pub addresses: Option<Addresses>,
-    pub rates: Option<Rates>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -246,11 +239,7 @@ impl Extra {
                 storage2: multisample("glTexStorage2DMultisample").map(|p| cast(p)),
                 storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
                 copy_image: get("glCopyImageSubData", 43, "GL_ARB_copy_image").map(|p| cast(p)),
-                clear_image: get("glClearTexSubImage", 44, "GL_ARB_clear_texture").map(|p| cast(p)),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
-                addresses: Addresses::load(&|name| get(name, 99, "GL_NV_shader_buffer_load"))
-                    .filter(|_| has(99, "GL_NV_gpu_shader5")),
-                rates: Rates::load(&|name| get(name, 99, "GL_NV_shading_rate_image")),
             })
         }
     }

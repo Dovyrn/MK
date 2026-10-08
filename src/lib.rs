@@ -11,16 +11,16 @@ compile_error!("enable exactly one backend feature");
 mod caps;
 mod check;
 mod command;
-mod commands;
 mod entries;
 #[cfg(feature = "gl")]
 pub mod gl;
+mod handle;
 #[cfg(feature = "jni")]
 mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
+mod recording;
 mod slots;
-mod submit;
 mod table;
 #[cfg(feature = "vk")]
 pub mod vk;
@@ -29,8 +29,6 @@ mod wire;
 
 #[cfg(feature = "vk")]
 pub use ash;
-pub use command::Command;
-pub use commands::Commands;
 #[cfg(feature = "gl")]
 pub use gl::{Device, Timeline};
 #[cfg(feature = "gl")]
@@ -43,9 +41,12 @@ pub use objc2;
 pub use objc2_foundation;
 #[cfg(feature = "mtl")]
 pub use objc2_metal;
+pub use recording::{CommandBuffer, ComputePass, RenderPass};
 #[cfg(feature = "vk")]
 pub use vk::{Device, Timeline};
 
 include!(concat!(env!("OUT_DIR"), "/constants.rs"));
 include!(concat!(env!("OUT_DIR"), "/format.rs"));
 include!(concat!(env!("OUT_DIR"), "/infos.rs"));
+include!(concat!(env!("OUT_DIR"), "/handles.rs"));
+include!(concat!(env!("OUT_DIR"), "/methods.rs"));

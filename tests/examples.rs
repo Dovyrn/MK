@@ -4,24 +4,16 @@
 mod adopt;
 #[path = "../examples/atomics.rs"]
 mod atomics;
-#[path = "../examples/blits.rs"]
-mod blits;
-#[path = "../examples/cache.rs"]
-mod cache;
-#[path = "../examples/compact.rs"]
-mod compact;
 #[path = "../examples/compute.rs"]
 mod compute;
+#[path = "../examples/copies.rs"]
+mod copies;
 #[path = "../examples/handles.rs"]
 mod handles;
-#[path = "../examples/heap.rs"]
-mod heap;
 #[path = "../examples/images.rs"]
 mod images;
-#[path = "../examples/indirect.rs"]
-mod indirect;
-#[path = "../examples/matrices.rs"]
-mod matrices;
+#[path = "../examples/imports.rs"]
+mod imports;
 #[path = "../examples/mesh.rs"]
 mod mesh;
 #[path = "../examples/native.rs"]
@@ -30,8 +22,6 @@ mod native;
 mod queries;
 #[path = "../examples/queues.rs"]
 mod queues;
-#[path = "../examples/raytrace.rs"]
-mod raytrace;
 #[path = "../examples/reads.rs"]
 mod reads;
 #[path = "../examples/render.rs"]
@@ -40,8 +30,6 @@ mod render;
 mod resolve;
 #[path = "../examples/slots.rs"]
 mod slots;
-#[path = "../examples/sparse.rs"]
-mod sparse;
 #[path = "../examples/subgroups.rs"]
 mod subgroups;
 #[path = "../examples/texture.rs"]
@@ -67,7 +55,6 @@ macro_rules! examples {
 }
 
 examples!(
-    adopt, atomics, blits, cache, compact, compute, handles, heap, images, indirect, matrices,
-    mesh, native, queries, queues, raytrace, reads, render, resolve, slots, sparse, subgroups,
-    texture, tiles, uploads, view, viewports
+    adopt, atomics, compute, copies, handles, images, imports, mesh, native, queries, queues,
+    reads, render, resolve, slots, subgroups, texture, tiles, uploads, view, viewports
 );

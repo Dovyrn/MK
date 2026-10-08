@@ -1,6 +1,6 @@
 use mk::{
-    Commands, ComputeInfo, TextureBarrier, TextureCopy, TextureInfo, access, format, layout,
-    memory, stage, usage,
+    BufferTextureCopy, ComputePipelineInfo, TextureBarrier, TextureInfo, format, memory, stage,
+    texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -9,6 +9,7 @@ mod host;
 pub fn main() {
     let n = 16u32;
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     if device.caps().images == 0 || !device.caps().compute {
         println!("no image handles or no compute");
         return;
@@ -18,93 +19,76 @@ pub fn main() {
             format: format::RGBA8_UNORM,
             width: n,
             height: n,
-            usage: usage::STORAGE | usage::COPY_SRC | usage::COPY_DST,
+            usage: texture_usage::STORAGE | texture_usage::COPY_SRC | texture_usage::COPY_DST,
             ..Default::default()
         })
         .unwrap();
     let size = (n * n * 4) as u64;
     let upload = device.create_buffer(size, memory::UPLOAD).unwrap();
     unsafe {
-        let texels =
-            std::slice::from_raw_parts_mut(device.map(upload).cast::<[u8; 4]>(), (n * n) as usize);
+        let texels = std::slice::from_raw_parts_mut(
+            device.map_buffer(upload).cast::<[u8; 4]>(),
+            (n * n) as usize,
+        );
         texels.fill([0, 0, 64, 255]);
     }
-    device.unmap(upload);
+    device.unmap_buffer(upload);
     let back = device.create_buffer(size, memory::READBACK).unwrap();
     let pipeline = device
-        .create_pipeline(&ComputeInfo {
+        .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("images"),
             entry: "fill",
             ..Default::default()
         })
         .unwrap();
-    let mut push = device.image_handle(texture).to_le_bytes().to_vec();
+    let mut push = device
+        .bindless_storage_texture(texture)
+        .to_le_bytes()
+        .to_vec();
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
     let (constants, _) = host::constants(&mut device, &[&push]);
-    let mut c = Commands::default();
-    c.texture_barrier(&TextureBarrier {
-        texture,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_WRITE,
-        after: layout::COPY_DST,
-        ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_buffer_to_texture(&TextureCopy {
-        buffer: upload,
-        texture,
-        layout: layout::COPY_DST,
-        width: n,
-        height: n,
-        ..Default::default()
-    });
-    c.end_compute();
+    let mut c = device.begin_commands(pool).unwrap();
     c.texture_barrier(&TextureBarrier {
         texture,
         src_stage: stage::COPY,
-        src_access: access::COPY_WRITE,
-        dst_stage: stage::COMPUTE,
-        dst_access: access::SHADER_READ | access::SHADER_WRITE,
-        before: layout::COPY_DST,
-        after: layout::GENERAL,
-        ..Default::default()
-    });
-    c.begin_compute();
-    c.bind_pipeline(pipeline);
-    c.bind_uniform(0, constants, 0, push.len() as u64);
-    c.dispatch(n / 8, n / 8, 1);
-    c.end_compute();
-    c.texture_barrier(&TextureBarrier {
-        texture,
-        src_stage: stage::COMPUTE,
-        src_access: access::SHADER_WRITE,
         dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::GENERAL,
-        after: layout::COPY_SRC,
+        before: texture_layout::UNDEFINED,
         ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
-        buffer: back,
+    })
+    .unwrap();
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_buffer_to_texture(&BufferTextureCopy {
+        buffer: upload,
         texture,
-        layout: layout::COPY_SRC,
         width: n,
         height: n,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.end();
+    c.memory_barrier(stage::COPY, stage::COMPUTE);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.bind_compute_pipeline(pipeline).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
+        .unwrap();
+    pass.dispatch(n / 8, n / 8, 1).unwrap();
+    pass.end();
+    c.memory_barrier(stage::COMPUTE, stage::COPY);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
+        buffer: back,
+        texture,
+        width: n,
+        height: n,
+        ..Default::default()
+    });
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 2000).unwrap());
-    let texels =
-        unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
+    let texels = unsafe {
+        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
+    };
     for y in 0..n {
         for x in 0..n {
             let [r, g, b, a] = texels[(y * n + x) as usize];
@@ -117,6 +101,6 @@ pub fn main() {
             );
         }
     }
-    device.unmap(back);
+    device.unmap_buffer(back);
     println!("{n}x{n} texels read and written through an image handle");
 }

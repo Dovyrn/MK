@@ -1,7 +1,8 @@
-use super::{Device, id, kind, texture_desc};
+use super::{Device, id, texture_desc, texture_type};
+use crate::Texture;
 use crate::caps;
-use crate::mtl::texture::Texture;
-use crate::{TextureInfo, ViewInfo, dimension, format, memory, usage};
+use crate::mtl::texture::TextureObject;
+use crate::{TextureInfo, TextureViewInfo, format, memory, texture_dimension, texture_usage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSRange;
@@ -10,11 +11,11 @@ use objc2_metal::{
 };
 
 impl Device {
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
-            if info.usage & usage::HOST != 0 {
+            if info.usage & texture_usage::HOST != 0 {
                 desc.setStorageMode(MTLStorageMode::Shared);
             }
             let raw = self
@@ -24,11 +25,11 @@ impl Device {
             if info.memory != memory::TRANSIENT {
                 self.residency.add(ProtocolObject::from_ref(&*raw));
             }
-            let id = self.res.textures.insert(Texture {
+            let id = self.res.textures.insert(TextureObject {
                 raw,
                 format: info.format,
             });
-            self.res.table.textures.set(id, *info);
+            self.res.table.add_texture(id, info);
             Ok(id)
         })
     }
@@ -37,7 +38,7 @@ impl Device {
         &mut self,
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
         format: u32,
-    ) -> Result<u32, String> {
+    ) -> Result<Texture, String> {
         autoreleasepool(|_| {
             if format::mtl(format) != raw.pixelFormat() {
                 return Err(format!(
@@ -45,39 +46,42 @@ impl Device {
                 ));
             }
             let (dimension, faces) = match raw.textureType() {
-                MTLTextureType::Type1D => (dimension::D1, 1),
-                MTLTextureType::Type1DArray => (dimension::D1_ARRAY, 1),
-                MTLTextureType::Type2D | MTLTextureType::Type2DMultisample => (dimension::D2, 1),
-                MTLTextureType::Type2DArray | MTLTextureType::Type2DMultisampleArray => {
-                    (dimension::D2_ARRAY, 1)
+                MTLTextureType::Type1D => (texture_dimension::D1, 1),
+                MTLTextureType::Type1DArray => (texture_dimension::D1_ARRAY, 1),
+                MTLTextureType::Type2D | MTLTextureType::Type2DMultisample => {
+                    (texture_dimension::D2, 1)
                 }
-                MTLTextureType::Type3D => (dimension::D3, 1),
-                MTLTextureType::TypeCube => (dimension::CUBE, 6),
-                MTLTextureType::TypeCubeArray => (dimension::CUBE_ARRAY, 6),
+                MTLTextureType::Type2DArray | MTLTextureType::Type2DMultisampleArray => {
+                    (texture_dimension::D2_ARRAY, 1)
+                }
+                MTLTextureType::Type3D => (texture_dimension::D3, 1),
+                MTLTextureType::TypeCube => (texture_dimension::CUBE, 6),
+                MTLTextureType::TypeCubeArray => (texture_dimension::CUBE_ARRAY, 6),
                 t => return Err(format!("texture type {} cannot be imported", t.0)),
             };
             let flags = raw.usage();
-            let mut usage = usage::COPY_SRC | usage::COPY_DST;
+            let mut usage = texture_usage::COPY_SRC | texture_usage::COPY_DST;
             let depth = (format::D16_UNORM..=format::S8_UINT).contains(&format);
             let mode = raw.storageMode();
             let shared = mode == MTLStorageMode::Shared || mode == MTLStorageMode::Managed;
             if !depth && raw.sampleCount() == 1 && shared {
-                usage |= usage::HOST;
+                usage |= texture_usage::HOST;
             }
             if flags.contains(MTLTextureUsage::ShaderRead) {
-                usage |= usage::SAMPLED;
+                usage |= texture_usage::SAMPLED;
             }
             if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite) {
-                usage |= usage::STORAGE;
+                usage |= texture_usage::STORAGE;
             }
             if flags.contains(MTLTextureUsage::RenderTarget) {
-                usage |= if depth { usage::DEPTH } else { usage::COLOR };
+                usage |= if depth {
+                    texture_usage::DEPTH
+                } else {
+                    texture_usage::COLOR
+                };
             }
             if flags.contains(MTLTextureUsage::PixelFormatView) {
-                usage |= usage::VIEW;
-            }
-            if flags.contains(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget) {
-                usage |= self.format_usage(format) & usage::BLIT;
+                usage |= texture_usage::VIEW;
             }
             if mode != MTLStorageMode::Memoryless {
                 self.residency.add(ProtocolObject::from_ref(&*raw));
@@ -98,24 +102,35 @@ impl Device {
                     memory::DEVICE
                 },
             };
-            let id = self.res.textures.insert(Texture { raw, format });
+            let id = self.res.textures.insert(TextureObject { raw, format });
             self.res.table.textures.set(id, info);
             Ok(id)
         })
     }
 
-    pub fn raw_texture(&self, texture: u32) -> &ProtocolObject<dyn MTLTexture> {
+    pub fn raw_texture(&self, texture: Texture) -> &ProtocolObject<dyn MTLTexture> {
         self.res.table.textures.get(texture);
         &self.res.textures.get(texture).raw
     }
 
-    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+    pub fn create_texture_view(
+        &mut self,
+        texture: Texture,
+        info: &TextureViewInfo,
+    ) -> Result<Texture, String> {
         autoreleasepool(|_| {
-            let info = &self.res.table.resolve(texture, info);
-            self.caps.view(info.dimension)?;
+            let info = &self.res.table.resolve_view(texture, info);
+            self.caps.check_view(info.dimension)?;
             let usable = self.format_usage(info.format);
             let counts = self.format_samples(info.format, info.usage);
-            caps::supports(info.format, info.usage, 1, usable, counts)?;
+            caps::check_support(
+                "create_texture_view",
+                info.format,
+                info.usage,
+                1,
+                usable,
+                counts,
+            )?;
             let parent = self.res.textures.get(texture);
             if format::block(parent.format) != format::block(info.format)
                 || parent.format != info.format
@@ -134,35 +149,37 @@ impl Device {
                 parent
                     .newTextureViewWithPixelFormat_textureType_levels_slices(
                         format::mtl(info.format),
-                        kind(info.dimension, parent.sampleCount() as u32),
+                        texture_type(info.dimension, parent.sampleCount() as u32),
                         NSRange::new(info.base_mip as usize, info.mips as usize),
                         NSRange::new(info.base_layer as usize, info.layers as usize),
                     )
                     .ok_or("view allocation failed")?
             };
-            let id = self.res.textures.insert(Texture {
+            let id = self.res.textures.insert(TextureObject {
                 raw,
                 format: info.format,
             });
-            self.res.table.view(id, texture, info);
+            self.res.table.check_view(id, texture, info);
             Ok(id)
         })
     }
 
-    pub fn destroy_texture(&mut self, texture: u32) {
+    pub fn destroy_texture(&mut self, texture: Texture) {
         self.res.table.drop_texture(texture);
         let texture = self.res.textures.remove(texture);
         self.residency
             .remove(ProtocolObject::from_ref(&*texture.raw));
     }
 
-    pub fn texture_handle(&self, texture: u32) -> u64 {
+    pub fn bindless_texture(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
+        self.caps.assert_texture_slot(texture);
         id(self.res.textures.get(texture).raw.gpuResourceID())
     }
 
-    pub fn image_handle(&self, texture: u32) -> u64 {
-        self.caps.image(texture);
-        self.texture_handle(texture)
+    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
+        self.res.table.textures.get(texture);
+        self.caps.assert_image_slot(texture);
+        id(self.res.textures.get(texture).raw.gpuResourceID())
     }
 }

@@ -1,295 +1,169 @@
 [[call]]
 name = "caps"
 result = "Caps"
+shared = true
 
 [[call]]
-name = "name"
+name = "device_name"
 result = "str"
+shared = true
 
 [[call]]
 name = "create_buffer"
 params = [["size", "u64"], ["memory", "u32"]]
-result = "u32"
+result = "Buffer"
 fails = true
 
 [[call]]
 name = "destroy_buffer"
-params = [["buffer", "u32"]]
-
-
-[[call]]
-name = "create_indirect_buffer"
-params = [["info", "IndirectInfo"]]
-result = "u32"
-fails = true
+params = [["buffer", "Buffer"]]
 
 [[call]]
-name = "destroy_indirect_buffer"
-params = [["indirect", "u32"]]
-
-[[call]]
-name = "indirect_handle"
-params = [["indirect", "u32"]]
-result = "u32x8"
-fails = true
-[[call]]
-name = "map"
-params = [["buffer", "u32"]]
+name = "map_buffer"
+params = [["buffer", "Buffer"]]
 result = "pointer"
+shared = true
 
 [[call]]
-name = "buffer_handle"
-params = [["buffer", "u32"]]
+name = "unmap_buffer"
+params = [["buffer", "Buffer"]]
+shared = true
+
+[[call]]
+name = "buffer_address"
+params = [["buffer", "Buffer"]]
 result = "u64"
-fails = true
-
-[[call]]
-name = "unmap"
-params = [["buffer", "u32"]]
-
-[[call]]
-name = "address"
-params = [["buffer", "u32"]]
-result = "u64"
-
-[[call]]
-name = "create_heap"
-backend = "vk mtl"
-params = [["size", "u64"], ["memory", "u32"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_heap"
-backend = "vk mtl"
-params = [["heap", "u32"]]
-
-[[call]]
-name = "buffer_size"
-backend = "vk mtl"
-params = [["size", "u64"], ["memory", "u32"]]
-result = "pair"
-
-[[call]]
-name = "texture_size"
-backend = "vk mtl"
-params = [["info", "TextureInfo"]]
-result = "pair"
-
-[[call]]
-name = "create_placed_buffer"
-backend = "vk mtl"
-params = [["heap", "u32"], ["offset", "u64"], ["size", "u64"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "create_placed_texture"
-backend = "vk mtl"
-params = [["heap", "u32"], ["offset", "u64"], ["info", "TextureInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "matrix"
-params = [["index", "u32"]]
-result = "Matrix"
+shared = true
 
 [[call]]
 name = "memory_budget"
-result = "Budget"
+result = "MemoryBudget"
+fails = true
+shared = true
+
+[[call]]
+name = "create_compute_pipeline"
+params = [["info", "ComputePipelineInfo"]]
+result = "ComputePipeline"
 fails = true
 
 [[call]]
-name = "create_pipeline"
-params = [["info", "ComputeInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_pipeline"
-params = [["pipeline", "u32"]]
+name = "destroy_compute_pipeline"
+params = [["pipeline", "ComputePipeline"]]
 
 [[call]]
 name = "create_render_pipeline"
-params = [["info", "RenderInfo"]]
-result = "u32"
+params = [["info", "RenderPipelineInfo"]]
+result = "RenderPipeline"
 fails = true
 
 [[call]]
 name = "create_mesh_pipeline"
-params = [["info", "MeshInfo"]]
-result = "u32"
+params = [["info", "MeshPipelineInfo"]]
+result = "RenderPipeline"
 fails = true
 
 [[call]]
 name = "destroy_render_pipeline"
-params = [["pipeline", "u32"]]
+params = [["pipeline", "RenderPipeline"]]
 
 [[call]]
 name = "create_tile_pipeline"
-params = [["info", "TileInfo"]]
-result = "u32"
+params = [["info", "TilePipelineInfo"]]
+result = "TilePipeline"
 fails = true
 
 [[call]]
 name = "destroy_tile_pipeline"
-params = [["pipeline", "u32"]]
-
-[[call]]
-name = "create_attachments"
-params = [["textures", "u32s"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_attachments"
-params = [["attachments", "u32"]]
+params = [["pipeline", "TilePipeline"]]
 
 [[call]]
 name = "create_depth_state"
-params = [["info", "DepthInfo"]]
-result = "u32"
+params = [["info", "DepthStateInfo"]]
+result = "DepthState"
 fails = true
 
 [[call]]
 name = "destroy_depth_state"
-params = [["state", "u32"]]
+params = [["state", "DepthState"]]
 
 [[call]]
 name = "create_texture"
 params = [["info", "TextureInfo"]]
-result = "u32"
+result = "Texture"
 fails = true
 
 [[call]]
 name = "write_texture"
-params = [["copy", "HostCopy"], ["data", "bytes"]]
+params = [["copy", "HostTextureCopy"], ["data", "bytes"]]
 fails = true
 
 [[call]]
 name = "read_texture"
-params = [["copy", "HostCopy"], ["data", "mutbytes"]]
+params = [["copy", "HostTextureCopy"], ["data", "mutbytes"]]
 fails = true
 
 [[call]]
 name = "format_usage"
 params = [["format", "u32"]]
 result = "u32"
+shared = true
 
 [[call]]
 name = "format_samples"
 params = [["format", "u32"], ["usage", "u32"]]
 result = "u32"
+shared = true
 
 [[call]]
-name = "create_view"
-params = [["texture", "u32"], ["info", "ViewInfo"]]
-result = "u32"
+name = "create_texture_view"
+params = [["texture", "Texture"], ["info", "TextureViewInfo"]]
+result = "Texture"
 fails = true
 
 [[call]]
 name = "destroy_texture"
-params = [["texture", "u32"]]
+params = [["texture", "Texture"]]
 
 [[call]]
-name = "texture_handle"
+name = "bindless_texture"
 backend = "vk mtl"
-params = [["texture", "u32"]]
+params = [["texture", "Texture"]]
 result = "u64"
+shared = true
 
 [[call]]
-name = "image_handle"
-params = [["texture", "u32"]]
+name = "bindless_storage_texture"
+params = [["texture", "Texture"]]
 result = "u64"
+shared = true
 
 [[call]]
 name = "create_sampler"
 params = [["info", "SamplerInfo"]]
-result = "u32"
+result = "Sampler"
 fails = true
 
 [[call]]
 name = "destroy_sampler"
-params = [["sampler", "u32"]]
+params = [["sampler", "Sampler"]]
 
 [[call]]
-name = "sampler_handle"
+name = "bindless_sampler"
 backend = "vk mtl"
-params = [["sampler", "u32"]]
+params = [["sampler", "Sampler"]]
 result = "u64"
+shared = true
 
 [[call]]
-name = "create_accel"
-backend = "vk mtl"
-params = [["info", "AccelInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_accel"
-backend = "vk mtl"
-params = [["accel", "u32"]]
-
-[[call]]
-name = "accel_scratch"
-backend = "vk mtl"
-params = [["accel", "u32"]]
-result = "pair"
-
-[[call]]
-name = "accel_handle"
-backend = "vk mtl"
-params = [["accel", "u32"]]
-result = "u64"
-
-[[call]]
-name = "create_ray_instances"
-backend = "vk mtl"
-params = [["count", "u32"], ["memory", "u32"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "destroy_ray_instances"
-backend = "vk mtl"
-params = [["instances", "u32"]]
-
-[[call]]
-name = "write_ray_instance"
-backend = "vk mtl"
-params = [["instances", "u32"], ["index", "u32"], ["accel", "u32"], ["transform", "f32x12"], ["id", "u32"], ["mask", "u32"], ["flags", "u32"]]
-
-[[call]]
-name = "ray_instances_handle"
-backend = "vk mtl"
-params = [["instances", "u32"]]
-result = "u64"
-fails = true
-
-[[call]]
-name = "create_query_heap"
+name = "create_query_pool"
 params = [["kind", "u32"], ["count", "u32"]]
-result = "u32"
+result = "QueryPool"
 fails = true
 
 [[call]]
-name = "destroy_query_heap"
-params = [["heap", "u32"]]
-
-[[call]]
-name = "record_cache"
-fails = true
-
-[[call]]
-name = "save_cache"
-params = [["path", "str"]]
-fails = true
-
-[[call]]
-name = "load_cache"
-params = [["path", "str"]]
-fails = true
+name = "destroy_query_pool"
+params = [["pool", "QueryPool"]]
 
 [[call]]
 name = "create_timeline"
@@ -301,10 +175,32 @@ name = "destroy_timeline"
 params = [["timeline", "taken"]]
 
 [[call]]
-name = "submit"
-target = "submit_bytes"
-params = [["queue", "usize"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+name = "create_command_pool"
+params = [["queue", "usize"]]
+result = "CommandPool"
 fails = true
+
+[[call]]
+name = "reset_command_pool"
+params = [["pool", "CommandPool"]]
+fails = true
+
+[[call]]
+name = "destroy_command_pool"
+params = [["pool", "CommandPool"]]
+
+[[call]]
+name = "begin_commands"
+params = [["pool", "CommandPool"]]
+result = "CommandBuffer"
+fails = true
+shared = true
+
+[[call]]
+name = "submit"
+params = [["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+fails = true
+shared = true
 
 [[call]]
 name = "adopt_raw"
@@ -317,13 +213,13 @@ fails = true
 name = "import_buffer"
 backend = "vk"
 params = [["raw", "handle"], ["size", "u64"]]
-result = "u32"
+result = "Buffer"
 
 [[call]]
 name = "import_texture"
 backend = "vk"
 params = [["image", "handle"], ["info", "TextureInfo"]]
-result = "u32"
+result = "Texture"
 fails = true
 
 [[call]]
@@ -333,22 +229,41 @@ params = [["raw", "handle"]]
 result = "timeline"
 
 [[call]]
+name = "import_commands"
+backend = "vk"
+params = [["pool", "CommandPool"], ["raw", "handle"]]
+result = "CommandBuffer"
+fails = true
+shared = true
+
+[[call]]
+name = "import_render_pass"
+backend = "vk"
+params = [["pool", "CommandPool"], ["raw", "handle"], ["info", "ImportedPassInfo"]]
+result = "RenderPass"
+fails = true
+shared = true
+
+[[call]]
 name = "raw_buffer"
 backend = "vk"
-params = [["buffer", "u32"]]
+params = [["buffer", "Buffer"]]
 result = "handle"
+shared = true
 
 [[call]]
 name = "raw_texture"
 backend = "vk"
-params = [["texture", "u32"]]
+params = [["texture", "Texture"]]
 result = "handles"
+shared = true
 
 [[call]]
 name = "raw_queue"
 backend = "vk"
 params = [["queue", "usize"]]
 result = "handle"
+shared = true
 
 [[call]]
 name = "adopt_raw"
@@ -361,13 +276,13 @@ fails = true
 name = "import_buffer"
 backend = "mtl"
 params = [["raw", "object"]]
-result = "u32"
+result = "Buffer"
 
 [[call]]
 name = "import_texture"
 backend = "mtl"
 params = [["raw", "object"], ["format", "u32"]]
-result = "u32"
+result = "Texture"
 fails = true
 
 [[call]]
@@ -377,68 +292,49 @@ params = [["raw", "object"]]
 result = "timeline"
 
 [[call]]
+name = "import_commands"
+backend = "mtl"
+params = [["pool", "CommandPool"], ["raw", "objref"]]
+result = "CommandBuffer"
+fails = true
+shared = true
+
+[[call]]
+name = "import_render_pass"
+backend = "mtl"
+params = [["pool", "CommandPool"], ["raw", "objref"], ["info", "ImportedPassInfo"]]
+result = "RenderPass"
+fails = true
+shared = true
+
+[[call]]
+name = "import_compute_pass"
+backend = "mtl"
+params = [["pool", "CommandPool"], ["raw", "objref"]]
+result = "ComputePass"
+fails = true
+shared = true
+
+[[call]]
 name = "raw_buffer"
 backend = "mtl"
-params = [["buffer", "u32"]]
+params = [["buffer", "Buffer"]]
 result = "object"
+shared = true
 
 [[call]]
 name = "raw_texture"
 backend = "mtl"
-params = [["texture", "u32"]]
+params = [["texture", "Texture"]]
 result = "object"
+shared = true
 
 [[call]]
 name = "raw_queue"
 backend = "mtl"
 params = [["queue", "usize"]]
 result = "object"
-
-[[call]]
-name = "create_compacted"
-backend = "vk mtl"
-params = [["accel", "u32"], ["size", "u64"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "sparse_page"
-backend = "vk mtl"
-result = "u64"
-fails = true
-
-[[call]]
-name = "sparse_tile"
-backend = "vk mtl"
-params = [["info", "TextureInfo"]]
-result = "u32x3"
-fails = true
-
-[[call]]
-name = "create_sparse_buffer"
-backend = "vk mtl"
-params = [["size", "u64"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "create_sparse_texture"
-backend = "vk mtl"
-params = [["info", "TextureInfo"]]
-result = "u32"
-fails = true
-
-[[call]]
-name = "map_sparse_buffer"
-backend = "vk mtl"
-params = [["queue", "usize"], ["buffer", "u32"], ["heap", "u32"], ["ranges", "[SparseRange]"], ["waits", "waits"], ["signals", "waits"]]
-fails = true
-
-[[call]]
-name = "map_sparse_texture"
-backend = "vk mtl"
-params = [["queue", "usize"], ["texture", "u32"], ["heap", "u32"], ["regions", "[SparseRegion]"], ["waits", "waits"], ["signals", "waits"]]
-fails = true
+shared = true
 
 [[call]]
 name = "adopt_raw"
@@ -451,23 +347,33 @@ fails = true
 name = "import_buffer"
 backend = "gl"
 params = [["raw", "u32"], ["size", "u64"]]
-result = "u32"
+result = "Buffer"
 
 [[call]]
 name = "import_texture"
 backend = "gl"
 params = [["raw", "u32"], ["info", "TextureInfo"]]
-result = "u32"
+result = "Texture"
 fails = true
+
+[[call]]
+name = "import_render_pass"
+backend = "gl"
+params = [["pool", "CommandPool"], ["info", "ImportedPassInfo"]]
+result = "RenderPass"
+fails = true
+shared = true
 
 [[call]]
 name = "raw_buffer"
 backend = "gl"
-params = [["buffer", "u32"]]
+params = [["buffer", "Buffer"]]
 result = "u32"
+shared = true
 
 [[call]]
 name = "raw_texture"
 backend = "gl"
-params = [["texture", "u32"]]
+params = [["texture", "Texture"]]
 result = "u32"
+shared = true

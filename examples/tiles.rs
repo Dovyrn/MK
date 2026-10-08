@@ -1,6 +1,7 @@
 use mk::{
-    ColorAttachment, ColorTarget, Commands, TextureBarrier, TextureCopy, TextureInfo, TileInfo,
-    access, format, layout, memory, stage, usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, RenderPassInfo, Scissor, TextureBarrier,
+    TextureInfo, TileMemory, TilePipelineInfo, Viewport, format, memory, stage, texture_layout,
+    texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -9,6 +10,7 @@ mod host;
 pub fn main() {
     let n = 32u32;
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     #[cfg(feature = "mtl")]
     let code = host::code!("stamp");
     #[cfg(not(feature = "mtl"))]
@@ -17,7 +19,7 @@ pub fn main() {
         format: format::RGBA8_UNORM,
         ..Default::default()
     }];
-    let made = device.create_tile_pipeline(&TileInfo {
+    let made = device.create_tile_pipeline(&TilePipelineInfo {
         code,
         entry: "stamp",
         colors: &colors,
@@ -36,7 +38,7 @@ pub fn main() {
             format: format::RGBA8_UNORM,
             width: n,
             height: n,
-            usage: usage::COLOR | usage::COPY_SRC,
+            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -44,53 +46,61 @@ pub fn main() {
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut c = Commands::default();
+    let mut c = device.begin_commands(pool).unwrap();
     c.texture_barrier(&TextureBarrier {
         texture: color,
+        src_stage: stage::COLOR,
         dst_stage: stage::COLOR,
-        dst_access: access::COLOR_WRITE,
-        after: layout::COLOR,
+        before: texture_layout::UNDEFINED,
+        ..Default::default()
+    })
+    .unwrap();
+    let mut pass = c
+        .begin_render_pass(&RenderPassInfo {
+            width: n,
+            height: n,
+            colors: &[ColorAttachment {
+                texture: color,
+                a: 1.0,
+                ..Default::default()
+            }],
+            tile: TileMemory {
+                width: 16,
+                height: 16,
+                shared: 512,
+            },
+            ..Default::default()
+        })
+        .unwrap();
+    pass.set_viewport(&Viewport {
+        width: n as f32,
+        height: n as f32,
         ..Default::default()
     });
-    c.color_attachment(&ColorAttachment {
-        texture: color,
-        a: 1.0,
-        ..Default::default()
+    pass.set_scissor(&Scissor {
+        x: 0,
+        y: 0,
+        width: n,
+        height: n,
     });
-    c.tile_size(16, 16, 512);
-    c.begin_render(n, n, 1);
-    c.dispatch_tile(stamp);
-    c.end_render();
-    c.texture_barrier(&TextureBarrier {
+    pass.dispatch_tile(stamp).unwrap();
+    pass.end();
+    c.memory_barrier(stage::COLOR | stage::FRAGMENT, stage::COPY);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
-        src_stage: stage::COLOR | stage::FRAGMENT,
-        src_access: access::COLOR_WRITE,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::COLOR,
-        after: layout::COPY_SRC,
-        ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
-        texture: color,
-        layout: layout::COPY_SRC,
         width: n,
         height: n,
         buffer: back,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels =
-        unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
+    let pixels = unsafe {
+        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
+    };
     for y in 0..n {
         for x in 0..n {
             let (lx, ly) = (x % 16, y % 16);

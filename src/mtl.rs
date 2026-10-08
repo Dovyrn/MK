@@ -1,9 +1,6 @@
-mod accel;
 mod device;
-mod frame;
-mod indirect;
-mod native;
 mod pipeline;
+mod pool;
 mod query;
 mod queue;
 mod recorder;
@@ -14,5 +11,5 @@ mod texture;
 mod timeline;
 
 pub use device::Device;
-pub use native::{Callback, Native};
+pub(crate) use recorder::Recorder;
 pub use timeline::Timeline;

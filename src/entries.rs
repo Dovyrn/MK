@@ -1,48 +1,73 @@
-pub struct Entries<T> {
-    kind: &'static str,
-    items: Vec<Option<T>>,
+use crate::handle::Handle;
+use std::marker::PhantomData;
+
+pub struct Entries<H, T> {
+    items: Vec<Option<(u32, T)>>,
+    kind: PhantomData<H>,
 }
 
-impl<T> Entries<T> {
-    pub fn new(kind: &'static str) -> Self {
+impl<H: Handle, T> Default for Entries<H, T> {
+    fn default() -> Self {
         Self {
-            kind,
             items: Vec::new(),
+            kind: PhantomData,
         }
     }
+}
 
-    pub fn set(&mut self, id: u32, item: T) {
-        let i = id as usize;
+impl<H: Handle, T> Entries<H, T> {
+    pub fn set(&mut self, h: H, item: T) {
+        let i = h.index() as usize;
         if self.items.len() <= i {
             self.items.resize_with(i + 1, || None);
         }
-        self.items[i] = Some(item);
+        self.items[i] = Some((h.generation(), item));
     }
 
-    pub fn clear(&mut self, id: u32) {
-        self.get(id);
-        self.items[id as usize] = None;
+    pub fn clear(&mut self, h: H) {
+        self.get(h);
+        self.items[h.index() as usize] = None;
     }
 
-    pub fn forget(&mut self, id: u32) {
-        if let Some(item) = self.items.get_mut(id as usize) {
+    pub fn forget(&mut self, h: H) {
+        if let Some(item) = self.items.get_mut(h.index() as usize)
+            && item.as_ref().is_some_and(|i| i.0 == h.generation())
+        {
             *item = None;
         }
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.items.iter().flatten()
+        self.items.iter().flatten().map(|i| &i.1)
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.items.iter_mut().flatten()
+    pub fn find(&self, h: H) -> Option<&T> {
+        let (generation, item) = self.items.get(h.index() as usize)?.as_ref()?;
+        (*generation == h.generation()).then_some(item)
     }
 
-    pub fn get(&self, id: u32) -> &T {
-        self.items
-            .get(id as usize)
-            .and_then(Option::as_ref)
-            .unwrap_or_else(|| panic!("{} {id} does not exist", self.kind))
+    pub fn get(&self, h: H) -> &T {
+        if let Some(item) = self.find(h) {
+            return item;
+        }
+        let kind = H::KIND;
+        assert!(
+            h.generation() != 0,
+            "got a null {kind}; pass one that create_{} returned",
+            kind.replace(' ', "_")
+        );
+        match self.items.get(h.index() as usize) {
+            Some(Some((now, _))) => panic!(
+                "{h} was destroyed, and its slot now holds a newer {kind} (generation {} is not {now})",
+                h.generation()
+            ),
+            Some(None) => panic!("{h} was destroyed; create a new {kind}"),
+            None => panic!("{h} was never created on this device"),
+        }
+    }
+
+    pub fn get_mut(&mut self, h: H) -> &mut T {
+        self.get(h);
+        &mut self.items[h.index() as usize].as_mut().unwrap().1
     }
 }

@@ -1,4 +1,3 @@
-use crate::gl::cache::{Cache, key};
 use crate::register;
 use glow::HasContext;
 
@@ -8,7 +7,7 @@ pub struct Program {
     pub instance: Option<glow::UniformLocation>,
 }
 
-fn section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
+fn entry_section<'a>(text: &'a str, entry: &str) -> Result<&'a str, String> {
     let marker = format!("//@ entry {entry}\n");
     let Some(start) = text.find(&marker) else {
         let list: Vec<&str> = text
@@ -39,7 +38,7 @@ pub unsafe fn link(
         for &(kind, entry) in stages {
             let shader = gl.create_shader(kind)?;
             shaders.push(shader);
-            match section(text, entry) {
+            match entry_section(text, entry) {
                 Ok(s) => gl.shader_source(shader, &s[..s.find("//@ ").unwrap_or(s.len())]),
                 Err(e) => {
                     failure = Some(e);
@@ -67,43 +66,20 @@ pub unsafe fn link(
 }
 
 impl Program {
-    pub fn new(
-        gl: &glow::Context,
-        code: &[u8],
-        stages: &[(u32, &str)],
-        cache: Option<&mut Cache>,
-    ) -> Result<Self, String> {
+    pub fn new(gl: &glow::Context, code: &[u8], stages: &[(u32, &str)]) -> Result<Self, String> {
         let text = std::str::from_utf8(code).map_err(|e| e.to_string())?;
-        let key = key(code, stages);
         unsafe {
             let raw = gl.create_program()?;
-            let loaded = match cache.as_ref().and_then(|c| c.programs.get(&key)) {
-                Some(binary) => {
-                    gl.program_binary(raw, binary);
-                    gl.get_program_link_status(raw)
-                }
-                None => false,
-            };
-            if !loaded {
-                if cache.is_some() {
-                    gl.program_binary_retrievable_hint(raw, true);
-                }
-                if let Err(e) = link(gl, raw, text, stages) {
-                    gl.delete_program(raw);
-                    return Err(e);
-                }
-                if let Some(c) = cache
-                    && let Some(binary) = gl.get_program_binary(raw)
-                {
-                    c.programs.insert(key, binary);
-                }
+            if let Err(e) = link(gl, raw, text, stages) {
+                gl.delete_program(raw);
+                return Err(e);
             }
             let mut pairs = Vec::new();
             let old = gl.get_parameter_i32(glow::CURRENT_PROGRAM) as u32;
             gl.use_program(Some(raw));
             let lines = stages
                 .iter()
-                .filter_map(|&(_, entry)| section(text, entry).ok())
+                .filter_map(|&(_, entry)| entry_section(text, entry).ok())
                 .flat_map(str::lines)
                 .filter_map(|l| l.strip_prefix("//@ "));
             let mut seen = Vec::new();

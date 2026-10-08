@@ -7,33 +7,10 @@ INDIRECT = 32
 DEPTH = 64
 COLOR = 128
 HOST = 256
-RESOURCE = 67108864
 COMPUTE = 134217728
 COPY = 268435456
-ACCEL = 536870912
 
-[access]
-INDIRECT_READ = 1
-INDEX_READ = 2
-VERTEX_READ = 4
-UNIFORM_READ = 8
-INPUT_READ = 16
-SHADER_READ = 32
-SHADER_WRITE = 64
-COLOR_READ = 128
-COLOR_WRITE = 256
-DEPTH_READ = 512
-DEPTH_WRITE = 1024
-COPY_READ = 2048
-COPY_WRITE = 4096
-HOST_READ = 8192
-HOST_WRITE = 16384
-MEMORY_READ = 32768
-MEMORY_WRITE = 65536
-ACCEL_READ = 2097152
-ACCEL_WRITE = 4194304
-
-[layout]
+[texture_layout]
 UNDEFINED = 0
 GENERAL = 1
 READ = 2
@@ -43,9 +20,8 @@ DEPTH_READ = 5
 COPY_SRC = 6
 COPY_DST = 7
 PRESENT = 8
-LOCAL_READ = 9
 
-[usage]
+[texture_usage]
 SAMPLED = 1
 STORAGE = 2
 COLOR = 4
@@ -54,8 +30,6 @@ COPY_SRC = 16
 COPY_DST = 32
 VIEW = 64
 HOST = 128
-BLIT = 256
-RATE = 512
 ATOMIC = 1024
 INPUT = 2048
 
@@ -65,7 +39,7 @@ UPLOAD = 1
 READBACK = 2
 TRANSIENT = 3
 
-[dimension]
+[texture_dimension]
 D1 = 0
 D2 = 1
 D3 = 2
@@ -78,14 +52,14 @@ CUBE_ARRAY = 6
 NEAREST = 0
 LINEAR = 1
 
-[address]
+[address_mode]
 REPEAT = 0
 MIRROR = 1
 CLAMP = 2
 BORDER = 3
 MIRROR_CLAMP = 4
 
-[compare]
+[compare_op]
 NONE = 0
 NEVER = 1
 LESS = 2
@@ -96,7 +70,7 @@ NOT_EQUAL = 6
 GREATER_EQUAL = 7
 ALWAYS = 8
 
-[border]
+[border_color]
 TRANSPARENT_BLACK = 0
 OPAQUE_BLACK = 1
 OPAQUE_WHITE = 2
@@ -108,7 +82,7 @@ LINE_STRIP = 2
 TRIANGLE = 3
 TRIANGLE_STRIP = 4
 
-[blend]
+[blend_factor]
 ZERO = 0
 ONE = 1
 SRC_COLOR = 2
@@ -129,40 +103,40 @@ ONE_MINUS_SRC1_COLOR = 16
 SRC1_ALPHA = 17
 ONE_MINUS_SRC1_ALPHA = 18
 
-[op]
+[blend_op]
 ADD = 0
 SUBTRACT = 1
 REVERSE_SUBTRACT = 2
 MIN = 3
 MAX = 4
 
-[cull]
+[cull_mode]
 NONE = 0
 FRONT = 1
 BACK = 2
 
-[face]
+[front_face]
 CCW = 0
 CW = 1
 
-[fill]
+[fill_mode]
 FILL = 0
 LINE = 1
 
-[load]
+[load_op]
 LOAD = 0
 CLEAR = 1
 DONT_CARE = 2
 
-[store]
+[store_op]
 STORE = 0
 DONT_CARE = 1
 
-[index]
+[index_type]
 U16 = 0
 U32 = 1
 
-[stencil]
+[stencil_op]
 KEEP = 0
 ZERO = 1
 REPLACE = 2
@@ -172,20 +146,19 @@ INVERT = 5
 INCREMENT_WRAP = 6
 DECREMENT_WRAP = 7
 
-[mask]
+[color_mask]
 R = 1
 G = 2
 B = 4
 A = 8
 ALL = 15
 
-[query]
+[query_kind]
 TIMESTAMP = 0
 OCCLUSION = 1
-COMPACTED = 2
 PRECISE = 4
 
-[subgroup]
+[subgroup_op]
 BASIC = 1
 VOTE = 2
 ARITHMETIC = 4
@@ -196,57 +169,22 @@ CLUSTERED = 64
 QUAD = 128
 ROTATE = 512
 
-[atomic]
+[atomic64]
 MIN_MAX = 1
 ALL = 2
 SHARED = 4
 SIGNED = 8
 IMAGE = 16
 
-[component]
-F16 = 0
-F32 = 1
-F64 = 2
-S8 = 3
-S16 = 4
-S32 = 5
-S64 = 6
-U8 = 7
-U16 = 8
-U32 = 9
-U64 = 10
-BF16 = 11
-E4M3 = 12
-E5M2 = 13
-
-[instance]
-NO_CULL = 1
-FLIP = 2
-OPAQUE = 4
-NO_OPAQUE = 8
-
-[accel]
-UPDATE = 1
-COMPACT = 2
-FAST_TRACE = 4
-FAST_BUILD = 8
-SMALL = 16
-
-[combiner]
-KEEP = 0
-REPLACE = 1
-MIN = 2
-MAX = 3
-MUL = 4
-
 [slot]
 UNIFORMS = 4
 STORAGES = 8
 IMAGES = 4
-TEXTURES = 8
-SAMPLERS = 8
+TEXTURES = 4
+SAMPLERS = 4
 VERTICES = 16
 COLORS = 8
+VIEWPORTS = 16
 
 [register]
 UNIFORM = 0
@@ -254,4 +192,4 @@ STORAGE = 5
 IMAGE = 13
 TEXTURE = 0
 SAMPLER = 0
-ATTACHMENT = 0
+ATTACHMENT = 25

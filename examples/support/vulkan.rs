@@ -3,9 +3,7 @@ use mk::ash::ext::{
     shader_image_atomic_int64,
 };
 use mk::ash::khr::{
-    acceleration_structure, cooperative_matrix, deferred_host_operations,
-    dynamic_rendering_local_read, fragment_shading_rate, portability_enumeration,
-    portability_subset, push_descriptor, ray_query,
+    dynamic_rendering_local_read, portability_enumeration, portability_subset, push_descriptor,
 };
 use mk::ash::{self, vk};
 use std::ffi::{CStr, c_void};
@@ -167,16 +165,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if orders {
             extensions.push(rasterization_order_attachment_access::NAME.as_ptr());
         }
-        let mut supported_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
-        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_matrix);
-        instance.get_physical_device_features2(physical, &mut query);
-        let matrices =
-            has(&available, cooperative_matrix::NAME) && supported_matrix.cooperative_matrix != 0;
-        let mut matrix =
-            vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default().cooperative_matrix(true);
-        if matrices {
-            extensions.push(cooperative_matrix::NAME.as_ptr());
-        }
         let mut supported_wide = vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_wide);
         instance.get_physical_device_features2(physical, &mut query);
@@ -187,18 +175,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if wide {
             extensions.push(shader_image_atomic_int64::NAME.as_ptr());
         }
-        let mut supported_rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default();
-        let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_rate);
-        instance.get_physical_device_features2(physical, &mut query);
-        let rated = has(&available, fragment_shading_rate::NAME)
-            && supported_rate.pipeline_fragment_shading_rate != 0;
-        let mut rate = vk::PhysicalDeviceFragmentShadingRateFeaturesKHR::default()
-            .pipeline_fragment_shading_rate(true)
-            .primitive_fragment_shading_rate(supported_rate.primitive_fragment_shading_rate != 0)
-            .attachment_fragment_shading_rate(supported_rate.attachment_fragment_shading_rate != 0);
-        if rated {
-            extensions.push(fragment_shading_rate::NAME.as_ptr());
-        }
         let mut supported_mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
         let mut query = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported_mesh);
         instance.get_physical_device_features2(physical, &mut query);
@@ -206,25 +182,6 @@ pub fn try_device(queues: usize) -> Option<Host> {
             .task_shader(supported_mesh.task_shader != 0)
             .mesh_shader(supported_mesh.mesh_shader != 0);
         let meshes = has(&available, mesh_shader::NAME) && supported_mesh.mesh_shader != 0;
-        let mut supported_accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut supported_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
-        let mut query = vk::PhysicalDeviceFeatures2::default()
-            .push_next(&mut supported_accel)
-            .push_next(&mut supported_query);
-        instance.get_physical_device_features2(physical, &mut query);
-        let rays = has(&available, acceleration_structure::NAME)
-            && has(&available, deferred_host_operations::NAME)
-            && has(&available, ray_query::NAME)
-            && supported_accel.acceleration_structure != 0
-            && supported_query.ray_query != 0;
-        let mut accel = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
-            .acceleration_structure(true);
-        let mut rq = vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
-        if rays {
-            extensions.push(acceleration_structure::NAME.as_ptr());
-            extensions.push(deferred_host_operations::NAME.as_ptr());
-            extensions.push(ray_query::NAME.as_ptr());
-        }
         if meshes {
             extensions.push(mesh_shader::NAME.as_ptr());
         }
@@ -307,15 +264,7 @@ pub fn try_device(queues: usize) -> Option<Host> {
         } else {
             info
         };
-        let info = if rays {
-            info.push_next(&mut accel).push_next(&mut rq)
-        } else {
-            info
-        };
         let mut info = info;
-        if rated {
-            info = info.push_next(&mut rate);
-        }
         if copies {
             info = info.push_next(&mut copy);
         }
@@ -325,24 +274,14 @@ pub fn try_device(queues: usize) -> Option<Host> {
         if orders {
             info = info.push_next(&mut order);
         }
-        if matrices {
-            info = info.push_next(&mut matrix);
-        }
         if wide {
             info = info.push_next(&mut image64);
         }
         let raw = instance.create_device(physical, &info, None).unwrap();
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
         enabled.p_next = info.p_next as *mut _;
-        let device = mk::Device::adopt(
-            &entry,
-            instance.clone(),
-            physical,
-            raw.clone(),
-            &slots,
-            &enabled,
-        )
-        .unwrap();
+        let device =
+            mk::Device::adopt(instance.clone(), physical, raw.clone(), &slots, &enabled).unwrap();
         Some(Host {
             device: ManuallyDrop::new(device),
             raw,

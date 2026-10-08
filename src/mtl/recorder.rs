@@ -1,14 +1,13 @@
 mod textures;
 
-use crate::command;
-use crate::mtl::frame::Frame;
+use crate::Buffer;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
-use crate::mtl::queue::Queue;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
-use crate::mtl::{Callback, Native};
-use crate::{Command, access, face, format, index, load, stage, store};
+
+use crate::command::Command;
+use crate::{format, front_face, index_type, load_op, stage, store_op};
 use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -21,34 +20,39 @@ use objc2_metal::{
     MTLSamplerState, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture, MTLViewport,
     MTLVisibilityResultMode, MTLWinding,
 };
+use std::cell::RefCell;
 use std::ptr::NonNull;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Kind {
+    Owned,
+    Buffer,
+    Render,
+    Compute,
+}
+
 pub struct Recorder<'a> {
-    buffer: &'a ProtocolObject<dyn MTL4CommandBuffer>,
+    buffer: Option<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>,
     table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
-    frame: &'a mut Frame,
     res: &'a Resources,
-    natives: &'a [Callback],
+    kind: Kind,
+    ended: bool,
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
+    last: RefCell<Option<Retained<ProtocolObject<dyn MTL4CommandEncoder>>>>,
     pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
-    state: Vec<(u64, &'a [u8])>,
-    binds: Vec<(u64, &'a [u8])>,
-    local: Vec<(u64, &'a [u8])>,
     width: u32,
     height: u32,
     primitive: MTLPrimitiveType,
     index: Option<(u64, usize, MTLIndexType, u64)>,
-    stale: bool,
     tile: MTLSize,
     shared: usize,
 }
 
-const COMPUTE: MTLStages =
-    MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0 | MTLStages::AccelerationStructure.0);
+const COMPUTE: MTLStages = MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0);
 
 const RENDER: MTLStages = MTLStages(
     MTLStages::Vertex.0
@@ -58,19 +62,11 @@ const RENDER: MTLStages = MTLStages(
         | MTLStages::Mesh.0,
 );
 
-const NONE: u32 = !0;
-
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
-fn stages(bits: u32) -> MTLStages {
-    let same = stage::VERTEX
-        | stage::FRAGMENT
-        | stage::TASK
-        | stage::MESH
-        | stage::RESOURCE
-        | stage::COMPUTE
-        | stage::COPY
-        | stage::ACCEL;
+fn mtl_stages(bits: u32) -> MTLStages {
+    let same =
+        stage::VERTEX | stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE | stage::COPY;
     let mut s = bits & same;
     if bits & stage::INDIRECT != 0 {
         s |= stage::VERTEX | stage::TASK | stage::MESH | stage::COMPUTE;
@@ -86,7 +82,7 @@ fn stages(bits: u32) -> MTLStages {
     MTLStages(s as usize | tile)
 }
 
-fn order(
+fn order_barrier(
     encoder: &ProtocolObject<dyn MTL4CommandEncoder>,
     mask: MTLStages,
     (from, to, options): (MTLStages, MTLStages, MTL4VisibilityOptions),
@@ -100,7 +96,7 @@ fn order(
     encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from, to, options);
 }
 
-fn render_stage(bits: u32) -> MTLRenderStages {
+fn mtl_render_stage(bits: u32) -> MTLRenderStages {
     match bits {
         stage::VERTEX | stage::INDIRECT => MTLRenderStages::Vertex,
         stage::TASK => MTLRenderStages::Object,
@@ -125,7 +121,7 @@ fn size(x: u32, y: u32, z: u32) -> MTLSize {
     }
 }
 
-fn pitch(
+fn row_pitch(
     format: u32,
     width: u32,
     length: u32,
@@ -143,57 +139,49 @@ fn pitch(
     (row, count.div_ceil(h) as usize * row, option)
 }
 
-fn load(l: u32) -> MTLLoadAction {
+fn mtl_load_action(l: u32) -> MTLLoadAction {
     match l {
-        load::LOAD => MTLLoadAction::Load,
-        load::CLEAR => MTLLoadAction::Clear,
-        load::DONT_CARE => MTLLoadAction::DontCare,
+        load_op::LOAD => MTLLoadAction::Load,
+        load_op::CLEAR => MTLLoadAction::Clear,
+        load_op::DONT_CARE => MTLLoadAction::DontCare,
         l => panic!("unknown load {l}"),
     }
 }
 
-fn store(s: u32, resolve: bool) -> MTLStoreAction {
+fn mtl_store_action(s: u32, resolve: bool) -> MTLStoreAction {
     match (s, resolve) {
-        (store::STORE, false) => MTLStoreAction::Store,
-        (store::STORE, true) => MTLStoreAction::StoreAndMultisampleResolve,
-        (store::DONT_CARE, true) => MTLStoreAction::MultisampleResolve,
-        (store::DONT_CARE, false) => MTLStoreAction::DontCare,
+        (store_op::STORE, false) => MTLStoreAction::Store,
+        (store_op::STORE, true) => MTLStoreAction::StoreAndMultisampleResolve,
+        (store_op::DONT_CARE, true) => MTLStoreAction::MultisampleResolve,
+        (store_op::DONT_CARE, false) => MTLStoreAction::DontCare,
         (s, _) => panic!("unknown store {s}"),
     }
 }
 
-fn keep<'a>(list: &mut Vec<(u64, &'a [u8])>, key: u64, bytes: &'a [u8]) {
-    list.retain(|&(k, _)| k != key);
-    list.push((key, bytes));
-}
-
 impl<'a> Recorder<'a> {
     pub fn new(
-        queue: &'a Queue,
-        frame: &'a mut Frame,
+        table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
         res: &'a Resources,
-        natives: &'a [Callback],
+        buffer: Option<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>,
+        kind: Kind,
     ) -> Self {
         Self {
-            buffer: &queue.buffer,
-            table: &queue.table,
-            frame,
+            buffer,
+            table,
             res,
-            natives,
+            kind,
+            ended: false,
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
+            last: RefCell::new(None),
             pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             compute_pipeline: None,
             render_pipeline: None,
-            state: Vec::new(),
-            binds: Vec::new(),
-            local: Vec::new(),
             width: 0,
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
             index: None,
-            stale: false,
             tile: MTLSize {
                 width: 0,
                 height: 0,
@@ -203,119 +191,104 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn compute(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
-        self.compute.as_deref().expect("checked by Command::enter")
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
 
-    fn render(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
-        self.render.as_deref().expect("checked by Command::enter")
-    }
-
-    fn opened(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
-        order(encoder, mask, self.pending);
-        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
-    }
-
-    pub fn release(&mut self) -> Result<(), &'static str> {
-        let (from, to, options) = self.pending;
-        if from.is_empty() || to.is_empty() {
-            return Ok(());
+    fn close(&self) {
+        if let Some(e) = self.last.borrow_mut().take() {
+            e.endEncoding();
         }
-        let encoder = self
-            .buffer
-            .computeCommandEncoder()
-            .ok_or("compute encoder allocation failed")?;
-        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(from, COMPUTE, options);
-        encoder.barrierAfterStages_beforeQueueStages_visibilityOptions(from | COMPUTE, to, options);
-        encoder.endEncoding();
-        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
+    }
+
+    fn keep(&self, encoder: Retained<ProtocolObject<dyn MTL4CommandEncoder>>) {
+        *self.last.borrow_mut() = Some(encoder);
+    }
+
+    fn command_buffer(&self) -> &ProtocolObject<dyn MTL4CommandBuffer> {
+        self.close();
+        self.buffer
+            .as_deref()
+            .expect("an imported encoder has no command buffer")
+    }
+
+    pub fn raw(&self) -> &ProtocolObject<dyn MTL4CommandBuffer> {
+        self.command_buffer()
+    }
+
+    pub fn raw_compute(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
+        self.compute_encoder()
+    }
+
+    pub fn raw_render(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
+        self.render_encoder()
+    }
+
+    pub fn import_render(
+        &mut self,
+        encoder: Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>,
+        width: u32,
+        height: u32,
+    ) {
+        self.bind_argument_table(&encoder);
+        self.width = width;
+        self.height = height;
+        self.render = Some(encoder);
+    }
+
+    pub fn import_compute(
+        &mut self,
+        encoder: Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>,
+    ) {
+        encoder.setArgumentTable(Some(self.table));
+        self.compute = Some(encoder);
+    }
+
+    pub fn end(&mut self) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, String> {
+        self.close();
+        self.ended = true;
+        let buffer = self.buffer.clone().unwrap();
+        buffer.endCommandBuffer();
+        Ok(buffer)
+    }
+
+    pub fn finish(&mut self) -> Result<(), String> {
+        self.close();
         Ok(())
     }
 
-    fn setup(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
+    fn compute_encoder(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
+        self.compute.as_deref().expect("checked by Command::enter")
+    }
+
+    fn render_encoder(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
+        self.render.as_deref().expect("checked by Command::enter")
+    }
+
+    fn apply_pending(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
+        order_barrier(encoder, mask, self.pending);
+        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
+    }
+
+    fn bind_argument_table(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
         let all = MTLRenderStages::Vertex
             | MTLRenderStages::Fragment
             | MTLRenderStages::Tile
             | MTLRenderStages::Object
             | MTLRenderStages::Mesh;
         encoder.setArgumentTable_atStages(self.table, all);
-        encoder.setFrontFacingWinding(MTLWinding::CounterClockwise);
     }
 
-    fn restore(&mut self) -> Result<(), &'static str> {
-        for i in 0..self.binds.len() {
-            let mut bytes = self.binds[i].1;
-            self.step(Command::read(&mut bytes)?)?;
-        }
-        if let Some(e) = &self.compute {
-            e.setArgumentTable(Some(self.table));
-            if let Some(p) = self.compute_pipeline {
-                e.setComputePipelineState(&p.state);
-            }
-        }
-        if let Some(e) = &self.render {
-            self.setup(e);
-            self.stale = true;
-            for i in 0..self.local.len() {
-                let mut bytes = self.local[i].1;
-                self.step(Command::read(&mut bytes)?)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn prepare(&mut self) -> Result<(), &'static str> {
-        if self.stale && self.render.is_some() {
-            self.stale = false;
-            for i in 0..self.state.len() {
-                let mut bytes = self.state[i].1;
-                self.step(Command::read(&mut bytes)?)?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn run(&mut self, mut bytes: &'a [u8]) -> Result<(), &'static str> {
-        while !bytes.is_empty() {
-            let at = bytes;
-            let command = Command::read(&mut bytes)?;
-            let kept = &at[..at.len() - bytes.len()];
-            let op = u16::from_le_bytes([kept[0], kept[1]]) as u64;
-            match command {
-                Command::BindRenderPipeline { .. }
-                | Command::SetCull { .. }
-                | Command::SetFace { .. }
-                | Command::SetTopology { .. }
-                | Command::SetDepthState { .. }
-                | Command::SetStencilReference { .. }
-                | Command::SetDepthBias { .. }
-                | Command::SetBlendColor { .. } => keep(&mut self.state, op, kept),
-                Command::BindUniform { slot, .. }
-                | Command::BindStorage { slot, .. }
-                | Command::BindTexture { slot, .. }
-                | Command::BindImage { slot, .. }
-                | Command::BindSampler { slot, .. }
-                | Command::BindVertexBuffer { slot, .. } => {
-                    keep(&mut self.binds, op << 32 | slot as u64, kept)
-                }
-                Command::SetViewport { .. }
-                | Command::SetViewports { .. }
-                | Command::SetScissor { .. }
-                | Command::SetScissors { .. }
-                | Command::BeginQuery { .. }
-                | Command::EndQuery { .. } => keep(&mut self.local, op, kept),
-                _ => {}
-            }
-            self.step(command)?;
-        }
-        Ok(())
-    }
-
-    fn bound(&self, buffer: u32, offset: u64, kind: u32) -> (u64, usize, MTLIndexType, u64) {
+    fn index_binding(
+        &self,
+        buffer: Buffer,
+        offset: u64,
+        kind: u32,
+    ) -> (u64, usize, MTLIndexType, u64) {
         let b = self.res.buffers.get(buffer);
         let (kind, size) = match kind {
-            index::U16 => (MTLIndexType::UInt16, 2),
-            index::U32 => (MTLIndexType::UInt32, 4),
+            index_type::U16 => (MTLIndexType::UInt16, 2),
+            index_type::U32 => (MTLIndexType::UInt32, 4),
             k => panic!("unknown index {k}"),
         };
         (
@@ -326,7 +299,7 @@ impl<'a> Recorder<'a> {
         )
     }
 
-    fn scissor(&self, x: u32, y: u32, width: u32, height: u32) -> MTLScissorRect {
+    fn clamp_scissor(&self, x: u32, y: u32, width: u32, height: u32) -> MTLScissorRect {
         let x = x.min(self.width);
         let y = y.min(self.height);
         MTLScissorRect {
@@ -337,27 +310,25 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn step(&mut self, command: Command) -> Result<(), &'static str> {
+    pub fn step(&mut self, command: Command) -> Result<(), String> {
         match command {
-            Command::BeginCompute => {
+            Command::BeginComputePass => {
                 let encoder = self
-                    .buffer
+                    .command_buffer()
                     .computeCommandEncoder()
                     .ok_or("compute encoder allocation failed")?;
                 encoder.setArgumentTable(Some(self.table));
-                self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
-                if let Some(p) = self.compute_pipeline {
-                    encoder.setComputePipelineState(&p.state);
-                }
+                self.apply_pending(ProtocolObject::from_ref(&*encoder), COMPUTE);
+                self.compute_pipeline = None;
                 self.compute = Some(encoder);
             }
-            Command::EndCompute => {
+            Command::EndComputePass => {
                 let encoder = self.compute.take().unwrap();
-                encoder.endEncoding();
+                self.keep(unsafe { Retained::cast_unchecked(encoder) });
             }
-            Command::BindPipeline { pipeline } => {
+            Command::BindComputePipeline { pipeline } => {
                 let p = self.res.pipelines.get(pipeline);
-                self.compute().setComputePipelineState(&p.state);
+                self.compute_encoder().setComputePipelineState(&p.state);
                 self.compute_pipeline = Some(p);
             }
             Command::Dispatch { x, y, z } => {
@@ -367,7 +338,7 @@ impl<'a> Recorder<'a> {
                 if [x, y, z].contains(&0) {
                     return Ok(());
                 }
-                self.compute()
+                self.compute_encoder()
                     .dispatchThreadgroups_threadsPerThreadgroup(size(x, y, z), p.group);
             }
             Command::DispatchIndirect { buffer, offset } => {
@@ -376,7 +347,7 @@ impl<'a> Recorder<'a> {
                 };
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
-                    self.compute()
+                    self.compute_encoder()
                         .dispatchThreadgroupsWithIndirectBuffer_threadsPerThreadgroup(
                             address, p.group,
                         )
@@ -389,7 +360,7 @@ impl<'a> Recorder<'a> {
                 dst_offset,
                 size,
             } => unsafe {
-                self.compute()
+                self.compute_encoder()
                     .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
                         self.res.buffers.get(src),
                         src_offset as usize,
@@ -411,43 +382,40 @@ impl<'a> Recorder<'a> {
                     size as usize
                 };
                 unsafe {
-                    self.compute().fillBuffer_range_value(
+                    self.compute_encoder().fillBuffer_range_value(
                         b,
                         NSRange::new(offset as usize, size),
                         value,
                     )
                 }
             }
-            Command::Barrier {
+            Command::MemoryBarrier {
                 src_stage,
-                src_access,
                 dst_stage,
-                dst_access,
             }
             | Command::TextureBarrier {
                 src_stage,
-                src_access,
                 dst_stage,
-                dst_access,
                 ..
-            }
-            | Command::QueueBarrier {
-                src_stage,
-                src_access,
-                dst_stage,
-                dst_access,
             } => {
-                let host = access::HOST_READ | access::HOST_WRITE;
-                let options = if (src_access | dst_access) & host != 0 {
+                let options = if (src_stage | dst_stage) & stage::HOST != 0 {
                     MTL4VisibilityOptions::Device
                 } else {
                     MTL4VisibilityOptions::None
                 };
-                let (from, to) = (stages(src_stage), stages(dst_stage));
+                let (from, to) = (mtl_stages(src_stage), mtl_stages(dst_stage));
                 let Some(encoder) = &self.compute else {
-                    self.pending.0 |= from;
-                    self.pending.1 |= to;
-                    self.pending.2 |= options;
+                    match &*self.last.borrow() {
+                        Some(e) if !from.is_empty() => e
+                            .barrierAfterStages_beforeQueueStages_visibilityOptions(
+                                from, to, options,
+                            ),
+                        _ => {
+                            self.pending.0 |= from;
+                            self.pending.1 |= to;
+                            self.pending.2 |= options;
+                        }
+                    }
                     return Ok(());
                 };
                 if !(from & COMPUTE).is_empty() && !(to & COMPUTE).is_empty() {
@@ -457,7 +425,7 @@ impl<'a> Recorder<'a> {
                         options,
                     );
                 }
-                order(
+                order_barrier(
                     ProtocolObject::from_ref(&**encoder),
                     COMPUTE,
                     (from, to, options),
@@ -480,9 +448,10 @@ impl<'a> Recorder<'a> {
                 ..
             } => {
                 let t = self.res.textures.get(texture);
-                let (row, image, option) = pitch(t.format, width, row_length, height, row_count);
+                let (row, image, option) =
+                    row_pitch(t.format, width, row_length, height, row_count);
                 unsafe {
-                    self.compute()
+                    self.compute_encoder()
                         .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin_options(
                             self.res.buffers.get(buffer),
                             offset as usize,
@@ -514,9 +483,10 @@ impl<'a> Recorder<'a> {
                 ..
             } => {
                 let t = self.res.textures.get(texture);
-                let (row, image, option) = pitch(t.format, width, row_length, height, row_count);
+                let (row, image, option) =
+                    row_pitch(t.format, width, row_length, height, row_count);
                 unsafe {
-                    self.compute()
+                    self.compute_encoder()
                         .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage_options(
                             &t.raw,
                             layer as usize,
@@ -532,8 +502,6 @@ impl<'a> Recorder<'a> {
                 }
             }
             Command::CopyTexture { .. } => self.copy_texture(command)?,
-            Command::BlitTexture { .. } => unreachable!("Metal never reports usage::BLIT"),
-            Command::ClearTexture { .. } => self.clear_texture(command)?,
             Command::ColorAttachment {
                 index,
                 texture,
@@ -555,15 +523,15 @@ impl<'a> Recorder<'a> {
                 };
                 attachment.setTexture(Some(&t.raw));
                 unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
-                attachment.setLoadAction(load(l));
-                attachment.setStoreAction(store(s, resolve != NONE));
+                attachment.setLoadAction(mtl_load_action(l));
+                attachment.setStoreAction(mtl_store_action(s, !resolve.is_null()));
                 attachment.setClearColor(MTLClearColor {
                     red: r as f64,
                     green: g as f64,
                     blue: b as f64,
                     alpha: a as f64,
                 });
-                if resolve != NONE {
+                if !resolve.is_null() {
                     attachment.setResolveTexture(Some(&res.textures.get(resolve).raw));
                 }
             }
@@ -581,8 +549,8 @@ impl<'a> Recorder<'a> {
                 let attachment = self.pass.depthAttachment();
                 attachment.setTexture(Some(&t.raw));
                 unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
-                attachment.setLoadAction(load(l));
-                attachment.setStoreAction(store(s, false));
+                attachment.setLoadAction(mtl_load_action(l));
+                attachment.setStoreAction(mtl_store_action(s, false));
                 attachment.setClearDepth(depth as f64);
                 if matches!(
                     t.format,
@@ -590,12 +558,12 @@ impl<'a> Recorder<'a> {
                 ) {
                     let attachment = self.pass.stencilAttachment();
                     attachment.setTexture(Some(&t.raw));
-                    attachment.setLoadAction(load(stencil_load));
-                    attachment.setStoreAction(store(stencil_store, false));
+                    attachment.setLoadAction(mtl_load_action(stencil_load));
+                    attachment.setStoreAction(mtl_store_action(stencil_store, false));
                     attachment.setClearStencil(stencil);
                 }
             }
-            Command::BeginRender {
+            Command::BeginRenderPass {
                 width,
                 height,
                 layers,
@@ -607,27 +575,26 @@ impl<'a> Recorder<'a> {
                 }
                 self.pass.setRenderTargetArrayLength(layers as usize);
                 let encoder = self
-                    .buffer
+                    .command_buffer()
                     .renderCommandEncoderWithDescriptor(&self.pass)
                     .ok_or("render encoder allocation failed")?;
-                self.setup(&encoder);
-                self.local.clear();
-                self.opened(ProtocolObject::from_ref(&*encoder), RENDER);
+                self.bind_argument_table(&encoder);
+                self.apply_pending(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
                 self.pass = MTL4RenderPassDescriptor::new();
                 self.width = width;
                 self.height = height;
-                self.stale = true;
+                self.render_pipeline = None;
             }
-            Command::EndRender => {
+            Command::EndRenderPass => {
                 let encoder = self.render.take().unwrap();
-                encoder.endEncoding();
+                self.keep(unsafe { Retained::cast_unchecked(encoder) });
             }
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);
-                self.render().setRenderPipelineState(&p.state);
-                self.render().setTriangleFillMode(p.fill);
-                self.render().setDepthClipMode(p.clip);
+                self.render_encoder().setRenderPipelineState(&p.state);
+                self.render_encoder().setTriangleFillMode(p.fill);
+                self.render_encoder().setDepthClipMode(p.clip);
                 self.primitive = p.primitive;
                 self.render_pipeline = Some(p);
             }
@@ -638,7 +605,7 @@ impl<'a> Recorder<'a> {
                 height,
                 near,
                 far,
-            } => self.render().setViewport(MTLViewport {
+            } => self.render_encoder().setViewport(MTLViewport {
                 originX: x as f64,
                 originY: y as f64,
                 width: width as f64,
@@ -652,34 +619,38 @@ impl<'a> Recorder<'a> {
                 width,
                 height,
             } => self
-                .render()
-                .setScissorRect(self.scissor(x, y, width, height)),
-            Command::SetCull { cull } => self.render().setCullMode(MTLCullMode(cull as usize)),
-            Command::SetFace { face: f } => self.render().setFrontFacingWinding(match f {
-                face::CCW => MTLWinding::CounterClockwise,
-                face::CW => MTLWinding::Clockwise,
-                f => panic!("unknown face {f}"),
-            }),
-            Command::SetTopology { topology } => {
+                .render_encoder()
+                .setScissorRect(self.clamp_scissor(x, y, width, height)),
+            Command::SetCullMode { cull } => self
+                .render_encoder()
+                .setCullMode(MTLCullMode(cull as usize)),
+            Command::SetFrontFace { face: f } => {
+                self.render_encoder().setFrontFacingWinding(match f {
+                    front_face::CCW => MTLWinding::CounterClockwise,
+                    front_face::CW => MTLWinding::Clockwise,
+                    f => panic!("unknown face {f}"),
+                })
+            }
+            Command::SetPrimitiveTopology { topology } => {
                 self.primitive = MTLPrimitiveType(topology as usize)
             }
             Command::SetDepthState { state } => self
-                .render()
+                .render_encoder()
                 .setDepthStencilState(Some(self.res.depths.get(state))),
             Command::SetStencilReference { front, back } => self
-                .render()
+                .render_encoder()
                 .setStencilFrontReferenceValue_backReferenceValue(front, back),
             Command::SetDepthBias {
                 constant,
                 slope,
                 clamp,
             } => self
-                .render()
+                .render_encoder()
                 .setDepthBias_slopeScale_clamp(constant, slope, clamp),
-            Command::SetBlendColor { r, g, b, a } => {
-                self.render().setBlendColorRed_green_blue_alpha(r, g, b, a)
-            }
-            Command::BindUniform {
+            Command::SetBlendColor { r, g, b, a } => self
+                .render_encoder()
+                .setBlendColorRed_green_blue_alpha(r, g, b, a),
+            Command::BindUniformBuffer {
                 slot,
                 buffer,
                 offset,
@@ -689,7 +660,7 @@ impl<'a> Recorder<'a> {
                 let index = (register::UNIFORM + slot) as usize;
                 unsafe { self.table.setAddress_atIndex(address, index) };
             }
-            Command::BindStorage {
+            Command::BindStorageBuffer {
                 slot,
                 buffer,
                 offset,
@@ -703,7 +674,7 @@ impl<'a> Recorder<'a> {
                 let id = self.res.textures.get(texture).raw.gpuResourceID();
                 unsafe { self.table.setTexture_atIndex(id, slot as usize) };
             }
-            Command::BindImage { slot, texture } => {
+            Command::BindStorageTexture { slot, texture } => {
                 let id = self.res.textures.get(texture).raw.gpuResourceID();
                 let index = (register::IMAGE + slot) as usize;
                 unsafe { self.table.setTexture_atIndex(id, index) };
@@ -727,7 +698,7 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
                 kind,
-            } => self.index = Some(self.bound(buffer, offset, kind)),
+            } => self.index = Some(self.index_binding(buffer, offset, kind)),
             Command::Draw {
                 vertices,
                 instances,
@@ -737,9 +708,8 @@ impl<'a> Recorder<'a> {
                 if self.render_pipeline.is_none() || vertices == 0 || instances == 0 {
                     return Ok(());
                 }
-                self.prepare()?;
                 unsafe {
-                    self.render()
+                    self.render_encoder()
                         .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(
                             self.primitive,
                             first_vertex as usize,
@@ -764,10 +734,9 @@ impl<'a> Recorder<'a> {
                 if indices == 0 || instances == 0 {
                     return Ok(());
                 }
-                self.prepare()?;
                 let skip = first_index as u64 * size;
                 unsafe {
-                    self.render()
+                    self.render_encoder()
                         .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferLength_instanceCount_baseVertex_baseInstance(
                             self.primitive,
                             indices as usize,
@@ -780,51 +749,33 @@ impl<'a> Recorder<'a> {
                         )
                 };
             }
-            Command::DrawIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawIndirect { buffer, offset, .. } => {
                 if self.render_pipeline.is_none() {
                     return Ok(());
                 }
-                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                let stride = if stride == 0 { 16 } else { stride as u64 };
-                for i in 0..count as u64 {
-                    self.render()
-                        .drawPrimitives_indirectBuffer(self.primitive, address + i * stride);
-                }
+                self.render_encoder()
+                    .drawPrimitives_indirectBuffer(self.primitive, address);
             }
-            Command::DrawIndexedIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawIndexedIndirect { buffer, offset, .. } => {
                 let (Some(_), Some((index, length, kind, _))) = (self.render_pipeline, self.index)
                 else {
                     return Ok(());
                 };
-                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                let stride = if stride == 0 { 20 } else { stride as u64 };
-                for i in 0..count as u64 {
-                    unsafe {
-                        self.render()
-                            .drawIndexedPrimitives_indexType_indexBuffer_indexBufferLength_indirectBuffer(
-                                self.primitive,
-                                kind,
-                                index,
-                                length,
-                                address + i * stride,
-                            )
-                    };
-                }
+                unsafe {
+                    self.render_encoder()
+                        .drawIndexedPrimitives_indexType_indexBuffer_indexBufferLength_indirectBuffer(
+                            self.primitive,
+                            kind,
+                            index,
+                            length,
+                            address,
+                        )
+                };
             }
-            Command::BindAttachments { .. } | Command::AttachmentBarrier => {}
-            Command::TileSize {
+            Command::InputAttachmentBarrier => {}
+            Command::TileMemory {
                 width,
                 height,
                 shared,
@@ -840,61 +791,54 @@ impl<'a> Recorder<'a> {
                 };
             }
             Command::DispatchTile { pipeline } => {
-                self.prepare()?;
-                self.render()
+                self.render_encoder()
                     .setRenderPipelineState(self.res.tiles.get(pipeline));
                 self.render_pipeline = None;
                 if self.shared > 0 {
                     unsafe {
-                        self.render()
+                        self.render_encoder()
                             .setThreadgroupMemoryLength_offset_atIndex(self.shared, 0, 0)
                     };
                 }
-                self.render().dispatchThreadsPerTile(self.tile);
+                self.render_encoder().dispatchThreadsPerTile(self.tile);
             }
-            Command::DrawMesh { x, y, z } => {
+            Command::DrawMeshTasks { x, y, z } => {
                 let Some(p) = self.render_pipeline else {
                     return Ok(());
                 };
                 if [x, y, z].contains(&0) {
                     return Ok(());
                 }
-                self.prepare()?;
-                self.render()
+                self.render_encoder()
                     .drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                         size(x, y, z),
                         p.task,
                         p.mesh,
                     );
             }
-            Command::DrawMeshIndirect {
-                buffer,
-                offset,
-                count,
-                stride,
-            } => {
+            Command::DrawMeshTasksIndirect { buffer, offset, .. } => {
                 let Some(p) = self.render_pipeline else {
                     return Ok(());
                 };
-                self.prepare()?;
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
-                let stride = if stride == 0 { 12 } else { stride as u64 };
-                for i in 0..count as u64 {
-                    self.render()
-                        .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
-                            address + i * stride,
-                            p.task,
-                            p.mesh,
-                        );
-                }
+                self.render_encoder()
+                    .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
+                        address,
+                        p.task,
+                        p.mesh,
+                    );
             }
-            Command::OcclusionHeap { heap } => {
+            Command::OcclusionPool { pool: heap } => {
                 if let Query::Buffer(buffer) = self.res.queries.get(heap) {
                     unsafe { self.pass.setVisibilityResultBuffer(Some(buffer)) };
                 }
             }
             Command::ResetQueries { .. } => {}
-            Command::WriteTimestamp { heap, index, stage } => {
+            Command::WriteTimestamp {
+                pool: heap,
+                index,
+                stage,
+            } => {
                 let Query::Timestamp(heap) = self.res.queries.get(heap) else {
                     unreachable!()
                 };
@@ -909,28 +853,37 @@ impl<'a> Recorder<'a> {
                         (_, Some(e)) => e
                             .writeTimestampWithGranularity_afterStage_intoHeap_atIndex(
                                 MTL4TimestampGranularity::Precise,
-                                render_stage(stage),
+                                mtl_render_stage(stage),
                                 heap,
                                 index,
                             ),
-                        _ => self.buffer.writeTimestampIntoHeap_atIndex(heap, index),
+                        _ => self
+                            .command_buffer()
+                            .writeTimestampIntoHeap_atIndex(heap, index),
                     }
                 }
             }
-            Command::BeginQuery { index, .. } => unsafe {
-                self.render().setVisibilityResultMode_offset(
+            Command::BeginOcclusionQuery { index, .. } => unsafe {
+                self.render_encoder().setVisibilityResultMode_offset(
                     MTLVisibilityResultMode::Counting,
                     index as usize * 8,
                 )
             },
-            Command::EndQuery { index, .. } => unsafe {
-                self.render().setVisibilityResultMode_offset(
+            Command::EndOcclusionQuery { index, .. } => unsafe {
+                self.render_encoder().setVisibilityResultMode_offset(
                     MTLVisibilityResultMode::Disabled,
                     index as usize * 8,
                 )
             },
-            Command::ResolveQueries {
-                heap,
+            Command::ResolveTimestamps {
+                pool: heap,
+                first,
+                count,
+                buffer,
+                offset,
+            }
+            | Command::ResolveOcclusion {
+                pool: heap,
                 first,
                 count,
                 buffer,
@@ -942,7 +895,7 @@ impl<'a> Recorder<'a> {
                 let dst = self.res.buffers.get(buffer);
                 match self.res.queries.get(heap) {
                     Query::Timestamp(heap) => unsafe {
-                        self.buffer
+                        self.command_buffer()
                             .resolveCounterHeap_withRange_intoBuffer_waitFence_updateFence(
                                 heap,
                                 NSRange::new(first as usize, count as usize),
@@ -954,164 +907,112 @@ impl<'a> Recorder<'a> {
                                 None,
                             )
                     },
-                    Query::Buffer(src) => {
-                        let encoder = self
-                            .buffer
-                            .computeCommandEncoder()
-                            .ok_or("compute encoder allocation failed")?;
-                        self.opened(ProtocolObject::from_ref(&*encoder), COMPUTE);
-                        unsafe {
-                            encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+                    Query::Buffer(src) => unsafe {
+                        self.compute_encoder()
+                            .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
                                 src,
                                 first as usize * 8,
                                 dst,
                                 offset as usize,
                                 count as usize * 8,
                             )
-                        };
-                        encoder.endEncoding();
-                    }
-                }
-            }
-            Command::BuildAccel {
-                accel,
-                scratch,
-                scratch_offset,
-                update,
-            } => {
-                let a = self.res.accels.get(accel);
-                let range = MTL4BufferRange {
-                    bufferAddress: self.res.buffers.get(scratch).gpuAddress() + scratch_offset,
-                    length: if update != 0 { a.update } else { a.build },
-                };
-                unsafe {
-                    if update != 0 {
-                        self.compute()
-                            .refitAccelerationStructure_descriptor_destination_scratchBuffer(
-                                &a.raw,
-                                &a.desc,
-                                Some(&a.raw),
-                                range,
-                            )
-                    } else {
-                        self.compute()
-                            .buildAccelerationStructure_descriptor_scratchBuffer(
-                                &a.raw, &a.desc, range,
-                            )
-                    }
-                }
-            }
-            Command::Callback { index } => {
-                self.release()?;
-                self.natives[index as usize](&Native {
-                    buffer: self.buffer,
-                    table: self.table,
-                    compute: self.compute.as_deref(),
-                    render: self.render.as_deref(),
-                });
-                self.restore()?;
-            }
-            Command::ExecuteIndirect {
-                indirect,
-                first,
-                count,
-            } => {
-                if self.render_pipeline.is_none() || count == 0 {
-                    return Ok(());
-                }
-                self.prepare()?;
-                let icb = &self.res.indirects.get(indirect).raw;
-                let range = NSRange::new(first as usize, count as usize);
-                unsafe { self.render().executeCommandsInBuffer_withRange(icb, range) };
-            }
-            Command::ExecuteIndirectCount {
-                indirect,
-                buffer,
-                offset,
-            } => {
-                if self.render_pipeline.is_none() {
-                    return Ok(());
-                }
-                self.prepare()?;
-                let icb = &self.res.indirects.get(indirect).raw;
-                let range = self.res.buffers.get(buffer).gpuAddress() + offset;
-                unsafe {
-                    self.render()
-                        .executeCommandsInBuffer_indirectBuffer(icb, range)
-                };
-            }
-            Command::WriteCompactedSize { accel, heap, index } => {
-                let Query::Buffer(buffer) = self.res.queries.get(heap) else {
-                    unreachable!()
-                };
-                unsafe {
-                    self.compute()
-                        .writeCompactedAccelerationStructureSize_toBuffer(
-                            &self.res.accels.get(accel).raw,
-                            MTL4BufferRange {
-                                bufferAddress: buffer.gpuAddress() + index as u64 * 8,
-                                length: 8,
-                            },
-                        )
-                }
-            }
-            Command::CopyAccel { src, dst, compact } => {
-                let (s, d) = (&self.res.accels.get(src).raw, &self.res.accels.get(dst).raw);
-                unsafe {
-                    if compact != 0 {
-                        self.compute()
-                            .copyAndCompactAccelerationStructure_toAccelerationStructure(s, d)
-                    } else {
-                        self.compute()
-                            .copyAccelerationStructure_toAccelerationStructure(s, d)
-                    }
+                    },
                 }
             }
             Command::SetViewports { viewports } => {
-                let mut viewports: Vec<MTLViewport> = command::viewports(viewports)
-                    .iter()
-                    .map(|v| MTLViewport {
+                let mut list = [MTLViewport {
+                    originX: 0.0,
+                    originY: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                    znear: 0.0,
+                    zfar: 0.0,
+                }; slot::VIEWPORTS as usize];
+                let mut n = 0;
+                for (v, out) in viewports.iter().zip(&mut list) {
+                    *out = MTLViewport {
                         originX: v.x as f64,
                         originY: v.y as f64,
                         width: v.width as f64,
                         height: v.height as f64,
                         znear: v.near as f64,
                         zfar: v.far as f64,
-                    })
-                    .collect();
+                    };
+                    n += 1;
+                }
                 unsafe {
-                    self.render().setViewports_count(
-                        NonNull::new(viewports.as_mut_ptr()).unwrap(),
-                        viewports.len(),
-                    )
+                    self.render_encoder()
+                        .setViewports_count(NonNull::new(list.as_mut_ptr()).unwrap(), n)
                 }
             }
             Command::SetScissors { scissors } => {
-                let mut rects: Vec<MTLScissorRect> = command::scissors(scissors)
-                    .iter()
-                    .map(|r| self.scissor(r.x, r.y, r.width, r.height))
-                    .collect();
+                let mut list = [MTLScissorRect {
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 0,
+                }; slot::VIEWPORTS as usize];
+                let mut n = 0;
+                for (r, out) in scissors.iter().zip(&mut list) {
+                    *out = self.clamp_scissor(r.x, r.y, r.width, r.height);
+                    n += 1;
+                }
                 unsafe {
-                    self.render().setScissorRects_count(
-                        NonNull::new(rects.as_mut_ptr()).unwrap(),
-                        rects.len(),
-                    )
+                    self.render_encoder()
+                        .setScissorRects_count(NonNull::new(list.as_mut_ptr()).unwrap(), n)
                 }
             }
-            Command::BeginLabel { text } => {
+            Command::BeginDebugLabel { text } => {
                 let text = NSString::from_str(text);
                 match (&self.compute, &self.render) {
                     (Some(e), _) => e.pushDebugGroup(&text),
                     (_, Some(e)) => e.pushDebugGroup(&text),
-                    _ => self.buffer.pushDebugGroup(&text),
+                    _ => self.command_buffer().pushDebugGroup(&text),
                 }
             }
-            Command::EndLabel => match (&self.compute, &self.render) {
+            Command::EndDebugLabel => match (&self.compute, &self.render) {
                 (Some(e), _) => e.popDebugGroup(),
                 (_, Some(e)) => e.popDebugGroup(),
-                _ => self.buffer.popDebugGroup(),
+                _ => self.command_buffer().popDebugGroup(),
             },
         }
         Ok(())
+    }
+}
+
+impl Drop for Recorder<'_> {
+    fn drop(&mut self) {
+        self.close();
+        if self.kind != Kind::Compute
+            && let Some(e) = self.compute.take()
+        {
+            e.endEncoding();
+        }
+        if self.kind != Kind::Render
+            && let Some(e) = self.render.take()
+        {
+            e.endEncoding();
+        }
+        if self.kind == Kind::Owned && !self.ended {
+            self.command_buffer().endCommandBuffer();
+        }
+    }
+}
+
+impl crate::CommandBuffer<'_> {
+    pub fn raw(&self) -> &ProtocolObject<dyn MTL4CommandBuffer> {
+        self.recording.recorder.raw()
+    }
+}
+
+impl crate::ComputePass<'_, '_> {
+    pub fn raw(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
+        self.recording.recorder.raw_compute()
+    }
+}
+
+impl crate::RenderPass<'_, '_> {
+    pub fn raw(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
+        self.recording.recorder.raw_render()
     }
 }

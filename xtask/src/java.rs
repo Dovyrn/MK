@@ -142,7 +142,6 @@ pub fn java(root: &Path) -> usize {
             "vk" => "count.spv",
             _ => "count.gl",
         };
-        let stream = root.join(format!("target/java-{}.bin", label.replace(' ', "-")));
         let mut smoke = Command::new(java.join("bin/java"));
         smoke
             .current_dir(root)
@@ -161,7 +160,6 @@ pub fn java(root: &Path) -> usize {
             .arg("dev.dov.mk.Smoke")
             .arg(library(root, b))
             .arg(root.join("examples/shaders/out").join(code))
-            .arg(&stream)
             .output();
         let text = output
             .as_ref()
@@ -177,23 +175,6 @@ pub fn java(root: &Path) -> usize {
         let ok = output.is_ok_and(|o| o.status.success());
         println!("{}java {label}: {last}", if ok { "  " } else { "X " });
         failed += !ok as usize;
-        let stream = stream.display().to_string();
-        let parity = [
-            "run",
-            "-q",
-            "--features",
-            b,
-            "--example",
-            "parity",
-            stream.as_str(),
-        ];
-        match cargo(root, &parity) {
-            Ok(()) => println!("  parity {label}"),
-            Err(e) => {
-                println!("X parity {label}\n    {e}");
-                failed += 1;
-            }
-        }
     }
     failed
 }

@@ -9,8 +9,6 @@ public interface Stage {
     int DEPTH = 64;
     int COLOR = 128;
     int HOST = 256;
-    int RESOURCE = 67108864;
     int COMPUTE = 134217728;
     int COPY = 268435456;
-    int ACCEL = 536870912;
 }

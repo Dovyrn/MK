@@ -41,17 +41,17 @@ macro_rules! code {
 
 pub(crate) use code;
 
-pub fn constants(device: &mut mk::Device, blocks: &[&[u8]]) -> (u32, u64) {
+pub fn constants(device: &mut mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
     let stride = device.caps().bind_alignment.max(256) as u64;
     let buffer = device
         .create_buffer(stride * blocks.len() as u64, mk::memory::UPLOAD)
         .unwrap();
-    let p = device.map(buffer);
+    let p = device.map_buffer(buffer);
     for (i, b) in blocks.iter().enumerate() {
         unsafe {
             std::ptr::copy_nonoverlapping(b.as_ptr(), p.add(i * stride as usize), b.len());
         }
     }
-    device.unmap(buffer);
+    device.unmap_buffer(buffer);
     (buffer, stride)
 }

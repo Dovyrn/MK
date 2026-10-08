@@ -1,6 +1,6 @@
 use mk::{
-    ColorAttachment, ColorTarget, Commands, RenderInfo, Scissor, TextureBarrier, TextureCopy,
-    TextureInfo, Viewport, access, format, layout, memory, stage, usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, RenderPassInfo, RenderPipelineInfo, Scissor,
+    TextureBarrier, TextureInfo, Viewport, format, memory, stage, texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -9,6 +9,7 @@ mod host;
 pub fn main() {
     let (w, h) = (64u32, 32u32);
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     if device.caps().viewports < 2 {
         println!("one viewport only");
         return;
@@ -18,7 +19,7 @@ pub fn main() {
             format: format::RGBA8_UNORM,
             width: w,
             height: h,
-            usage: usage::COLOR | usage::COPY_SRC,
+            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -30,7 +31,7 @@ pub fn main() {
         ..Default::default()
     }];
     let pipeline = device
-        .create_render_pipeline(&RenderInfo {
+        .create_render_pipeline(&RenderPipelineInfo {
             code: host::code!("viewports"),
             vertex: "vert",
             fragment: "frag",
@@ -67,56 +68,49 @@ pub fn main() {
         },
     ];
     let timeline = device.create_timeline().unwrap();
-    let mut c = Commands::default();
-    c.texture_barrier(&TextureBarrier {
-        texture: color,
-        dst_stage: stage::COLOR,
-        dst_access: access::COLOR_WRITE,
-        after: layout::COLOR,
-        ..Default::default()
-    });
-    c.color_attachment(&ColorAttachment {
-        texture: color,
-        b: 1.0,
-        a: 1.0,
-        ..Default::default()
-    });
-    c.begin_render(w, h, 1);
-    c.bind_render_pipeline(pipeline);
-    c.set_viewports(&viewports);
-    c.set_scissors(&scissors);
-    c.draw(3, 2, 0, 0);
-    c.end_render();
+    let mut c = device.begin_commands(pool).unwrap();
     c.texture_barrier(&TextureBarrier {
         texture: color,
         src_stage: stage::COLOR,
-        src_access: access::COLOR_WRITE,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::COLOR,
-        after: layout::COPY_SRC,
+        dst_stage: stage::COLOR,
+        before: texture_layout::UNDEFINED,
         ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
+    })
+    .unwrap();
+    let mut pass = c
+        .begin_render_pass(&RenderPassInfo {
+            width: w,
+            height: h,
+            colors: &[ColorAttachment {
+                texture: color,
+                b: 1.0,
+                a: 1.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    pass.bind_render_pipeline(pipeline);
+    pass.set_viewports(&viewports);
+    pass.set_scissors(&scissors);
+    pass.draw(3, 2, 0, 0);
+    pass.end();
+    c.memory_barrier(stage::COLOR, stage::COPY);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
-        layout: layout::COPY_SRC,
         width: w,
         height: h,
         buffer: back,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels =
-        unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (w * h) as usize) };
+    let pixels = unsafe {
+        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (w * h) as usize)
+    };
     let at = |x: u32, y: u32| pixels[(y * w + x) as usize];
     assert_eq!(at(w / 4, h / 2), [255, 0, 0, 255], "left viewport");
     assert_eq!(at(3 * w / 4, h / 2), [0, 255, 0, 255], "right viewport");

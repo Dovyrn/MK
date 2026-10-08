@@ -1,21 +1,23 @@
-use super::{Device, image_info, image_usage, whole};
-use crate::caps::supports;
-use crate::vk::texture::{Texture, aspect, count};
-use crate::{TextureInfo, ViewInfo, dimension, format, usage};
+use super::{Device, image_create_info, vk_image_usage, whole_view};
+use crate::Texture;
+use crate::caps::check_support;
+use crate::handle::Handle;
+use crate::vk::texture::{TextureObject, aspect, count};
+use crate::{TextureInfo, TextureViewInfo, format, texture_dimension, texture_usage};
 use ash::vk;
 use std::rc::Rc;
 
 impl Device {
-    pub fn raw_texture(&self, texture: u32) -> (vk::Image, vk::ImageView) {
+    pub fn raw_texture(&self, texture: Texture) -> (vk::Image, vk::ImageView) {
         self.res.table.textures.get(texture);
         let t = self.res.textures.get(texture);
         (t.image, t.view)
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
         self.texture(info)?;
-        let mut create = self.share_image(image_info(info));
-        self.host_usage(info, &mut create)?;
+        let mut create = self.share_image(image_create_info(info));
+        self.add_host_usage(info, &mut create)?;
         let image = unsafe { self.raw.create_image(&create, None) }.map_err(|e| e.to_string())?;
         let destroy = || unsafe { self.raw.destroy_image(image, None) };
         let needs = unsafe { self.raw.get_image_memory_requirements(image) };
@@ -27,30 +29,48 @@ impl Device {
             .allocation_size(needs.size)
             .push_next(&mut dedicated);
         let memory = self
-            .attach(index, alloc, |m| unsafe {
+            .allocate_bound(index, alloc, |m| unsafe {
                 self.raw.bind_image_memory(image, m, 0)
             })
             .inspect_err(|_| destroy())?;
-        let id = self.register(image, Some(Rc::new(memory)), &whole(info))?;
-        self.res.table.textures.set(id, *info);
-        self.prepare(id)
+        let id = self.create_views(image, Some(Rc::new(memory)), &whole_view(info))?;
+        self.res.table.add_texture(id, info);
+        if info.usage & texture_usage::HOST != 0 {
+            self.to_general(id)?;
+        }
+        Ok(id)
     }
 
-    pub fn import_texture(&mut self, image: vk::Image, info: &TextureInfo) -> Result<u32, String> {
-        let id = self.register(image, None, &whole(info))?;
+    pub fn import_texture(
+        &mut self,
+        image: vk::Image,
+        info: &TextureInfo,
+    ) -> Result<Texture, String> {
+        let id = self.create_views(image, None, &whole_view(info))?;
         self.res.table.textures.set(id, *info);
         Ok(id)
     }
 
-    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
-        let info = &self.res.table.resolve(texture, info);
-        self.caps.view(info.dimension)?;
+    pub fn create_texture_view(
+        &mut self,
+        texture: Texture,
+        info: &TextureViewInfo,
+    ) -> Result<Texture, String> {
+        let info = &self.res.table.resolve_view(texture, info);
+        self.caps.check_view(info.dimension)?;
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        supports(info.format, info.usage, 1, usable, counts)?;
+        check_support(
+            "create_texture_view",
+            info.format,
+            info.usage,
+            1,
+            usable,
+            counts,
+        )?;
         let t = self.res.textures.get(texture);
         let (image, owner, heap) = (t.image, t.owner.clone(), t.heap.clone());
-        let view = ViewInfo {
+        let view = TextureViewInfo {
             base_mip: t.base_mip + info.base_mip,
             mips: count(info.mips, info.base_mip, t.mips),
             base_layer: t.base_layer + info.base_layer,
@@ -58,27 +78,27 @@ impl Device {
             usage: info.usage & t.usage,
             ..*info
         };
-        let id = self.register(image, owner, &view)?;
+        let id = self.create_views(image, owner, &view)?;
         let t = self.res.textures.get_mut(id);
         t.heap = heap;
-        self.res.table.view(id, texture, info);
+        self.res.table.check_view(id, texture, info);
         Ok(id)
     }
 
-    pub(super) fn register(
+    pub(super) fn create_views(
         &mut self,
         image: vk::Image,
         owner: Option<Rc<vk::DeviceMemory>>,
-        info: &ViewInfo,
-    ) -> Result<u32, String> {
+        info: &TextureViewInfo,
+    ) -> Result<Texture, String> {
         let kind = match info.dimension {
-            dimension::D1 => vk::ImageViewType::TYPE_1D,
-            dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
-            dimension::D2 => vk::ImageViewType::TYPE_2D,
-            dimension::D2_ARRAY => vk::ImageViewType::TYPE_2D_ARRAY,
-            dimension::D3 => vk::ImageViewType::TYPE_3D,
-            dimension::CUBE => vk::ImageViewType::CUBE,
-            dimension::CUBE_ARRAY => vk::ImageViewType::CUBE_ARRAY,
+            texture_dimension::D1 => vk::ImageViewType::TYPE_1D,
+            texture_dimension::D1_ARRAY => vk::ImageViewType::TYPE_1D_ARRAY,
+            texture_dimension::D2 => vk::ImageViewType::TYPE_2D,
+            texture_dimension::D2_ARRAY => vk::ImageViewType::TYPE_2D_ARRAY,
+            texture_dimension::D3 => vk::ImageViewType::TYPE_3D,
+            texture_dimension::CUBE => vk::ImageViewType::CUBE,
+            texture_dimension::CUBE_ARRAY => vk::ImageViewType::CUBE_ARRAY,
             d => panic!("unknown dimension {d}"),
         };
         let target = match kind {
@@ -96,11 +116,8 @@ impl Device {
         let attach = vk::ImageUsageFlags::COLOR_ATTACHMENT
             | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
             | vk::ImageUsageFlags::INPUT_ATTACHMENT;
-        let bits = image_usage(info.usage)
-            & (vk::ImageUsageFlags::SAMPLED
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR
-                | attach);
+        let bits = vk_image_usage(info.usage)
+            & (vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE | attach);
         let make = |kind, aspect, mips, usage| {
             let mut usage = vk::ImageViewUsageCreateInfo::default().usage(usage);
             let create = vk::ImageViewCreateInfo::default()
@@ -117,7 +134,7 @@ impl Device {
                 .push_next(&mut usage);
             unsafe { self.raw.create_image_view(&create, None) }
         };
-        let mut t = Texture {
+        let mut t = TextureObject {
             image,
             owner,
             heap: None,
@@ -130,7 +147,6 @@ impl Device {
             mips: info.mips,
             base_layer: info.base_layer,
             layers: info.layers,
-            tile: vk::Extent3D::default(),
         };
         let mut views = || -> Result<(), vk::Result> {
             if !bits.is_empty() {
@@ -145,33 +161,29 @@ impl Device {
             t.free(self);
             return Err(e.to_string());
         }
-        let view = t.view;
-        let slot = self.res.textures.insert(t);
-        let bound = info.usage & (usage::SAMPLED | usage::STORAGE) != 0;
-        if bound && slot >= self.bindless.textures {
-            let t = self.res.textures.remove(slot);
-            t.free(self);
-            return Err("the bindless heap has no texture slot left".into());
-        }
-        self.bindless
-            .write_texture(&self.raw, slot, view, info.usage);
-        Ok(slot)
+        Ok(self.res.textures.insert(t))
     }
 
-    pub fn destroy_texture(&mut self, texture: u32) {
+    pub fn destroy_texture(&mut self, texture: Texture) {
         self.res.table.drop_texture(texture);
         let texture = self.res.textures.remove(texture);
         texture.free(self);
     }
 
-    pub fn texture_handle(&self, texture: u32) -> u64 {
+    pub fn bindless_texture(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
-        texture as u64
+        self.caps.assert_texture_slot(texture);
+        let view = self.res.textures.get(texture).view;
+        self.bindless
+            .write_texture(&self.raw, texture.index(), view);
+        texture.index() as u64
     }
 
-    pub fn image_handle(&self, texture: u32) -> u64 {
+    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
-        self.caps.image(texture);
-        texture as u64
+        self.caps.assert_image_slot(texture);
+        let view = self.res.textures.get(texture).view;
+        self.bindless.write_image(&self.raw, texture.index(), view);
+        texture.index() as u64
     }
 }

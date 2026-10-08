@@ -1,13 +1,14 @@
 use super::Device;
-use crate::vk::buffer::Buffer;
-use crate::{IndirectInfo, memory};
+use crate::Buffer;
+use crate::memory;
+use crate::vk::buffer::BufferObject;
 use ash::vk;
 use std::rc::Rc;
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
-        self.caps.buffer(size, memory)?;
-        let buffer = self.allocate(size, memory, self.usage())?;
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
+        self.caps.check_buffer(size, memory)?;
+        let buffer = self.allocate(size, memory, self.buffer_usage())?;
         Ok(self.insert_buffer(buffer, size))
     }
 
@@ -16,7 +17,7 @@ impl Device {
         size: u64,
         memory: u32,
         usage: vk::BufferUsageFlags,
-    ) -> Result<Buffer, String> {
+    ) -> Result<BufferObject, String> {
         let info = self.buffer_info(size, usage);
         let raw = unsafe { self.raw.create_buffer(&info, None) }.map_err(|e| e.to_string())?;
         let destroy = || unsafe { self.raw.destroy_buffer(raw, None) };
@@ -31,10 +32,10 @@ impl Device {
             .allocation_size(needs.size)
             .push_next(&mut flags)
             .push_next(&mut dedicated);
-        let mut buffer = Buffer {
+        let mut buffer = BufferObject {
             raw,
             memory: Rc::new(
-                self.attach(index, alloc, |m| unsafe {
+                self.allocate_bound(index, alloc, |m| unsafe {
                     self.raw.bind_buffer_memory(raw, m, 0)
                 })
                 .inspect_err(|_| destroy())?,
@@ -45,15 +46,15 @@ impl Device {
             device: memory == memory::DEVICE,
         };
         buffer.data = self
-            .mapped(*buffer.memory, index)
+            .map_memory(*buffer.memory, index)
             .inspect_err(|_| buffer.free(self))?;
         let info = vk::BufferDeviceAddressInfo::default().buffer(raw);
         buffer.address = unsafe { self.raw.get_buffer_device_address(&info) };
         Ok(buffer)
     }
 
-    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64) -> u32 {
-        let id = self.res.buffers.insert(Buffer {
+    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64) -> Buffer {
+        let id = self.res.buffers.insert(BufferObject {
             raw,
             memory: Rc::new(vk::DeviceMemory::null()),
             address: 0,
@@ -65,38 +66,18 @@ impl Device {
         id
     }
 
-    pub fn create_indirect_buffer(&mut self, info: &IndirectInfo) -> Result<u32, String> {
-        let entry = self.res.table.indirect(info);
-        let stride = crate::table::stride(entry.2, info.indexed);
-        let buffer = self.create_buffer(info.size as u64 * stride as u64, memory::DEVICE)?;
-        let id = self.res.indirects.insert(buffer);
-        self.res.table.indirects.set(id, entry);
-        Ok(id)
-    }
-
-    pub fn destroy_indirect_buffer(&mut self, indirect: u32) {
-        self.res.table.indirects.clear(indirect);
-        let buffer = self.res.indirects.remove(indirect);
-        self.destroy_buffer(buffer);
-    }
-
-    pub fn indirect_handle(&self, indirect: u32) -> Result<[u32; 8], String> {
-        let handle = self.buffer_handle(*self.res.indirects.get(indirect))?;
-        Ok(self.res.table.handle(indirect, handle, 0, [0; 6]))
-    }
-
-    pub fn destroy_buffer(&mut self, buffer: u32) {
+    pub fn destroy_buffer(&mut self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
         let buffer = self.res.buffers.remove(buffer);
         buffer.free(self);
     }
 
-    pub fn raw_buffer(&self, buffer: u32) -> vk::Buffer {
+    pub fn raw_buffer(&self, buffer: Buffer) -> vk::Buffer {
         self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer).raw
     }
 
-    pub fn map(&self, buffer: u32) -> *mut u8 {
+    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "map of an imported buffer");
@@ -104,33 +85,19 @@ impl Device {
         b.data
     }
 
-    pub fn unmap(&self, buffer: u32) {
+    pub fn unmap_buffer(&self, buffer: Buffer) {
         self.res.table.buffers.get(buffer);
     }
 
-    pub(super) fn insert_buffer(&mut self, buffer: Buffer, size: u64) -> u32 {
-        let info = vk::DescriptorBufferInfo::default()
-            .buffer(buffer.raw)
-            .range(size.min(self.limits.max_storage_buffer_range as u64));
+    pub(super) fn insert_buffer(&mut self, buffer: BufferObject, size: u64) -> Buffer {
         let slot = self.res.buffers.insert(buffer);
         self.res.table.buffers.set(slot, size);
-        if slot < self.bindless.buffers {
-            self.bindless.write_buffer(&self.raw, slot, info);
-        }
         slot
     }
 
-    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
-        self.address(buffer);
-        if buffer >= self.bindless.buffers {
-            return Err("the bindless heap has no slot for this buffer".into());
-        }
-        Ok(buffer as u64)
-    }
-
-    pub fn address(&self, buffer: u32) -> u64 {
+    pub fn buffer_address(&self, buffer: Buffer) -> u64 {
         self.res.table.buffers.get(buffer);
-        self.caps.address();
+        self.caps.assert_addresses();
         let b = self.res.buffers.get(buffer);
         assert!(b.own, "imported buffers have no address on Vulkan");
         b.address

@@ -1,13 +1,12 @@
 use crate::field::Field;
 use crate::infos::{java_type, list_put, list_size, reader};
-use crate::{camel, class, list, member, pascal};
+use crate::{camel, class, handle, list, member, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
 #[derive(Deserialize)]
 pub struct Call {
     name: String,
-    target: Option<String>,
     backend: Option<String>,
     #[serde(default)]
     params: Vec<Field>,
@@ -15,18 +14,20 @@ pub struct Call {
     result: String,
     #[serde(default)]
     fails: bool,
+    #[serde(default)]
+    shared: bool,
 }
+
+const RECORDINGS: [&str; 3] = ["CommandBuffer", "RenderPass", "ComputePass"];
 
 fn info(kind: &str) -> bool {
     kind.chars().next().is_some_and(char::is_uppercase)
+        && !handle(kind)
+        && !RECORDINGS.contains(&kind)
 }
 
 fn method(call: &Call) -> String {
-    match call.name.as_str() {
-        "new" => "create".into(),
-        "wait" => "await".into(),
-        name => camel(name),
-    }
+    camel(&call.name)
 }
 
 fn native(call: &Call) -> String {
@@ -49,28 +50,26 @@ fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
     };
     match p.kind.as_str() {
         "u32" | "usize" | "i32" => one("int", "jint"),
-        "u64" | "handle" | "object" | "f32x12" | "pointer" | "timeline" | "taken" => {
-            one("long", "jlong")
-        }
+        k if handle(k) => one("long", "jlong"),
+        "u64" | "handle" | "object" | "objref" | "f32x12" | "pointer" | "timeline" | "taken"
+        | "commands" => one("long", "jlong"),
         "f32" => one("float", "jfloat"),
         "bool" => one("boolean", "jboolean"),
-        "bytes" | "mutbytes" | "commands" => two("long", "jlong"),
+        "bytes" | "mutbytes" => two("long", "jlong"),
         _ => two("int", "jint"),
     }
 }
 
 fn outs(call: &Call) -> bool {
-    matches!(
-        call.result.as_str(),
-        "pair" | "handles" | "pair32" | "u32x2" | "u32x3" | "u32x8"
-    ) || info(&call.result) && call.result != "device"
+    matches!(call.result.as_str(), "pair" | "handles" | "u32x3" | "u32x8")
+        || info(&call.result) && call.result != "device"
 }
 
 fn result_types(call: &Call) -> (&'static str, &'static str) {
     match call.result.as_str() {
         "u32" | "i32" => ("int", "jint"),
+        k if handle(k) || RECORDINGS.contains(&k) => ("long", "jlong"),
         "u64" | "pointer" | "handle" | "object" | "device" | "timeline" => ("long", "jlong"),
-        "bytes" => ("byte[]", "jni::objects::JByteArray<'local>"),
         "str" => ("String", "jni::objects::JString<'local>"),
         "bool" => ("boolean", "jboolean"),
         _ => ("void", "()"),
@@ -81,23 +80,24 @@ fn rust_arg(p: &Field) -> String {
     let n = p.name.clone();
     let j = "crate::java";
     match p.kind.as_str() {
+        k if handle(k) => format!("crate::{k}::from_raw({n} as u64)"),
         "u32" => format!("{n} as u32"),
         "i32" => n,
         "pointer" => format!("{n} as usize as *mut u8"),
-        "f32s" => format!("{j}::f32s({n}, {n}_length as i64)"),
         "usize" => format!("{n} as usize"),
         "u64" => format!("{n} as u64"),
         "f32" => n,
         "bool" => format!("{n} != 0"),
         "str" => format!("{j}::str({n}, {n}_length as i64)"),
-        "bytes" | "commands" => format!("{j}::bytes({n}, {n}_length)"),
+        "bytes" => format!("{j}::bytes({n}, {n}_length)"),
         "mutbytes" => format!("{j}::bytes_mut({n}, {n}_length)"),
-        "u32s" => format!("{j}::u32s({n}, {n}_length as i64)"),
+        "commands" => format!("{j}::take_commands({n})"),
         "f32x12" => format!("{j}::f32x12({n})"),
         "waits" => format!("&{j}::waits({n}, {n}_length as i64)"),
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
         "handle" => format!("ash::vk::Handle::from_raw({n} as u64)"),
         "object" => format!("{j}::object({n})"),
+        "objref" => format!("&{j}::object({n})"),
         "timeline" => format!("{j}::timeline({n})"),
         "taken" => format!("{j}::take({n})"),
         k => match list(k) {
@@ -139,11 +139,12 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             format!(" -> {ret}")
         };
         let args: Vec<_> = call.params.iter().map(rust_arg).collect();
-        let target = call.target.as_ref().unwrap_or(&call.name);
         let target = if statics(call) {
-            format!("crate::Device::{target}")
+            format!("crate::Device::{}", call.name)
+        } else if call.shared {
+            format!("crate::java::shared(device).{}", call.name)
         } else {
-            format!("crate::java::device(device).{target}")
+            format!("crate::java::device(device).{}", call.name)
         };
         let borrowed = call.params.iter().find(|p| borrowing.contains(&p.kind));
         let invoke = match borrowed {
@@ -177,15 +178,13 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
         let body = match call.result.as_str() {
             "" => format!("{invoke};\n        Ok(())"),
             "u32" | "i32" => format!("Ok({invoke} as jint)"),
-            "pair32" => format!(
-                "let r = {invoke};\n        crate::java::pair(out, (r.0 as u64, r.1 as u64));\n        Ok(())"
-            ),
-            "u32x2" | "u32x3" | "u32x8" => {
+            k if handle(k) => format!("Ok({invoke}.to_raw() as jlong)"),
+            "CommandBuffer" => format!("Ok(crate::java::new_command_buffer({invoke}))"),
+            "RenderPass" => format!("Ok(crate::java::new_render_pass({invoke}))"),
+            "ComputePass" => format!("Ok(crate::java::new_compute_pass({invoke}))"),
+            "u32x3" | "u32x8" => {
                 format!("crate::java::u32s_out(out, &{invoke});\n        Ok(())")
             }
-            "bytes" => format!(
-                "let r = {invoke};\n        env.byte_array_from_slice(&r).map_err(|e| e.to_string())"
-            ),
             "str" => {
                 format!("let r = {invoke};\n        env.new_string(r).map_err(|e| e.to_string())")
             }
@@ -231,23 +230,25 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
 }
 
 fn direct(kind: &str) -> bool {
-    matches!(
-        kind,
-        "u32"
-            | "usize"
-            | "i32"
-            | "u64"
-            | "handle"
-            | "object"
-            | "pointer"
-            | "f32"
-            | "bool"
-            | "bytes"
-            | "mutbytes"
-            | "commands"
-            | "timeline"
-            | "taken"
-    )
+    handle(kind)
+        || matches!(
+            kind,
+            "u32"
+                | "usize"
+                | "i32"
+                | "u64"
+                | "handle"
+                | "object"
+                | "objref"
+                | "pointer"
+                | "f32"
+                | "bool"
+                | "bytes"
+                | "mutbytes"
+                | "commands"
+                | "timeline"
+                | "taken"
+        )
 }
 
 pub fn java(calls: &[Call], backend: Option<&str>) -> String {
@@ -271,13 +272,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let mut params = Vec::new();
         for p in &call.params {
             let t = match p.kind.as_str() {
+                k if handle(k) => k.to_string(),
                 "usize" | "i32" => "int".into(),
-                "handle" | "object" | "pointer" => "long".into(),
-                "f32s" | "f32x12" => "float[]".into(),
+                "handle" | "object" | "objref" | "pointer" => "long".into(),
+                "f32x12" => "float[]".into(),
                 "bytes" | "mutbytes" => "long".into(),
-                "commands" => "Commands".into(),
-                "u32s" | "pairs" => "int[]".into(),
-                "waits" => "Point[]".into(),
+                "commands" => "CommandBuffer".into(),
+                "pairs" => "int[]".into(),
+                "waits" => "TimelinePoint[]".into(),
                 "timeline" | "taken" => "Timeline".into(),
                 k => java_type(k),
             };
@@ -288,8 +290,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         }
         let (java_ret, _) = result_types(call);
         let ret = match call.result.as_str() {
-            "pair" | "handles" | "pair32" => "long[]".to_string(),
-            "u32x2" | "u32x3" | "u32x8" => "int[]".into(),
+            k if handle(k) || RECORDINGS.contains(&k) => k.to_string(),
+            "pair" | "handles" => "long[]".to_string(),
+            "u32x3" | "u32x8" => "int[]".into(),
             "device" => name.clone(),
             "timeline" => "Timeline".into(),
             r if info(r) => r.into(),
@@ -307,6 +310,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
+        if !statics(call) && !call.shared {
+            writeln!(s, "        idle(\"{}\");", method(call)).unwrap();
+        }
         let arena = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
         let indent = if arena { "            " } else { "        " };
         if arena {
@@ -314,17 +320,14 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         }
         let mut args = Vec::new();
         if !statics(call) {
-            args.push("handle".to_string());
+            args.push("handle()".to_string());
         }
         for p in &call.params {
             let n = camel(&p.name);
             match p.kind.as_str() {
-                "u32" | "usize" | "i32" | "u64" | "handle" | "object" | "pointer" | "f32"
-                | "bool" => args.push(n),
-                "f32s" => {
-                    args.push(format!("arena.floats({n})"));
-                    args.push(format!("{n}.length"));
-                }
+                k if handle(k) => args.push(format!("{k}.raw({n})")),
+                "u32" | "usize" | "i32" | "u64" | "handle" | "object" | "objref" | "pointer"
+                | "f32" | "bool" => args.push(n),
                 k if list(k).is_some() => {
                     list_size(&mut s, k, &n, "            ");
                     writeln!(
@@ -349,24 +352,15 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(n.clone());
                     args.push(format!("{n}Size"));
                 }
-                "commands" => {
-                    args.push(format!("{n}.getAddress()"));
-                    args.push(format!("{n}.getSize()"));
-                }
-                "u32s" | "pairs" => {
-                    if p.kind == "pairs" {
-                        writeln!(
-                            s,
-                            "            if ({n}.length % 2 != 0) {{\n                throw new IllegalArgumentException(\"{n} holds pairs\");\n            }}"
-                        )
-                        .unwrap();
-                    }
+                "commands" => args.push(format!("{n}.take()")),
+                "pairs" => {
+                    writeln!(
+                        s,
+                        "            if ({n}.length % 2 != 0) {{\n                throw new IllegalArgumentException(\"{n} holds pairs\");\n            }}"
+                    )
+                    .unwrap();
                     args.push(format!("arena.ints({n})"));
-                    args.push(if p.kind == "pairs" {
-                        format!("{n}.length / 2")
-                    } else {
-                        format!("{n}.length")
-                    });
+                    args.push(format!("{n}.length / 2"));
                 }
                 "f32x12" => {
                     writeln!(
@@ -396,8 +390,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         }
         if outs(call) {
             let size = match call.result.as_str() {
-                "pair" | "handles" | "pair32" => "16".to_string(),
-                "u32x2" => "8".into(),
+                "pair" | "handles" => "16".to_string(),
                 "u32x3" => "12".into(),
                 "u32x8" => "32".into(),
                 r => format!("{r}.SIZE"),
@@ -408,7 +401,9 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let invoke = format!("{}({})", native(call), args.join(", "));
         let line = match call.result.as_str() {
             "" => format!("{invoke};"),
-            "pair" | "handles" | "pair32" => format!(
+            k if handle(k) => format!("return {k}.of({invoke});"),
+            k if RECORDINGS.contains(&k) => format!("return {k}.adopt(this, {invoke});"),
+            "pair" | "handles" => format!(
                 "{invoke};\n{indent}return new long[] {{memGetLong(out), memGetLong(out + 8)}};"
             ),
             r if r.starts_with("u32x") => {
@@ -426,26 +421,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             r if info(r) => format!("{invoke};\n{indent}return {r}.decode(out);"),
             _ => format!("return {invoke};"),
         };
-        let kept: Vec<String> = call
-            .params
-            .iter()
-            .filter(|p| p.kind == "commands")
-            .map(|p| camel(&p.name))
-            .collect();
-        if kept.is_empty() {
-            writeln!(s, "{indent}{line}").unwrap();
-        } else {
-            let inner = line.replace(&format!("\n{indent}"), &format!("\n{indent}    "));
-            let fences: String = kept
-                .iter()
-                .map(|n| format!("{indent}    java.lang.ref.Reference.reachabilityFence({n});\n"))
-                .collect();
-            writeln!(
-                s,
-                "{indent}try {{\n{indent}    {inner}\n{indent}}} finally {{\n{fences}{indent}}}"
-            )
-            .unwrap();
-        }
+        writeln!(s, "{indent}{line}").unwrap();
         if arena {
             s += "        }\n";
         }

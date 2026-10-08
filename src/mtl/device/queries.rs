@@ -1,16 +1,17 @@
 use super::Device;
+use crate::QueryPool;
 use crate::mtl::query::Query;
-use crate::query;
+use crate::query_kind;
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTLResourceOptions};
 
 impl Device {
-    pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
+    pub fn create_query_pool(&mut self, kind: u32, count: u32) -> Result<QueryPool, String> {
         autoreleasepool(|_| {
-            self.caps.queries(kind, count)?;
+            self.caps.check_query_pool(kind, count)?;
             let heap = match kind {
-                query::TIMESTAMP => {
+                query_kind::TIMESTAMP => {
                     let desc = MTL4CounterHeapDescriptor::new();
                     desc.setType(MTL4CounterHeapType::Timestamp);
                     unsafe { desc.setCount(count as usize) };
@@ -20,7 +21,7 @@ impl Device {
                         .map_err(|e| e.localizedDescription().to_string())?;
                     Query::Timestamp(heap)
                 }
-                query::OCCLUSION | query::PRECISE | query::COMPACTED => {
+                query_kind::OCCLUSION | query_kind::PRECISE => {
                     let options = MTLResourceOptions::StorageModePrivate
                         | MTLResourceOptions::HazardTrackingModeUntracked;
                     let buffer = self
@@ -38,7 +39,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_query_heap(&mut self, heap: u32) {
+    pub fn destroy_query_pool(&mut self, heap: QueryPool) {
         self.res.table.queries.clear(heap);
         let heap = self.res.queries.remove(heap);
         if let Query::Buffer(buffer) = &heap {

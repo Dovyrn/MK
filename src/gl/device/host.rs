@@ -4,7 +4,7 @@ use glow::HasContext;
 const QUERIES: [u32; 2] = [glow::SAMPLES_PASSED, glow::ANY_SAMPLES_PASSED];
 
 impl Device {
-    pub(super) fn programs(&self) -> Result<(), String> {
+    pub(super) fn check_host_programs(&self) -> Result<(), String> {
         let gl = &self.gl;
         unsafe {
             if self.has(40, "GL_ARB_transform_feedback2")
@@ -22,7 +22,7 @@ impl Device {
         Ok(())
     }
 
-    pub(super) fn queries(&self) -> Result<(), String> {
+    pub(super) fn check_host_queries(&self) -> Result<(), String> {
         let mut targets = QUERIES.to_vec();
         if self.has(43, "GL_ARB_ES3_compatibility") {
             targets.push(glow::ANY_SAMPLES_PASSED_CONSERVATIVE);

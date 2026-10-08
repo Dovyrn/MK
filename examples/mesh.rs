@@ -1,6 +1,6 @@
 use mk::{
-    ColorAttachment, ColorTarget, Commands, ComputeInfo, IndirectInfo, MeshInfo, TextureBarrier,
-    TextureCopy, TextureInfo, access, format, layout, memory, stage, usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, MeshPipelineInfo, RenderPassInfo, Scissor,
+    TextureBarrier, TextureInfo, Viewport, format, memory, stage, texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -9,12 +9,13 @@ mod host;
 pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     let color = device
         .create_texture(&TextureInfo {
             format: format::RGBA8_UNORM,
             width: n,
             height: n,
-            usage: usage::COLOR | usage::COPY_SRC,
+            usage: texture_usage::COLOR | texture_usage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -25,13 +26,12 @@ pub fn main() {
         format: format::RGBA8_UNORM,
         ..Default::default()
     }];
-    let pipeline = match device.create_mesh_pipeline(&MeshInfo {
+    let pipeline = match device.create_mesh_pipeline(&MeshPipelineInfo {
         code: host::code!("mesh"),
         task: "task",
         mesh: "mesh",
         fragment: "frag",
         colors: &colors,
-        indirect: true,
         ..Default::default()
     }) {
         Ok(p) => p,
@@ -42,7 +42,7 @@ pub fn main() {
         }
     };
     let single = device
-        .create_mesh_pipeline(&MeshInfo {
+        .create_mesh_pipeline(&MeshPipelineInfo {
             code: host::code!("mesh"),
             mesh: "single",
             fragment: "frag",
@@ -51,97 +51,73 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let listed = device.caps().buffers > 0 && device.caps().indirect_count;
-    let range = device.create_buffer(8, memory::DEVICE).unwrap();
-    let list = device
-        .create_indirect_buffer(&IndirectInfo {
-            size: 1,
-            pipeline,
-            ..Default::default()
-        })
-        .unwrap();
+    let listed = device.caps().mesh_indirect;
+    let groups = device.create_buffer(12, memory::UPLOAD).unwrap();
+    unsafe {
+        let words = device.map_buffer(groups).cast::<[u32; 3]>();
+        *words = [1, 1, 1];
+    }
+    device.unmap_buffer(groups);
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
     let (half, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
-    for pass in passes.into_iter().flatten() {
-        let mut c = Commands::default();
-        if pass == 1 {
-            let encode = device
-                .create_pipeline(&ComputeInfo {
-                    code: host::code!("encode_mesh"),
-                    entry: "encode",
-                    ..Default::default()
-                })
-                .unwrap();
-            let mut push = device.buffer_handle(range).unwrap().to_le_bytes().to_vec();
-            for word in device.indirect_handle(list).unwrap() {
-                push.extend(word.to_le_bytes());
-            }
-            let (constants, _) = host::constants(&mut device, &[&push]);
-            c.begin_compute();
-            c.bind_pipeline(encode);
-            c.bind_uniform(0, constants, 0, push.len() as u64);
-            c.dispatch(1, 1, 1);
-            c.end_compute();
-            c.barrier(
-                stage::COMPUTE,
-                access::SHADER_WRITE,
-                stage::INDIRECT,
-                access::INDIRECT_READ,
-            );
-        }
-        c.texture_barrier(&TextureBarrier {
-            texture: color,
-            dst_stage: stage::COLOR,
-            dst_access: access::COLOR_WRITE,
-            after: layout::COLOR,
-            ..Default::default()
-        });
-        c.color_attachment(&ColorAttachment {
-            texture: color,
-            b: 1.0,
-            a: 1.0,
-            ..Default::default()
-        });
-        c.begin_render(n, n, 1);
-        c.bind_render_pipeline(if pass == 2 { single } else { pipeline });
-        c.bind_uniform(0, half, 0, 4);
-        if pass == 1 {
-            c.execute_indirect_count(list, range, 0);
-        } else {
-            c.draw_mesh(1, 1, 1);
-        }
-        c.end_render();
+    for round in passes.into_iter().flatten() {
+        let mut c = device.begin_commands(pool).unwrap();
         c.texture_barrier(&TextureBarrier {
             texture: color,
             src_stage: stage::COLOR,
-            src_access: access::COLOR_WRITE,
-            dst_stage: stage::COPY,
-            dst_access: access::COPY_READ,
-            before: layout::COLOR,
-            after: layout::COPY_SRC,
+            dst_stage: stage::COLOR,
+            before: texture_layout::UNDEFINED,
+            ..Default::default()
+        })
+        .unwrap();
+        let mut pass = c
+            .begin_render_pass(&RenderPassInfo {
+                width: n,
+                height: n,
+                colors: &[ColorAttachment {
+                    texture: color,
+                    b: 1.0,
+                    a: 1.0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .unwrap();
+        pass.set_viewport(&Viewport {
+            width: n as f32,
+            height: n as f32,
             ..Default::default()
         });
-        c.begin_compute();
-        c.copy_texture_to_buffer(&TextureCopy {
+        pass.set_scissor(&Scissor {
+            x: 0,
+            y: 0,
+            width: n,
+            height: n,
+        });
+        pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
+        pass.bind_uniform_buffer(0, half, 0, 4).unwrap();
+        if round == 1 {
+            pass.draw_mesh_tasks_indirect(groups, 0, 1, 0).unwrap();
+        } else {
+            pass.draw_mesh_tasks(1, 1, 1).unwrap();
+        }
+        pass.end();
+        c.memory_barrier(stage::COLOR, stage::COPY);
+        let mut pass = c.begin_compute_pass().unwrap();
+        pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: color,
-            layout: layout::COPY_SRC,
             width: n,
             height: n,
             buffer: back,
             ..Default::default()
         });
-        c.barrier(
-            stage::COPY,
-            access::COPY_WRITE,
-            stage::HOST,
-            access::HOST_READ,
-        );
-        c.end_compute();
-        device.submit(0, &c, &[], &[(&timeline, pass + 1)]).unwrap();
-        assert!(timeline.wait(pass + 1, 1000).unwrap());
+        pass.memory_barrier(stage::COPY, stage::HOST);
+        pass.end();
+        device.submit(c, &[], &[(&timeline, round + 1)]).unwrap();
+        assert!(timeline.wait(round + 1, 1000).unwrap());
         let pixels = unsafe {
-            std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize)
+            std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
         };
         let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
         let red = [255, 0, 0, 255];
@@ -152,7 +128,7 @@ pub fn main() {
             (20, 20, blue, "upper left"),
         ] {
             if at(x, y) != want {
-                wrong.push(format!("pass {pass} {what} is {:?}", at(x, y)));
+                wrong.push(format!("pass {round} {what} is {:?}", at(x, y)));
             }
         }
     }

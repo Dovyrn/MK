@@ -1,323 +1,100 @@
 use crate::entries::Entries;
+use crate::handle::TimelineId;
 use crate::{
-    HostCopy, IndirectInfo, TextureInfo, ViewInfo, dimension, format, index, layout, slot, usage,
+    Buffer, CommandPool, ComputePipeline, DepthState, HostTextureCopy, QueryPool, RenderPipeline,
+    Sampler, Texture, TextureInfo, TextureViewInfo, TilePipeline, format, texture_dimension,
+    texture_usage,
 };
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Weak};
 
+#[derive(Clone, Copy)]
+pub struct RenderEntry {
+    pub samples: u32,
+    pub topology: u32,
+    pub mesh: bool,
+    pub vertices: u32,
+    pub reads: u32,
+}
+
+pub type Signal = (u64, usize, Weak<()>);
+
+#[derive(Default)]
 pub struct Table {
-    pub buffers: Entries<u64>,
-    pub textures: Entries<TextureInfo>,
-    pub samplers: Entries<()>,
-    pub pipelines: Entries<()>,
-    pub renders: Entries<(u32, bool, u32, bool, u32, u32)>,
-    pub tile_pipelines: Entries<u32>,
-    pub states: Entries<()>,
-    pub queries: Entries<(u32, u32)>,
-    pub timelines: Entries<(u64, usize, Weak<()>)>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub heaps: Entries<u64>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub accels: Entries<(u64, u64)>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub geometry: Entries<(Vec<u32>, bool)>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub buffer_heaps: Entries<u32>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub texture_heaps: Entries<u32>,
-    pub parents: Entries<u32>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub rays: Entries<(u32, u32)>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub pages: Entries<()>,
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub tiles: Entries<[u32; 3]>,
-    pub indirects: Entries<(IndirectInfo, u32, bool)>,
-    pub attachments: Entries<Vec<u32>>,
+    pub buffers: Entries<Buffer, u64>,
+    pub textures: Entries<Texture, TextureInfo>,
+    pub samplers: Entries<Sampler, ()>,
+    pub pipelines: Entries<ComputePipeline, ()>,
+    pub renders: Entries<RenderPipeline, RenderEntry>,
+    pub tile_pipelines: Entries<TilePipeline, u32>,
+    pub states: Entries<DepthState, ()>,
+    pub queries: Entries<QueryPool, (u32, u32)>,
+    pub timelines: RefCell<Entries<TimelineId, Signal>>,
+    pub parents: Entries<Texture, Texture>,
+    pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
+    pub undefined: RefCell<Vec<Texture>>,
 }
 
-impl Default for Table {
-    fn default() -> Self {
-        Self {
-            buffers: Entries::new("buffer"),
-            textures: Entries::new("texture"),
-            samplers: Entries::new("sampler"),
-            pipelines: Entries::new("pipeline"),
-            renders: Entries::new("render pipeline"),
-            tile_pipelines: Entries::new("tile pipeline"),
-            states: Entries::new("depth state"),
-            queries: Entries::new("query heap"),
-            timelines: Entries::new("timeline"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            heaps: Entries::new("heap"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            accels: Entries::new("acceleration structure"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            geometry: Entries::new("acceleration structure"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            buffer_heaps: Entries::new("placed buffer"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            texture_heaps: Entries::new("placed texture"),
-            parents: Entries::new("view"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            rays: Entries::new("ray instances"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            pages: Entries::new("sparse buffer"),
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            tiles: Entries::new("sparse texture"),
-            indirects: Entries::new("indirect buffer"),
-            attachments: Entries::new("attachments"),
-        }
-    }
-}
-
-#[cfg(any(feature = "vk", feature = "gl"))]
-pub fn stride(mesh: bool, indexed: bool) -> u32 {
-    match (mesh, indexed) {
-        (true, _) => 12,
-        (_, true) => 20,
-        _ => 16,
-    }
-}
-
-fn rest(base: u32, count: u32, total: u32, what: &str, texture: u32) -> u32 {
+fn rest(base: u32, count: u32, total: u32, what: &str, texture: Texture) -> u32 {
     assert!(
         base < total,
-        "base {what} {base} is outside 0..{total} of texture {texture}"
+        "create_texture_view base {what} {base} is outside the {total} {what}s of {texture}"
     );
     let count = if count == !0 { total - base } else { count };
     assert!(
         count > 0 && count <= total - base,
-        "{what}s {base}..{} are outside 0..{total} of texture {texture}",
+        "create_texture_view {what}s {base}..{} are outside the {total} {what}s of {texture}",
         base as u64 + count as u64
     );
     count
 }
 
-#[cfg(any(feature = "vk", feature = "mtl"))]
-pub fn geometry(info: &crate::AccelInfo) -> Vec<u32> {
-    let mut buffers = Vec::new();
-    for t in info.triangles {
-        buffers.push(t.vertices);
-        if t.indices != !0 {
-            buffers.push(t.indices);
-        }
-    }
-    buffers.extend(info.boxes.iter().map(|b| b.buffer));
-    buffers
-}
-
-pub fn vertices(info: &crate::RenderInfo) -> u32 {
+pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
     info.attributes.iter().fold(0, |m, a| m | 1 << a.buffer)
 }
 
 impl Table {
-    pub fn check_attachments(&self, textures: &[u32]) {
-        assert!(
-            !textures.is_empty() && textures.len() <= slot::COLORS as usize,
-            "create_attachments takes 1..={} textures, not {}",
-            slot::COLORS,
-            textures.len()
-        );
-        for &t in textures {
-            assert!(
-                self.textures.get(t).usage & usage::INPUT != 0,
-                "attachment texture {t} was made without usage::INPUT"
-            );
-        }
-    }
-
-    pub fn drop_buffer(&mut self, buffer: u32) {
+    pub fn drop_buffer(&mut self, buffer: Buffer) {
         self.buffers.clear(buffer);
-        #[cfg(any(feature = "vk", feature = "mtl"))]
-        {
-            self.pages.forget(buffer);
-            self.buffer_heaps.forget(buffer);
-            for (buffers, intact) in self.geometry.values_mut() {
-                if buffers.contains(&buffer) {
-                    *intact = false;
-                }
-            }
+    }
+
+    pub fn add_texture(&mut self, texture: Texture, info: &TextureInfo) {
+        self.textures.set(texture, *info);
+        if info.usage & texture_usage::HOST == 0 {
+            self.undefined.get_mut().push(texture);
         }
     }
 
-    pub fn drop_texture(&mut self, texture: u32) {
+    pub fn define(&self, texture: Texture) {
+        self.undefined.borrow_mut().retain(|&t| t != texture);
+    }
+
+    pub fn assert_defined(&self, name: &str, texture: Texture) {
+        let undefined = self.undefined.borrow();
+        if undefined.is_empty() {
+            return;
+        }
+        let root = self.parents.find(texture).copied().unwrap_or(texture);
+        assert!(
+            !undefined.contains(&root),
+            "{name} uses {texture} before its first texture_barrier; record one with before: texture_layout::UNDEFINED"
+        );
+    }
+
+    pub fn drop_texture(&mut self, texture: Texture) {
         assert!(
             !self.parents.values().any(|&p| p == texture),
-            "texture {texture} is destroyed while views of it live"
+            "destroy_texture on {texture} while views of it live; destroy the views first"
         );
         self.textures.clear(texture);
         self.parents.forget(texture);
-        #[cfg(any(feature = "vk", feature = "mtl"))]
-        {
-            self.tiles.forget(texture);
-            self.texture_heaps.forget(texture);
-        }
+        self.undefined.get_mut().retain(|&t| t != texture);
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn drop_heap(&mut self, heap: u32) {
-        let placed = self
-            .buffer_heaps
-            .values()
-            .chain(self.texture_heaps.values());
-        assert!(
-            !placed.into_iter().any(|&h| h == heap),
-            "heap {heap} is destroyed while resources placed in it live"
-        );
-        self.heaps.clear(heap);
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn ray_write(&self, instances: u32, index: u32, id: u32, mask: u32, flags: u32) {
-        let (count, memory) = *self.rays.get(instances);
-        assert!(index < count, "ray instance {index} is outside 0..{count}");
-        assert_eq!(
-            memory,
-            crate::memory::UPLOAD,
-            "write_ray_instance needs ray instances created with memory::UPLOAD"
-        );
-        assert!(id < 1 << 24, "ray instance id {id} is over 24 bits");
-        assert!(
-            mask < 256 && flags & !crate::instance::BITS == 0,
-            "ray instance mask {mask} is over 8 bits or flags {flags:#x} are unknown"
-        );
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn accel(&mut self, id: u32, sizes: (u64, u64), buffers: Vec<u32>) {
-        self.accels.set(id, sizes);
-        self.geometry.set(id, (buffers, true));
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn drop_accel(&mut self, accel: u32) {
-        self.accels.clear(accel);
-        self.geometry.forget(accel);
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    fn heap_pages(&self, heap: u32, page: u64) -> u64 {
-        if heap == !0 {
-            u64::MAX
-        } else {
-            *self.heaps.get(heap) / page
-        }
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn map_buffer(&self, buffer: u32, heap: u32, page: u64, ranges: &[crate::SparseRange]) {
-        self.pages.get(buffer);
-        let pages = self.buffers.get(buffer).div_ceil(page);
-        let room = self.heap_pages(heap, page);
-        for r in ranges {
-            let end = r.page as u64 + r.count as u64;
-            assert!(
-                r.count > 0 && end <= pages,
-                "sparse pages {}..{end} are outside the {pages} pages of buffer {buffer}",
-                r.page
-            );
-            assert!(
-                r.heap_page as u64 + r.count as u64 <= room,
-                "heap pages {}..{} are outside heap {heap}",
-                r.heap_page,
-                r.heap_page as u64 + r.count as u64
-            );
-        }
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn map_texture(&self, texture: u32, heap: u32, page: u64, regions: &[crate::SparseRegion]) {
-        let tile = *self.tiles.get(texture);
-        let t = self.textures.get(texture);
-        let room = self.heap_pages(heap, page);
-        for r in regions {
-            assert!(
-                r.mip < t.mips && r.layer < t.layers,
-                "sparse region mip {} layer {} is outside texture {texture}",
-                r.mip,
-                r.layer
-            );
-            let size = [t.width, t.height, t.depth].map(|n| (n >> r.mip).max(1));
-            let grid: Vec<u64> = (0..3).map(|i| size[i].div_ceil(tile[i]) as u64).collect();
-            let at = [r.x, r.y, r.z];
-            let span = [r.width, r.height, r.depth];
-            assert!(
-                (0..3).all(|i| span[i] > 0 && at[i] as u64 + span[i] as u64 <= grid[i]),
-                "sparse region {at:?} {span:?} is outside the {grid:?} tiles of mip {} of texture {texture}",
-                r.mip
-            );
-            let count = span.iter().map(|&n| n as u64).product::<u64>();
-            assert!(
-                r.heap_page as u64 + count <= room,
-                "heap pages {}..{} are outside heap {heap}",
-                r.heap_page,
-                r.heap_page as u64 + count
-            );
-        }
-    }
-
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub fn place(&self, heap: u32, offset: u64, (size, align): (u64, u64)) {
-        let total = *self.heaps.get(heap);
-        assert!(
-            offset.is_multiple_of(align),
-            "offset {offset} in heap {heap} is not a multiple of the alignment {align}"
-        );
-        assert!(
-            offset.checked_add(size).is_some_and(|end| end <= total),
-            "{size} bytes at offset {offset} run past heap {heap} ({total} bytes)"
-        );
-    }
-
-    pub fn indirect(&self, info: &IndirectInfo) -> (IndirectInfo, u32, bool) {
-        assert!(info.size > 0, "indirect buffer size is 0");
-        let pipeline = info.pipeline;
-        let (_, indirect, topology, mesh, _, _) = *self.renders.get(pipeline);
-        assert!(
-            indirect,
-            "an indirect buffer needs render pipeline {pipeline} created with indirect: true"
-        );
-        if info.indexed {
-            assert!(
-                !mesh,
-                "an indirect buffer of mesh pipeline {pipeline} is not indexed"
-            );
-            assert!(index::valid(info.kind), "unknown index kind {}", info.kind);
-            let size = if info.kind == index::U16 { 2 } else { 4 };
-            assert!(
-                info.offset.is_multiple_of(size),
-                "index offset {} is not a multiple of {size}",
-                info.offset
-            );
-            let total = *self.buffers.get(info.indices);
-            assert!(
-                info.offset < total,
-                "index offset {} is past buffer {} ({total} bytes)",
-                info.offset,
-                info.indices
-            );
-        }
-        (*info, topology, mesh)
-    }
-
-    pub fn handle(&self, indirect: u32, commands: u64, indices: u64, groups: [u32; 6]) -> [u32; 8] {
-        let (info, topology, mesh) = *self.indirects.get(indirect);
-        let mut words = [commands as u32, (commands >> 32) as u32, 0, 0, 0, 0, 0, 0];
-        if mesh {
-            words[2..].copy_from_slice(&groups);
-        } else if info.indexed {
-            let kind = info.kind;
-            words[2..6].copy_from_slice(&[indices as u32, (indices >> 32) as u32, topology, kind]);
-        } else {
-            words[2] = topology;
-        }
-        words
-    }
-
-    pub fn resolve(&self, texture: u32, info: &ViewInfo) -> ViewInfo {
+    pub fn resolve_view(&self, texture: Texture, info: &TextureViewInfo) -> TextureViewInfo {
         let t = self.textures.get(texture);
         assert!(
-            dimension::valid(info.dimension),
+            texture_dimension::valid(info.dimension),
             "unknown dimension {}",
             info.dimension
         );
@@ -328,13 +105,13 @@ impl Table {
         );
         assert!(
             info.usage != 0 && info.usage & !t.usage == 0,
-            "view usage {:#x} is not part of texture {texture} usage {:#x}",
+            "view usage {:#x} is not part of {texture} usage {:#x}",
             info.usage,
             t.usage
         );
         assert!(
-            info.format == t.format || t.usage & usage::VIEW != 0,
-            "a view of texture {texture} in format {} needs usage::VIEW",
+            info.format == t.format || t.usage & texture_usage::VIEW != 0,
+            "a view of {texture} in format {} needs texture_usage::VIEW",
             info.format
         );
         assert_eq!(
@@ -347,43 +124,46 @@ impl Table {
         let mips = rest(info.base_mip, info.mips, t.mips, "mip", texture);
         let layers = rest(info.base_layer, info.layers, t.layers, "layer", texture);
         let family = |d: u32| match d {
-            dimension::D1 | dimension::D1_ARRAY => 1,
-            dimension::D3 => 3,
+            texture_dimension::D1 | texture_dimension::D1_ARRAY => 1,
+            texture_dimension::D3 => 3,
             _ => 2,
         };
         assert_eq!(
             family(t.dimension),
             family(info.dimension),
-            "a view of texture {texture} cannot change dimension {} to {}",
+            "a view of {texture} cannot change dimension {} to {}",
             t.dimension,
             info.dimension
         );
-        let cube = matches!(t.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
+        let cube = matches!(
+            t.dimension,
+            texture_dimension::CUBE | texture_dimension::CUBE_ARRAY
+        );
         match info.dimension {
-            dimension::D1 | dimension::D2 | dimension::D3 => {
+            texture_dimension::D1 | texture_dimension::D2 | texture_dimension::D3 => {
                 assert_eq!(
                     layers, 1,
                     "a view without layers has one layer, not {layers}"
                 )
             }
-            dimension::CUBE => assert!(
+            texture_dimension::CUBE => assert!(
                 cube && layers == 6,
                 "a cube view needs a cube texture and 6 layers"
             ),
-            dimension::CUBE_ARRAY => assert!(
+            texture_dimension::CUBE_ARRAY => assert!(
                 cube && layers.is_multiple_of(6),
                 "a cube array view needs a cube texture and a multiple of 6 layers"
             ),
             _ => {}
         }
-        ViewInfo {
+        TextureViewInfo {
             mips,
             layers,
             ..*info
         }
     }
 
-    pub fn view(&mut self, id: u32, texture: u32, info: &ViewInfo) {
+    pub fn check_view(&mut self, id: Texture, texture: Texture, info: &TextureViewInfo) {
         let t = *self.textures.get(texture);
         self.parents.set(id, texture);
         self.textures.set(
@@ -402,22 +182,17 @@ impl Table {
         );
     }
 
-    pub fn host(&self, c: &HostCopy, size: usize) -> (u64, u64) {
+    pub fn check_host_copy(&self, c: &HostTextureCopy, size: usize) -> (u64, u64) {
         let texture = c.texture;
         let t = self.textures.get(texture);
         assert_ne!(
-            t.usage & usage::HOST,
+            t.usage & texture_usage::HOST,
             0,
-            "texture {texture} has no usage::HOST"
+            "write_texture and read_texture need {texture} created with texture_usage::HOST"
         );
         assert!(
             t.samples == 1 && !(format::D16_UNORM..=format::S8_UINT).contains(&t.format),
-            "host copies need a single-sampled color texture, not texture {texture}"
-        );
-        assert!(
-            layout::valid(c.layout) && c.layout != layout::UNDEFINED,
-            "host copy layout {} is not a defined layout",
-            c.layout
+            "write_texture and read_texture need a single-sampled color texture, not {texture}"
         );
         let (w, h, d) = (c.width, c.height, c.depth);
         assert!(
@@ -426,7 +201,7 @@ impl Table {
         );
         assert!(
             c.mip < t.mips && c.layer < t.layers,
-            "mip {} layer {} is outside {} mips and {} layers of texture {texture}",
+            "mip {} layer {} is outside {} mips and {} layers of {texture}",
             c.mip,
             c.layer,
             t.mips,
@@ -440,7 +215,7 @@ impl Table {
         };
         assert!(
             fits(c.x, w, sizes[0]) && fits(c.y, h, sizes[1]) && fits(c.z, d, sizes[2]),
-            "region {},{},{} {w}x{h}x{d} is outside mip {} of texture {texture} ({}x{}x{})",
+            "region {},{},{} {w}x{h}x{d} is outside mip {} of {texture} ({}x{}x{})",
             c.x,
             c.y,
             c.z,
@@ -451,7 +226,7 @@ impl Table {
         );
         assert!(
             edge(c.x, w, sizes[0], bw) && edge(c.y, h, sizes[1], bh),
-            "region {},{} {w}x{h} is not aligned to the {bw}x{bh} blocks of texture {texture}",
+            "region {},{} {w}x{h} is not aligned to the {bw}x{bh} blocks of {texture}",
             c.x,
             c.y
         );
@@ -477,25 +252,27 @@ impl Table {
         (pitch, image)
     }
 
-    pub fn add_timeline(&mut self, id: u32) -> Arc<()> {
+    pub fn add_timeline(&mut self, id: TimelineId) -> Arc<()> {
         let token = Arc::new(());
         self.timelines
+            .get_mut()
             .set(id, (0, usize::MAX, Arc::downgrade(&token)));
         token
     }
 
     pub fn drop_timeline(&mut self, timeline: &crate::Timeline) {
-        self.points(&[(timeline, 0)]);
-        self.timelines.clear(timeline.id);
+        self.timeline_points(&[(timeline, 0)]);
+        self.timelines.get_mut().clear(timeline.id);
     }
 
-    pub fn points(&self, list: &[(&crate::Timeline, u64)]) -> Vec<(u32, u64)> {
+    pub fn timeline_points(&self, list: &[(&crate::Timeline, u64)]) -> Vec<(TimelineId, u64)> {
+        let timelines = self.timelines.borrow();
         list.iter()
             .map(|&(t, value)| {
-                let (_, _, owner) = self.timelines.get(t.id);
+                let (_, _, owner) = timelines.get(t.id);
                 assert!(
                     Weak::ptr_eq(owner, &Arc::downgrade(&t.token)),
-                    "timeline {} belongs to another device",
+                    "{} belongs to another device; use the device that created it",
                     t.id
                 );
                 (t.id, value)
@@ -503,24 +280,27 @@ impl Table {
             .collect()
     }
 
-    pub fn submit(&self, queue: usize, signals: &[(u32, u64)]) {
+    pub fn check_signals(&self, queue: usize, signals: &[(TimelineId, u64)]) {
+        let timelines = self.timelines.borrow();
         for (i, &(id, value)) in signals.iter().enumerate() {
-            let (last, from, _) = self.timelines.get(id);
+            let (last, from, _) = timelines.get(id);
             assert!(
                 *from != queue || value > *last,
-                "timeline {id} is already signalled to {last} on queue {queue}, not below {value}"
+                "submit signals {id} to {value}, but queue {queue} already signalled it to {last}; signal a value above {last}"
             );
             assert!(
                 signals[..i].iter().all(|s| s.0 != id),
-                "timeline {id} is signalled twice in one submit"
+                "submit signals {id} twice; signal it once with the highest value"
             );
         }
     }
 
-    pub fn signal(&mut self, queue: usize, signals: &[(u32, u64)]) {
+    pub fn record_signals(&self, queue: usize, signals: &[(TimelineId, u64)]) {
+        let mut timelines = self.timelines.borrow_mut();
         for &(id, value) in signals {
-            let owner = self.timelines.get(id).2.clone();
-            self.timelines.set(id, (value, queue, owner));
+            let entry = timelines.get_mut(id);
+            entry.0 = value;
+            entry.1 = queue;
         }
     }
 }
@@ -529,16 +309,19 @@ impl Drop for Table {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             assert!(
-                self.timelines.values().all(|t| t.2.strong_count() == 0),
-                "a timeline outlives its device"
+                self.timelines
+                    .get_mut()
+                    .values()
+                    .all(|t| t.2.strong_count() == 0),
+                "a timeline outlives its device; drop or destroy_timeline every timeline before the device"
             );
         }
     }
 }
 
-pub fn rising(now: u64, value: u64) {
+pub fn assert_rising(now: u64, value: u64) {
     assert!(
         value > now,
-        "signal {value} is not above the timeline's value {now}"
+        "signal {value} is not above the timeline's value {now}; signal a value above {now}"
     );
 }

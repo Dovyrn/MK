@@ -1,9 +1,9 @@
-use super::{Device, image_usage};
+use super::{Device, vk_image_usage};
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, Matrix, TextureInfo, caps, format, stage, subgroup, usage};
+use crate::{Caps, TextureInfo, format, slot, stage, subgroup_op, texture_usage};
 use ash::vk;
 
 pub(super) fn probe(
@@ -26,13 +26,6 @@ pub(super) fn probe(
     unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
     let features = &ext.features;
     let families = unsafe { instance.get_physical_device_queue_family_properties(physical) };
-    let sparse = features.sparse_binding != 0
-        && features.sparse_residency_buffer != 0
-        && queues.iter().all(|q| {
-            families[q.family as usize]
-                .queue_flags
-                .contains(vk::QueueFlags::SPARSE_BINDING)
-        });
     let sizes = if ext.sizes
         && buffer
             .required_subgroup_size_stages
@@ -71,14 +64,14 @@ pub(super) fn probe(
         tiles: false,
         subgroup: groups.subgroup_size,
         subgroup_sizes: sizes,
-        subgroup_ops: groups.subgroup_supported_operations.as_raw() & subgroup::BITS,
+        subgroup_ops: groups.subgroup_supported_operations.as_raw() & subgroup_op::BITS,
         subgroup_stages: stages,
         full_subgroups: ext.full,
         max_threads: limits.max_compute_work_group_invocations,
         max_shared: limits.max_compute_shared_memory_size,
         atomics64: ext.atomics,
-        matrices: ext.matrices.len() as u32,
         mesh: ext.mesh.is_some(),
+        task: ext.task,
         mesh_indirect: ext.mesh.is_some(),
         mesh_groups: mesh
             .max_task_work_group_total_count
@@ -99,15 +92,11 @@ pub(super) fn probe(
             .iter()
             .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
         precise: features.occlusion_query_precise != 0,
-        ray: ext.accel.is_some(),
-        shading_rate: ext.rates.is_some(),
-        rate_images: ext.images,
         viewports: if features.multi_viewport != 0 {
-            limits.max_viewports
+            limits.max_viewports.min(slot::VIEWPORTS)
         } else {
             1
         },
-        sparse,
         graphics: queues
             .iter()
             .enumerate()
@@ -118,17 +107,17 @@ pub(super) fn probe(
             })
             .fold(0, |mask, (i, _)| mask | 1 << i),
         labels: ext.debug.is_some(),
-        anisotropy: features.sampler_anisotropy != 0,
+        anisotropy: if features.sampler_anisotropy != 0 {
+            limits.max_sampler_anisotropy as u32
+        } else {
+            1
+        },
         depth_clamp: features.depth_clamp != 0,
         line_fill: features.fill_mode_non_solid != 0,
         multi_draw: features.multi_draw_indirect != 0,
-        indirect_count: ext.count,
-        sparse_textures: sparse && features.sparse_residency_image2_d != 0,
-        buffers: bindless.buffers,
         compute: true,
         texture_views: true,
         occlusion: true,
-        cache: true,
         bias_clamp: features.depth_bias_clamp != 0,
         blends: features.independent_blend != 0,
         indirect: true,
@@ -139,7 +128,6 @@ pub(super) fn probe(
         budget: ext.budget,
         host_read: ext.copy.is_some(),
         copy_formats: true,
-        texture_clear: true,
         buffer_clear: true,
         partial_resolve: !ext.moltenvk,
         max_buffer: buffer.max_buffer_size,
@@ -165,11 +153,6 @@ impl Device {
         self.caps
     }
 
-    pub fn matrix(&self, index: u32) -> Matrix {
-        self.caps.matrix(index);
-        self.ext.matrices[index as usize]
-    }
-
     pub fn format_usage(&self, format: u32) -> u32 {
         let raw = format::vk(format);
         if raw == vk::Format::UNDEFINED {
@@ -183,44 +166,53 @@ impl Device {
         if features.is_empty() {
             return 0;
         }
-        let mut need = vk::FormatFeatureFlags::BLIT_SRC | vk::FormatFeatureFlags::BLIT_DST;
-        if !format::uint(format) && !format::sint(format) {
-            need |= vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
-        }
-        let blit = match features.contains(need) && !caps::depth(format) {
-            true => usage::BLIT,
-            false => 0,
-        };
         [
-            (vk::FormatFeatureFlags::SAMPLED_IMAGE, usage::SAMPLED),
-            (vk::FormatFeatureFlags::STORAGE_IMAGE, usage::STORAGE),
-            (vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC, usage::ATOMIC),
-            (vk::FormatFeatureFlags::COLOR_ATTACHMENT, usage::COLOR),
+            (
+                vk::FormatFeatureFlags::SAMPLED_IMAGE,
+                texture_usage::SAMPLED,
+            ),
+            (
+                vk::FormatFeatureFlags::STORAGE_IMAGE,
+                texture_usage::STORAGE,
+            ),
+            (
+                vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC,
+                texture_usage::ATOMIC,
+            ),
+            (
+                vk::FormatFeatureFlags::COLOR_ATTACHMENT,
+                texture_usage::COLOR,
+            ),
             (
                 vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
-                usage::DEPTH,
+                texture_usage::DEPTH,
             ),
-            (vk::FormatFeatureFlags::TRANSFER_SRC, usage::COPY_SRC),
-            (vk::FormatFeatureFlags::TRANSFER_DST, usage::COPY_DST),
+            (
+                vk::FormatFeatureFlags::TRANSFER_SRC,
+                texture_usage::COPY_SRC,
+            ),
+            (
+                vk::FormatFeatureFlags::TRANSFER_DST,
+                texture_usage::COPY_DST,
+            ),
         ]
         .into_iter()
         .filter(|(f, _)| features.contains(*f))
-        .fold(usage::VIEW, |u, (_, b)| u | b)
-            | blit
-            | self.host(format, raw)
+        .fold(texture_usage::VIEW, |u, (_, b)| u | b)
+            | self.host_copy_usage(format, raw)
             | self.input(features)
     }
 
     fn input(&self, features: vk::FormatFeatureFlags) -> u32 {
         let color = features.contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT);
         if color && self.caps.attachment_reads {
-            usage::INPUT
+            texture_usage::INPUT
         } else {
             0
         }
     }
 
-    fn host(&self, format: u32, raw: vk::Format) -> u32 {
+    fn host_copy_usage(&self, format: u32, raw: vk::Format) -> u32 {
         if self.ext.copy.is_none() || aspect(format) != vk::ImageAspectFlags::COLOR {
             return 0;
         }
@@ -235,7 +227,7 @@ impl Device {
         };
         let host = vk::FormatFeatureFlags2::HOST_IMAGE_TRANSFER_EXT;
         if three.optimal_tiling_features.contains(host) {
-            usage::HOST
+            texture_usage::HOST
         } else {
             0
         }
@@ -245,7 +237,7 @@ impl Device {
         if self.format_usage(format) & usage != usage {
             return 0;
         }
-        let flags = image_usage(usage);
+        let flags = vk_image_usage(usage);
         if flags.is_empty() {
             return 1;
         }
@@ -265,6 +257,6 @@ impl Device {
     pub(super) fn texture(&self, info: &TextureInfo) -> Result<(), String> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        self.caps.texture(info, usable, counts)
+        self.caps.check_texture(info, usable, counts)
     }
 }

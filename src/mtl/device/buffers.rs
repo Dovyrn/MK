@@ -1,15 +1,16 @@
-use super::{Device, options};
+use super::{Device, resource_options};
+use crate::Buffer;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
         autoreleasepool(|_| {
-            self.caps.buffer(size, memory)?;
+            self.caps.check_buffer(size, memory)?;
             let buffer = self
                 .raw
-                .newBufferWithLength_options(size as usize, options(memory))
+                .newBufferWithLength_options(size as usize, resource_options(memory))
                 .ok_or("buffer allocation failed")?;
             self.residency.add(ProtocolObject::from_ref(&*buffer));
             let id = self.res.buffers.insert(buffer);
@@ -18,7 +19,7 @@ impl Device {
         })
     }
 
-    pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> u32 {
+    pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> Buffer {
         autoreleasepool(|_| {
             self.residency.add(ProtocolObject::from_ref(&*raw));
             let size = raw.length() as u64;
@@ -29,19 +30,19 @@ impl Device {
         })
     }
 
-    pub fn raw_buffer(&self, buffer: u32) -> &ProtocolObject<dyn MTLBuffer> {
+    pub fn raw_buffer(&self, buffer: Buffer) -> &ProtocolObject<dyn MTLBuffer> {
         self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer)
     }
 
-    pub fn destroy_buffer(&mut self, buffer: u32) {
+    pub fn destroy_buffer(&mut self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
         self.res.imports.remove(&buffer);
         let buffer = self.res.buffers.remove(buffer);
         self.residency.remove(ProtocolObject::from_ref(&*buffer));
     }
 
-    pub fn map(&self, buffer: u32) -> *mut u8 {
+    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
         assert!(
             !self.res.imports.contains(&buffer),
@@ -56,18 +57,13 @@ impl Device {
         b.contents().as_ptr().cast()
     }
 
-    pub fn unmap(&self, buffer: u32) {
+    pub fn unmap_buffer(&self, buffer: Buffer) {
         self.res.table.buffers.get(buffer);
     }
 
-    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
+    pub fn buffer_address(&self, buffer: Buffer) -> u64 {
         self.res.table.buffers.get(buffer);
-        Ok(self.res.buffers.get(buffer).gpuAddress())
-    }
-
-    pub fn address(&self, buffer: u32) -> u64 {
-        self.res.table.buffers.get(buffer);
-        self.caps.address();
+        self.caps.assert_addresses();
         self.res.buffers.get(buffer).gpuAddress()
     }
 }

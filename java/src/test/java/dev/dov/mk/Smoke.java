@@ -10,10 +10,9 @@ public class Smoke {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
             var caps = device.caps();
-            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slots + ", ray " + caps.ray);
+            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slots + ", tiles " + caps.tiles);
             if (!caps.compute) {
-                record(Path.of(args[2]));
-                System.out.println("java: no compute, stream recorded");
+                System.out.println("java: no compute");
                 return;
             }
             var n = 1024;
@@ -21,47 +20,52 @@ public class Smoke {
             var bytes = Files.readAllBytes(Path.of(args[1]));
             var code = nmemAlloc(bytes.length);
             memByteBuffer(code, bytes.length).put(bytes);
-            var info = new ComputeInfo()
+            var info = new ComputePipelineInfo()
                     .code(code)
                     .codeSize(bytes.length)
-                    .entry("fill")
-                    ;
-            var pipeline = device.createPipeline(info);
+                    .entry("fill");
+            var pipeline = device.createComputePipeline(info);
             var timeline = device.createTimeline();
+            var pool = device.createCommandPool(0);
             var constants = device.createBuffer(8, Memory.UPLOAD);
-            var push = device.map(constants);
+            var push = device.mapBuffer(constants);
             memPutInt(push, n);
             memPutInt(push + 4, 100);
-            device.unmap(constants);
-            try (var c = new Commands()) {
-                c.beginCompute();
-                c.bindPipeline(pipeline);
-                c.bindStorage(0, buffer, 0, n * 4L);
-                c.bindUniform(0, constants, 0, 8);
-                c.dispatch(n / 64, 1, 1);
-                c.barrier(Stage.COMPUTE, Access.SHADER_WRITE, Stage.HOST, Access.HOST_READ);
-                c.endCompute();
-                device.submit(0, c, new Point[0], new Point[] {new Point(timeline, 1)});
-                if (!timeline.await(1, 1000)) {
-                    throw new IllegalStateException("timeout");
-                }
+            device.unmapBuffer(constants);
+            var commands = device.beginCommands(pool);
+            try (var pass = commands.beginComputePass()) {
+                pass.bindComputePipeline(pipeline);
+                pass.bindStorageBuffer(0, buffer, 0, n * 4L);
+                pass.bindUniformBuffer(0, constants, 0, 8);
+                pass.dispatch(n / 64, 1, 1);
+                pass.memoryBarrier(Stage.COMPUTE, Stage.HOST);
             }
-            var data = memIntBuffer(device.map(buffer), n);
+            try {
+                device.createBuffer(4, Memory.UPLOAD);
+                throw new IllegalStateException("a device change was accepted while recording");
+            } catch (IllegalStateException e) {
+                System.out.println("change while recording rejected");
+            }
+            device.submit(commands, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
+            if (!timeline.await(1, 1000)) {
+                throw new IllegalStateException("timeout");
+            }
+            var data = memIntBuffer(device.mapBuffer(buffer), n);
             for (var i = 0; i < n; i++) {
                 if (data.get(i) != 100 + i) {
                     throw new IllegalStateException("value " + i + " is " + data.get(i));
                 }
             }
-            device.unmap(buffer);
+            device.unmapBuffer(buffer);
             try {
-                device.createPipeline(info.code(code).codeSize(8));
+                device.createComputePipeline(info.code(code).codeSize(8));
                 throw new IllegalStateException("bad code was accepted");
             } catch (RuntimeException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
+            device.destroyCommandPool(pool);
             device.destroyTimeline(timeline);
             nmemFree(code);
-            record(Path.of(args[2]));
             System.out.println("java: 1024 values match");
         }
     }
@@ -74,33 +78,5 @@ public class Smoke {
             return VulkanHost.device();
         }
         return MetalHost.device();
-    }
-
-    static void record(Path out) throws Exception {
-        try (var s = new Commands()) {
-            s.beginCompute();
-            s.bindPipeline(7);
-            s.dispatch(1, 2, 3);
-            s.dispatchIndirect(4, 1L << 40);
-            s.copyBuffer(1, 2, 3, 4, 5);
-            s.fillBuffer(9, 8, 7, (byte) 0xab);
-            s.barrier(1, 2, 3, 4);
-            s.beginLabel("frame");
-            s.endLabel();
-            s.endCompute();
-            s.setViewport(new Viewport().x(0.5f).y(1.5f).width(64).height(32));
-            s.drawIndexed(3, 1, 0, -5, 2);
-            s.textureBarrier(new TextureBarrier()
-                    .texture(1)
-                    .srcStage(2)
-                    .srcAccess(3)
-                    .dstStage(4)
-                    .dstAccess(5)
-                    .before(6)
-                    .after(7));
-            var recorded = new byte[s.getSize()];
-            memByteBuffer(s.getAddress(), s.getSize()).get(recorded);
-            Files.write(out, recorded);
-        }
     }
 }

@@ -1,11 +1,23 @@
 use super::Recorder;
-use crate::gl::rates;
-use crate::gl::state::toggle;
-use crate::{format, load, slot, store};
+use crate::Texture;
+use crate::gl::state::set_enabled;
+use crate::{format, load_op, slot, store_op};
 use glow::HasContext;
 
+fn is_srgb(f: u32) -> bool {
+    matches!(format::gl(f)[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
+}
+
+fn encode(v: f32) -> f32 {
+    if v <= 0.0031308 {
+        v * 12.92
+    } else {
+        1.055 * v.powf(1.0 / 2.4) - 0.055
+    }
+}
+
 impl Recorder<'_> {
-    fn attach(&self, target: u32, point: u32, texture: u32, layers: u32) {
+    fn attach(&self, target: u32, point: u32, texture: Texture, layers: u32) {
         let t = self.res.textures.get(texture);
         let gl = self.gl;
         unsafe {
@@ -32,17 +44,19 @@ impl Recorder<'_> {
             .any(|c| self.res.textures.get(c.texture).raw.is_none())
     }
 
+    fn srgb(&self) -> bool {
+        self.colors.iter().all(|c| {
+            let t = self.res.textures.get(c.texture);
+            t.raw.is_some() || is_srgb(t.format)
+        })
+    }
+
     pub fn bind(&self, layers: u32) -> Result<(), String> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
-            let srgb = self.colors.iter().all(|c| {
-                let t = res.textures.get(c.texture);
-                t.raw.is_some()
-                    || matches!(format::gl(t.format)[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
-            });
-            toggle(gl, glow::FRAMEBUFFER_SRGB, srgb);
+            set_enabled(gl, glow::FRAMEBUFFER_SRGB, self.srgb());
             if self.default() {
                 gl.bind_framebuffer(target, None);
             } else {
@@ -91,27 +105,15 @@ impl Recorder<'_> {
         let gl = self.gl;
         let res = self.res;
         self.bind(layers)?;
-        if let Some((texture, w, h)) = self.rate.take() {
-            let texel = rates::TEXEL.map(|p| unsafe { gl.get_parameter_i32(p) } as u32);
-            if [w, h] != texel {
-                return Err(format!(
-                    "rate attachment texels are {w}x{h}, GL needs {}x{}",
-                    texel[0], texel[1]
-                ));
-            }
-            let raw = res.textures.get(texture).raw.map_or(0, |t| t.0.get());
-            unsafe { (self.extra.rates.as_ref().unwrap().bind)(raw) };
-            self.rated = true;
-        }
-        self.shade();
         let default = self.default();
         unsafe {
             gl.color_mask(true, true, true, true);
             gl.depth_mask(true);
             gl.stencil_mask(0xff);
             gl.disable(glow::SCISSOR_TEST);
+            gl.disable(glow::FRAMEBUFFER_SRGB);
             for c in &self.colors {
-                if c.load != load::CLEAR {
+                if c.load != load_op::CLEAR {
                     continue;
                 }
                 let slot = if default { 0 } else { c.index };
@@ -123,30 +125,34 @@ impl Recorder<'_> {
                 } else if format::uint(f) {
                     let values = clear.map(|v| v as u32);
                     gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
+                } else if is_srgb(f) {
+                    let encoded = [encode(c.r), encode(c.g), encode(c.b), c.a];
+                    gl.clear_buffer_f32_slice(glow::COLOR, slot, &encoded);
                 } else {
                     gl.clear_buffer_f32_slice(glow::COLOR, slot, &clear);
                 }
             }
+            set_enabled(gl, glow::FRAMEBUFFER_SRGB, self.srgb());
             if let Some(d) = &self.depth {
-                if d.load == load::CLEAR {
+                if d.load == load_op::CLEAR {
                     gl.clear_buffer_f32_slice(glow::DEPTH, 0, &[d.depth]);
                 }
-                if d.stencil_load == load::CLEAR {
+                if d.stencil_load == load_op::CLEAR {
                     gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.stencil as i32]);
                 }
             }
             if let Some(p) = self.render {
-                self.colors(p);
+                self.apply_blend_state(p);
             }
             gl.depth_mask(self.state.is_some_and(|d| d.write));
-            self.stencil();
+            self.apply_stencil();
             gl.viewport(0, 0, width as i32, height as i32);
             gl.depth_range(0.0, 1.0);
             self.rendering = true;
             self.extent = (width as i32, height as i32);
             self.views = vec![[0.0, 0.0, width as f32, height as f32]];
             self.scissors.clear();
-            self.clip();
+            self.apply_scissors();
             self.layers = layers;
         }
         Ok(())
@@ -154,29 +160,24 @@ impl Recorder<'_> {
 
     pub fn end_render(&mut self) -> Result<(), String> {
         let gl = self.gl;
-        if self.rated {
-            unsafe { (self.extra.rates.as_ref().unwrap().bind)(0) };
-            self.rated = false;
-            self.shade();
-        }
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
             let mut discard: Vec<u32> = self
                 .colors
                 .iter()
-                .filter(|c| c.store == store::DONT_CARE)
+                .filter(|c| c.store == store_op::DONT_CARE)
                 .map(|c| glow::COLOR_ATTACHMENT0 + c.index)
                 .collect();
             if self
                 .depth
                 .as_ref()
-                .is_some_and(|d| d.store == store::DONT_CARE)
+                .is_some_and(|d| d.store == store_op::DONT_CARE)
             {
                 discard.push(glow::DEPTH_ATTACHMENT);
             }
             let (w, h) = self.extent;
             for c in &self.colors {
-                if c.resolve == !0 {
+                if c.resolve.is_null() {
                     continue;
                 }
                 gl.disable(glow::SCISSOR_TEST);

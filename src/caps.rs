@@ -1,33 +1,55 @@
+use crate::check::assert_known;
 use crate::{
-    Caps, ColorTarget, DepthInfo, SamplerInfo, StencilFace, TextureInfo, address, blend, border,
-    compare, dimension, fill, filter, format, mask, memory, op, query, stencil, topology, usage,
+    Caps, ColorTarget, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo, SamplerInfo,
+    StencilFace, TextureInfo, address_mode, blend_factor, blend_op, border_color, color_mask,
+    compare_op, fill_mode, filter, format, memory, query_kind, stencil_op, texture_dimension,
+    texture_usage, topology,
 };
 
-fn known(what: &str, value: u32, valid: bool) {
-    assert!(valid, "unknown {what} {value}");
+fn need(name: &str, has: bool, cap: &str) -> Result<(), String> {
+    if has {
+        Ok(())
+    } else {
+        Err(format!("{name} needs caps.{cap}"))
+    }
 }
 
-fn real(f: u32) -> bool {
+fn is_real_format(f: u32) -> bool {
     f > 0 && format::block(f)[0] > 0
 }
 
-fn samples(n: u32) {
+fn assert_format(name: &str, field: &str, f: u32) {
     assert!(
-        n.is_power_of_two() && n <= 64,
-        "{n} samples is not a power of two up to 64"
+        is_real_format(f),
+        "{name} {field} {f} is no format constant"
     );
 }
 
-pub(crate) fn compressed(f: u32) -> bool {
+fn assert_samples(name: &str, n: u32) {
+    assert!(
+        n.is_power_of_two() && n <= 64,
+        "{name} samples {n} is not a power of two up to 64"
+    );
+}
+
+pub(crate) fn is_compressed(f: u32) -> bool {
     let [_, w, h] = format::block(f);
     w > 1 || h > 1
 }
 
-pub(crate) fn depth(f: u32) -> bool {
+pub(crate) fn is_depth_format(f: u32) -> bool {
     (format::D16_UNORM..=format::S8_UINT).contains(&f)
 }
 
-pub(crate) fn supports(
+pub(crate) fn same_blend(colors: &[ColorTarget]) -> bool {
+    let key = |c: &ColorTarget| (c.src, c.dst, c.op, c.src_alpha, c.dst_alpha, c.op_alpha);
+    let mut on = colors.iter().filter(|c| c.blend).map(key);
+    let first = on.next();
+    on.all(|k| Some(k) == first)
+}
+
+pub(crate) fn check_support(
+    name: &str,
     format: u32,
     usage: u32,
     samples: u32,
@@ -35,98 +57,168 @@ pub(crate) fn supports(
     counts: u32,
 ) -> Result<(), String> {
     if usable == 0 {
-        return Err(format!("format {format} is not supported"));
+        return Err(format!(
+            "{name} format {format} is not supported; format_usage returns 0 for it"
+        ));
     }
     let missing = usage & !usable;
     if missing != 0 {
         return Err(format!(
-            "format {format} does not support usage {missing:#x}"
+            "{name} format {format} lacks usage {missing:#x}; check format_usage first"
         ));
     }
     if counts & samples == 0 {
         return Err(format!(
-            "format {format} does not support {samples} samples with usage {usage:#x}"
+            "{name} format {format} has no {samples}-sample support with usage {usage:#x}; check format_samples first"
         ));
     }
     Ok(())
 }
 
-pub(crate) fn targets(colors: &[ColorTarget], depth: u32, stencil: u32, count: u32, mode: u32) {
+pub(crate) fn check_targets(
+    name: &str,
+    colors: &[ColorTarget],
+    depth: u32,
+    stencil: u32,
+    count: u32,
+    mode: u32,
+) {
     for c in colors {
-        assert!(real(c.format), "unknown color format {}", c.format);
+        assert_format(name, "color", c.format);
         for b in [c.src, c.dst, c.src_alpha, c.dst_alpha] {
-            known("blend factor", b, blend::valid(b));
+            assert_known(
+                name,
+                "blend factor",
+                blend_factor::name(b),
+                blend_factor::valid(b),
+            );
         }
-        known("blend op", c.op, op::valid(c.op));
-        known("blend op", c.op_alpha, op::valid(c.op_alpha));
-        assert_eq!(c.mask & !mask::BITS, 0, "unknown mask bits {:#x}", c.mask);
+        for o in [c.op, c.op_alpha] {
+            assert_known(name, "blend op", blend_op::name(o), blend_op::valid(o));
+        }
+        assert_eq!(
+            c.mask & !color_mask::BITS,
+            0,
+            "{name} color mask has bits {:#x} that are no color_mask constant",
+            c.mask & !color_mask::BITS
+        );
     }
-    for f in [depth, stencil] {
-        assert!(f == format::NONE || real(f), "unknown format {f}");
+    for (field, f) in [("depth", depth), ("stencil", stencil)] {
+        if f != format::NONE {
+            assert_format(name, field, f);
+        }
     }
-    samples(count);
-    known("fill", mode, fill::valid(mode));
+    assert_samples(name, count);
+    assert_known(name, "fill", fill_mode::name(mode), fill_mode::valid(mode));
 }
 
-pub(crate) fn attached(memory: u32) {
+pub(crate) fn assert_not_transient(memory: u32) {
     assert_ne!(
         memory,
         memory::TRANSIENT,
-        "memory::TRANSIENT holds attachments, not buffers or heaps"
+        "create_buffer memory is memory::TRANSIENT, which holds attachments only"
     );
 }
 
-pub(crate) fn tile(info: &crate::TileInfo) {
-    targets(
+pub(crate) fn check_tile_pipeline(info: &crate::TilePipelineInfo) {
+    check_targets(
+        "create_tile_pipeline",
         info.colors,
         format::NONE,
         format::NONE,
         info.samples,
-        fill::FILL,
+        fill_mode::FILL,
     );
 }
 
-pub(crate) fn primitive(t: u32) {
-    known("topology", t, topology::valid(t));
-}
-
-fn face(f: &StencilFace) {
+fn check_stencil_face(f: &StencilFace) {
+    let name = "create_depth_state";
     for o in [f.fail, f.depth_fail, f.pass] {
-        known("stencil op", o, stencil::valid(o));
+        assert_known(
+            name,
+            "stencil op",
+            stencil_op::name(o),
+            stencil_op::valid(o),
+        );
     }
-    known("compare", f.compare, compare::valid(f.compare));
+    assert_known(
+        name,
+        "compare",
+        compare_op::name(f.compare),
+        compare_op::valid(f.compare),
+    );
 }
 
 impl Caps {
-    pub(crate) fn matrix(&self, index: u32) {
-        assert!(
-            index < self.matrices,
-            "matrix {index} is outside 0..{}",
-            self.matrices
+    pub(crate) fn check_render_pipeline(&self, info: &RenderPipelineInfo) -> Result<(), String> {
+        let name = "create_render_pipeline";
+        check_targets(
+            name,
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
         );
+        let t = info.topology;
+        assert_known(name, "topology", topology::name(t), topology::valid(t));
+        self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
     }
 
-    pub(crate) fn compute(&self, info: &crate::ComputeInfo) -> Result<(), String> {
+    pub(crate) fn check_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<(), String> {
+        let name = "create_mesh_pipeline";
+        check_targets(
+            name,
+            info.colors,
+            info.depth,
+            info.stencil,
+            info.samples,
+            info.fill,
+        );
+        need(name, self.mesh, "mesh")?;
+        need(name, info.task.is_empty() || self.task, "task")?;
+        self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
+    }
+
+    fn check_raster(
+        &self,
+        name: &str,
+        colors: &[ColorTarget],
+        fill: u32,
+        clamp: bool,
+        ordered: bool,
+    ) -> Result<(), String> {
+        need(name, !clamp || self.depth_clamp, "depth_clamp")?;
+        need(name, fill != fill_mode::LINE || self.line_fill, "line_fill")?;
+        need(name, !ordered || self.ordered_reads, "ordered_reads")?;
+        need(name, same_blend(colors) || self.blends, "blends")
+    }
+
+    pub(crate) fn check_compute_pipeline(
+        &self,
+        info: &crate::ComputePipelineInfo,
+    ) -> Result<(), String> {
+        let name = "create_compute_pipeline";
+        need(name, self.compute, "compute")?;
         let n = info.subgroup;
         assert!(
             n == 0 || n.is_power_of_two(),
-            "subgroup size {n} is not a power of two"
+            "{name} subgroup {n} is not a power of two"
         );
-        if n != 0 && self.subgroup_sizes & n == 0 {
-            return Err(format!("subgroup size {n} is not in caps.subgroup_sizes"));
-        }
-        if info.full && !self.full_subgroups {
-            return Err("full subgroups need caps.full_subgroups".into());
-        }
-        Ok(())
+        need(
+            name,
+            n == 0 || self.subgroup_sizes & n != 0,
+            "subgroup_sizes",
+        )?;
+        need(name, !info.full || self.full_subgroups, "full_subgroups")
     }
 
     #[cfg(feature = "vk")]
-    pub(crate) fn subgroups(&self, ops: u32, stage: u32) -> Result<(), String> {
+    pub(crate) fn check_subgroups(&self, ops: u32, stage: u32) -> Result<(), String> {
         let missing = ops & !self.subgroup_ops;
         if missing != 0 {
             return Err(format!(
-                "the shader uses subgroup ops {missing:#x} outside caps.subgroup_ops"
+                "the shader uses subgroup ops {missing:#x}, outside caps.subgroup_ops"
             ));
         }
         if ops != 0 && self.subgroup_stages & stage == 0 {
@@ -138,7 +230,7 @@ impl Caps {
     }
 
     #[cfg(feature = "vk")]
-    pub(crate) fn atomics(&self, needed: u32) -> Result<(), String> {
+    pub(crate) fn check_atomics(&self, needed: u32) -> Result<(), String> {
         let missing = needed & !self.atomics64;
         if missing != 0 {
             return Err(format!(
@@ -149,220 +241,246 @@ impl Caps {
     }
 
     #[cfg(feature = "vk")]
-    pub(crate) fn full(&self, width: u32, size: u32) {
+    pub(crate) fn assert_full_subgroups(&self, width: u32, size: u32) {
         assert!(
             width.is_multiple_of(size),
-            "full subgroups need a thread-group width that is a multiple of {size}, not {width}"
+            "create_compute_pipeline full needs a thread-group width that is a multiple of {size}, not {width}"
         );
     }
 
-    pub(crate) fn buffer(&self, size: u64, memory: u32) -> Result<(), String> {
-        known("memory", memory, memory::valid(memory));
-        attached(memory);
-        assert!(size > 0, "buffer size is 0");
-        if size > self.max_buffer {
-            return Err(format!("buffer size {size} is over {}", self.max_buffer));
-        }
-        Ok(())
+    pub(crate) fn check_buffer(&self, size: u64, memory: u32) -> Result<(), String> {
+        let name = "create_buffer";
+        assert_known(name, "memory", memory::name(memory), memory::valid(memory));
+        assert_not_transient(memory);
+        assert!(size > 0, "{name} size is 0");
+        need(name, size <= self.max_buffer, "max_buffer")
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub(crate) fn accel(&self, info: &crate::AccelInfo) {
-        let vertex = [
-            format::RG32_FLOAT,
-            format::RGB32_FLOAT,
-            format::RG16_FLOAT,
-            format::RGBA16_FLOAT,
-            format::RG16_SNORM,
-            format::RGBA16_SNORM,
-        ];
-        for t in info.triangles {
-            assert!(
-                vertex.contains(&t.format),
-                "accel vertex format {} is not one every backend builds from",
-                t.format
-            );
-        }
+    pub(crate) fn assert_addresses(&self) {
+        assert!(self.addresses, "buffer_address needs caps.addresses");
     }
 
-    #[cfg(any(feature = "vk", feature = "mtl"))]
-    pub(crate) fn heap(&self, size: u64, memory: u32) {
-        known("memory", memory, memory::valid(memory));
-        attached(memory);
-        assert!(size > 0, "heap size is 0");
-    }
-
-    pub(crate) fn address(&self) {
-        assert!(self.addresses, "address needs caps.addresses");
-    }
-
-    pub(crate) fn image(&self, texture: u32) {
+    pub(crate) fn assert_image_slot(&self, texture: crate::Texture) {
         assert!(
-            texture < self.images,
-            "image_handle of texture {texture} is outside caps.images {}",
+            crate::handle::Handle::index(texture) < self.images,
+            "bindless_storage_texture of {texture} is outside caps.images {}",
             self.images
         );
     }
 
-    pub(crate) fn texture(
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub(crate) fn assert_texture_slot(&self, texture: crate::Texture) {
+        assert!(
+            crate::handle::Handle::index(texture) < self.textures,
+            "bindless_texture of {texture} is outside caps.textures {}",
+            self.textures
+        );
+    }
+
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub(crate) fn assert_sampler_slot(&self, sampler: crate::Sampler) {
+        assert!(
+            crate::handle::Handle::index(sampler) < self.samplers,
+            "bindless_sampler of {sampler} is outside caps.samplers {}",
+            self.samplers
+        );
+    }
+
+    pub(crate) fn check_texture(
         &self,
         info: &TextureInfo,
         usable: u32,
         counts: u32,
     ) -> Result<(), String> {
+        let name = "create_texture";
         let sizes = [info.width, info.height, info.depth, info.layers, info.mips];
-        assert!(sizes.iter().all(|&n| n > 0), "texture size is 0");
-        known(
-            "dimension",
-            info.dimension,
-            dimension::valid(info.dimension),
+        assert!(
+            sizes.iter().all(|&n| n > 0),
+            "{name} width, height, depth, layers and mips are {sizes:?}; none may be 0"
         );
-        known("memory", info.memory, memory::valid(info.memory));
-        assert!(real(info.format), "unknown format {}", info.format);
+        let d = info.dimension;
+        assert_known(
+            name,
+            "dimension",
+            texture_dimension::name(d),
+            texture_dimension::valid(d),
+        );
+        let m = info.memory;
+        assert_known(name, "memory", memory::name(m), memory::valid(m));
+        assert_format(name, "format", info.format);
         assert_ne!(
-            info.usage & !usage::VIEW,
+            info.usage & !texture_usage::VIEW,
             0,
-            "texture usage {:#x} needs more than usage::VIEW",
+            "{name} usage {:#x} needs more than texture_usage::VIEW",
             info.usage
         );
         assert_eq!(
-            info.usage & !usage::BITS,
+            info.usage & !texture_usage::BITS,
             0,
-            "unknown usage bits {:#x}",
-            info.usage & !usage::BITS
+            "{name} usage has bits {:#x} that are no texture_usage constant",
+            info.usage & !texture_usage::BITS
         );
         assert!(
-            info.usage & usage::ATOMIC == 0 || info.usage & usage::STORAGE != 0,
-            "usage::ATOMIC needs usage::STORAGE"
+            info.usage & texture_usage::ATOMIC == 0 || info.usage & texture_usage::STORAGE != 0,
+            "{name} usage texture_usage::ATOMIC needs texture_usage::STORAGE"
         );
         assert!(
-            info.usage & usage::INPUT == 0 || info.usage & usage::COLOR != 0,
-            "usage::INPUT needs usage::COLOR"
+            info.usage & texture_usage::INPUT == 0 || info.usage & texture_usage::COLOR != 0,
+            "{name} usage texture_usage::INPUT needs texture_usage::COLOR"
         );
         if info.memory == memory::TRANSIENT {
-            let attachment = usage::COLOR | usage::DEPTH | usage::INPUT;
+            let attachment = texture_usage::COLOR | texture_usage::DEPTH | texture_usage::INPUT;
             assert!(
-                info.usage & !attachment == 0 && info.usage & (usage::COLOR | usage::DEPTH) != 0,
-                "a memory::TRANSIENT texture is only an attachment, not usage {:#x}",
+                info.usage & !attachment == 0
+                    && info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0,
+                "{name} memory::TRANSIENT holds attachments only, not usage {:#x}",
                 info.usage
             );
-            if !self.transients {
-                return Err("memory::TRANSIENT needs caps.transients".into());
-            }
-            if info.usage & usage::INPUT != 0 && !self.transient_reads {
-                return Err(
-                    "memory::TRANSIENT with usage::INPUT needs caps.transient_reads".into(),
-                );
-            }
+            need(name, self.transients, "transients")?;
+            let input = info.usage & texture_usage::INPUT != 0;
+            need(name, !input || self.transient_reads, "transient_reads")?;
         }
-        if info.usage & usage::INPUT != 0 && !self.attachment_reads {
-            return Err("usage::INPUT needs caps.attachment_reads".into());
-        }
-        samples(info.samples);
+        let input = info.usage & texture_usage::INPUT != 0;
+        need(name, !input || self.attachment_reads, "attachment_reads")?;
+        assert_samples(name, info.samples);
         let largest = info.width.max(info.height).max(info.depth);
         assert!(
             info.mips <= 32 - largest.leading_zeros(),
-            "{} mips is more than a {largest} texture has",
+            "{name} mips {} is more than a {largest} texture has",
             info.mips
         );
         let (w, h, d, l) = (info.width, info.height, info.depth, info.layers);
         match info.dimension {
-            dimension::D1 | dimension::D1_ARRAY => assert!(
+            texture_dimension::D1 | texture_dimension::D1_ARRAY => assert!(
                 h == 1 && d == 1 && info.mips == 1,
-                "a 1D texture has height 1, depth 1 and one mip"
+                "{name} 1D texture needs height 1, depth 1 and one mip"
             ),
-            dimension::D3 => assert_eq!(l, 1, "a 3D texture has one layer"),
-            dimension::CUBE | dimension::CUBE_ARRAY => assert!(
+            texture_dimension::D3 => assert_eq!(l, 1, "{name} 3D texture needs one layer"),
+            texture_dimension::CUBE | texture_dimension::CUBE_ARRAY => assert!(
                 w == h && d == 1 && l.is_multiple_of(6),
-                "a cube texture has square faces, depth 1 and a multiple of 6 layers"
+                "{name} cube texture needs square faces, depth 1 and a multiple of 6 layers"
             ),
-            _ => assert_eq!(d, 1, "a 2D texture has depth 1"),
+            _ => assert_eq!(d, 1, "{name} 2D texture needs depth 1"),
         }
         if matches!(
             info.dimension,
-            dimension::D1 | dimension::D2 | dimension::D3
+            texture_dimension::D1 | texture_dimension::D2 | texture_dimension::D3
         ) {
-            assert_eq!(l, 1, "a texture without layers has one layer");
+            assert_eq!(l, 1, "{name} needs one layer for a non-array dimension");
         }
-        if info.dimension == dimension::CUBE {
-            assert_eq!(l, 6, "a cube texture has 6 layers");
+        if info.dimension == texture_dimension::CUBE {
+            assert_eq!(l, 6, "{name} cube texture needs 6 layers");
         }
         assert!(
-            info.usage & usage::HOST == 0 || info.samples == 1,
-            "a usage::HOST texture has one sample"
+            info.usage & texture_usage::HOST == 0 || info.samples == 1,
+            "{name} texture_usage::HOST texture needs one sample"
         );
         if info.samples > 1 {
             assert!(
-                matches!(info.dimension, dimension::D2 | dimension::D2_ARRAY) && info.mips == 1,
-                "a multisampled texture is 2D with one mip"
+                matches!(
+                    info.dimension,
+                    texture_dimension::D2 | texture_dimension::D2_ARRAY
+                ) && info.mips == 1,
+                "{name} multisampled texture needs 2D and one mip"
             );
         }
-        if compressed(info.format) || depth(info.format) {
+        if is_compressed(info.format) || is_depth_format(info.format) {
             assert!(
                 !matches!(
                     info.dimension,
-                    dimension::D1 | dimension::D1_ARRAY | dimension::D3
+                    texture_dimension::D1 | texture_dimension::D1_ARRAY | texture_dimension::D3
                 ),
-                "format {} is not allowed in a 1D or 3D texture",
+                "{name} format {} is not allowed in a 1D or 3D texture",
                 info.format
             );
         }
-        if info.dimension == dimension::CUBE_ARRAY && !self.cube_arrays {
-            return Err("a cube array needs caps.cube_arrays".into());
-        }
+        let cube = info.dimension == texture_dimension::CUBE_ARRAY;
+        need(name, !cube || self.cube_arrays, "cube_arrays")?;
         let side = w.max(h);
         let (size, limit) = match info.dimension {
-            dimension::D3 => (largest, self.max_volume),
-            dimension::CUBE | dimension::CUBE_ARRAY => (side, self.max_cube),
+            texture_dimension::D3 => (largest, self.max_volume),
+            texture_dimension::CUBE | texture_dimension::CUBE_ARRAY => (side, self.max_cube),
             _ => (side, self.max_texture),
         };
         if size > limit {
-            return Err(format!("texture size {size} is over {limit}"));
+            return Err(format!("{name} size {size} is over the limit {limit}"));
         }
-        if l > self.max_layers {
-            return Err(format!("{l} layers is over {}", self.max_layers));
-        }
-        supports(info.format, info.usage, info.samples, usable, counts)
+        need(name, l <= self.max_layers, "max_layers")?;
+        check_support(name, info.format, info.usage, info.samples, usable, counts)
     }
 
-    pub(crate) fn view(&self, kind: u32) -> Result<(), String> {
-        if kind == dimension::CUBE_ARRAY && !self.cube_arrays {
-            return Err("a cube array needs caps.cube_arrays".into());
-        }
-        Ok(())
+    pub(crate) fn check_view(&self, kind: u32) -> Result<(), String> {
+        let cube = kind == texture_dimension::CUBE_ARRAY;
+        need(
+            "create_texture_view",
+            !cube || self.cube_arrays,
+            "cube_arrays",
+        )
     }
 
-    pub(crate) fn sampler(&self, info: &SamplerInfo) -> Result<(), String> {
+    pub(crate) fn check_sampler(&self, info: &SamplerInfo) -> Result<(), String> {
+        let name = "create_sampler";
         for f in [info.min, info.mag, info.mip] {
-            known("filter", f, filter::valid(f));
+            assert_known(name, "filter", filter::name(f), filter::valid(f));
         }
         for a in [info.u, info.v, info.w] {
-            known("address", a, address::valid(a));
+            assert_known(
+                name,
+                "address",
+                address_mode::name(a),
+                address_mode::valid(a),
+            );
         }
-        known("border", info.border, border::valid(info.border));
-        known("compare", info.compare, compare::valid(info.compare));
-        let mirror = [info.u, info.v, info.w].contains(&address::MIRROR_CLAMP);
-        if mirror && !self.mirror_clamp {
-            return Err("address::MIRROR_CLAMP needs caps.mirror_clamp".into());
-        }
-        Ok(())
+        let b = info.border;
+        assert_known(
+            name,
+            "border",
+            border_color::name(b),
+            border_color::valid(b),
+        );
+        let c = info.compare;
+        assert_known(name, "compare", compare_op::name(c), compare_op::valid(c));
+        assert!(
+            info.anisotropy > 0,
+            "{name} anisotropy is 0; use 1 for none"
+        );
+        need(name, info.anisotropy <= self.anisotropy, "anisotropy")?;
+        let mirror = [info.u, info.v, info.w].contains(&address_mode::MIRROR_CLAMP);
+        need(name, !mirror || self.mirror_clamp, "mirror_clamp")
     }
 
-    pub(crate) fn depth(&self, info: &DepthInfo) {
-        known("compare", info.compare, compare::valid(info.compare));
-        face(&info.front);
-        face(&info.back);
+    pub(crate) fn check_depth_state(&self, info: &DepthStateInfo) {
+        let c = info.compare;
+        assert_known(
+            "create_depth_state",
+            "compare",
+            compare_op::name(c),
+            compare_op::valid(c),
+        );
+        check_stencil_face(&info.front);
+        check_stencil_face(&info.back);
     }
 
-    pub(crate) fn queries(&self, kind: u32, count: u32) -> Result<(), String> {
-        known("query kind", kind, query::valid(kind));
-        assert!(count > 0, "a query heap needs at least one query");
-        if count > self.max_queries {
-            return Err(format!(
-                "{count} queries is over caps.max_queries {}",
-                self.max_queries
-            ));
-        }
-        Ok(())
+    pub(crate) fn check_query_pool(&self, kind: u32, count: u32) -> Result<(), String> {
+        let name = "create_query_pool";
+        assert_known(
+            name,
+            "kind",
+            query_kind::name(kind),
+            query_kind::valid(kind),
+        );
+        assert!(count > 0, "{name} count is 0");
+        need(name, count <= self.max_queries, "max_queries")?;
+        need(
+            name,
+            kind != query_kind::TIMESTAMP || self.timestamps,
+            "timestamps",
+        )?;
+        need(name, kind != query_kind::PRECISE || self.precise, "precise")?;
+        need(
+            name,
+            kind != query_kind::OCCLUSION || self.occlusion,
+            "occlusion",
+        )
     }
 }

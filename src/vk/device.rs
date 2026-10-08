@@ -1,14 +1,10 @@
-mod accels;
-mod attachments;
 mod budget;
 mod buffers;
 mod caps;
 mod copies;
-mod heaps;
 mod pipelines;
 mod queries;
 mod samplers;
-mod sparse;
 mod textures;
 mod timelines;
 
@@ -16,16 +12,19 @@ use caps::probe;
 
 use crate::Timeline;
 use crate::check::Check;
-use crate::vk::Callback;
+use crate::recording::{Held, Recording};
+use crate::slots::Slots;
 use crate::vk::bindings;
 use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
+use crate::vk::pool::Pool;
 use crate::vk::queue::Queue;
+use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
-use crate::{Caps, TextureInfo, ViewInfo, dimension, format, memory, usage};
+use crate::{Caps, TextureInfo, TextureViewInfo, format, memory, texture_dimension, texture_usage};
+use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
 use ash::vk;
 use std::cell::Cell;
-use std::rc::Rc;
 
 pub struct Device {
     pub instance: ash::Instance,
@@ -37,37 +36,31 @@ pub struct Device {
     limits: vk::PhysicalDeviceLimits,
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
-    cache: vk::PipelineCache,
     bindless: Bindless,
     slots: vk::DescriptorSetLayout,
-    attachments: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
+    pools: Slots<Pool>,
     allocations: Cell<u32>,
 }
 
-fn image_usage(usage: u32) -> vk::ImageUsageFlags {
+fn vk_image_usage(usage: u32) -> vk::ImageUsageFlags {
     let map = [
-        (usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
-        (usage::STORAGE, vk::ImageUsageFlags::STORAGE),
-        (usage::ATOMIC, vk::ImageUsageFlags::STORAGE),
-        (usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
-        (usage::INPUT, vk::ImageUsageFlags::INPUT_ATTACHMENT),
-        (usage::DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
-        (usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
-        (usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
+        (texture_usage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
+        (texture_usage::STORAGE, vk::ImageUsageFlags::STORAGE),
+        (texture_usage::ATOMIC, vk::ImageUsageFlags::STORAGE),
+        (texture_usage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
+        (texture_usage::INPUT, vk::ImageUsageFlags::INPUT_ATTACHMENT),
         (
-            usage::HOST,
-            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
+            texture_usage::DEPTH,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         ),
+        (texture_usage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
+        (texture_usage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
         (
-            usage::BLIT,
+            texture_usage::HOST,
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
-        ),
-        (
-            usage::RATE,
-            vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
         ),
     ];
     let mut bits = vk::ImageUsageFlags::empty();
@@ -79,23 +72,27 @@ fn image_usage(usage: u32) -> vk::ImageUsageFlags {
     bits
 }
 
-fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
+fn image_create_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     let kind = match info.dimension {
-        dimension::D1 | dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
-        dimension::D3 => vk::ImageType::TYPE_3D,
-        dimension::D2 | dimension::D2_ARRAY | dimension::CUBE | dimension::CUBE_ARRAY => {
-            vk::ImageType::TYPE_2D
-        }
+        texture_dimension::D1 | texture_dimension::D1_ARRAY => vk::ImageType::TYPE_1D,
+        texture_dimension::D3 => vk::ImageType::TYPE_3D,
+        texture_dimension::D2
+        | texture_dimension::D2_ARRAY
+        | texture_dimension::CUBE
+        | texture_dimension::CUBE_ARRAY => vk::ImageType::TYPE_2D,
         d => panic!("unknown dimension {d}"),
     };
     let mut flags = vk::ImageCreateFlags::empty();
-    if matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY) {
+    if matches!(
+        info.dimension,
+        texture_dimension::CUBE | texture_dimension::CUBE_ARRAY
+    ) {
         flags |= vk::ImageCreateFlags::CUBE_COMPATIBLE;
     }
-    if info.usage & usage::VIEW != 0 {
+    if info.usage & texture_usage::VIEW != 0 {
         flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
     }
-    let mut bits = image_usage(info.usage);
+    let mut bits = vk_image_usage(info.usage);
     if info.memory == memory::TRANSIENT {
         bits |= vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
     }
@@ -114,7 +111,7 @@ fn image_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
         .usage(bits)
 }
 
-fn lazy(device: &ash::Device, memory: &vk::PhysicalDeviceMemoryProperties) -> bool {
+fn supports_lazy_memory(device: &ash::Device, memory: &vk::PhysicalDeviceMemoryProperties) -> bool {
     let info = vk::ImageCreateInfo::default()
         .image_type(vk::ImageType::TYPE_2D)
         .format(vk::Format::R8G8B8A8_UNORM)
@@ -144,8 +141,8 @@ fn lazy(device: &ash::Device, memory: &vk::PhysicalDeviceMemoryProperties) -> bo
     })
 }
 
-fn whole(info: &TextureInfo) -> ViewInfo {
-    ViewInfo {
+fn whole_view(info: &TextureInfo) -> TextureViewInfo {
+    TextureViewInfo {
         dimension: info.dimension,
         format: info.format,
         base_mip: 0,
@@ -158,7 +155,6 @@ fn whole(info: &TextureInfo) -> ViewInfo {
 
 impl Device {
     pub fn adopt(
-        entry: &ash::Entry,
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -186,26 +182,19 @@ impl Device {
                 "queue {i} of family {f} is not on this device"
             );
         }
-        let ext = unsafe { Extensions::new(entry, &instance, physical, &raw, features) }?;
+        let ext = unsafe { Extensions::new(&instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
         let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
         let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
         unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
-        let slots = bindings::layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
-        let attachments = bindings::attachments(&raw).map_err(|e| {
-            unsafe { raw.destroy_descriptor_set_layout(slots, None) };
-            e.to_string()
-        })?;
-        let unset = || unsafe {
-            raw.destroy_descriptor_set_layout(slots, None);
-            raw.destroy_descriptor_set_layout(attachments, None);
-        };
-        let bindless = Bindless::new(&raw, &properties12, ext.buffers).map_err(|e| {
+        let slots = bindings::slot_layout(&raw, ext.push.is_some()).map_err(|e| e.to_string())?;
+        let unset = || unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+        let bindless = Bindless::new(&raw, &properties12).map_err(|e| {
             unset();
             e.to_string()
         })?;
-        let sets = [slots, bindless.layout, attachments];
+        let sets = [slots, bindless.layout];
         let info = vk::PipelineLayoutCreateInfo::default().set_layouts(&sets);
         let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
             bindless.destroy(&raw);
@@ -215,27 +204,19 @@ impl Device {
         let mut families: Vec<u32> = queues.iter().map(|q| q.0).collect();
         families.sort();
         families.dedup();
-        let mut list = Vec::new();
-        for &(f, i) in queues {
-            let graphics = flags[f as usize]
-                .queue_flags
-                .contains(vk::QueueFlags::GRAPHICS);
-            match Queue::new(&raw, f, i, graphics) {
-                Ok(q) => list.push(q),
-                Err(e) => {
-                    for mut q in list {
-                        q.destroy(&raw);
-                    }
-                    unsafe { raw.destroy_pipeline_layout(layout, None) };
-                    bindless.destroy(&raw);
-                    unset();
-                    return Err(e);
-                }
-            }
-        }
+        let list: Vec<_> = queues
+            .iter()
+            .map(|&(f, i)| {
+                let graphics = flags[f as usize]
+                    .queue_flags
+                    .contains(vk::QueueFlags::GRAPHICS);
+                Queue::new(&raw, f, i, graphics)
+            })
+            .collect();
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
         let mut caps = probe(&instance, physical, &ext, &list, &bindless, &limits);
-        caps.transient_reads = caps.transients && caps.attachment_reads && lazy(&raw, &memory);
+        caps.transient_reads =
+            caps.transients && caps.attachment_reads && supports_lazy_memory(&raw, &memory);
         Ok(Self {
             caps,
             name: basic
@@ -244,17 +225,16 @@ impl Device {
             limits,
             memory,
             families,
-            cache: vk::PipelineCache::null(),
             instance,
             physical,
             raw,
             ext,
             slots,
-            attachments,
             bindless,
             layout,
             res: Resources::default(),
             queues: list,
+            pools: Slots::default(),
             allocations: Cell::new(0),
         })
     }
@@ -281,21 +261,21 @@ impl Device {
             .find(|&i| bits & (1 << i) != 0 && types[i as usize].property_flags.contains(flags))
     }
 
-    fn attach(
+    fn allocate_bound(
         &self,
         index: u32,
         info: vk::MemoryAllocateInfo,
         bind: impl FnOnce(vk::DeviceMemory) -> Result<(), vk::Result>,
     ) -> Result<vk::DeviceMemory, String> {
-        let memory = self.alloc(&info.memory_type_index(index))?;
+        let memory = self.allocate_memory(&info.memory_type_index(index))?;
         bind(memory).map_err(|e| {
-            self.release(memory);
+            self.free_memory(memory);
             e.to_string()
         })?;
         Ok(memory)
     }
 
-    fn alloc(&self, info: &vk::MemoryAllocateInfo) -> Result<vk::DeviceMemory, String> {
+    fn allocate_memory(&self, info: &vk::MemoryAllocateInfo) -> Result<vk::DeviceMemory, String> {
         let count = self.allocations.get();
         let max = self.limits.max_memory_allocation_count;
         if count >= max {
@@ -308,14 +288,14 @@ impl Device {
         Ok(memory)
     }
 
-    pub(crate) fn release(&self, memory: vk::DeviceMemory) {
+    pub(crate) fn free_memory(&self, memory: vk::DeviceMemory) {
         if memory != vk::DeviceMemory::null() {
             unsafe { self.raw.free_memory(memory, None) };
             self.allocations.set(self.allocations.get() - 1);
         }
     }
 
-    fn mapped(&self, memory: vk::DeviceMemory, index: u32) -> Result<*mut u8, String> {
+    fn map_memory(&self, memory: vk::DeviceMemory, index: u32) -> Result<*mut u8, String> {
         let flags = self.memory.memory_types[index as usize].property_flags;
         if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
             return Ok(std::ptr::null_mut());
@@ -357,7 +337,6 @@ impl Device {
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
             Self::adopt(
-                &entry,
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,
@@ -367,7 +346,7 @@ impl Device {
         }
     }
 
-    pub fn name(&self) -> String {
+    pub fn device_name(&self) -> String {
         self.name.clone()
     }
 
@@ -390,19 +369,15 @@ impl Device {
         }
     }
 
-    fn usage(&self) -> vk::BufferUsageFlags {
-        let mut usage = vk::BufferUsageFlags::TRANSFER_SRC
+    fn buffer_usage(&self) -> vk::BufferUsageFlags {
+        vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST
             | vk::BufferUsageFlags::UNIFORM_BUFFER
             | vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::INDEX_BUFFER
             | vk::BufferUsageFlags::VERTEX_BUFFER
             | vk::BufferUsageFlags::INDIRECT_BUFFER
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
-        if self.ext.accel.is_some() {
-            usage |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
-        }
-        usage
+            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
     }
 
     pub fn raw_queue(&self, queue: usize) -> vk::Queue {
@@ -411,28 +386,126 @@ impl Device {
         self.queues[queue].raw
     }
 
-    pub(crate) fn replay(
-        &mut self,
-        queue: usize,
-        (commands, natives): (&[u8], &[Callback]),
+    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
+        let family = self.raw_queue_family(queue);
+        let pool = Pool::new(&self.raw, family, queue).map_err(|e| e.to_string())?;
+        let pool = self.pools.insert(pool);
+        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        Ok(pool)
+    }
+
+    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), String> {
+        self.res.table.pools.get(pool);
+        self.pools
+            .get(pool)
+            .reset(&self.raw)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
+        self.res.table.pools.clear(pool);
+        self.pools.remove(pool).destroy(&self.raw);
+    }
+
+    fn raw_queue_family(&self, queue: usize) -> u32 {
+        self.raw_queue(queue);
+        self.queues[queue].family
+    }
+
+    fn recording(
+        &self,
+        pool: CommandPool,
+        buffer: vk::CommandBuffer,
+        base: &'static str,
+        samples: u32,
+    ) -> Recording<'_> {
+        let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
+        let queue = &self.queues[self.pools.get(pool).queue];
+        let points = queue.bind_points();
+        let recorder = Recorder {
+            device: &self.raw,
+            ext: &self.ext,
+            buffer,
+            layout: self.layout,
+            points,
+            res: &self.res,
+            colors: Vec::new(),
+            depth: None,
+            stencil: vk::RenderingAttachmentInfo::default(),
+            heap: self.bindless.set,
+            slots: [Default::default(); bindings::SLOTS],
+            stale: [0; 2],
+            defaults: false,
+            imported: false,
+        };
+        recorder.bind_heap_set();
+        Recording { check, recorder }
+    }
+
+    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, String> {
+        self.res.table.pools.get(pool);
+        let buffer = self
+            .pools
+            .get(pool)
+            .next(&self.raw)
+            .map_err(|e| e.to_string())?;
+        let begin = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { self.raw.begin_command_buffer(buffer, &begin) }.map_err(|e| e.to_string())?;
+        Ok(CommandBuffer {
+            recording: self.recording(pool, buffer, "outside", 0),
+        })
+    }
+
+    pub fn import_commands(
+        &self,
+        pool: CommandPool,
+        raw: vk::CommandBuffer,
+    ) -> Result<CommandBuffer<'_>, String> {
+        let mut recording = self.recording(pool, raw, "outside", 0);
+        recording.recorder.imported = true;
+        Ok(CommandBuffer { recording })
+    }
+
+    pub fn import_render_pass(
+        &self,
+        pool: CommandPool,
+        raw: vk::CommandBuffer,
+        info: &ImportedPassInfo,
+    ) -> Result<RenderPass<'_, '_>, String> {
+        let mut recording = self.recording(pool, raw, "render", info.samples);
+        recording.recorder.imported = true;
+        recording.recorder.record_defaults();
+        Ok(RenderPass {
+            recording: Held::Owned(Box::new(recording)),
+        })
+    }
+
+    pub fn submit(
+        &self,
+        mut commands: CommandBuffer<'_>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
-        let waits = &self.res.table.points(waits);
-        let signals = &self.res.table.points(signals);
-        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-        self.res.table.submit(queue, signals);
+        let table = &self.res.table;
+        let waits = &table.timeline_points(waits);
+        let signals = &table.timeline_points(signals);
+        let recording = &mut commands.recording;
+        recording.check.finish();
+        assert!(
+            !recording.recorder.imported,
+            "an imported command buffer is submitted by its owner; call finish instead"
+        );
+        let queue = recording.check.queue();
+        table.check_signals(queue, signals);
         self.queues[queue].submit(
             &self.raw,
-            &self.ext,
-            self.layout,
-            self.bindless.set,
+            recording.recorder.buffer,
             &self.res,
-            (commands, natives),
             waits,
             signals,
         )?;
-        self.res.table.signal(queue, signals);
+        table.record_signals(queue, signals);
         Ok(())
     }
 }
@@ -440,11 +513,8 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            for queue in &self.queues {
-                self.raw.queue_wait_idle(queue.raw).ok();
-            }
-            for queue in &mut self.queues {
-                queue.destroy(&self.raw);
+            for pool in self.pools.drain() {
+                pool.destroy(&self.raw);
             }
             let mut res = std::mem::take(&mut self.res);
             for buffer in res.buffers.drain() {
@@ -455,9 +525,6 @@ impl Drop for Device {
             }
             for sampler in res.samplers.drain() {
                 self.raw.destroy_sampler(sampler, None);
-            }
-            for accel in res.accels.drain() {
-                accel.free(self, self.ext.accel.as_ref().unwrap());
             }
             for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
@@ -471,17 +538,9 @@ impl Drop for Device {
             for semaphore in res.timelines.drain() {
                 semaphore.free(&self.raw);
             }
-            for heap in res.heaps.drain() {
-                if Rc::strong_count(&heap.memory) == 1 {
-                    self.release(*heap.memory);
-                }
-            }
-            self.raw.destroy_pipeline_cache(self.cache, None);
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
             self.raw.destroy_descriptor_set_layout(self.slots, None);
-            self.raw
-                .destroy_descriptor_set_layout(self.attachments, None);
         }
     }
 }

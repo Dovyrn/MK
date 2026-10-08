@@ -2,16 +2,16 @@ use super::Device;
 use crate::gl::errors::{drain, raise};
 use crate::gl::state::{BLOCKS, PIXELS, binding, buffer};
 use crate::gl::texture::aspect;
-use crate::{HostCopy, TextureCopy, format};
+use crate::{BufferTextureCopy, HostTextureCopy, format};
 use glow::HasContext;
 use std::ffi::c_void;
 
 impl Device {
-    pub fn write_texture(&mut self, copy: &HostCopy, data: &[u8]) -> Result<(), String> {
+    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), String> {
         self.thread();
-        self.res.table.host(copy, data.len());
+        self.res.table.check_host_copy(copy, data.len());
         let t = self.res.textures.get(copy.texture);
-        let region = TextureCopy {
+        let region = BufferTextureCopy {
             row_length: copy.row_length,
             row_count: copy.row_count,
             texture: copy.texture,
@@ -25,14 +25,14 @@ impl Device {
             depth: copy.depth,
             ..Default::default()
         };
-        self.around(t.target, true, |gl| unsafe {
+        self.with_pixel_state(t.target, true, |gl| unsafe {
             t.upload(gl, &self.extra, &region, data.as_ptr());
         })
     }
 
-    pub fn read_texture(&mut self, copy: &HostCopy, data: &mut [u8]) -> Result<(), String> {
+    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), String> {
         self.thread();
-        self.res.table.host(copy, data.len());
+        self.res.table.check_host_copy(copy, data.len());
         if !self.caps.host_read {
             return Err("read_texture needs caps.host_read".into());
         }
@@ -51,7 +51,7 @@ impl Device {
         let size = data.len() as i32;
         let out = data.as_mut_ptr().cast::<c_void>();
         let e = &self.extra;
-        self.around(t.target, false, |gl| unsafe {
+        self.with_pixel_state(t.target, false, |gl| unsafe {
             gl.pixel_store_i32(glow::PACK_ROW_LENGTH, copy.row_length as i32);
             gl.pixel_store_i32(glow::PACK_IMAGE_HEIGHT, copy.row_count as i32);
             if f == 0 {
@@ -66,7 +66,7 @@ impl Device {
         })
     }
 
-    fn around(
+    fn with_pixel_state(
         &self,
         target: u32,
         unpack: bool,

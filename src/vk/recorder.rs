@@ -1,17 +1,17 @@
 mod textures;
 
-use crate::command;
+use crate::command::Command;
 use crate::vk::bindings;
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
-use crate::vk::texture::{Texture, count};
-use crate::vk::{Callback, Native};
-use crate::{Command, DepthInfo, compare, face, format, index, layout, load, stage, store};
+use crate::vk::texture::{TextureObject, count};
+use crate::{Buffer, Texture};
+use crate::{
+    DepthStateInfo, compare_op, format, front_face, index_type, load_op, slot, stage, store_op,
+    texture_layout, texture_usage,
+};
 use ash::vk;
-use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::CString;
-
-const NONE: u32 = !0;
 
 type Slot = (
     vk::DescriptorType,
@@ -24,48 +24,44 @@ pub struct Recorder<'a> {
     pub ext: &'a Extensions,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
-    pub points: &'a [vk::PipelineBindPoint],
+    pub points: &'static [vk::PipelineBindPoint],
     pub res: &'a Resources,
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, vk::ImageAspectFlags)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
-    pub natives: &'a [Callback],
     pub heap: vk::DescriptorSet,
-    pub compute: vk::Pipeline,
-    pub graphics: vk::Pipeline,
-    pub slots: BTreeMap<u32, Slot>,
-    pub stale: Vec<BTreeSet<u32>>,
-    pub rate: Option<vk::RenderingFragmentShadingRateAttachmentInfoKHR<'static>>,
+    pub slots: [Slot; bindings::SLOTS],
+    pub stale: [u64; 2],
     pub defaults: bool,
-    pub area: vk::Rect2D,
+    pub imported: bool,
 }
 
-fn load(l: u32) -> vk::AttachmentLoadOp {
+fn vk_load_op(l: u32) -> vk::AttachmentLoadOp {
     match l {
-        load::LOAD => vk::AttachmentLoadOp::LOAD,
-        load::CLEAR => vk::AttachmentLoadOp::CLEAR,
-        load::DONT_CARE => vk::AttachmentLoadOp::DONT_CARE,
+        load_op::LOAD => vk::AttachmentLoadOp::LOAD,
+        load_op::CLEAR => vk::AttachmentLoadOp::CLEAR,
+        load_op::DONT_CARE => vk::AttachmentLoadOp::DONT_CARE,
         l => panic!("unknown load {l}"),
     }
 }
 
-fn store(s: u32) -> vk::AttachmentStoreOp {
+fn vk_store_op(s: u32) -> vk::AttachmentStoreOp {
     match s {
-        store::STORE => vk::AttachmentStoreOp::STORE,
-        store::DONT_CARE => vk::AttachmentStoreOp::DONT_CARE,
+        store_op::STORE => vk::AttachmentStoreOp::STORE,
+        store_op::DONT_CARE => vk::AttachmentStoreOp::DONT_CARE,
         s => panic!("unknown store {s}"),
     }
 }
 
-fn compare_op(c: u32) -> vk::CompareOp {
+fn vk_compare_op(c: u32) -> vk::CompareOp {
     match c {
-        compare::NONE => vk::CompareOp::ALWAYS,
-        compare::NEVER..=compare::ALWAYS => vk::CompareOp::from_raw(c as i32 - 1),
+        compare_op::NONE => vk::CompareOp::ALWAYS,
+        compare_op::NEVER..=compare_op::ALWAYS => vk::CompareOp::from_raw(c as i32 - 1),
         c => panic!("unknown compare {c}"),
     }
 }
 
-fn stages(bits: u32) -> vk::PipelineStageFlags2 {
+fn vk_stages(bits: u32) -> vk::PipelineStageFlags2 {
     let map = [
         (
             stage::VERTEX,
@@ -89,13 +85,7 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
         (stage::HOST, vk::PipelineStageFlags2::HOST),
         (stage::COMPUTE, vk::PipelineStageFlags2::COMPUTE_SHADER),
         (stage::COPY, vk::PipelineStageFlags2::ALL_TRANSFER),
-        (
-            stage::ACCEL,
-            vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
-        ),
     ];
-    let foreign = bits & stage::RESOURCE;
-    assert_eq!(foreign, 0, "stage {foreign} has no Vulkan equivalent");
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
         if bits & bit != 0 {
@@ -105,23 +95,78 @@ fn stages(bits: u32) -> vk::PipelineStageFlags2 {
     flags
 }
 
-pub fn layout(l: u32) -> vk::ImageLayout {
+fn vk_access(bits: u32, reads: bool) -> vk::AccessFlags2 {
+    let shader = stage::VERTEX | stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE;
+    let map = [
+        (
+            shader,
+            vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::UNIFORM_READ,
+            vk::AccessFlags2::SHADER_STORAGE_WRITE,
+        ),
+        (
+            stage::VERTEX,
+            vk::AccessFlags2::INDEX_READ | vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
+            vk::AccessFlags2::NONE,
+        ),
+        (
+            stage::FRAGMENT,
+            vk::AccessFlags2::INPUT_ATTACHMENT_READ,
+            vk::AccessFlags2::NONE,
+        ),
+        (
+            stage::INDIRECT,
+            vk::AccessFlags2::INDIRECT_COMMAND_READ,
+            vk::AccessFlags2::NONE,
+        ),
+        (
+            stage::DEPTH,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        (
+            stage::COLOR,
+            vk::AccessFlags2::COLOR_ATTACHMENT_READ,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+        ),
+        (
+            stage::COPY,
+            vk::AccessFlags2::TRANSFER_READ,
+            vk::AccessFlags2::TRANSFER_WRITE,
+        ),
+        (
+            stage::HOST,
+            vk::AccessFlags2::HOST_READ,
+            vk::AccessFlags2::HOST_WRITE,
+        ),
+    ];
+    let mut flags = vk::AccessFlags2::NONE;
+    for (bit, read, write) in map {
+        if bits & bit != 0 {
+            flags |= write;
+            if reads {
+                flags |= read;
+            }
+        }
+    }
+    flags
+}
+
+pub fn vk_layout(l: u32) -> vk::ImageLayout {
     match l {
-        layout::UNDEFINED => vk::ImageLayout::UNDEFINED,
-        layout::GENERAL => vk::ImageLayout::GENERAL,
-        layout::READ => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        layout::COLOR => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        layout::DEPTH => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        layout::DEPTH_READ => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        layout::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        layout::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        layout::PRESENT => vk::ImageLayout::PRESENT_SRC_KHR,
-        layout::LOCAL_READ => vk::ImageLayout::RENDERING_LOCAL_READ_KHR,
+        texture_layout::UNDEFINED => vk::ImageLayout::UNDEFINED,
+        texture_layout::GENERAL => vk::ImageLayout::GENERAL,
+        texture_layout::READ => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        texture_layout::COLOR => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        texture_layout::DEPTH => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        texture_layout::DEPTH_READ => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        texture_layout::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        texture_layout::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        texture_layout::PRESENT => vk::ImageLayout::PRESENT_SRC_KHR,
         l => panic!("unknown layout {l}"),
     }
 }
 
-fn write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'_> {
+fn descriptor_write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'_> {
     let write = vk::WriteDescriptorSet::default()
         .dst_binding(binding)
         .descriptor_type(*kind);
@@ -134,38 +179,25 @@ fn write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'
 }
 
 impl Recorder<'_> {
-    fn push_slots(&self, writes: &[vk::WriteDescriptorSet]) -> Result<(), &'static str> {
-        let push = self
-            .ext
-            .push
-            .as_ref()
-            .ok_or("VK_KHR_push_descriptor is not enabled")?;
-        for point in self.points {
-            unsafe { push.cmd_push_descriptor_set(self.buffer, *point, self.layout, 0, writes) };
-        }
-        Ok(())
-    }
-
-    fn slot(
+    fn store_slot(
         &mut self,
         kind: vk::DescriptorType,
         slot: u32,
         buffer: vk::DescriptorBufferInfo,
         image: vk::DescriptorImageInfo,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         let binding = bindings::binding(kind, slot);
-        self.slots.insert(binding, (kind, buffer, image));
-        for s in &mut self.stale {
-            s.insert(binding);
-        }
+        self.slots[binding as usize] = (kind, buffer, image);
+        self.stale = self.stale.map(|s| s | 1 << binding);
         Ok(())
     }
 
-    fn flush(&mut self, point: vk::PipelineBindPoint) -> Result<(), &'static str> {
+    fn push_stale_slots(&mut self, point: vk::PipelineBindPoint) -> Result<(), String> {
         let Some(i) = self.points.iter().position(|&p| p == point) else {
             return Ok(());
         };
-        if self.stale[i].is_empty() {
+        let mut stale = self.stale[i];
+        if stale == 0 {
             return Ok(());
         }
         let push = self
@@ -173,12 +205,17 @@ impl Recorder<'_> {
             .push
             .as_ref()
             .ok_or("VK_KHR_push_descriptor is not enabled")?;
-        let writes: Vec<_> = self.stale[i]
-            .iter()
-            .map(|b| write(*b, &self.slots[b]))
-            .collect();
-        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, &writes) };
-        self.stale[i].clear();
+        let mut writes = [vk::WriteDescriptorSet::default(); bindings::SLOTS];
+        let mut n = 0;
+        while stale != 0 {
+            let b = stale.trailing_zeros();
+            writes[n] = descriptor_write(b, &self.slots[b as usize]);
+            n += 1;
+            stale &= stale - 1;
+        }
+        let writes = &writes[..n];
+        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, writes) };
+        self.stale[i] = 0;
         Ok(())
     }
 
@@ -186,15 +223,15 @@ impl Recorder<'_> {
         &mut self,
         kind: vk::DescriptorType,
         slot: u32,
-        buffer: u32,
+        buffer: Buffer,
         offset: u64,
         size: u64,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         let info = vk::DescriptorBufferInfo::default()
             .buffer(self.res.buffers.get(buffer).raw)
             .offset(offset)
             .range(size);
-        self.slot(kind, slot, info, vk::DescriptorImageInfo::default())
+        self.store_slot(kind, slot, info, vk::DescriptorImageInfo::default())
     }
 
     fn image_slot(
@@ -202,8 +239,8 @@ impl Recorder<'_> {
         kind: vk::DescriptorType,
         slot: u32,
         info: vk::DescriptorImageInfo,
-    ) -> Result<(), &'static str> {
-        self.slot(kind, slot, vk::DescriptorBufferInfo::default(), info)
+    ) -> Result<(), String> {
+        self.store_slot(kind, slot, vk::DescriptorBufferInfo::default(), info)
     }
 
     fn bind_heap(&self) {
@@ -221,28 +258,7 @@ impl Recorder<'_> {
         }
     }
 
-    fn restore(&mut self) -> Result<(), &'static str> {
-        self.bind_heap();
-        let writes: Vec<_> = self.slots.iter().map(|(b, s)| write(*b, s)).collect();
-        if !writes.is_empty() {
-            self.push_slots(&writes)?;
-        }
-        for s in &mut self.stale {
-            s.clear();
-        }
-        let bound = [
-            (vk::PipelineBindPoint::COMPUTE, self.compute),
-            (vk::PipelineBindPoint::GRAPHICS, self.graphics),
-        ];
-        for (point, pipeline) in bound {
-            if pipeline != vk::Pipeline::null() {
-                unsafe { self.device.cmd_bind_pipeline(self.buffer, point, pipeline) };
-            }
-        }
-        Ok(())
-    }
-
-    fn stamp(&self, bit: u32) -> vk::PipelineStageFlags2 {
+    fn timestamp_stage(&self, bit: u32) -> vk::PipelineStageFlags2 {
         let graphics = self.points.contains(&vk::PipelineBindPoint::GRAPHICS);
         let mesh = graphics && self.ext.mesh.is_some();
         let (flag, valid) = match bit {
@@ -254,11 +270,7 @@ impl Recorder<'_> {
             stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
             stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
             stage::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
-            stage::COPY | stage::RESOURCE => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
-            stage::ACCEL => (
-                vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
-                self.ext.accel.is_some(),
-            ),
+            stage::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
         };
         if valid {
@@ -268,12 +280,12 @@ impl Recorder<'_> {
         }
     }
 
-    fn depth_state(&self, d: &DepthInfo) {
+    fn record_depth_state(&self, d: &DepthStateInfo) {
         let (dev, b) = (self.device, self.buffer);
         unsafe {
-            dev.cmd_set_depth_test_enable(b, d.compare != compare::NONE || d.write);
+            dev.cmd_set_depth_test_enable(b, d.compare != compare_op::NONE || d.write);
             dev.cmd_set_depth_write_enable(b, d.write);
-            dev.cmd_set_depth_compare_op(b, compare_op(d.compare));
+            dev.cmd_set_depth_compare_op(b, vk_compare_op(d.compare));
             dev.cmd_set_stencil_test_enable(b, d.stencil);
             for (mask, f) in [
                 (vk::StencilFaceFlags::FRONT, &d.front),
@@ -285,7 +297,7 @@ impl Recorder<'_> {
                     vk::StencilOp::from_raw(f.fail as i32),
                     vk::StencilOp::from_raw(f.pass as i32),
                     vk::StencilOp::from_raw(f.depth_fail as i32),
-                    compare_op(f.compare),
+                    vk_compare_op(f.compare),
                 );
                 dev.cmd_set_stencil_compare_mask(b, mask, f.read);
                 dev.cmd_set_stencil_write_mask(b, mask, f.write);
@@ -293,26 +305,25 @@ impl Recorder<'_> {
         }
     }
 
-    fn attachment(
+    fn attachment_info(
         &self,
-        texture: u32,
-        layout: u32,
+        texture: Texture,
         load: u32,
         store: u32,
         clear: vk::ClearValue,
     ) -> vk::RenderingAttachmentInfo<'static> {
         vk::RenderingAttachmentInfo::default()
             .image_view(self.res.textures.get(texture).target)
-            .image_layout(self::layout(layout))
-            .load_op(self::load(load))
-            .store_op(self::store(store))
+            .image_layout(vk::ImageLayout::GENERAL)
+            .load_op(self::vk_load_op(load))
+            .store_op(self::vk_store_op(store))
             .clear_value(clear)
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn copy(
+    fn buffer_image_copy(
         &self,
-        texture: u32,
+        texture: Texture,
         mip: u32,
         layer: u32,
         offset: [u32; 3],
@@ -320,7 +331,7 @@ impl Recorder<'_> {
         buffer_offset: u64,
         row_length: u32,
         row_count: u32,
-    ) -> (&Texture, vk::BufferImageCopy) {
+    ) -> (&TextureObject, vk::BufferImageCopy) {
         let t = self.res.textures.get(texture);
         let aspect = if t.aspect.contains(vk::ImageAspectFlags::DEPTH) {
             vk::ImageAspectFlags::DEPTH
@@ -351,37 +362,56 @@ impl Recorder<'_> {
         (t, region)
     }
 
-    pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), &'static str> {
+    pub fn bind_heap_set(&self) {
         self.bind_heap();
-        while !bytes.is_empty() {
-            self.step(Command::read(&mut bytes)?)?;
-        }
+    }
+
+    pub fn raw(&self) -> vk::CommandBuffer {
+        self.buffer
+    }
+
+    pub fn finish(&mut self) -> Result<(), String> {
         Ok(())
     }
 
-    fn step(&mut self, command: Command) -> Result<(), &'static str> {
+    pub fn record_defaults(&mut self) {
+        let (d, b) = (self.device, self.buffer);
+        self.defaults = true;
+        unsafe {
+            d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
+            d.cmd_set_front_face(b, vk::FrontFace::CLOCKWISE);
+            d.cmd_set_depth_bias_enable(b, false);
+            d.cmd_set_depth_bias(b, 0.0, 0.0, 0.0);
+            d.cmd_set_blend_constants(b, &[0.0; 4]);
+            d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
+        }
+        self.record_depth_state(&DepthStateInfo::default());
+    }
+
+    pub fn step(&mut self, command: Command) -> Result<(), String> {
         let (d, b) = (self.device, self.buffer);
         match command {
             Command::Dispatch { .. } | Command::DispatchIndirect { .. } => {
-                self.flush(vk::PipelineBindPoint::COMPUTE)?
+                self.push_stale_slots(vk::PipelineBindPoint::COMPUTE)?
             }
             Command::Draw { .. }
             | Command::DrawIndexed { .. }
             | Command::DrawIndirect { .. }
             | Command::DrawIndexedIndirect { .. }
-            | Command::ExecuteIndirect { .. }
-            | Command::ExecuteIndirectCount { .. }
-            | Command::DrawMesh { .. }
-            | Command::DrawMeshIndirect { .. } => self.flush(vk::PipelineBindPoint::GRAPHICS)?,
+            | Command::DrawMeshTasks { .. }
+            | Command::DrawMeshTasksIndirect { .. } => {
+                self.push_stale_slots(vk::PipelineBindPoint::GRAPHICS)?
+            }
             _ => {}
         }
         unsafe {
             match command {
-                Command::BeginCompute | Command::EndCompute => {}
-                Command::BindPipeline { pipeline } => {
-                    self.compute = *self.res.pipelines.get(pipeline);
-                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, self.compute)
-                }
+                Command::BeginComputePass | Command::EndComputePass => {}
+                Command::BindComputePipeline { pipeline } => d.cmd_bind_pipeline(
+                    b,
+                    vk::PipelineBindPoint::COMPUTE,
+                    *self.res.pipelines.get(pipeline),
+                ),
                 Command::Dispatch { x, y, z } => d.cmd_dispatch(b, x, y, z),
                 Command::DispatchIndirect { buffer, offset } => {
                     d.cmd_dispatch_indirect(b, self.res.buffers.get(buffer).raw, offset)
@@ -417,23 +447,15 @@ impl Recorder<'_> {
                     size,
                     u32::from_ne_bytes([value; 4]),
                 ),
-                Command::Barrier {
+                Command::MemoryBarrier {
                     src_stage,
-                    src_access,
                     dst_stage,
-                    dst_access,
-                }
-                | Command::QueueBarrier {
-                    src_stage,
-                    src_access,
-                    dst_stage,
-                    dst_access,
                 } => {
                     let barrier = vk::MemoryBarrier2::default()
-                        .src_stage_mask(stages(src_stage))
-                        .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
-                        .dst_stage_mask(stages(dst_stage))
-                        .dst_access_mask(vk::AccessFlags2::from_raw(dst_access as u64));
+                        .src_stage_mask(vk_stages(src_stage))
+                        .src_access_mask(vk_access(src_stage, false))
+                        .dst_stage_mask(vk_stages(dst_stage))
+                        .dst_access_mask(vk_access(dst_stage, true));
                     let barriers = [barrier];
                     let info = vk::DependencyInfo::default().memory_barriers(&barriers);
                     d.cmd_pipeline_barrier2(b, &info)
@@ -441,9 +463,7 @@ impl Recorder<'_> {
                 Command::TextureBarrier {
                     texture,
                     src_stage,
-                    src_access,
                     dst_stage,
-                    dst_access,
                     before,
                     after,
                     base_mip,
@@ -453,12 +473,12 @@ impl Recorder<'_> {
                 } => {
                     let t = self.res.textures.get(texture);
                     let barrier = vk::ImageMemoryBarrier2::default()
-                        .src_stage_mask(stages(src_stage))
-                        .src_access_mask(vk::AccessFlags2::from_raw(src_access as u64))
-                        .dst_stage_mask(stages(dst_stage))
-                        .dst_access_mask(vk::AccessFlags2::from_raw(dst_access as u64))
-                        .old_layout(layout(before))
-                        .new_layout(layout(after))
+                        .src_stage_mask(vk_stages(src_stage))
+                        .src_access_mask(vk_access(src_stage, false))
+                        .dst_stage_mask(vk_stages(dst_stage))
+                        .dst_access_mask(vk_access(dst_stage, true))
+                        .old_layout(vk_layout(before))
+                        .new_layout(vk_layout(after))
                         .image(t.image)
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: t.aspect,
@@ -477,7 +497,6 @@ impl Recorder<'_> {
                     row_length,
                     row_count,
                     texture,
-                    layout: l,
                     mip,
                     layer,
                     x,
@@ -487,7 +506,7 @@ impl Recorder<'_> {
                     height,
                     depth,
                 } => {
-                    let (t, region) = self.copy(
+                    let (t, region) = self.buffer_image_copy(
                         texture,
                         mip,
                         layer,
@@ -501,13 +520,12 @@ impl Recorder<'_> {
                         b,
                         self.res.buffers.get(buffer).raw,
                         t.image,
-                        layout(l),
+                        vk::ImageLayout::GENERAL,
                         &[region],
                     )
                 }
                 Command::CopyTextureToBuffer {
                     texture,
-                    layout: l,
                     mip,
                     layer,
                     x,
@@ -521,7 +539,7 @@ impl Recorder<'_> {
                     row_length,
                     row_count,
                 } => {
-                    let (t, region) = self.copy(
+                    let (t, region) = self.buffer_image_copy(
                         texture,
                         mip,
                         layer,
@@ -534,18 +552,15 @@ impl Recorder<'_> {
                     d.cmd_copy_image_to_buffer(
                         b,
                         t.image,
-                        layout(l),
+                        vk::ImageLayout::GENERAL,
                         self.res.buffers.get(buffer).raw,
                         &[region],
                     )
                 }
                 Command::CopyTexture { .. } => self.copy_texture(command),
-                Command::BlitTexture { .. } => self.blit_texture(command),
-                Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,
-                    layout: l,
                     load,
                     store,
                     r,
@@ -553,7 +568,6 @@ impl Recorder<'_> {
                     b: blue,
                     a,
                     resolve,
-                    resolve_layout,
                 } => {
                     let f = self.res.textures.get(texture).format;
                     let color = [r, g, blue, a];
@@ -570,12 +584,12 @@ impl Recorder<'_> {
                             vk::ClearColorValue { float32: color }
                         },
                     };
-                    let mut info = self.attachment(texture, l, load, store, clear);
-                    if resolve != NONE {
+                    let mut info = self.attachment_info(texture, load, store, clear);
+                    if !resolve.is_null() {
                         info = info
                             .resolve_mode(vk::ResolveModeFlags::AVERAGE)
                             .resolve_image_view(self.res.textures.get(resolve).target)
-                            .resolve_image_layout(layout(resolve_layout));
+                            .resolve_image_layout(vk::ImageLayout::GENERAL);
                     }
                     let i = index as usize;
                     if self.colors.len() <= i {
@@ -583,10 +597,23 @@ impl Recorder<'_> {
                             .resize(i + 1, vk::RenderingAttachmentInfo::default());
                     }
                     self.colors[i] = info;
+                    let t = self.res.textures.get(texture);
+                    if t.usage & texture_usage::INPUT != 0 {
+                        let image = vk::DescriptorImageInfo::default()
+                            .image_view(t.target)
+                            .image_layout(vk::ImageLayout::GENERAL);
+                        self.image_slot(vk::DescriptorType::INPUT_ATTACHMENT, index, image)?;
+                        let bit =
+                            1 << bindings::binding(vk::DescriptorType::INPUT_ATTACHMENT, index);
+                        for (i, &p) in self.points.iter().enumerate() {
+                            if p == vk::PipelineBindPoint::COMPUTE {
+                                self.stale[i] &= !bit;
+                            }
+                        }
+                    }
                 }
                 Command::DepthAttachment {
                     texture,
-                    layout: l,
                     load,
                     store,
                     depth,
@@ -597,12 +624,13 @@ impl Recorder<'_> {
                     let clear = vk::ClearValue {
                         depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
                     };
-                    let info = self.attachment(texture, l, load, store, clear);
+                    let info = self.attachment_info(texture, load, store, clear);
                     let aspect = self.res.textures.get(texture).aspect;
-                    self.stencil = self.attachment(texture, l, stencil_load, stencil_store, clear);
+                    self.stencil =
+                        self.attachment_info(texture, stencil_load, stencil_store, clear);
                     self.depth = Some((info, aspect));
                 }
-                Command::BeginRender {
+                Command::BeginRenderPass {
                     width,
                     height,
                     layers,
@@ -615,10 +643,6 @@ impl Recorder<'_> {
                         .render_area(area)
                         .layer_count(layers)
                         .color_attachments(&self.colors);
-                    let mut rate = self.rate.take();
-                    if let Some(rate) = &mut rate {
-                        info = info.push_next(rate);
-                    }
                     if let Some((depth, aspect)) = &self.depth {
                         if aspect.contains(vk::ImageAspectFlags::DEPTH) {
                             info = info.depth_attachment(depth);
@@ -630,47 +654,12 @@ impl Recorder<'_> {
                     d.cmd_begin_rendering(b, &info);
                     self.colors.clear();
                     self.depth = None;
-                    let viewport = vk::Viewport {
-                        x: 0.0,
-                        y: 0.0,
-                        width: width as f32,
-                        height: height as f32,
-                        min_depth: 0.0,
-                        max_depth: 1.0,
-                    };
-                    d.cmd_set_viewport_with_count(b, &[viewport]);
-                    d.cmd_set_scissor_with_count(b, &[area]);
-                    self.area = area;
-                    if self.defaults {
-                        return Ok(());
-                    }
-                    self.defaults = true;
-                    d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
-                    d.cmd_set_front_face(b, vk::FrontFace::COUNTER_CLOCKWISE);
-                    d.cmd_set_depth_bias_enable(b, false);
-                    d.cmd_set_depth_bias(b, 0.0, 0.0, 0.0);
-                    d.cmd_set_blend_constants(b, &[0.0; 4]);
-                    d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
-                    self.depth_state(&DepthInfo::default());
-                    if let Some(rates) = &self.ext.rates {
-                        let size = vk::Extent2D {
-                            width: 1,
-                            height: 1,
-                        };
-                        let keep = [vk::FragmentShadingRateCombinerOpKHR::KEEP; 2];
-                        (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &keep);
+                    if !self.defaults {
+                        self.record_defaults();
                     }
                 }
-                Command::EndRender => d.cmd_end_rendering(b),
-                Command::BindAttachments { attachments } => d.cmd_bind_descriptor_sets(
-                    b,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.layout,
-                    2,
-                    &[self.res.attachments.get(attachments).1],
-                    &[],
-                ),
-                Command::AttachmentBarrier => {
+                Command::EndRenderPass => d.cmd_end_rendering(b),
+                Command::InputAttachmentBarrier => {
                     let written = vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
                         | vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
                         | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
@@ -694,12 +683,11 @@ impl Recorder<'_> {
                         .memory_barriers(&barriers);
                     d.cmd_pipeline_barrier2(b, &info);
                 }
-                Command::TileSize { .. } | Command::DispatchTile { .. } => {
+                Command::TileMemory { .. } | Command::DispatchTile { .. } => {
                     unreachable!("caps.tiles is false on Vulkan")
                 }
                 Command::BindRenderPipeline { pipeline } => {
                     let (raw, topology) = *self.res.renders.get(pipeline);
-                    self.graphics = raw;
                     d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
                     if let Some(topology) = topology {
                         d.cmd_set_primitive_topology(b, topology);
@@ -738,22 +726,24 @@ impl Recorder<'_> {
                         extent: vk::Extent2D { width, height },
                     }],
                 ),
-                Command::SetCull { cull } => {
+                Command::SetCullMode { cull } => {
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull))
                 }
-                Command::SetFace { face: f } => d.cmd_set_front_face(
+                Command::SetFrontFace { face: f } => d.cmd_set_front_face(
                     b,
                     match f {
-                        face::CCW => vk::FrontFace::COUNTER_CLOCKWISE,
-                        face::CW => vk::FrontFace::CLOCKWISE,
+                        front_face::CCW => vk::FrontFace::COUNTER_CLOCKWISE,
+                        front_face::CW => vk::FrontFace::CLOCKWISE,
                         f => panic!("unknown face {f}"),
                     },
                 ),
-                Command::SetTopology { topology } => d.cmd_set_primitive_topology(
+                Command::SetPrimitiveTopology { topology } => d.cmd_set_primitive_topology(
                     b,
                     vk::PrimitiveTopology::from_raw(topology as i32),
                 ),
-                Command::SetDepthState { state } => self.depth_state(self.res.depths.get(state)),
+                Command::SetDepthState { state } => {
+                    self.record_depth_state(self.res.depths.get(state))
+                }
                 Command::SetStencilReference { front, back } => {
                     d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT, front);
                     d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::BACK, back);
@@ -769,7 +759,7 @@ impl Recorder<'_> {
                 Command::SetBlendColor { r, g, b: blue, a } => {
                     d.cmd_set_blend_constants(b, &[r, g, blue, a])
                 }
-                Command::BindUniform {
+                Command::BindUniformBuffer {
                     slot,
                     buffer,
                     offset,
@@ -781,7 +771,7 @@ impl Recorder<'_> {
                     offset,
                     size,
                 )?,
-                Command::BindStorage {
+                Command::BindStorageBuffer {
                     slot,
                     buffer,
                     offset,
@@ -796,10 +786,10 @@ impl Recorder<'_> {
                 Command::BindTexture { slot, texture } => {
                     let info = vk::DescriptorImageInfo::default()
                         .image_view(self.res.textures.get(texture).view)
-                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+                        .image_layout(vk::ImageLayout::GENERAL);
                     self.image_slot(vk::DescriptorType::SAMPLED_IMAGE, slot, info)?
                 }
-                Command::BindImage { slot, texture } => {
+                Command::BindStorageTexture { slot, texture } => {
                     let info = vk::DescriptorImageInfo::default()
                         .image_view(self.res.textures.get(texture).view)
                         .image_layout(vk::ImageLayout::GENERAL);
@@ -829,8 +819,8 @@ impl Recorder<'_> {
                     self.res.buffers.get(buffer).raw,
                     offset,
                     match kind {
-                        index::U16 => vk::IndexType::UINT16,
-                        index::U32 => vk::IndexType::UINT32,
+                        index_type::U16 => vk::IndexType::UINT16,
+                        index_type::U32 => vk::IndexType::UINT32,
                         k => panic!("unknown index {k}"),
                     },
                 ),
@@ -875,57 +865,13 @@ impl Recorder<'_> {
                     count,
                     if stride == 0 { 20 } else { stride },
                 ),
-                Command::ExecuteIndirect {
-                    indirect,
-                    first,
-                    count,
-                } => {
-                    let (info, _, mesh) = *self.res.table.indirects.get(indirect);
-                    let stride = crate::table::stride(mesh, info.indexed);
-                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
-                    let offset = first as u64 * stride as u64;
-                    match (mesh, info.indexed) {
-                        (true, _) => self
-                            .ext
-                            .mesh
-                            .as_ref()
-                            .unwrap()
-                            .cmd_draw_mesh_tasks_indirect(b, raw, offset, count, stride),
-                        (_, true) => d.cmd_draw_indexed_indirect(b, raw, offset, count, stride),
-                        _ => d.cmd_draw_indirect(b, raw, offset, count, stride),
-                    }
-                }
-                Command::ExecuteIndirectCount {
-                    indirect,
-                    buffer,
-                    offset,
-                } => {
-                    let (info, _, mesh) = *self.res.table.indirects.get(indirect);
-                    let size = info.size;
-                    let stride = crate::table::stride(mesh, info.indexed);
-                    let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
-                    let range = self.res.buffers.get(buffer).raw;
-                    let at = offset + 4;
-                    match (mesh, info.indexed) {
-                        (true, _) => self
-                            .ext
-                            .mesh
-                            .as_ref()
-                            .unwrap()
-                            .cmd_draw_mesh_tasks_indirect_count(b, raw, 0, range, at, size, stride),
-                        (_, true) => {
-                            d.cmd_draw_indexed_indirect_count(b, raw, 0, range, at, size, stride)
-                        }
-                        _ => d.cmd_draw_indirect_count(b, raw, 0, range, at, size, stride),
-                    }
-                }
-                Command::DrawMesh { x, y, z } => self
+                Command::DrawMeshTasks { x, y, z } => self
                     .ext
                     .mesh
                     .as_ref()
                     .unwrap()
                     .cmd_draw_mesh_tasks(b, x, y, z),
-                Command::DrawMeshIndirect {
+                Command::DrawMeshTasksIndirect {
                     buffer,
                     offset,
                     count,
@@ -942,23 +888,36 @@ impl Recorder<'_> {
                         count,
                         if stride == 0 { 12 } else { stride },
                     ),
-                Command::OcclusionHeap { .. } => {}
-                Command::ResetQueries { heap, first, count } => {
-                    d.cmd_reset_query_pool(b, self.res.queries.get(heap).pool, first, count)
-                }
-                Command::WriteTimestamp { heap, index, stage } => {
+                Command::OcclusionPool { .. } => {}
+                Command::ResetQueries {
+                    pool: heap,
+                    first,
+                    count,
+                } => d.cmd_reset_query_pool(b, self.res.queries.get(heap).pool, first, count),
+                Command::WriteTimestamp {
+                    pool: heap,
+                    index,
+                    stage,
+                } => {
                     let pool = self.res.queries.get(heap).pool;
-                    d.cmd_write_timestamp2(b, self.stamp(stage), pool, index)
+                    d.cmd_write_timestamp2(b, self.timestamp_stage(stage), pool, index)
                 }
-                Command::BeginQuery { heap, index } => {
+                Command::BeginOcclusionQuery { pool: heap, index } => {
                     let q = self.res.queries.get(heap);
                     d.cmd_begin_query(b, q.pool, index, q.flags)
                 }
-                Command::EndQuery { heap, index } => {
+                Command::EndOcclusionQuery { pool: heap, index } => {
                     d.cmd_end_query(b, self.res.queries.get(heap).pool, index)
                 }
-                Command::ResolveQueries {
-                    heap,
+                Command::ResolveTimestamps {
+                    pool: heap,
+                    first,
+                    count,
+                    buffer,
+                    offset,
+                }
+                | Command::ResolveOcclusion {
+                    pool: heap,
                     first,
                     count,
                     buffer,
@@ -976,116 +935,25 @@ impl Recorder<'_> {
                         vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                     )
                 }
-                Command::BuildAccel {
-                    accel,
-                    scratch,
-                    scratch_offset,
-                    update,
-                } => {
-                    let a = self.res.accels.get(accel);
-                    let mut info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-                        .ty(a.kind)
-                        .flags(a.flags)
-                        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-                        .dst_acceleration_structure(a.raw)
-                        .geometries(&a.geometry)
-                        .scratch_data(vk::DeviceOrHostAddressKHR {
-                            device_address: self.res.buffers.get(scratch).address + scratch_offset,
-                        });
-                    if update != 0 {
-                        info = info
-                            .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
-                            .src_acceleration_structure(a.raw);
-                    }
-                    self.ext
-                        .accel
-                        .as_ref()
-                        .unwrap()
-                        .cmd_build_acceleration_structures(b, &[info], &[&a.ranges]);
-                }
-                Command::Callback { index } => {
-                    self.natives[index as usize](&Native {
-                        device: d,
-                        buffer: b,
-                    });
-                    self.restore()?
-                }
-                Command::SetShadingRate {
-                    width,
-                    height,
-                    primitive,
-                    attachment,
-                } => {
-                    let size = vk::Extent2D { width, height };
-                    let ops = [
-                        vk::FragmentShadingRateCombinerOpKHR::from_raw(primitive as i32),
-                        vk::FragmentShadingRateCombinerOpKHR::from_raw(attachment as i32),
-                    ];
-                    let rates = self.ext.rates.as_ref().unwrap();
-                    (rates.fp().cmd_set_fragment_shading_rate_khr)(b, &size, &ops);
-                }
-                Command::RateAttachment {
-                    texture,
-                    layout: l,
-                    texel_width,
-                    texel_height,
-                } => {
-                    self.rate = Some(
-                        vk::RenderingFragmentShadingRateAttachmentInfoKHR::default()
-                            .image_view(self.res.textures.get(texture).view)
-                            .image_layout(layout(l))
-                            .shading_rate_attachment_texel_size(vk::Extent2D {
-                                width: texel_width,
-                                height: texel_height,
-                            }),
-                    )
-                }
-                Command::WriteCompactedSize { accel, heap, index } => self
-                    .ext
-                    .accel
-                    .as_ref()
-                    .unwrap()
-                    .cmd_write_acceleration_structures_properties(
-                        b,
-                        &[self.res.accels.get(accel).raw],
-                        vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                        self.res.queries.get(heap).pool,
-                        index,
-                    ),
-                Command::CopyAccel { src, dst, compact } => {
-                    let info = vk::CopyAccelerationStructureInfoKHR::default()
-                        .src(self.res.accels.get(src).raw)
-                        .dst(self.res.accels.get(dst).raw)
-                        .mode(if compact != 0 {
-                            vk::CopyAccelerationStructureModeKHR::COMPACT
-                        } else {
-                            vk::CopyAccelerationStructureModeKHR::CLONE
-                        });
-                    self.ext
-                        .accel
-                        .as_ref()
-                        .unwrap()
-                        .cmd_copy_acceleration_structure(b, &info)
-                }
                 Command::SetViewports { viewports } => {
-                    let viewports: Vec<_> = command::viewports(viewports)
-                        .iter()
-                        .map(|v| vk::Viewport {
+                    let mut list = [vk::Viewport::default(); slot::VIEWPORTS as usize];
+                    let views = viewports.iter();
+                    for (v, out) in views.zip(&mut list) {
+                        *out = vk::Viewport {
                             x: v.x,
                             y: v.y,
                             width: v.width,
                             height: v.height,
                             min_depth: v.near,
                             max_depth: v.far,
-                        })
-                        .collect();
-                    d.cmd_set_viewport_with_count(b, &viewports);
-                    d.cmd_set_scissor_with_count(b, &vec![self.area; viewports.len()])
+                        };
+                    }
+                    d.cmd_set_viewport_with_count(b, &list[..viewports.len()])
                 }
                 Command::SetScissors { scissors } => {
-                    let rects: Vec<_> = command::scissors(scissors)
-                        .iter()
-                        .map(|r| vk::Rect2D {
+                    let mut list = [vk::Rect2D::default(); slot::VIEWPORTS as usize];
+                    for (r, out) in scissors.iter().zip(&mut list) {
+                        *out = vk::Rect2D {
                             offset: vk::Offset2D {
                                 x: r.x as i32,
                                 y: r.y as i32,
@@ -1094,17 +962,17 @@ impl Recorder<'_> {
                                 width: r.width,
                                 height: r.height,
                             },
-                        })
-                        .collect();
-                    d.cmd_set_scissor_with_count(b, &rects)
+                        };
+                    }
+                    d.cmd_set_scissor_with_count(b, &list[..scissors.len()])
                 }
-                Command::BeginLabel { text } => {
+                Command::BeginDebugLabel { text } => {
                     let name = CString::new(text).unwrap();
                     let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
                     let debug = self.ext.debug.as_ref().unwrap();
                     debug.cmd_begin_debug_utils_label(b, &label);
                 }
-                Command::EndLabel => {
+                Command::EndDebugLabel => {
                     let debug = self
                         .ext
                         .debug
@@ -1115,5 +983,23 @@ impl Recorder<'_> {
             }
         }
         Ok(())
+    }
+}
+
+impl crate::CommandBuffer<'_> {
+    pub fn raw(&self) -> vk::CommandBuffer {
+        self.recording.recorder.raw()
+    }
+}
+
+impl crate::ComputePass<'_, '_> {
+    pub fn raw(&self) -> vk::CommandBuffer {
+        self.recording.recorder.raw()
+    }
+}
+
+impl crate::RenderPass<'_, '_> {
+    pub fn raw(&self) -> vk::CommandBuffer {
+        self.recording.recorder.raw()
     }
 }

@@ -11,14 +11,14 @@ public class SamplerInfo {
     public int min = Filter.LINEAR;
     public int mag = Filter.LINEAR;
     public int mip = Filter.LINEAR;
-    public int u = Address.REPEAT;
-    public int v = Address.REPEAT;
-    public int w = Address.REPEAT;
+    public int u = AddressMode.REPEAT;
+    public int v = AddressMode.REPEAT;
+    public int w = AddressMode.REPEAT;
     public int anisotropy = 1;
-    public int compare = Compare.NONE;
+    public int compare = CompareOp.NONE;
     public float minLod = 0.0f;
     public float maxLod = 1000.0f;
-    public int border = Border.TRANSPARENT_BLACK;
+    public int border = BorderColor.TRANSPARENT_BLACK;
 
     public static final int SIZE = 44;
 

@@ -1,17 +1,18 @@
-use mk::{Commands, ComputeInfo, access, memory, stage, subgroup};
+use mk::{ComputePipelineInfo, memory, stage, subgroup_op};
 
 #[path = "support/host.rs"]
 mod host;
 
 pub fn main() {
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    let need = subgroup::BASIC
-        | subgroup::VOTE
-        | subgroup::ARITHMETIC
-        | subgroup::BALLOT
-        | subgroup::SHUFFLE
-        | subgroup::QUAD;
+    let need = subgroup_op::BASIC
+        | subgroup_op::VOTE
+        | subgroup_op::ARITHMETIC
+        | subgroup_op::BALLOT
+        | subgroup_op::SHUFFLE
+        | subgroup_op::QUAD;
     if !caps.compute || !caps.storage || caps.subgroup_ops & need != need {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
@@ -35,29 +36,25 @@ pub fn main() {
     let mut seen = Vec::new();
     for (value, &(size, full)) in (1..).zip(&runs) {
         let pipeline = device
-            .create_pipeline(&ComputeInfo {
+            .create_compute_pipeline(&ComputePipelineInfo {
                 code: host::code!("subgroups"),
                 entry: "lanes",
                 subgroup: size,
                 full,
-                ..Default::default()
             })
             .unwrap();
-        let mut c = Commands::default();
-        c.begin_compute();
-        c.bind_pipeline(pipeline);
-        c.bind_storage(0, buffer, 0, 64 * 11 * 4);
-        c.dispatch(1, 1, 1);
-        c.barrier(
-            stage::COMPUTE,
-            access::SHADER_WRITE,
-            stage::HOST,
-            access::HOST_READ,
-        );
-        c.end_compute();
-        device.submit(0, &c, &[], &[(&timeline, value)]).unwrap();
+        let mut c = device.begin_commands(pool).unwrap();
+        let mut pass = c.begin_compute_pass().unwrap();
+        pass.bind_compute_pipeline(pipeline).unwrap();
+        pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4).unwrap();
+        pass.dispatch(1, 1, 1).unwrap();
+        pass.memory_barrier(stage::COMPUTE, stage::HOST);
+        pass.end();
+        device.submit(c, &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
-        let r = unsafe { std::slice::from_raw_parts(device.map(buffer).cast::<[u32; 11]>(), 64) };
+        let r = unsafe {
+            std::slice::from_raw_parts(device.map_buffer(buffer).cast::<[u32; 11]>(), 64)
+        };
         let count = r[0][0];
         assert!(
             size == 0 || count == size,
@@ -82,8 +79,8 @@ pub fn main() {
             ];
             assert_eq!(*t, want, "thread {i} with {count} lanes");
         }
-        device.unmap(buffer);
-        device.destroy_pipeline(pipeline);
+        device.unmap_buffer(buffer);
+        device.destroy_compute_pipeline(pipeline);
         seen.push(format!("{count}{}", if full { " full" } else { "" }));
     }
     device.destroy_timeline(timeline);

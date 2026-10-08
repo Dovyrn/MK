@@ -4,7 +4,7 @@ use objc2_metal::MTLSharedEvent;
 use std::sync::{Arc, Mutex};
 
 pub struct Timeline {
-    pub(crate) id: u32,
+    pub(crate) id: crate::handle::TimelineId,
     pub(crate) token: Arc<()>,
     pub(crate) raw: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     pub(crate) lost: Arc<Mutex<Option<String>>>,
@@ -34,7 +34,7 @@ impl Timeline {
     }
 
     pub fn signal(&self, value: u64) -> Result<(), String> {
-        crate::table::rising(self.raw.signaledValue(), value);
+        crate::table::assert_rising(self.raw.signaledValue(), value);
         self.raw.setSignaledValue(value);
         Ok(())
     }

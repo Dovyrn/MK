@@ -1,100 +1,102 @@
 [[command]]
-name = "begin_compute"
+name = "begin_compute_pass"
+scope = "outside"
+fails = true
 
 [[command]]
-name = "end_compute"
-
-[[command]]
-name = "bind_pipeline"
+name = "end_compute_pass"
 scope = "compute"
-fields = [["pipeline", "u32"]]
+
+[[command]]
+name = "bind_compute_pipeline"
+scope = "compute"
+fails = true
+fields = [["pipeline", "ComputePipeline"]]
 
 [[command]]
 name = "dispatch"
 scope = "compute"
+fails = true
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
 name = "dispatch_indirect"
 scope = "compute"
-fields = [["buffer", "u32"], ["offset", "u64"]]
+fails = true
+fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "copy_buffer"
 scope = "compute"
-fields = [["src", "u32"], ["src_offset", "u64"], ["dst", "u32"], ["dst_offset", "u64"], ["size", "u64"]]
+fields = [["src", "Buffer"], ["src_offset", "u64"], ["dst", "Buffer"], ["dst_offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "fill_buffer"
 scope = "compute"
-fields = [["buffer", "u32"], ["offset", "u64"], ["size", "u64"], ["value", "u8"]]
+fails = true
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"], ["value", "u8"]]
 
 [[command]]
-name = "barrier"
-scope = "compute outside"
-fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
+name = "memory_barrier"
+scope = "outside compute"
+fields = [["src_stage", "u32"], ["dst_stage", "u32"]]
 
 [[command]]
-name = "begin_label"
+name = "begin_debug_label"
+scope = "outside compute render"
+fails = true
 fields = [["text", "str"]]
 
 [[command]]
-name = "end_label"
-
-[[command]]
-name = "queue_barrier"
-scope = "compute outside"
-fields = [["src_stage", "u32"], ["src_access", "u32"], ["dst_stage", "u32"], ["dst_access", "u32"]]
+name = "end_debug_label"
+scope = "outside compute render"
 
 [[command]]
 name = "texture_barrier"
-scope = "compute outside"
+scope = "outside compute"
+fails = true
 info = "TextureBarrier"
 
 [[command]]
 name = "copy_buffer_to_texture"
 scope = "compute"
-info = "TextureCopy"
+info = "BufferTextureCopy"
 
 [[command]]
 name = "copy_texture_to_buffer"
 scope = "compute"
-info = "TextureCopy"
+info = "BufferTextureCopy"
 
 [[command]]
 name = "copy_texture"
-scope = "compute outside"
-info = "CopyInfo"
-
-[[command]]
-name = "blit_texture"
-scope = "compute outside"
-info = "BlitInfo"
-
-[[command]]
-name = "clear_texture"
-scope = "compute outside"
-info = "ClearInfo"
+scope = "compute"
+fails = true
+info = "TextureCopy"
 
 [[command]]
 name = "color_attachment"
-info = "ColorAttachment"
+internal = true
+fields = [["index", "u32"], ["texture", "Texture"], ["load", "u32"], ["store", "u32"], ["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"], ["resolve", "Texture"]]
 
 [[command]]
 name = "depth_attachment"
+internal = true
 info = "DepthAttachment"
 
 [[command]]
-name = "begin_render"
+name = "begin_render_pass"
+scope = "outside"
+fails = true
 fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"]]
 
 [[command]]
-name = "end_render"
+name = "end_render_pass"
+scope = "render"
 
 [[command]]
 name = "bind_render_pipeline"
 scope = "render"
-fields = [["pipeline", "u32"]]
+fields = [["pipeline", "RenderPipeline"]]
 
 [[command]]
 name = "set_viewport"
@@ -104,26 +106,27 @@ info = "Viewport"
 [[command]]
 name = "set_scissor"
 scope = "render"
-fields = [["x", "u32"], ["y", "u32"], ["width", "u32"], ["height", "u32"]]
+info = "Scissor"
 
 [[command]]
-name = "set_cull"
+name = "set_cull_mode"
 scope = "render"
 fields = [["cull", "u32"]]
 
 [[command]]
-name = "set_face"
+name = "set_front_face"
 scope = "render"
 fields = [["face", "u32"]]
 
 [[command]]
-name = "set_topology"
+name = "set_primitive_topology"
+scope = "render"
 fields = [["topology", "u32"]]
 
 [[command]]
 name = "set_depth_state"
 scope = "render"
-fields = [["state", "u32"]]
+fields = [["state", "DepthState"]]
 
 [[command]]
 name = "set_stencil_reference"
@@ -133,6 +136,7 @@ fields = [["front", "u32"], ["back", "u32"]]
 [[command]]
 name = "set_depth_bias"
 scope = "render"
+fails = true
 fields = [["constant", "f32"], ["slope", "f32"], ["clamp", "f32"]]
 
 [[command]]
@@ -141,32 +145,44 @@ scope = "render"
 fields = [["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"]]
 
 [[command]]
-name = "bind_uniform"
-fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"], ["size", "u64"]]
+name = "bind_uniform_buffer"
+scope = "outside compute render"
+fails = true
+fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
-name = "bind_storage"
-fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"], ["size", "u64"]]
+name = "bind_storage_buffer"
+scope = "outside compute render"
+fails = true
+fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "bind_texture"
-fields = [["slot", "u32"], ["texture", "u32"]]
+scope = "outside compute render"
+fails = true
+fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
-name = "bind_image"
-fields = [["slot", "u32"], ["texture", "u32"]]
+name = "bind_storage_texture"
+scope = "outside compute render"
+fails = true
+fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
 name = "bind_sampler"
-fields = [["slot", "u32"], ["sampler", "u32"]]
+scope = "outside compute render"
+fails = true
+fields = [["slot", "u32"], ["sampler", "Sampler"]]
 
 [[command]]
 name = "bind_vertex_buffer"
-fields = [["slot", "u32"], ["buffer", "u32"], ["offset", "u64"]]
+scope = "render"
+fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "bind_index_buffer"
-fields = [["buffer", "u32"], ["offset", "u64"], ["kind", "u32"]]
+scope = "render"
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["kind", "u32"]]
 
 [[command]]
 name = "draw"
@@ -181,93 +197,66 @@ fields = [["indices", "u32"], ["instances", "u32"], ["first_index", "u32"], ["ba
 [[command]]
 name = "draw_indirect"
 scope = "render"
-fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+fails = true
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
 [[command]]
 name = "draw_indexed_indirect"
 scope = "render"
-fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
+fails = true
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
 [[command]]
-name = "draw_mesh"
+name = "draw_mesh_tasks"
 scope = "render"
+fails = true
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
-name = "draw_mesh_indirect"
+name = "draw_mesh_tasks_indirect"
 scope = "render"
-fields = [["buffer", "u32"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
-
-
-[[command]]
-name = "execute_indirect"
-scope = "render"
-fields = [["indirect", "u32"], ["first", "u32"], ["count", "u32"]]
+fails = true
+fields = [["buffer", "Buffer"], ["offset", "u64"], ["count", "u32"], ["stride", "u32"]]
 
 [[command]]
-name = "execute_indirect_count"
-scope = "render"
-fields = [["indirect", "u32"], ["buffer", "u32"], ["offset", "u64"]]
-[[command]]
-name = "occlusion_heap"
-fields = [["heap", "u32"]]
+name = "occlusion_pool"
+internal = true
+fields = [["pool", "QueryPool"]]
 
 [[command]]
 name = "reset_queries"
 scope = "outside"
-fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"]]
+fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"]]
 
 [[command]]
 name = "write_timestamp"
-fields = [["heap", "u32"], ["index", "u32"], ["stage", "u32"]]
+scope = "outside compute render"
+fails = true
+fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "u32"]]
 
 [[command]]
-name = "begin_query"
+name = "begin_occlusion_query"
 scope = "render"
-fields = [["heap", "u32"], ["index", "u32"]]
+fails = true
+fields = [["pool", "QueryPool"], ["index", "u32"]]
 
 [[command]]
-name = "end_query"
+name = "end_occlusion_query"
 scope = "render"
-fields = [["heap", "u32"], ["index", "u32"]]
+fails = true
+fields = [["pool", "QueryPool"], ["index", "u32"]]
 
 [[command]]
-name = "resolve_queries"
+name = "resolve_timestamps"
 scope = "outside"
-fields = [["heap", "u32"], ["first", "u32"], ["count", "u32"], ["buffer", "u32"], ["offset", "u64"]]
+fails = true
+fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
-name = "build_accel"
-backend = "vk mtl"
+name = "resolve_occlusion"
 scope = "compute"
-fields = [["accel", "u32"], ["scratch", "u32"], ["scratch_offset", "u64"], ["update", "u32"]]
-
-[[command]]
-name = "callback"
-backend = "rust"
-fields = [["index", "u32"]]
-
-[[command]]
-name = "set_shading_rate"
-backend = "vk gl"
-fields = [["width", "u32"], ["height", "u32"], ["primitive", "u32"], ["attachment", "u32"]]
-
-[[command]]
-name = "rate_attachment"
-backend = "vk gl"
-fields = [["texture", "u32"], ["layout", "u32"], ["texel_width", "u32"], ["texel_height", "u32"]]
-
-[[command]]
-name = "write_compacted_size"
-backend = "vk mtl"
-scope = "compute"
-fields = [["accel", "u32"], ["heap", "u32"], ["index", "u32"]]
-
-[[command]]
-name = "copy_accel"
-backend = "vk mtl"
-scope = "compute"
-fields = [["src", "u32"], ["dst", "u32"], ["compact", "u32"]]
+fails = true
+fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "set_viewports"
@@ -280,19 +269,17 @@ scope = "render"
 fields = [["scissors", "[Scissor]"]]
 
 [[command]]
-name = "bind_attachments"
+name = "input_attachment_barrier"
 scope = "render"
-fields = [["attachments", "u32"]]
+fails = true
 
 [[command]]
-name = "attachment_barrier"
-scope = "render"
-
-[[command]]
-name = "tile_size"
-fields = [["width", "u32"], ["height", "u32"], ["shared", "u32"]]
+name = "tile_memory"
+internal = true
+info = "TileMemory"
 
 [[command]]
 name = "dispatch_tile"
 scope = "render"
-fields = [["pipeline", "u32"]]
+fails = true
+fields = [["pipeline", "TilePipeline"]]

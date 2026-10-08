@@ -23,6 +23,16 @@ pub fn rust(table: &toml::Table) -> String {
                 names.join(" | ")
             )
             .unwrap();
+            let arms: Vec<_> = values
+                .keys()
+                .map(|n| format!("            {n} => \"{module}::{n}\".into(),\n"))
+                .collect();
+            writeln!(
+                s,
+                "\n    #[allow(dead_code)]\n    pub(crate) fn name(v: u32) -> String {{\n        match v {{\n{}            _ => format!(\"{{v}}, which is no {module} constant\"),\n        }}\n    }}",
+                arms.concat()
+            )
+            .unwrap();
         }
         s += "}\n\n";
     }
@@ -66,12 +76,12 @@ pub fn slang(table: &toml::Table) -> String {
         let at = get("register", "ATTACHMENT") + i;
         writeln!(
             s,
-            "#define MK_ATTACHMENT_{i} [[vk::input_attachment_index({i})]] [[vk::binding({at}, 2)]]"
+            "#define MK_ATTACHMENT_{i} [[vk::input_attachment_index({i})]] [[vk::binding({at}, 0)]]"
         )
         .unwrap();
     }
     s += "\n";
     s += "#ifdef MK_SPIRV\ntypealias Uniform<T> = ConstantBuffer<T, Std430DataLayout>;\n#else\ntypealias Uniform<T> = ConstantBuffer<T>;\n#endif\n\n";
-    s += "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n#include \"indirect.slangh\"\n#include \"rays.slangh\"\n";
+    s += "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n";
     s
 }

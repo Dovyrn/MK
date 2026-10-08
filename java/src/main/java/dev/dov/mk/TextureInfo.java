@@ -8,7 +8,7 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class TextureInfo {
-    public int dimension = Dimension.D2;
+    public int dimension = TextureDimension.D2;
     public int format = Format.NONE;
     public int width = 1;
     public int height = 1;

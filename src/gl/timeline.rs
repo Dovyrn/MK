@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::thread::ThreadId;
 
 pub struct Timeline {
-    pub(crate) id: u32,
+    pub(crate) id: crate::handle::TimelineId,
     pub(crate) token: Arc<()>,
     pub(crate) gl: Rc<glow::Context>,
     pub(crate) fences: Rc<RefCell<Fences>>,
@@ -28,7 +28,7 @@ impl Timeline {
     pub fn signal(&self, value: u64) -> Result<(), String> {
         self.healthy()?;
         let mut fences = self.fences.borrow_mut();
-        crate::table::rising(fences.value(&self.gl), value);
+        crate::table::assert_rising(fences.value(&self.gl), value);
         fences.value = value;
         Ok(())
     }

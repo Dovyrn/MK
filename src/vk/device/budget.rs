@@ -1,9 +1,9 @@
 use super::Device;
-use crate::Budget;
+use crate::MemoryBudget;
 use ash::vk;
 
 impl Device {
-    pub fn memory_budget(&self) -> Result<Budget, String> {
+    pub fn memory_budget(&self) -> Result<MemoryBudget, String> {
         if !self.ext.budget {
             return Err("memory budgets need VK_EXT_memory_budget".into());
         }
@@ -19,7 +19,7 @@ impl Device {
                 .flags
                 .contains(vk::MemoryHeapFlags::DEVICE_LOCAL)
         });
-        Ok(local.fold(Budget::default(), |b, i| Budget {
+        Ok(local.fold(MemoryBudget::default(), |b, i| MemoryBudget {
             budget: b.budget + heaps.heap_budget[i],
             usage: b.usage + heaps.heap_usage[i],
         }))

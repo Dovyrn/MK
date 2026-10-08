@@ -1,7 +1,7 @@
-use crate::{Device, Timeline};
+use crate::{CommandBuffer, ComputePass, Device, RenderPass, Timeline};
 use jni::JNIEnv;
 use jni::objects::JClass;
-use jni::sys::{jboolean, jint, jlong};
+use jni::sys::{jboolean, jfloat, jint, jlong};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 pub fn call<'local, T: Default>(
@@ -30,6 +30,164 @@ pub fn device<'a>(handle: jlong) -> &'a mut Device {
     unsafe { &mut *(handle as *mut Device) }
 }
 
+pub fn shared<'a>(handle: jlong) -> &'a Device {
+    assert_ne!(handle, 0, "device used after close");
+    unsafe { &*(handle as *const Device) }
+}
+
+pub fn new_command_buffer(commands: CommandBuffer<'_>) -> jlong {
+    let commands: CommandBuffer<'static> = unsafe { std::mem::transmute(commands) };
+    Box::into_raw(Box::new(commands)) as jlong
+}
+
+pub fn new_compute_pass(pass: ComputePass<'_, '_>) -> jlong {
+    let pass: ComputePass<'static, 'static> = unsafe { std::mem::transmute(pass) };
+    Box::into_raw(Box::new(pass)) as jlong
+}
+
+pub fn new_render_pass(pass: RenderPass<'_, '_>) -> jlong {
+    let pass: RenderPass<'static, 'static> = unsafe { std::mem::transmute(pass) };
+    Box::into_raw(Box::new(pass)) as jlong
+}
+
+pub fn command_buffer<'a>(handle: jlong) -> &'a mut CommandBuffer<'static> {
+    unsafe { &mut *(handle as *mut CommandBuffer<'static>) }
+}
+
+pub fn compute_pass<'a>(handle: jlong) -> &'a mut ComputePass<'static, 'static> {
+    unsafe { &mut *(handle as *mut ComputePass<'static, 'static>) }
+}
+
+pub fn render_pass<'a>(handle: jlong) -> &'a mut RenderPass<'static, 'static> {
+    unsafe { &mut *(handle as *mut RenderPass<'static, 'static>) }
+}
+
+pub fn take_commands(handle: jlong) -> CommandBuffer<'static> {
+    *unsafe { Box::from_raw(handle as *mut CommandBuffer<'static>) }
+}
+
+#[cfg(feature = "vk")]
+fn raw_commands(raw: ash::vk::CommandBuffer) -> jlong {
+    ash::vk::Handle::as_raw(raw) as jlong
+}
+
+#[cfg(feature = "mtl")]
+fn raw_commands<T: ?Sized>(raw: &T) -> jlong {
+    pointer(raw)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
+    mut env: JNIEnv,
+    _: JClass,
+    commands: jlong,
+) -> jlong {
+    call(&mut env, |_| {
+        Ok(new_compute_pass(
+            command_buffer(commands).begin_compute_pass()?,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginRenderPass(
+    mut env: JNIEnv,
+    _: JClass,
+    commands: jlong,
+    info: jlong,
+    length: jint,
+) -> jlong {
+    call(&mut env, |_| {
+        let commands = command_buffer(commands);
+        let pass = crate::RenderPassInfo::decode(&mut bytes(info, length as i64), |info| {
+            commands.begin_render_pass(info)
+        })?;
+        Ok(new_render_pass(pass))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nFinish(
+    mut env: JNIEnv,
+    _: JClass,
+    commands: jlong,
+) {
+    call(&mut env, |_| take_commands(commands).finish())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nDrop(
+    mut env: JNIEnv,
+    _: JClass,
+    commands: jlong,
+) {
+    call(&mut env, |_| {
+        drop(take_commands(commands));
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nRaw(
+    mut env: JNIEnv,
+    _: JClass,
+    commands: jlong,
+) -> jlong {
+    call(&mut env, |_| {
+        let _ = commands;
+        #[cfg(any(feature = "vk", feature = "mtl"))]
+        return Ok(raw_commands(command_buffer(commands).raw()));
+        #[cfg(feature = "gl")]
+        Err("GL has no command buffers".to_string())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_ComputePass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
+    call(&mut env, |_| {
+        drop(unsafe { Box::from_raw(pass as *mut ComputePass<'static, 'static>) });
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_RenderPass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
+    call(&mut env, |_| {
+        drop(unsafe { Box::from_raw(pass as *mut RenderPass<'static, 'static>) });
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_ComputePass_nRaw(
+    mut env: JNIEnv,
+    _: JClass,
+    pass: jlong,
+) -> jlong {
+    call(&mut env, |_| {
+        let _ = pass;
+        #[cfg(any(feature = "vk", feature = "mtl"))]
+        return Ok(raw_commands(compute_pass(pass).raw()));
+        #[cfg(feature = "gl")]
+        Err("GL has no encoders".to_string())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_dov_mk_RenderPass_nRaw(
+    mut env: JNIEnv,
+    _: JClass,
+    pass: jlong,
+) -> jlong {
+    call(&mut env, |_| {
+        let _ = pass;
+        #[cfg(any(feature = "vk", feature = "mtl"))]
+        return Ok(raw_commands(render_pass(pass).raw()));
+        #[cfg(feature = "gl")]
+        Err("GL has no encoders".to_string())
+    })
+}
+
 pub fn bytes<'a>(address: jlong, length: i64) -> &'a [u8] {
     assert!(length >= 0, "size {length} is negative");
     if length == 0 {
@@ -49,11 +207,6 @@ pub fn bytes_mut<'a>(address: jlong, length: i64) -> &'a mut [u8] {
 
 pub fn str<'a>(address: jlong, length: i64) -> &'a str {
     std::str::from_utf8(bytes(address, length)).unwrap()
-}
-
-#[cfg(any(feature = "vk", feature = "mtl"))]
-pub fn f32x12<'a>(address: jlong) -> &'a [f32; 12] {
-    unsafe { &*(address as *const [f32; 12]) }
 }
 
 pub fn waits<'a>(address: jlong, count: i64) -> Vec<(&'a Timeline, u64)> {
@@ -88,19 +241,7 @@ pub fn pairs(address: jlong, count: i64) -> Vec<(u32, u32)> {
         .collect()
 }
 
-pub fn u32s<'a>(address: jlong, count: i64) -> &'a [u32] {
-    assert!(count >= 0, "count {count} is negative");
-    if count == 0 {
-        return &[];
-    }
-    unsafe { std::slice::from_raw_parts(address as *const u32, count as usize) }
-}
-
-pub fn u32s_out(out: jlong, v: &[u32]) {
-    unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), out as *mut u32, v.len()) };
-}
-
-#[cfg(any(feature = "vk", feature = "mtl"))]
+#[cfg(feature = "vk")]
 pub fn pair(out: jlong, v: (u64, u64)) {
     unsafe { *(out as *mut [u64; 2]) = [v.0, v.1] };
 }
@@ -122,3 +263,4 @@ pub fn pointer<T: ?Sized>(r: &T) -> jlong {
 }
 
 include!(concat!(env!("OUT_DIR"), "/java.rs"));
+include!(concat!(env!("OUT_DIR"), "/commands_jni.rs"));

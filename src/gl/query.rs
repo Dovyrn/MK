@@ -1,4 +1,4 @@
-use crate::query;
+use crate::query_kind;
 use glow::HasContext;
 use std::cell::Cell;
 
@@ -18,7 +18,7 @@ impl Query {
     }
 
     pub fn target(&self) -> u32 {
-        if self.kind == query::PRECISE {
+        if self.kind == query_kind::PRECISE {
             glow::SAMPLES_PASSED
         } else {
             glow::ANY_SAMPLES_PASSED

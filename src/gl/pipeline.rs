@@ -1,12 +1,11 @@
-use crate::gl::cache::Cache;
 use crate::gl::program::Program;
-use crate::{ColorTarget, RenderInfo, VertexAttribute, VertexBuffer};
+use crate::{ColorTarget, RenderPipelineInfo, VertexAttribute, VertexBufferLayout};
 use glow::HasContext;
 
 pub struct Pipeline {
     pub program: Program,
     pub vao: glow::VertexArray,
-    pub buffers: Vec<VertexBuffer>,
+    pub buffers: Vec<VertexBufferLayout>,
     pub attributes: Vec<VertexAttribute>,
     pub colors: Vec<ColorTarget>,
     pub topology: u32,
@@ -15,25 +14,13 @@ pub struct Pipeline {
     pub coverage: bool,
 }
 
-pub fn uniform(colors: &[ColorTarget]) -> bool {
-    let key = |c: &ColorTarget| (c.src, c.dst, c.op, c.src_alpha, c.dst_alpha, c.op_alpha);
-    let mut on = colors.iter().filter(|c| c.blend).map(key);
-    let first = on.next();
-    on.all(|k| Some(k) == first)
-}
-
 impl Pipeline {
     pub fn new(
         gl: &glow::Context,
-        cache: Option<&mut Cache>,
-        blends: bool,
-        info: &RenderInfo,
+        info: &RenderPipelineInfo,
         stages: &[(u32, &str)],
     ) -> Result<Self, String> {
-        if !uniform(info.colors) && !blends {
-            return Err("different blend states per color target need GL 4.0".into());
-        }
-        let program = Program::new(gl, info.code, stages, cache)?;
+        let program = Program::new(gl, info.code, stages)?;
         let raw = program.raw;
         let missing = unsafe {
             (0..gl.get_active_attributes(raw))

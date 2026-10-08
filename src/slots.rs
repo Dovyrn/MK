@@ -1,5 +1,7 @@
+use crate::handle::Handle;
+
 pub struct Slots<T> {
-    items: Vec<Option<T>>,
+    items: Vec<(u32, Option<T>)>,
     free: Vec<u32>,
 }
 
@@ -13,45 +15,54 @@ impl<T> Default for Slots<T> {
 }
 
 impl<T> Slots<T> {
-    pub fn insert(&mut self, item: T) -> u32 {
-        match self.free.pop() {
-            Some(i) => {
-                self.items[i as usize] = Some(item);
-                i
-            }
+    pub fn insert<H: Handle>(&mut self, item: T) -> H {
+        let i = match self.free.pop() {
+            Some(i) => i,
             None => {
-                self.items.push(Some(item));
+                self.items.push((0, None));
                 self.items.len() as u32 - 1
             }
-        }
+        };
+        let slot = &mut self.items[i as usize];
+        slot.0 += 1;
+        slot.1 = Some(item);
+        H::new(i, slot.0)
     }
 
-    pub fn remove(&mut self, i: u32) -> T {
-        let item = self.items[i as usize].take().unwrap();
-        self.free.push(i);
-        item
+    fn slot<H: Handle>(&self, h: H) -> usize {
+        let i = h.index() as usize;
+        let live = self
+            .items
+            .get(i)
+            .is_some_and(|s| s.0 == h.generation() && s.1.is_some());
+        assert!(live, "{h} does not exist or was destroyed");
+        i
     }
 
-    pub fn get(&self, i: u32) -> &T {
-        self.items[i as usize].as_ref().unwrap()
+    pub fn remove<H: Handle>(&mut self, h: H) -> T {
+        let i = self.slot(h);
+        self.free.push(i as u32);
+        self.items[i].1.take().unwrap()
+    }
+
+    pub fn get<H: Handle>(&self, h: H) -> &T {
+        self.items[self.slot(h)].1.as_ref().unwrap()
     }
 
     #[cfg(feature = "vk")]
-    pub fn get_mut(&mut self, i: u32) -> &mut T {
-        self.items[i as usize].as_mut().unwrap()
-    }
-
-    #[cfg(feature = "gl")]
-    pub fn find(&self, f: impl Fn(&T) -> bool) -> Option<u32> {
-        self.items
-            .iter()
-            .position(|t| t.as_ref().is_some_and(&f))
-            .map(|i| i as u32)
+    pub fn get_mut<H: Handle>(&mut self, h: H) -> &mut T {
+        let i = self.slot(h);
+        self.items[i].1.as_mut().unwrap()
     }
 
     #[cfg(any(feature = "vk", feature = "gl"))]
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.free.clear();
-        self.items.drain(..).flatten()
+        self.items.drain(..).filter_map(|s| s.1)
+    }
+
+    #[cfg(feature = "gl")]
+    pub fn values(&self) -> impl Iterator<Item = &T> {
+        self.items.iter().filter_map(|s| s.1.as_ref())
     }
 }

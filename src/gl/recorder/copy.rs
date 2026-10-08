@@ -1,6 +1,7 @@
 use super::Recorder;
+use crate::command::Command;
 use crate::gl::texture::aspect;
-use crate::{Command, TextureCopy, format};
+use crate::{BufferTextureCopy, format};
 use glow::HasContext;
 
 impl Recorder<'_> {
@@ -24,7 +25,7 @@ impl Recorder<'_> {
         else {
             return;
         };
-        let copy = TextureCopy {
+        let copy = BufferTextureCopy {
             row_length,
             row_count,
             texture,

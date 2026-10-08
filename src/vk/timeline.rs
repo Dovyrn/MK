@@ -2,7 +2,7 @@ use ash::vk;
 use std::sync::Arc;
 
 pub struct Timeline {
-    pub(crate) id: u32,
+    pub(crate) id: crate::handle::TimelineId,
     pub(crate) token: Arc<()>,
     pub(crate) device: ash::Device,
     pub(crate) raw: vk::Semaphore,
@@ -34,7 +34,7 @@ impl Timeline {
     }
 
     pub fn signal(&self, value: u64) -> Result<(), String> {
-        crate::table::rising(self.value()?, value);
+        crate::table::assert_rising(self.value()?, value);
         let info = vk::SemaphoreSignalInfo::default()
             .semaphore(self.raw)
             .value(value);

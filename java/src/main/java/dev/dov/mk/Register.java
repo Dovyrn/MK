@@ -6,5 +6,5 @@ public interface Register {
     int IMAGE = 13;
     int TEXTURE = 0;
     int SAMPLER = 0;
-    int ATTACHMENT = 0;
+    int ATTACHMENT = 25;
 }

@@ -8,10 +8,10 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class StencilFace {
-    public int fail = Stencil.KEEP;
-    public int depthFail = Stencil.KEEP;
-    public int pass = Stencil.KEEP;
-    public int compare = Compare.ALWAYS;
+    public int fail = StencilOp.KEEP;
+    public int depthFail = StencilOp.KEEP;
+    public int pass = StencilOp.KEEP;
+    public int compare = CompareOp.ALWAYS;
     public int read = 0xff;
     public int write = 0xff;
 

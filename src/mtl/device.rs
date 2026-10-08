@@ -1,43 +1,42 @@
-mod accels;
-mod attachments;
 mod budget;
 mod buffers;
-mod cache;
 mod caps;
 mod copies;
-mod heaps;
-mod indirect;
 mod pipelines;
 mod queries;
 mod samplers;
-mod sparse;
 mod textures;
 mod timelines;
 
 use crate::check::Check;
-use crate::mtl::Callback;
+use crate::mtl::pool::Pool;
 use crate::mtl::queue::Queue;
+use crate::mtl::recorder::{Kind, Recorder};
 use crate::mtl::residency::Residency;
 use crate::mtl::resources::Resources;
-use crate::{Caps, TextureInfo, Timeline, dimension, format, memory, usage};
+use crate::recording::{Held, Recording};
+use crate::slots::Slots;
+use crate::{Caps, TextureInfo, Timeline, format, memory, texture_dimension, texture_usage};
+use crate::{CommandBuffer, CommandPool, ComputePass, ImportedPassInfo, RenderPass};
+use objc2::Message;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor, MTL4CompilerTaskOptions,
-    MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor, MTL4PipelineDataSetSerializer,
-    MTLCompareFunction, MTLComputePipelineState, MTLDevice, MTLGPUFamily, MTLLibrary,
-    MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage, MTLVertexFormat,
+    MTL4CommandBuffer, MTL4CommandQueue, MTL4Compiler, MTL4CompilerDescriptor,
+    MTL4CompilerTaskOptions, MTL4ComputeCommandEncoder, MTL4FunctionDescriptor,
+    MTL4LibraryFunctionDescriptor, MTL4RenderCommandEncoder, MTLCompareFunction,
+    MTLComputePipelineState, MTLDevice, MTLGPUFamily, MTLLibrary, MTLResourceID,
+    MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage,
+    MTLVertexFormat,
 };
-use std::cell::RefCell;
-use std::path::PathBuf;
+use std::cell::Cell;
 use std::sync::{Arc, Mutex};
 
-fn compare(c: u32) -> MTLCompareFunction {
+fn mtl_compare(c: u32) -> MTLCompareFunction {
     match c {
-        crate::compare::NONE => MTLCompareFunction::Always,
-        crate::compare::NEVER..=crate::compare::ALWAYS => MTLCompareFunction(c as usize - 1),
+        crate::compare_op::NONE => MTLCompareFunction::Always,
+        crate::compare_op::NEVER..=crate::compare_op::ALWAYS => MTLCompareFunction(c as usize - 1),
         c => panic!("unknown compare {c}"),
     }
 }
@@ -91,7 +90,7 @@ fn vertex_format(f: u32) -> MTLVertexFormat {
     }
 }
 
-fn function(
+fn function_descriptor(
     library: &ProtocolObject<dyn MTLLibrary>,
     name: &str,
 ) -> Result<Retained<MTL4FunctionDescriptor>, String> {
@@ -120,7 +119,7 @@ fn size(s: [u32; 3]) -> MTLSize {
     }
 }
 
-fn options(memory: u32) -> MTLResourceOptions {
+fn resource_options(memory: u32) -> MTLResourceOptions {
     MTLResourceOptions::HazardTrackingModeUntracked
         | match memory {
             memory::DEVICE => MTLResourceOptions::StorageModePrivate,
@@ -135,28 +134,31 @@ fn options(memory: u32) -> MTLResourceOptions {
 }
 
 fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
-    let cube = matches!(info.dimension, dimension::CUBE | dimension::CUBE_ARRAY);
+    let cube = matches!(
+        info.dimension,
+        texture_dimension::CUBE | texture_dimension::CUBE_ARRAY
+    );
     let mut flags = MTLTextureUsage::Unknown;
-    if info.usage & usage::SAMPLED != 0 {
+    if info.usage & texture_usage::SAMPLED != 0 {
         flags |= MTLTextureUsage::ShaderRead;
     }
-    if info.usage & usage::STORAGE != 0 {
+    if info.usage & texture_usage::STORAGE != 0 {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
     }
-    if info.usage & usage::ATOMIC != 0 {
+    if info.usage & texture_usage::ATOMIC != 0 {
         flags |= MTLTextureUsage::ShaderAtomic;
     }
-    if info.usage & (usage::COLOR | usage::DEPTH) != 0 {
+    if info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0 {
         flags |= MTLTextureUsage::RenderTarget;
     }
-    if info.usage & usage::VIEW != 0 {
+    if info.usage & texture_usage::VIEW != 0 {
         flags |= MTLTextureUsage::PixelFormatView;
     }
     let desc = MTLTextureDescriptor::new();
-    desc.setTextureType(kind(info.dimension, info.samples));
+    desc.setTextureType(texture_type(info.dimension, info.samples));
     desc.setPixelFormat(format::mtl(info.format));
     desc.setUsage(flags);
-    desc.setResourceOptions(options(info.memory));
+    desc.setResourceOptions(resource_options(info.memory));
     unsafe {
         desc.setWidth(info.width as usize);
         desc.setHeight(info.height as usize);
@@ -168,17 +170,17 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     desc
 }
 
-fn kind(dimension: u32, samples: u32) -> MTLTextureType {
+fn texture_type(dimension: u32, samples: u32) -> MTLTextureType {
     match (dimension, samples > 1) {
-        (dimension::D1, _) => MTLTextureType::Type1D,
-        (dimension::D1_ARRAY, _) => MTLTextureType::Type1DArray,
-        (dimension::D2, false) => MTLTextureType::Type2D,
-        (dimension::D2, true) => MTLTextureType::Type2DMultisample,
-        (dimension::D2_ARRAY, false) => MTLTextureType::Type2DArray,
-        (dimension::D2_ARRAY, true) => MTLTextureType::Type2DMultisampleArray,
-        (dimension::D3, _) => MTLTextureType::Type3D,
-        (dimension::CUBE, _) => MTLTextureType::TypeCube,
-        (dimension::CUBE_ARRAY, _) => MTLTextureType::TypeCubeArray,
+        (texture_dimension::D1, _) => MTLTextureType::Type1D,
+        (texture_dimension::D1_ARRAY, _) => MTLTextureType::Type1DArray,
+        (texture_dimension::D2, false) => MTLTextureType::Type2D,
+        (texture_dimension::D2, true) => MTLTextureType::Type2DMultisample,
+        (texture_dimension::D2_ARRAY, false) => MTLTextureType::Type2DArray,
+        (texture_dimension::D2_ARRAY, true) => MTLTextureType::Type2DMultisampleArray,
+        (texture_dimension::D3, _) => MTLTextureType::Type3D,
+        (texture_dimension::CUBE, _) => MTLTextureType::TypeCube,
+        (texture_dimension::CUBE_ARRAY, _) => MTLTextureType::TypeCubeArray,
         (d, _) => panic!("unknown dimension {d}"),
     }
 }
@@ -191,12 +193,10 @@ pub struct Device {
     pub raw: Retained<ProtocolObject<dyn MTLDevice>>,
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
     options: Retained<MTL4CompilerTaskOptions>,
-    serializer: Option<Retained<ProtocolObject<dyn MTL4PipelineDataSetSerializer>>>,
-    cache: RefCell<Vec<u8>>,
-    archives: Vec<PathBuf>,
     residency: Residency,
     res: Resources,
     queues: Vec<Queue>,
+    pools: Slots<Pool>,
     lost: Arc<Mutex<Option<String>>>,
     caps: Caps,
 }
@@ -204,13 +204,6 @@ pub struct Device {
 impl Drop for Device {
     fn drop(&mut self) {
         autoreleasepool(|_| {
-            for q in &mut self.queues {
-                q.signal();
-                q.idle();
-            }
-            for path in &self.archives {
-                let _ = std::fs::remove_file(path);
-            }
             self.queues.clear();
             self.res = Resources::default();
             self.residency.clear();
@@ -239,17 +232,15 @@ impl Device {
             let queues = (0..queues)
                 .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
-            let caps = Self::detect(&raw, queues.len(), width(&raw)?);
+            let caps = Self::detect(&raw, queues.len(), execution_width(&raw)?);
             Ok(Self {
                 raw,
                 compiler,
                 options: MTL4CompilerTaskOptions::new(),
-                serializer: None,
-                cache: RefCell::new(Vec::new()),
-                archives: Vec::new(),
                 residency,
                 res: Resources::default(),
                 queues,
+                pools: Slots::default(),
                 lost,
                 caps,
             })
@@ -261,7 +252,7 @@ impl Device {
         Self::adopt(raw.ok_or("null Metal device")?, queues)
     }
 
-    pub fn name(&self) -> String {
+    pub fn device_name(&self) -> String {
         self.raw.name().to_string()
     }
 
@@ -275,26 +266,118 @@ impl Device {
         assert!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
-    pub(crate) fn replay(
-        &mut self,
-        queue: usize,
-        (commands, natives): (&[u8], &[Callback]),
+    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
+        self.check_queue(queue);
+        let pool = self.pools.insert(Pool::new(&self.raw)?);
+        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        Ok(pool)
+    }
+
+    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), String> {
+        self.res.table.pools.get(pool);
+        self.pools.get(pool).reset();
+        Ok(())
+    }
+
+    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
+        self.res.table.pools.clear(pool);
+        self.pools.remove(pool);
+    }
+
+    fn recording(
+        &self,
+        pool: CommandPool,
+        buffer: Option<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>,
+        kind: Kind,
+        samples: u32,
+    ) -> Recording<'_> {
+        let base = match kind {
+            Kind::Render => "render",
+            Kind::Compute => "compute",
+            _ => "outside",
+        };
+        let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
+        let table = &self.pools.get(pool).table;
+        Recording {
+            check,
+            recorder: Recorder::new(table, &self.res, buffer, kind),
+        }
+    }
+
+    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, String> {
+        self.res.table.pools.get(pool);
+        let p = self.pools.get(pool);
+        let buffer = p.next(&self.raw)?;
+        let recording = self.recording(pool, Some(buffer.clone()), Kind::Owned, 0);
+        buffer.beginCommandBufferWithAllocator(&p.allocator);
+        Ok(CommandBuffer { recording })
+    }
+
+    pub fn import_commands(
+        &self,
+        pool: CommandPool,
+        raw: &ProtocolObject<dyn MTL4CommandBuffer>,
+    ) -> Result<CommandBuffer<'_>, String> {
+        Ok(CommandBuffer {
+            recording: self.recording(pool, Some(raw.retain()), Kind::Buffer, 0),
+        })
+    }
+
+    pub fn import_render_pass(
+        &self,
+        pool: CommandPool,
+        raw: &ProtocolObject<dyn MTL4RenderCommandEncoder>,
+        info: &ImportedPassInfo,
+    ) -> Result<RenderPass<'_, '_>, String> {
+        let mut recording = self.recording(pool, None, Kind::Render, info.samples);
+        recording
+            .recorder
+            .import_render(raw.retain(), info.width, info.height);
+        Ok(RenderPass {
+            recording: Held::Owned(Box::new(recording)),
+        })
+    }
+
+    pub fn import_compute_pass(
+        &self,
+        pool: CommandPool,
+        raw: &ProtocolObject<dyn MTL4ComputeCommandEncoder>,
+    ) -> Result<ComputePass<'_, '_>, String> {
+        let mut recording = self.recording(pool, None, Kind::Compute, 0);
+        recording.recorder.import_compute(raw.retain());
+        Ok(ComputePass {
+            recording: Held::Owned(Box::new(recording)),
+        })
+    }
+
+    pub fn submit(
+        &self,
+        mut commands: CommandBuffer<'_>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), String> {
         autoreleasepool(|_| {
-            let waits = &self.res.table.points(waits);
-            let signals = &self.res.table.points(signals);
-            Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-            self.res.table.submit(queue, signals);
-            self.queues[queue].submit(&self.raw, &self.res, (commands, natives), waits, signals)?;
-            self.res.table.signal(queue, signals);
+            let table = &self.res.table;
+            let waits = &table.timeline_points(waits);
+            let signals = &table.timeline_points(signals);
+            let recording = &mut commands.recording;
+            recording.check.finish();
+            assert!(
+                recording.recorder.kind() == Kind::Owned,
+                "an imported command buffer is submitted by its owner; call finish instead"
+            );
+            let queue = recording.check.queue();
+            table.check_signals(queue, signals);
+            self.queues[queue].lost()?;
+            let buffer = recording.recorder.end()?;
+            self.queues[queue].commit(&buffer, &self.res, waits, signals);
+            table.record_signals(queue, signals);
             Ok(())
         })
     }
 }
 
-fn width(device: &ProtocolObject<dyn MTLDevice>) -> Result<u32, String> {
+fn execution_width(device: &ProtocolObject<dyn MTLDevice>) -> Result<u32, String> {
     let library = device
         .newLibraryWithSource_options_error(&NSString::from_str("kernel void probe() {}"), None)
         .map_err(|e| e.localizedDescription().to_string())?;

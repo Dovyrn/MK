@@ -1,7 +1,7 @@
 use mk::{
-    ColorAttachment, ColorTarget, Command, Commands, ComputeInfo, RenderInfo, SamplerInfo,
-    TextureBarrier, TextureCopy, TextureInfo, access, address, filter, format, layout, memory,
-    stage, usage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo, RenderPassInfo,
+    RenderPipelineInfo, SamplerInfo, Scissor, TextureBarrier, TextureInfo, Viewport, address_mode,
+    filter, format, memory, stage, texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -9,21 +9,19 @@ mod host;
 
 const CODE: &[u8] = host::code!("slots");
 
-fn barrier(c: &mut Commands, texture: u32, from: (u32, u32, u32), to: (u32, u32, u32)) {
-    c.texture_barrier(&TextureBarrier {
+fn discard(texture: mk::Texture, stage: u32) -> TextureBarrier {
+    TextureBarrier {
         texture,
-        src_stage: from.0,
-        src_access: from.1,
-        dst_stage: to.0,
-        dst_access: to.1,
-        before: from.2,
-        after: to.2,
+        src_stage: stage,
+        dst_stage: stage,
+        before: texture_layout::UNDEFINED,
         ..Default::default()
-    });
+    }
 }
 
 pub fn main() {
     let mut device = host::device(1);
+    let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
     if !caps.slots {
         println!("no slot bindings");
@@ -37,12 +35,12 @@ pub fn main() {
         ..Default::default()
     };
     let source = device
-        .create_texture(&texel(usage::SAMPLED | usage::COPY_DST))
+        .create_texture(&texel(texture_usage::SAMPLED | texture_usage::COPY_DST))
         .unwrap();
     let target = device
         .create_texture(&TextureInfo {
             height: 4,
-            ..texel(usage::COLOR | usage::COPY_SRC)
+            ..texel(texture_usage::COLOR | texture_usage::COPY_SRC)
         })
         .unwrap();
     let sampler = device
@@ -50,9 +48,9 @@ pub fn main() {
             min: filter::NEAREST,
             mag: filter::NEAREST,
             mip: filter::NEAREST,
-            u: address::CLAMP,
-            v: address::CLAMP,
-            w: address::CLAMP,
+            u: address_mode::CLAMP,
+            v: address_mode::CLAMP,
+            w: address_mode::CLAMP,
             ..Default::default()
         })
         .unwrap();
@@ -60,19 +58,19 @@ pub fn main() {
     let upload = device.create_buffer(at + 16, memory::UPLOAD).unwrap();
     let back = device.create_buffer(64, memory::READBACK).unwrap();
     unsafe {
-        let p = device.map(upload);
+        let p = device.map_buffer(upload);
         let texels: [u8; 16] = [0, 0, 0, 255, 60, 0, 0, 255, 120, 0, 0, 255, 180, 0, 0, 255];
         std::ptr::copy_nonoverlapping(texels.as_ptr(), p, 16);
         let tint = [0.5f32, 1.0, 1.0, 1.0];
         std::ptr::copy_nonoverlapping(tint.as_ptr().cast(), p.add(at as usize), 16);
     }
-    device.unmap(upload);
+    device.unmap_buffer(upload);
     let colors = [ColorTarget {
         format: format::RGBA8_UNORM,
         ..Default::default()
     }];
     let draw = device
-        .create_render_pipeline(&RenderInfo {
+        .create_render_pipeline(&RenderPipelineInfo {
             code: CODE,
             vertex: "vert",
             fragment: "frag",
@@ -81,76 +79,61 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut c = Commands::default();
-    c.begin_compute();
-    barrier(
-        &mut c,
-        source,
-        (0, 0, layout::UNDEFINED),
-        (stage::COPY, access::COPY_WRITE, layout::COPY_DST),
-    );
-    c.copy_buffer_to_texture(&TextureCopy {
+    let mut c = device.begin_commands(pool).unwrap();
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.texture_barrier(&discard(source, stage::COPY)).unwrap();
+    pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
-        layout: layout::COPY_DST,
         width: 4,
         ..Default::default()
     });
-    barrier(
-        &mut c,
-        source,
-        (stage::COPY, access::COPY_WRITE, layout::COPY_DST),
-        (
-            stage::FRAGMENT | stage::COMPUTE,
-            access::SHADER_READ,
-            layout::READ,
-        ),
-    );
-    c.end_compute();
-    barrier(
-        &mut c,
-        target,
-        (0, 0, layout::UNDEFINED),
-        (stage::COLOR, access::COLOR_WRITE, layout::COLOR),
-    );
-    c.color_attachment(&ColorAttachment {
-        texture: target,
+    pass.end();
+    c.memory_barrier(stage::COPY, stage::FRAGMENT | stage::COMPUTE);
+    c.texture_barrier(&discard(target, stage::COLOR)).unwrap();
+    let mut pass = c
+        .begin_render_pass(&RenderPassInfo {
+            width: 4,
+            height: 4,
+            colors: &[ColorAttachment {
+                texture: target,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    pass.set_viewport(&Viewport {
+        width: 4.0,
+        height: 4.0,
         ..Default::default()
     });
-    c.begin_render(4, 4, 1);
-    c.bind_render_pipeline(draw);
-    c.bind_uniform(1, upload, at, 16);
-    c.bind_texture(0, source);
-    c.bind_sampler(0, sampler);
-    c.draw(3, 1, 0, 0);
-    c.end_render();
-    c.begin_compute();
-    barrier(
-        &mut c,
-        target,
-        (stage::COLOR, access::COLOR_WRITE, layout::COLOR),
-        (stage::COPY, access::COPY_READ, layout::COPY_SRC),
-    );
-    c.copy_texture_to_buffer(&TextureCopy {
+    pass.set_scissor(&Scissor {
+        x: 0,
+        y: 0,
+        width: 4,
+        height: 4,
+    });
+    pass.bind_render_pipeline(draw);
+    pass.bind_uniform_buffer(1, upload, at, 16).unwrap();
+    pass.bind_texture(0, source).unwrap();
+    pass.bind_sampler(0, sampler).unwrap();
+    pass.draw(3, 1, 0, 0);
+    pass.end();
+    c.memory_barrier(stage::COLOR, stage::COPY);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: target,
-        layout: layout::COPY_SRC,
         width: 4,
         height: 4,
         buffer: back,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    print!("{}", Command::dump(c.bytes()));
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels = unsafe { std::slice::from_raw_parts(device.map(back), 64) }.to_vec();
-    device.unmap(back);
+    let pixels = unsafe { std::slice::from_raw_parts(device.map_buffer(back), 64) }.to_vec();
+    device.unmap_buffer(back);
     for (i, p) in pixels.chunks(4).enumerate() {
         let red = (i % 4 * 30) as u8;
         assert!(p[0].abs_diff(red) <= 1, "pixel {i} red {} not {red}", p[0]);
@@ -163,67 +146,46 @@ pub fn main() {
     let image = device
         .create_texture(&TextureInfo {
             format: format::RGBA32_FLOAT,
-            ..texel(usage::STORAGE | usage::COPY_SRC)
+            ..texel(texture_usage::STORAGE | texture_usage::COPY_SRC)
         })
         .unwrap();
     let data = device.create_buffer(64 * 4, memory::DEVICE).unwrap();
     let out = device.create_buffer(64 * 4 + 64, memory::READBACK).unwrap();
     let fill = device
-        .create_pipeline(&ComputeInfo {
+        .create_compute_pipeline(&ComputePipelineInfo {
             code: CODE,
             entry: "fill",
             ..Default::default()
         })
         .unwrap();
     let (constants, _) = host::constants(&mut device, &[&64u32.to_le_bytes()]);
-    let mut c = Commands::default();
-    c.begin_compute();
-    barrier(
-        &mut c,
-        image,
-        (0, 0, layout::UNDEFINED),
-        (stage::COMPUTE, access::SHADER_WRITE, layout::GENERAL),
-    );
-    c.bind_pipeline(fill);
-    c.bind_uniform(1, upload, at, 16);
-    c.bind_storage(0, data, 0, 64 * 4);
-    c.bind_image(0, image);
-    c.bind_texture(0, source);
-    c.bind_sampler(0, sampler);
-    c.bind_uniform(0, constants, 0, 4);
-    c.dispatch(1, 1, 1);
-    c.barrier(
-        stage::COMPUTE,
-        access::SHADER_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-    );
-    barrier(
-        &mut c,
-        image,
-        (stage::COMPUTE, access::SHADER_WRITE, layout::GENERAL),
-        (stage::COPY, access::COPY_READ, layout::COPY_SRC),
-    );
-    c.copy_buffer(data, 0, out, 0, 64 * 4);
-    c.copy_texture_to_buffer(&TextureCopy {
+    let mut c = device.begin_commands(pool).unwrap();
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.texture_barrier(&discard(image, stage::COMPUTE))
+        .unwrap();
+    pass.bind_compute_pipeline(fill).unwrap();
+    pass.bind_uniform_buffer(1, upload, at, 16).unwrap();
+    pass.bind_storage_buffer(0, data, 0, 64 * 4).unwrap();
+    pass.bind_storage_texture(0, image).unwrap();
+    pass.bind_texture(0, source).unwrap();
+    pass.bind_sampler(0, sampler).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, 4).unwrap();
+    pass.dispatch(1, 1, 1).unwrap();
+    pass.memory_barrier(stage::COMPUTE, stage::COPY);
+    pass.copy_buffer(data, 0, out, 0, 64 * 4);
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: image,
-        layout: layout::COPY_SRC,
         width: 4,
         buffer: out,
         offset: 256,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 2)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 2)]).unwrap();
     assert!(timeline.wait(2, 1000).unwrap());
-    let bytes = unsafe { std::slice::from_raw_parts(device.map(out), 64 * 4 + 64) }.to_vec();
-    device.unmap(out);
+    let bytes = unsafe { std::slice::from_raw_parts(device.map_buffer(out), 64 * 4 + 64) }.to_vec();
+    device.unmap_buffer(out);
     let words: Vec<u32> = bytes[..256]
         .chunks(4)
         .map(|w| u32::from_le_bytes(w.try_into().unwrap()))

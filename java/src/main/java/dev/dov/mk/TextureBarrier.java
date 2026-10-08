@@ -8,34 +8,28 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class TextureBarrier {
-    public int texture = 0;
+    public Texture texture = null;
     public int srcStage = 0;
-    public int srcAccess = 0;
     public int dstStage = 0;
-    public int dstAccess = 0;
-    public int before = Layout.UNDEFINED;
-    public int after = Layout.UNDEFINED;
+    public int before = TextureLayout.GENERAL;
+    public int after = TextureLayout.GENERAL;
     public int baseMip = 0;
     public int mips = -1;
     public int baseLayer = 0;
     public int layers = -1;
 
-    public static final int SIZE = 44;
+    public static final int SIZE = 40;
 
     int encodedSize() {
-        return 44;
+        return 40;
     }
 
     long encode(long p) {
-        memPutInt(p, texture);
-        p += 4;
+        memPutLong(p, Texture.raw(texture));
+        p += 8;
         memPutInt(p, srcStage);
         p += 4;
-        memPutInt(p, srcAccess);
-        p += 4;
         memPutInt(p, dstStage);
-        p += 4;
-        memPutInt(p, dstAccess);
         p += 4;
         memPutInt(p, before);
         p += 4;
@@ -54,15 +48,11 @@ public class TextureBarrier {
 
     static TextureBarrier decode(long p) {
         var r = new TextureBarrier();
-        r.texture = memGetInt(p);
-        p += 4;
+        r.texture = Texture.of(memGetLong(p));
+        p += 8;
         r.srcStage = memGetInt(p);
         p += 4;
-        r.srcAccess = memGetInt(p);
-        p += 4;
         r.dstStage = memGetInt(p);
-        p += 4;
-        r.dstAccess = memGetInt(p);
         p += 4;
         r.before = memGetInt(p);
         p += 4;

@@ -1,10 +1,11 @@
-use super::{Recorder, integer};
+use super::{Recorder, is_integer_format};
+use crate::Buffer;
 use crate::format;
 use crate::gl::pipeline::Pipeline;
 use glow::HasContext;
 
 impl Recorder<'_> {
-    pub fn prepare(&mut self, render: bool) -> Result<bool, String> {
+    pub fn bind_draw_state(&mut self, render: bool) -> Result<bool, String> {
         let gl = self.gl;
         let program = if render {
             self.render.map(|p| &p.program)
@@ -47,7 +48,7 @@ impl Recorder<'_> {
             }
             self.fed = Some(p.vao);
             gl.bind_vertex_array(Some(p.vao));
-            self.attributes(p, 0);
+            self.bind_attributes(p, 0);
             if let Some((buffer, _, _)) = self.index {
                 gl.bind_buffer(
                     glow::ELEMENT_ARRAY_BUFFER,
@@ -58,7 +59,7 @@ impl Recorder<'_> {
         Ok(true)
     }
 
-    fn attributes(&self, p: &Pipeline, instance: u32) {
+    fn bind_attributes(&self, p: &Pipeline, instance: u32) {
         let gl = self.gl;
         unsafe {
             for a in &p.attributes {
@@ -83,7 +84,7 @@ impl Recorder<'_> {
                 };
                 let at = (offset + skip + a.offset as u64) as usize as *const std::ffi::c_void;
                 let stride = layout.stride as i32;
-                if integer(a.format) {
+                if is_integer_format(a.format) {
                     (self.extra.integer)(a.location, size, ty, stride, at);
                 } else {
                     let normalized = ty != glow::FLOAT && ty != glow::HALF_FLOAT;
@@ -95,7 +96,7 @@ impl Recorder<'_> {
         }
     }
 
-    pub fn direct(
+    pub fn draw_direct(
         &self,
         indexed: bool,
         count: u32,
@@ -114,7 +115,7 @@ impl Recorder<'_> {
                 gl.uniform_1_i32(Some(l), instance as i32);
             }
             if instance != 0 && !native {
-                self.attributes(p, instance);
+                self.bind_attributes(p, instance);
             }
             let (count, instances) = (count as i32, instances as i32);
             match self.index.filter(|_| indexed) {
@@ -139,18 +140,18 @@ impl Recorder<'_> {
                 None => gl.draw_arrays_instanced(self.mode, first as i32, count, instances),
             }
             if instance != 0 && !native {
-                self.attributes(p, 0);
+                self.bind_attributes(p, 0);
             }
         }
     }
 
-    pub fn mesh(
+    pub fn draw_mesh_tasks(
         &self,
-        buffer: u32,
+        buffer: Buffer,
         offset: u64,
         count: u32,
         stride: u32,
-        parameter: Option<(u32, u64)>,
+        parameter: Option<(Buffer, u64)>,
     ) -> Result<(), String> {
         let gl = self.gl;
         let extra = self.extra;
@@ -173,14 +174,14 @@ impl Recorder<'_> {
         Ok(())
     }
 
-    pub fn indirect(
+    pub fn draw_indirect_buffer(
         &self,
         indexed: bool,
-        buffer: u32,
+        buffer: Buffer,
         offset: u64,
         count: u32,
         stride: u32,
-        parameter: Option<(u32, u64)>,
+        parameter: Option<(Buffer, u64)>,
     ) {
         let gl = self.gl;
         if self.render.is_none() || indexed && self.index.is_none() {

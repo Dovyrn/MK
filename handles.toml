@@ -1,0 +1,11 @@
+handles = [
+    "Buffer",
+    "Texture",
+    "Sampler",
+    "ComputePipeline",
+    "RenderPipeline",
+    "TilePipeline",
+    "DepthState",
+    "QueryPool",
+    "CommandPool",
+]

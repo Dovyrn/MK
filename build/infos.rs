@@ -1,5 +1,5 @@
 use crate::field::Field;
-use crate::{camel, list, pascal};
+use crate::{camel, handle, list, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
@@ -48,7 +48,7 @@ pub fn rust(infos: &[Info]) -> String {
         let life = if borrows(info) { "<'a>" } else { "" };
         writeln!(
             s,
-            "#[derive(Clone, Copy, Debug)]\npub struct {}{life} {{",
+            "#[derive(Clone, Copy, Debug, PartialEq)]\npub struct {}{life} {{",
             info.name
         )
         .unwrap();
@@ -165,6 +165,7 @@ fn java_value(f: &Field) -> String {
         "[str]" => "new String[0]".into(),
         "[u32]" => "new int[0]".into(),
         k if list(k).is_some() => format!("new {}[0]", list(k).unwrap()),
+        k if handle(k) => "null".into(),
         k if !scalar(k) => format!("new {k}()"),
         _ => match f.value.split_once("::") {
             Some((module, name)) => format!("{}.{name}", pascal(module)),
@@ -178,6 +179,7 @@ pub fn list_size(s: &mut String, kind: &str, n: &str, indent: &str) {
     let item = match kind {
         "[str]" => "4 + x.getBytes(StandardCharsets.UTF_8).length",
         "[u32]" => "4",
+        k if handle(list(k).unwrap_or("")) => "8",
         _ => "x.encodedSize()",
     };
     writeln!(
@@ -198,6 +200,13 @@ pub fn list_put(s: &mut String, kind: &str, n: &str, at: &str, indent: &str) -> 
             "{indent}    var b = x.getBytes(StandardCharsets.UTF_8);\n{indent}    memPutInt({at}, b.length);\n{indent}    memByteBuffer({at} + 4, b.length).put(b);\n{indent}    {at} += 4 + b.length;"
         )?,
         "[u32]" => writeln!(s, "{indent}    memPutInt({at}, x);\n{indent}    {at} += 4;")?,
+        k if handle(list(k).unwrap_or("")) => {
+            let item = list(k).unwrap();
+            writeln!(
+                s,
+                "{indent}    memPutLong({at}, {item}.raw(x));\n{indent}    {at} += 8;"
+            )?
+        }
         _ => writeln!(s, "{indent}    {at} = x.encode({at});")?,
     }
     writeln!(s, "{indent}}}")
@@ -239,6 +248,7 @@ pub fn java(info: &Info) -> String {
                 "u64" => fixed += 8,
                 "u32x3" => fixed += 12,
                 "u32" | "f32" | "bool" => fixed += 4,
+                k if handle(k) => fixed += 8,
                 k => parts.push(format!("{k}.SIZE")),
             }
         }
@@ -259,6 +269,7 @@ pub fn java(info: &Info) -> String {
             "u32" | "f32" | "bool" => fixed += 4,
             "u64" => fixed += 8,
             "u32x3" => fixed += 12,
+            k if handle(k) => fixed += 8,
             "bytes" => fixed += 16,
             "str" => {
                 fixed += 4;
@@ -294,6 +305,7 @@ pub fn java(info: &Info) -> String {
                 "        var {n}Bytes = {n}.getBytes(StandardCharsets.UTF_8);\n        memPutInt(p, {n}Bytes.length);\n        memByteBuffer(p + 4, {n}Bytes.length).put({n}Bytes);\n        p += 4 + {n}Bytes.length;"
             ),
             k if list(k).is_some() => list_put(&mut s, k, &n, "p", "        "),
+            k if handle(k) => writeln!(s, "        memPutLong(p, {k}.raw({n}));\n        p += 8;"),
             _ => writeln!(s, "        p = {n}.encode(p);"),
         }
         .unwrap();
@@ -317,6 +329,7 @@ pub fn java(info: &Info) -> String {
                     s,
                     "        for (var i = 0; i < 3; i++) {{\n            r.{n}[i] = memGetInt(p);\n            p += 4;\n        }}"
                 ),
+                k if handle(k) => writeln!(s, "        r.{n} = {k}.of(memGetLong(p));\n        p += 8;"),
                 k => writeln!(s, "        r.{n} = {k}.decode(p);\n        p += r.{n}.encodedSize();"),
             }
             .unwrap();

@@ -1,83 +1,106 @@
-use crate::caps::{compressed, depth};
+use crate::caps::is_depth_format;
+use crate::command::Command;
 use crate::table::Table;
 use crate::{
-    Caps, Command, TextureInfo, access, cull, dimension, face, filter, format, index, layout, load,
-    memory, query, slot, stage, store, topology, usage,
+    Buffer, Caps, CommandPool, QueryPool, Texture, TextureInfo, cull_mode, format, front_face,
+    index_type, load_op, memory, query_kind, slot, stage, store_op, texture_dimension,
+    texture_layout, texture_usage, topology,
 };
 
 pub struct Check<'a> {
     caps: &'a Caps,
     table: &'a Table,
-    natives: usize,
+    pool: CommandPool,
+    base: &'static str,
     open: &'static str,
-    index: Option<(u32, u64, u32)>,
+    index: Option<(Buffer, u64, u32)>,
     mesh: bool,
     compute: bool,
     render: bool,
-    indirect: bool,
     topology: u32,
-    heap: Option<u32>,
-    targets: Vec<(u32, bool)>,
+    heap: Option<QueryPool>,
+    targets: Vec<(Texture, bool)>,
     samples: u32,
     bound: u32,
     labels: Vec<&'static str>,
     needs: u32,
     vertices: u32,
-    resolves: Vec<u32>,
-    inputs: [u32; slot::COLORS as usize],
-    attachments: Option<u32>,
+    resolves: Vec<Texture>,
+    inputs: [Texture; slot::COLORS as usize],
     reads: u32,
     tile: Option<(u32, u32)>,
+    views: u32,
+    scissors: u32,
+    carried: u32,
+    fresh: u32,
+    barrier: bool,
+    passes: bool,
 }
 
-fn viewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
+const STATES: [&str; 6] = [
+    "set_cull",
+    "set_face",
+    "set_depth_state",
+    "set_stencil_reference",
+    "set_depth_bias",
+    "set_blend_color",
+];
+
+fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
     assert!(
         [x, y, width, height].iter().all(|v| v.is_finite()) && width > 0.0 && height > 0.0,
-        "viewport {x},{y} {width}x{height} is not a finite positive area"
+        "{name} {x},{y} {width}x{height} is not a finite positive area; give it a width and height above 0"
     );
     assert!(
         (0.0..=1.0).contains(&near) && (0.0..=1.0).contains(&far),
-        "viewport depth range {near}..{far} is outside 0..1"
+        "{name} depth range {near}..{far} is outside 0..1; keep near and far in 0..1"
     );
 }
 
-fn known(what: &str, value: u32, valid: bool) {
-    assert!(valid, "unknown {what} {value}");
+pub(crate) fn assert_known(name: &str, field: &str, text: String, valid: bool) {
+    assert!(valid, "{name} {field} is {text}");
 }
 
-fn bits(what: &str, value: u32, all: u32) {
-    assert_eq!(value & !all, 0, "unknown {what} bits {:#x}", value & !all);
+fn assert_bits(name: &str, field: &str, value: u32, all: u32, group: &str) {
+    assert_eq!(
+        value & !all,
+        0,
+        "{name} {field} has bits {:#x} that are no {group} constant",
+        value & !all
+    );
 }
 
-fn name(c: &Command) -> String {
-    c.to_string().split(' ').next().unwrap().to_string()
+fn command_name(c: &Command) -> String {
+    match c.to_string().split(' ').next().unwrap() {
+        "color_attachment" => "begin_render_pass colors".into(),
+        "depth_attachment" => "begin_render_pass depth".into(),
+        "occlusion_pool" => "begin_render_pass occlusion".into(),
+        "tile_memory" => "begin_render_pass tile".into(),
+        name => name.into(),
+    }
 }
 
-fn rects(data: &[u8], size: usize, count: u32) {
+fn assert_rects(name: &str, count: usize, max: u32) {
+    assert!(count > 0, "{name} got an empty list; pass at least one");
     assert!(
-        data.len().is_multiple_of(size),
-        "rect data is not a multiple of {size} bytes"
-    );
-    assert!(
-        data.len() / size <= count as usize,
-        "{} rects is more than {count} viewports",
-        data.len() / size
+        count <= max as usize,
+        "{name} got {count}, over caps.viewports {max}"
     );
 }
 
-fn aligned(offset: u64, alignment: u32) {
+fn assert_aligned(name: &str, offset: u64, alignment: u32) {
     assert!(
         offset.is_multiple_of(alignment.max(1) as u64),
-        "bind offset {offset} is not a multiple of caps.bind_alignment {alignment}"
+        "{name} offset {offset} is not a multiple of caps.bind_alignment {alignment}"
     );
 }
 
-fn slot(slot: u32, count: u32) {
-    assert!(slot < count, "slot {slot} is outside 0..{count}");
+fn assert_slot(name: &str, slot: u32, count: u32) {
+    assert!(slot < count, "{name} slot {slot} is outside 0..{count}");
 }
 
-fn span(what: &str, base: u32, count: u32, total: u32, texture: u32) {
-    assert_ne!(count, 0, "{what} count is 0 for texture {texture}");
+fn assert_span(name: &str, what: &str, base: u32, count: u32, total: u32, texture: Texture) {
+    assert_ne!(count, 0, "{name} covers 0 {what}s of {texture}");
     let end = if count == !0 {
         total
     } else {
@@ -85,22 +108,15 @@ fn span(what: &str, base: u32, count: u32, total: u32, texture: u32) {
     };
     assert!(
         base < total && end <= total,
-        "{what}s {base}..{end} are outside 0..{total} of texture {texture}"
+        "{name} {what}s {base}..{end} are outside the {total} {what}s of {texture}"
     );
 }
 
-fn needs_layout(what: &str, l: u32, want: u32) {
-    assert!(
-        l == want || l == layout::GENERAL,
-        "{what} layout {l} must be {want} or GENERAL"
-    );
-}
-
-fn apart(a: u32, b: u32, n: u32) -> bool {
+fn disjoint(a: u32, b: u32, n: u32) -> bool {
     a as u64 + n as u64 <= b as u64 || b as u64 + n as u64 <= a as u64
 }
 
-fn copied(f: u32) -> u32 {
+fn copy_block_size(f: u32) -> u32 {
     match f {
         format::D24_UNORM_S8 | format::D32_FLOAT_S8 => 4,
         f => format::block(f)[0],
@@ -108,58 +124,80 @@ fn copied(f: u32) -> u32 {
 }
 
 impl<'a> Check<'a> {
-    pub fn run(
-        mut bytes: &[u8],
-        natives: usize,
+    pub fn new(
         caps: &'a Caps,
         table: &'a Table,
-    ) -> Result<(), String> {
-        let mut check = Check {
+        pool: CommandPool,
+        base: &'static str,
+        samples: u32,
+    ) -> Self {
+        let busy = &table.pools.get(pool).1;
+        assert!(
+            !busy.get(),
+            "begin_commands on {pool}, which is already recording a command buffer; submit, finish or drop that one first"
+        );
+        busy.set(true);
+        Check {
             caps,
             table,
-            natives,
-            open: "outside",
+            pool,
+            base,
+            open: base,
             index: None,
             mesh: false,
             compute: false,
             render: false,
-            indirect: false,
             topology: topology::TRIANGLE,
             heap: None,
             targets: Vec::new(),
-            samples: 0,
+            samples,
             bound: 0,
             labels: Vec::new(),
             needs: 0,
             vertices: 0,
             resolves: Vec::new(),
-            inputs: [!0; slot::COLORS as usize],
-            attachments: None,
+            inputs: [Texture::default(); slot::COLORS as usize],
             reads: 0,
             tile: None,
-        };
-        while !bytes.is_empty() {
-            let c = Command::read(&mut bytes)
-                .unwrap_or_else(|name| panic!("{name} is not in this backend"));
-            check.step(&c)?;
+            views: 0,
+            scissors: 0,
+            carried: 0,
+            fresh: 0,
+            barrier: false,
+            passes: false,
         }
-        assert_eq!(
-            check.open, "outside",
-            "stream ends inside begin_{}",
-            check.open
-        );
-        Ok(())
     }
 
-    fn need(&self, c: &Command, has: bool, cap: &str) -> Result<(), String> {
+    pub fn queue(&self) -> usize {
+        self.table.pools.get(self.pool).0
+    }
+
+    pub fn finish(&self) {
+        assert_eq!(
+            self.open, self.base,
+            "the command buffer ends inside a {} pass; call end() on the pass first",
+            self.open
+        );
+        assert!(
+            self.labels.is_empty(),
+            "the command buffer ends with {} debug labels open; call end_debug_label for each",
+            self.labels.len()
+        );
+        assert!(
+            !self.barrier,
+            "a barrier with no pass before or after it in its command buffer orders nothing on Metal; record it next to the pass that writes or reads the results"
+        );
+    }
+
+    fn require(&self, c: &Command, has: bool, cap: &str) -> Result<(), String> {
         if has {
             Ok(())
         } else {
-            Err(format!("{} needs caps.{cap}", name(c)))
+            Err(format!("{} needs caps.{cap}", command_name(c)))
         }
     }
 
-    fn range(&self, buffer: u32, offset: u64, size: u64) -> u64 {
+    fn buffer_range(&self, name: &str, buffer: Buffer, offset: u64, size: u64) -> u64 {
         let total = *self.table.buffers.get(buffer);
         let end = if size == !0 {
             total
@@ -168,129 +206,144 @@ impl<'a> Check<'a> {
         };
         assert!(
             offset <= total && end <= total,
-            "range {offset}..{end} is past buffer {buffer} ({total} bytes)"
+            "{name} reads bytes {offset}..{end} of {buffer}, which has {total}"
         );
         end - offset
     }
 
-    fn filled(
+    fn limited_range(
         &self,
         c: &Command,
-        buffer: u32,
+        buffer: Buffer,
         offset: u64,
         size: u64,
         max: u64,
     ) -> Result<(), String> {
-        let size = self.range(buffer, offset, size);
-        assert!(size > 0, "{} covers 0 bytes", name(c));
+        let size = self.buffer_range(&command_name(c), buffer, offset, size);
+        assert!(size > 0, "{} covers 0 bytes of {buffer}", command_name(c));
         if size > max {
             return Err(format!(
                 "{} binds {size} bytes, over the limit of {max}",
-                name(c)
+                command_name(c)
             ));
         }
         Ok(())
     }
 
-    fn barrier(&self, src_stage: u32, src_access: u32, dst_stage: u32, dst_access: u32) {
-        bits("stage", src_stage | dst_stage, stage::BITS);
-        bits("access", src_access | dst_access, access::BITS);
+    fn check_barrier(&mut self, name: &str, src: u32, dst: u32, layouts: (u32, u32)) {
+        assert_bits(name, "src_stage", src, stage::BITS, "stage");
+        assert_bits(name, "dst_stage", dst, stage::BITS, "stage");
+        assert!(dst != 0, "{name} needs a dst_stage");
+        assert!(
+            src != 0 || layouts.0 == texture_layout::UNDEFINED,
+            "{name} needs a src_stage; only a texture_barrier from texture_layout::UNDEFINED waits on nothing"
+        );
+        let moves = layouts.0 != layouts.1;
+        if self.open == "outside" && !self.passes && !moves && dst & !stage::HOST != 0 {
+            self.barrier = true;
+        }
     }
 
-    fn texture(&self, texture: u32, needs: u32, what: &str) -> &TextureInfo {
+    fn texture_with_usage(
+        &self,
+        name: &str,
+        texture: Texture,
+        needs: u32,
+        what: &str,
+    ) -> &TextureInfo {
         let t = self.table.textures.get(texture);
-        let copies = if t.usage & usage::HOST != 0 {
-            usage::COPY_SRC | usage::COPY_DST
+        let copies = if t.usage & texture_usage::HOST != 0 {
+            texture_usage::COPY_SRC | texture_usage::COPY_DST
         } else {
             0
         };
         assert_ne!(
             (t.usage | copies) & needs,
             0,
-            "texture {texture} has no usage::{what}"
+            "{name} needs {texture} created with texture_usage::{what}"
         );
+        self.table.assert_defined(name, texture);
         t
     }
 
-    fn region(
+    fn texture_region(
         &self,
-        texture: u32,
+        name: &str,
+        texture: Texture,
         (mip, layer, layers): (u32, u32, u32),
         at: [u32; 3],
         size: [u32; 3],
     ) -> &TextureInfo {
         let t = self.table.textures.get(texture);
-        span("mip", mip, 1, t.mips, texture);
-        span("layer", layer, layers, t.layers, texture);
+        assert_span(name, "mip", mip, 1, t.mips, texture);
+        assert_span(name, "layer", layer, layers, t.layers, texture);
         let end = [t.width, t.height, t.depth].map(|n| (n >> mip).max(1));
         assert!(
             (0..3).all(|i| at[i] as u64 + size[i] as u64 <= end[i] as u64),
-            "region {at:?} {size:?} is outside mip {mip} of texture {texture} ({end:?})"
+            "{name} region {at:?} {size:?} is outside mip {mip} of {texture} ({end:?})"
         );
         let [_, bw, bh] = format::block(t.format);
         let edge = |i: usize, b: u32| size[i].is_multiple_of(b) || at[i] + size[i] == end[i];
         assert!(
             at[0].is_multiple_of(bw) && at[1].is_multiple_of(bh) && edge(0, bw) && edge(1, bh),
-            "region {at:?} {size:?} is not aligned to the {bw}x{bh} blocks of texture {texture}"
+            "{name} region {at:?} {size:?} is not aligned to the {bw}x{bh} blocks of {texture}"
         );
         t
     }
 
-    fn queries(&self, heap: u32, kinds: &[u32], first: u32, count: u32) {
-        let &(kind, total) = self.table.queries.get(heap);
+    fn query_range(&self, name: &str, pool: QueryPool, kinds: &[u32], first: u32, count: u32) {
+        let &(kind, total) = self.table.queries.get(pool);
+        let names: Vec<_> = kinds.iter().map(|&k| query_kind::name(k)).collect();
         assert!(
             kinds.is_empty() || kinds.contains(&kind),
-            "query heap {heap} has kind {kind}, not {kinds:?}"
+            "{name} needs a {} pool, but {pool} is {}",
+            names.join(" or "),
+            query_kind::name(kind)
         );
         if count > 0 {
             let last = first.saturating_add(count - 1);
-            assert!(last < total, "query {last} is outside 0..{total}");
-        }
-    }
-
-    fn list(&self, c: &Command, indirect: u32) -> Result<u32, String> {
-        let (info, topology, mesh) = *self.table.indirects.get(indirect);
-        self.need(c, self.caps.indirect, "indirect")?;
-        if mesh {
-            self.need(c, self.caps.mesh_indirect, "mesh_indirect")?;
-        }
-        self.draw(c, info.indexed);
-        assert!(
-            self.indirect,
-            "{c} needs a render pipeline created with indirect: true"
-        );
-        assert_eq!(
-            self.mesh, mesh,
-            "{c} of indirect buffer {indirect} needs a mesh pipeline exactly when it was made with one"
-        );
-        assert_eq!(
-            self.topology, topology,
-            "{c} draws with topology {} but indirect buffer {indirect} holds topology {topology}",
-            self.topology
-        );
-        if info.indexed {
-            let (buffer, offset, kind) = (info.indices, info.offset, info.kind);
-            assert_eq!(
-                self.index,
-                Some((buffer, offset, kind)),
-                "{c} needs index buffer {buffer} bound at offset {offset} with kind {kind}"
+            assert!(
+                last < total,
+                "{name} query {last} is outside the {total} queries of {pool}"
             );
-            if offset != 0 {
-                self.need(c, self.caps.indirect_offset, "indirect_offset")?;
-            }
         }
-        if mesh {
-            self.need(c, self.caps.mesh, "mesh")?;
-        }
-        Ok(info.size)
     }
 
-    fn draw(&self, c: &Command, indexed: bool) {
-        assert!(self.render, "{} needs bind_render_pipeline first", name(c));
+    fn mark_state(&mut self, state: u32) {
+        self.fresh |= 1 << state;
+    }
+
+    fn check_draw(&self, c: &Command, indexed: bool) {
+        assert!(
+            self.render,
+            "{} needs bind_render_pipeline earlier in this pass",
+            command_name(c)
+        );
+        assert!(
+            self.views > 0 && self.scissors > 0,
+            "{} needs set_viewport and set_scissor earlier in this pass; passes start with neither",
+            command_name(c)
+        );
+        assert_eq!(
+            self.views,
+            self.scissors,
+            "{} has {} viewports but {} scissors; set one scissor per viewport",
+            command_name(c),
+            self.views,
+            self.scissors
+        );
+        let stale = self.carried & !self.fresh;
+        if stale != 0 {
+            let state = STATES[stale.trailing_zeros() as usize];
+            panic!(
+                "{} needs {state} again in this pass; an earlier pass set it, and state does not carry between passes",
+                command_name(c)
+            );
+        }
         assert!(
             self.samples == 0 || self.bound == self.samples,
-            "{} draws with a {}-sample pipeline in a {}-sample pass",
-            name(c),
+            "{} draws with a {}-sample pipeline in a {}-sample pass; create the pipeline with the pass's sample count",
+            command_name(c),
             self.bound,
             self.samples
         );
@@ -298,72 +351,62 @@ impl<'a> Check<'a> {
         assert_eq!(
             missing,
             0,
-            "{} needs vertex buffers {missing:#b} bound for the pipeline's attributes",
-            name(c)
+            "{} needs bind_vertex_buffer for slots {missing:#b}, which the pipeline's attributes read",
+            command_name(c)
         );
         assert!(
             !indexed || self.index.is_some(),
-            "{} needs bind_index_buffer first",
-            name(c)
+            "{} needs bind_index_buffer earlier in this pass",
+            command_name(c)
         );
         for i in (0..slot::COLORS).filter(|i| self.reads & 1 << i != 0) {
             let texture = self.inputs[i as usize];
-            assert_ne!(
-                texture,
-                !0,
-                "{} reads attachment {i}, which the pass has without usage::INPUT in layout::LOCAL_READ",
-                name(c)
-            );
-            let set = self.attachments.unwrap_or_else(|| {
-                panic!("{} reads attachments without bind_attachments", name(c))
-            });
-            assert_eq!(
-                self.table.attachments.get(set).get(i as usize),
-                Some(&texture),
-                "{} reads attachment {i}, but attachments {set} do not hold texture {texture} there",
-                name(c)
+            assert!(
+                !texture.is_null(),
+                "{} reads attachment {i}; give the pass a texture_usage::INPUT color there",
+                command_name(c)
             );
         }
     }
 
-    fn transient(&self, texture: u32, load: u32, store: u32) {
+    fn check_transient(&self, name: &str, texture: Texture, load: u32, store: u32) {
         if self.table.textures.get(texture).memory == memory::TRANSIENT {
             assert!(
-                load != load::LOAD && store == store::DONT_CARE,
-                "memory::TRANSIENT texture {texture} is never loaded or stored"
+                load != load_op::LOAD && store == store_op::DONT_CARE,
+                "{name} loads or stores memory::TRANSIENT {texture}; use load_op::CLEAR or DONT_CARE and store_op::DONT_CARE"
             );
         }
     }
 
-    fn local(&self, c: &Command, l: u32) -> Result<(), String> {
-        if l == layout::LOCAL_READ {
-            self.need(c, self.caps.attachment_reads, "attachment_reads")?;
-        }
-        Ok(())
-    }
-
-    fn indirect(&self, buffer: u32, offset: u64, count: u32, stride: u32, size: u64) {
+    fn check_indirect_buffer(
+        &self,
+        name: &str,
+        buffer: Buffer,
+        offset: u64,
+        count: u32,
+        stride: u32,
+        size: u64,
+    ) {
         assert!(
             offset.is_multiple_of(4),
-            "indirect offset {offset} is not a multiple of 4"
+            "{name} offset {offset} is not a multiple of 4"
         );
         assert!(
             stride == 0 || (stride.is_multiple_of(4) && stride as u64 >= size),
-            "indirect stride {stride} must be 0 or a multiple of 4 of at least {size}"
+            "{name} stride {stride} must be 0 or a multiple of 4 of at least {size}"
         );
         let stride = if stride == 0 { size } else { stride as u64 };
         let span = stride * count.saturating_sub(1) as u64 + size;
-        self.range(buffer, offset, if count == 0 { 0 } else { span });
+        self.buffer_range(name, buffer, offset, if count == 0 { 0 } else { span });
     }
 
-    fn copy(&self, c: &Command) {
+    fn check_buffer_copy(&self, c: &Command) {
         let (Command::CopyBufferToTexture {
             buffer,
             offset,
             row_length,
             row_count,
             texture,
-            layout,
             mip,
             layer,
             x,
@@ -379,7 +422,6 @@ impl<'a> Check<'a> {
             row_length,
             row_count,
             texture,
-            layout,
             mip,
             layer,
             x,
@@ -393,24 +435,20 @@ impl<'a> Check<'a> {
             return;
         };
         let upload = matches!(c, Command::CopyBufferToTexture { .. });
-        let (needs, what, expect) = if upload {
-            (usage::COPY_DST, "COPY_DST", layout::COPY_DST)
+        let (needs, what) = if upload {
+            (texture_usage::COPY_DST, "COPY_DST")
         } else {
-            (usage::COPY_SRC, "COPY_SRC", layout::COPY_SRC)
+            (texture_usage::COPY_SRC, "COPY_SRC")
         };
-        let t = self.texture(texture, needs, what);
-        assert!(
-            layout == expect || layout == layout::GENERAL,
-            "{} layout {layout} must be {what} or GENERAL",
-            name(c)
-        );
+        let name = command_name(c);
+        let t = self.texture_with_usage(&name, texture, needs, what);
         assert!(
             w > 0 && h > 0 && d > 0,
             "{} region {w}x{h}x{d} has a zero",
-            name(c)
+            command_name(c)
         );
-        span("mip", mip, 1, t.mips, texture);
-        span("layer", layer, 1, t.layers, texture);
+        assert_span(&name, "mip", mip, 1, t.mips, texture);
+        assert_span(&name, "layer", layer, 1, t.layers, texture);
         let size = [
             (t.width >> mip).max(1),
             (t.height >> mip).max(1),
@@ -419,7 +457,7 @@ impl<'a> Check<'a> {
         let fits = |at: u32, n: u32, end: u32| at as u64 + n as u64 <= end as u64;
         assert!(
             fits(x, w, size[0]) && fits(y, h, size[1]) && fits(z, d, size[2]),
-            "region {x},{y},{z} {w}x{h}x{d} is outside mip {mip} of texture {texture} ({}x{}x{})",
+            "{name} region {x},{y},{z} {w}x{h}x{d} is outside mip {mip} of {texture} ({}x{}x{})",
             size[0],
             size[1],
             size[2]
@@ -430,54 +468,54 @@ impl<'a> Check<'a> {
         };
         assert!(
             edge(x, w, bw, size[0]) && edge(y, h, bh, size[1]),
-            "{} region {x},{y} {w}x{h} is not aligned to the {bw}x{bh} blocks of texture {texture}",
-            name(c)
+            "{} region {x},{y} {w}x{h} is not aligned to the {bw}x{bh} blocks of {texture}",
+            command_name(c)
         );
         assert!(
             row_length.is_multiple_of(bw) && row_count.is_multiple_of(bh),
             "{} rows {row_length}x{row_count} are not multiples of the {bw}x{bh} blocks",
-            name(c)
+            command_name(c)
         );
-        let texel = copied(t.format).max(4) as u64;
+        let texel = copy_block_size(t.format).max(4) as u64;
         assert!(
             offset.is_multiple_of(texel),
             "{} buffer offset {offset} is not a multiple of {texel}",
-            name(c)
+            command_name(c)
         );
         let row = if row_length == 0 { w } else { row_length };
         let rows = if row_count == 0 { h } else { row_count };
         assert!(
             row >= w && rows >= h,
             "{} rows {row}x{rows} are smaller than the region {w}x{h}",
-            name(c)
+            command_name(c)
         );
-        let bytes = row.div_ceil(bw) as u64 * copied(t.format) as u64;
+        let bytes = row.div_ceil(bw) as u64 * copy_block_size(t.format) as u64;
         let total = bytes
             .checked_mul(rows.div_ceil(bh) as u64)
             .and_then(|n| n.checked_mul(d as u64))
-            .unwrap_or_else(|| panic!("{} region size overflows", name(c)));
-        self.range(buffer, offset, total);
+            .unwrap_or_else(|| panic!("{} region size overflows", command_name(c)));
+        self.buffer_range(&name, buffer, offset, total);
     }
 
-    fn step(&mut self, c: &Command) -> Result<(), String> {
+    pub fn step(&mut self, c: &Command) -> Result<(), String> {
         let scope = c.scope();
         let open = self.open;
+        let name = &command_name(c);
         assert!(
             scope.is_empty() || scope.split(' ').any(|s| s == open),
-            "{c} runs only in {scope}, not {open}"
+            "{name} runs only in {scope}, not {open}"
         );
         let caps = self.caps;
         match *c {
-            Command::BeginRender {
+            Command::BeginRenderPass {
                 width,
                 height,
                 layers,
             } => {
                 assert!(
                     width > 0 && height > 0 && layers > 0,
-                    "begin_render size {width}x{height}x{layers} has a zero"
+                    "begin_render_pass size {width}x{height}x{layers} has a zero"
                 );
-                assert_eq!(open, "outside", "{c} inside begin_{open}");
                 let samples: Vec<u32> = self
                     .targets
                     .iter()
@@ -485,21 +523,21 @@ impl<'a> Check<'a> {
                     .collect();
                 assert!(
                     samples.windows(2).all(|w| w[0] == w[1]),
-                    "begin_render attachments have different sample counts {samples:?}"
+                    "begin_render_pass attachments have different sample counts {samples:?}; give them one count"
                 );
                 self.samples = samples.first().copied().unwrap_or(0);
                 for &(texture, clear) in &self.targets {
                     let t = self.table.textures.get(texture);
                     assert!(
                         width <= t.width && height <= t.height && layers <= t.layers,
-                        "begin_render {width}x{height}x{layers} is larger than texture {texture} ({}x{}x{})",
+                        "begin_render_pass {width}x{height}x{layers} is larger than {texture} ({}x{}x{})",
                         t.width,
                         t.height,
                         t.layers
                     );
                     assert!(
                         !clear || (width == t.width && height == t.height),
-                        "begin_render {width}x{height} must cover texture {texture} ({}x{}) to clear it",
+                        "begin_render_pass {width}x{height} clears {texture} ({}x{}) but does not cover it; match its size or use load_op::LOAD",
                         t.width,
                         t.height
                     );
@@ -507,56 +545,68 @@ impl<'a> Check<'a> {
                 for &r in &self.resolves {
                     let t = self.table.textures.get(r);
                     if width < t.width || height < t.height {
-                        self.need(c, caps.partial_resolve, "partial_resolve")?;
+                        self.require(c, caps.partial_resolve, "partial_resolve")?;
                     }
                 }
                 self.open = "render";
+                self.barrier = false;
+                self.passes = true;
+                self.render = false;
+                self.views = 0;
+                self.scissors = 0;
+                self.carried |= self.fresh;
+                self.fresh = 0;
             }
-            Command::BeginCompute => {
-                assert_eq!(open, "outside", "{c} inside begin_{open}");
+            Command::BeginComputePass => {
                 self.open = "compute";
+                self.barrier = false;
+                self.passes = true;
+                self.compute = false;
             }
-            Command::EndCompute => {
-                assert_eq!(open, "compute", "end_compute without begin_compute");
+            Command::EndComputePass => {
                 assert_ne!(
                     self.labels.last(),
                     Some(&"compute"),
-                    "end_compute with a label still open inside it"
+                    "the compute pass ends with a debug label open; call end_debug_label first"
                 );
                 self.open = "outside";
             }
-            Command::EndRender => {
-                assert_eq!(open, "render", "end_render without begin_render");
+            Command::EndRenderPass => {
                 assert_ne!(
                     self.labels.last(),
                     Some(&"render"),
-                    "end_render with a label still open inside it"
+                    "the render pass ends with a debug label open; call end_debug_label first"
                 );
                 self.open = "outside";
                 self.targets.clear();
                 self.resolves.clear();
                 self.heap = None;
-                self.inputs = [!0; slot::COLORS as usize];
-                self.attachments = None;
+                self.inputs = [Texture::default(); slot::COLORS as usize];
                 self.tile = None;
             }
-            Command::BindPipeline { pipeline } => {
-                self.need(c, caps.compute, "compute")?;
+            Command::BindComputePipeline { pipeline } => {
+                self.require(c, caps.compute, "compute")?;
                 self.table.pipelines.get(pipeline);
                 self.compute = true;
             }
             Command::Dispatch { .. } => {
-                self.need(c, caps.compute, "compute")?;
-                assert!(self.compute, "dispatch needs bind_pipeline first");
+                self.require(c, caps.compute, "compute")?;
+                assert!(
+                    self.compute,
+                    "dispatch needs bind_compute_pipeline earlier in this pass"
+                );
             }
             Command::DispatchIndirect { buffer, offset } => {
-                self.need(c, caps.compute, "compute")?;
-                assert!(self.compute, "dispatch_indirect needs bind_pipeline first");
+                self.require(c, caps.compute, "compute")?;
+                assert!(
+                    self.compute,
+                    "dispatch_indirect needs bind_compute_pipeline earlier in this pass"
+                );
                 assert!(
                     offset.is_multiple_of(4),
                     "dispatch_indirect offset {offset} is not a multiple of 4"
                 );
-                self.range(buffer, offset, 12);
+                self.buffer_range(name, buffer, offset, 12);
             }
             Command::CopyBuffer {
                 src,
@@ -566,8 +616,8 @@ impl<'a> Check<'a> {
                 size,
             } => {
                 assert!(size > 0, "copy_buffer size is 0");
-                self.range(src, src_offset, size);
-                self.range(dst, dst_offset, size);
+                self.buffer_range(name, src, src_offset, size);
+                self.buffer_range(name, dst, dst_offset, size);
             }
             Command::FillBuffer {
                 buffer,
@@ -575,31 +625,24 @@ impl<'a> Check<'a> {
                 size,
                 ..
             } => {
-                self.need(c, caps.buffer_clear, "buffer_clear")?;
+                self.require(c, caps.buffer_clear, "buffer_clear")?;
                 assert!(
                     offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
                 );
-                self.filled(c, buffer, offset, size, !0)?;
+                self.limited_range(c, buffer, offset, size, !0)?;
             }
-            Command::Barrier {
+            Command::MemoryBarrier {
                 src_stage,
-                src_access,
                 dst_stage,
-                dst_access,
+            } => {
+                let general = (texture_layout::GENERAL, texture_layout::GENERAL);
+                self.check_barrier(name, src_stage, dst_stage, general)
             }
-            | Command::QueueBarrier {
-                src_stage,
-                src_access,
-                dst_stage,
-                dst_access,
-            } => self.barrier(src_stage, src_access, dst_stage, dst_access),
             Command::TextureBarrier {
                 texture,
                 src_stage,
-                src_access,
                 dst_stage,
-                dst_access,
                 before,
                 after,
                 base_mip,
@@ -607,28 +650,37 @@ impl<'a> Check<'a> {
                 base_layer,
                 layers,
             } => {
-                self.barrier(src_stage, src_access, dst_stage, dst_access);
-                known("layout", before, layout::valid(before));
-                known("layout", after, layout::valid(after));
-                self.local(c, before)?;
-                self.local(c, after)?;
+                self.check_barrier(name, src_stage, dst_stage, (before, after));
+                let layout = |v| (texture_layout::name(v), texture_layout::valid(v));
+                let (text, valid) = layout(before);
+                assert_known(name, "before", text, valid);
+                let (text, valid) = layout(after);
+                assert_known(name, "after", text, valid);
+                assert_ne!(
+                    after,
+                    texture_layout::UNDEFINED,
+                    "{name} after is texture_layout::UNDEFINED; transition to a defined layout"
+                );
+                if before == texture_layout::UNDEFINED {
+                    self.table.define(texture);
+                } else {
+                    self.table.assert_defined(name, texture);
+                }
                 let t = self.table.textures.get(texture);
-                span("mip", base_mip, mips, t.mips, texture);
-                span("layer", base_layer, layers, t.layers, texture);
+                assert_span(name, "mip", base_mip, mips, t.mips, texture);
+                assert_span(name, "layer", base_layer, layers, t.layers, texture);
             }
             Command::CopyBufferToTexture { .. } | Command::CopyTextureToBuffer { .. } => {
-                self.copy(c);
+                self.check_buffer_copy(c);
             }
             Command::CopyTexture {
                 src,
-                src_layout,
                 src_mip,
                 src_layer,
                 src_x,
                 src_y,
                 src_z,
                 dst,
-                dst_layout,
                 dst_mip,
                 dst_layer,
                 dst_x,
@@ -639,19 +691,17 @@ impl<'a> Check<'a> {
                 depth: d,
                 layers,
             } => {
-                self.texture(src, usage::COPY_SRC, "COPY_SRC");
-                self.texture(dst, usage::COPY_DST, "COPY_DST");
-                needs_layout("copy_texture source", src_layout, layout::COPY_SRC);
-                needs_layout("copy_texture destination", dst_layout, layout::COPY_DST);
+                self.texture_with_usage(name, src, texture_usage::COPY_SRC, "COPY_SRC");
+                self.texture_with_usage(name, dst, texture_usage::COPY_DST, "COPY_DST");
                 let size = [width, height, d];
                 assert!(
                     size.iter().all(|&n| n > 0),
                     "copy_texture region {width}x{height}x{d} has a zero"
                 );
                 let from = (src_mip, src_layer, layers);
-                let s = self.region(src, from, [src_x, src_y, src_z], size);
+                let s = self.texture_region(name, src, from, [src_x, src_y, src_z], size);
                 let to = (dst_mip, dst_layer, layers);
-                let t = self.region(dst, to, [dst_x, dst_y, dst_z], size);
+                let t = self.texture_region(name, dst, to, [dst_x, dst_y, dst_z], size);
                 assert_eq!(
                     format::block(s.format),
                     format::block(t.format),
@@ -660,7 +710,8 @@ impl<'a> Check<'a> {
                     t.format
                 );
                 assert!(
-                    s.format == t.format || !depth(s.format) && !depth(t.format),
+                    s.format == t.format
+                        || !is_depth_format(s.format) && !is_depth_format(t.format),
                     "copy_texture between depth formats {} and {} needs one format",
                     s.format,
                     t.format
@@ -673,175 +724,72 @@ impl<'a> Check<'a> {
                 assert!(
                     src != dst
                         || src_mip != dst_mip
-                        || apart(src_layer, dst_layer, layers)
-                        || apart(src_x, dst_x, width)
-                        || apart(src_y, dst_y, height)
-                        || apart(src_z, dst_z, d),
-                    "copy_texture source and destination overlap in texture {src}"
+                        || disjoint(src_layer, dst_layer, layers)
+                        || disjoint(src_x, dst_x, width)
+                        || disjoint(src_y, dst_y, height)
+                        || disjoint(src_z, dst_z, d),
+                    "copy_texture source and destination overlap in {src}"
                 );
-                let line =
-                    |t: &TextureInfo| matches!(t.dimension, dimension::D1 | dimension::D1_ARRAY);
+                let line = |t: &TextureInfo| {
+                    matches!(
+                        t.dimension,
+                        texture_dimension::D1 | texture_dimension::D1_ARRAY
+                    )
+                };
                 assert_eq!(
                     line(s),
                     line(t),
-                    "copy_texture cannot copy between 1D texture and 2D or 3D texture"
+                    "copy_texture cannot copy between a 1D texture and a 2D or 3D one"
                 );
                 if s.format != t.format {
-                    self.need(c, caps.copy_formats, "copy_formats")?;
+                    self.require(c, caps.copy_formats, "copy_formats")?;
                     assert_ne!(
-                        s.usage & usage::VIEW,
+                        s.usage & texture_usage::VIEW,
                         0,
-                        "copy_texture from format {} to {} needs usage::VIEW on texture {src}",
+                        "copy_texture from format {} to {} needs {src} created with texture_usage::VIEW",
                         s.format,
                         t.format
                     );
                 }
             }
-            Command::BlitTexture {
-                src,
-                src_layout,
-                src_mip,
-                src_layer,
-                src_x,
-                src_y,
-                src_width,
-                src_height,
-                dst,
-                dst_layout,
-                dst_mip,
-                dst_layer,
-                dst_x,
-                dst_y,
-                dst_width,
-                dst_height,
-                filter: f,
-            } => {
-                known("filter", f, filter::valid(f));
-                self.texture(src, usage::BLIT, "BLIT");
-                self.texture(dst, usage::BLIT, "BLIT");
-                needs_layout("blit_texture source", src_layout, layout::COPY_SRC);
-                needs_layout("blit_texture destination", dst_layout, layout::COPY_DST);
-                assert!(
-                    src_width.min(src_height).min(dst_width).min(dst_height) > 0,
-                    "blit_texture region {src_width}x{src_height} to {dst_width}x{dst_height} has a zero"
-                );
-                let from = (src_mip, src_layer, 1);
-                let s = self.region(src, from, [src_x, src_y, 0], [src_width, src_height, 1]);
-                let to = (dst_mip, dst_layer, 1);
-                let t = self.region(dst, to, [dst_x, dst_y, 0], [dst_width, dst_height, 1]);
-                for (id, t) in [(src, s), (dst, t)] {
-                    assert!(
-                        matches!(
-                            t.dimension,
-                            dimension::D2
-                                | dimension::D2_ARRAY
-                                | dimension::CUBE
-                                | dimension::CUBE_ARRAY
-                        ) && t.samples == 1,
-                        "blit_texture needs single-sampled 2D, 2D array or cube textures, not texture {id}"
-                    );
-                }
-                let kind = |f| (format::uint(f), format::sint(f));
-                assert_eq!(
-                    kind(s.format),
-                    kind(t.format),
-                    "blit_texture formats {} and {} differ in integer kind",
-                    s.format,
-                    t.format
-                );
-                assert!(
-                    f == filter::NEAREST || kind(s.format) == (false, false),
-                    "blit_texture of integer format {} needs filter::NEAREST",
-                    s.format
-                );
-                assert!(
-                    src != dst || src_mip != dst_mip || src_layer != dst_layer,
-                    "blit_texture reads and writes one subresource of texture {src}"
-                );
-            }
-            Command::ClearTexture {
-                texture,
-                layout: l,
-                base_mip,
-                mips,
-                base_layer,
-                layers,
-                depth: value,
-                ..
-            } => {
-                let t = self.texture(texture, usage::COPY_DST, "COPY_DST");
-                needs_layout("clear_texture", l, layout::COPY_DST);
-                span("mip", base_mip, mips, t.mips, texture);
-                span("layer", base_layer, layers, t.layers, texture);
-                assert!(
-                    !compressed(t.format),
-                    "clear_texture cannot clear compressed format {}",
-                    t.format
-                );
-                assert!(
-                    (0.0..=1.0).contains(&value),
-                    "clear_texture depth {value} is outside 0..1"
-                );
-                if t.usage & (usage::COLOR | usage::DEPTH) == 0 {
-                    self.need(c, caps.texture_clear, "texture_clear")?;
-                }
-            }
             Command::ColorAttachment {
                 index,
                 texture,
-                layout: l,
                 load: ld,
                 store: st,
                 resolve,
-                resolve_layout,
                 ..
             } => {
-                slot(index, slot::COLORS);
-                known("layout", l, layout::valid(l));
-                known("load", ld, load::valid(ld));
-                known("store", st, store::valid(st));
-                let t = self.texture(texture, usage::COLOR, "COLOR");
-                self.local(c, l)?;
-                if t.usage & usage::INPUT != 0 {
-                    assert!(
-                        l == layout::GENERAL || l == layout::LOCAL_READ,
-                        "usage::INPUT attachment {texture} is in layout {l}, not GENERAL or LOCAL_READ"
-                    );
-                    if l == layout::LOCAL_READ {
-                        self.inputs[index as usize] = texture;
-                    }
-                } else {
-                    assert_ne!(
-                        l,
-                        layout::LOCAL_READ,
-                        "layout::LOCAL_READ needs texture {texture} made with usage::INPUT"
-                    );
+                assert_slot(name, index, slot::COLORS);
+                assert_known(name, "load", load_op::name(ld), load_op::valid(ld));
+                assert_known(name, "store", store_op::name(st), store_op::valid(st));
+                let t = self.texture_with_usage(name, texture, texture_usage::COLOR, "COLOR");
+                if t.usage & texture_usage::INPUT != 0 {
+                    self.inputs[index as usize] = texture;
                 }
-                self.transient(texture, ld, st);
-                self.targets.push((texture, ld == load::CLEAR));
-                if resolve != !0 {
-                    known("layout", resolve_layout, layout::valid(resolve_layout));
+                self.check_transient(name, texture, ld, st);
+                self.targets.push((texture, ld == load_op::CLEAR));
+                if !resolve.is_null() {
                     self.resolves.push(resolve);
-                    let r = self.texture(resolve, usage::COLOR, "COLOR");
+                    let r = self.texture_with_usage(name, resolve, texture_usage::COLOR, "COLOR");
                     let s = self.table.textures.get(texture);
                     assert!(
                         s.samples > 1 && r.samples == 1,
-                        "resolve needs multisampled texture {texture} and single-sample target {resolve}"
+                        "{name} resolve needs multisampled {texture} and single-sample {resolve}"
                     );
                     assert!(
                         s.format == r.format && s.width == r.width && s.height == r.height,
-                        "resolve target {resolve} differs in format or size from texture {texture}"
+                        "{name} resolve {resolve} differs in format or size from {texture}"
                     );
                     assert!(
                         !format::uint(s.format) && !format::sint(s.format),
-                        "integer format {} cannot be resolved",
+                        "{name} resolves integer format {}, which no backend can average",
                         s.format
                     );
                 }
             }
             Command::DepthAttachment {
                 texture,
-                layout: l,
                 load: ld,
                 store: st,
                 depth,
@@ -849,89 +797,92 @@ impl<'a> Check<'a> {
                 stencil_store,
                 ..
             } => {
-                known("layout", l, layout::valid(l));
-                known("load", ld, load::valid(ld));
-                known("store", st, store::valid(st));
-                known("load", stencil_load, load::valid(stencil_load));
-                known("store", stencil_store, store::valid(stencil_store));
+                assert_known(name, "load", load_op::name(ld), load_op::valid(ld));
+                assert_known(name, "store", store_op::name(st), store_op::valid(st));
+                let (text, valid) = (load_op::name(stencil_load), load_op::valid(stencil_load));
+                assert_known(name, "stencil_load", text, valid);
+                let (text, valid) = (
+                    store_op::name(stencil_store),
+                    store_op::valid(stencil_store),
+                );
+                assert_known(name, "stencil_store", text, valid);
                 assert!(
                     (0.0..=1.0).contains(&depth),
-                    "depth clear value {depth} is outside 0..1"
+                    "{name} clear depth {depth} is outside 0..1"
                 );
-                self.texture(texture, usage::DEPTH, "DEPTH");
-                self.transient(texture, ld, st);
-                self.transient(texture, stencil_load, stencil_store);
-                let clear = ld == load::CLEAR || stencil_load == load::CLEAR;
+                self.texture_with_usage(name, texture, texture_usage::DEPTH, "DEPTH");
+                self.check_transient(name, texture, ld, st);
+                self.check_transient(name, texture, stencil_load, stencil_store);
+                let clear = ld == load_op::CLEAR || stencil_load == load_op::CLEAR;
                 self.targets.push((texture, clear));
             }
             Command::BindRenderPipeline { pipeline } => {
-                let (samples, indirect, shape, mesh, needs, reads) =
-                    *self.table.renders.get(pipeline);
-                self.reads = reads;
+                let entry = *self.table.renders.get(pipeline);
+                let samples = entry.samples;
+                self.reads = entry.reads;
                 assert!(
                     self.samples == 0 || samples == self.samples,
-                    "render pipeline {pipeline} has {samples} samples but the pass has {}",
+                    "bind_render_pipeline {pipeline} has {samples} samples but the pass has {}",
                     self.samples
                 );
                 self.render = true;
                 self.bound = samples;
-                self.needs = needs;
-                self.indirect = indirect;
-                self.topology = shape;
-                self.mesh = mesh;
+                self.needs = entry.vertices;
+                self.topology = entry.topology;
+                self.mesh = entry.mesh;
             }
-            Command::BindAttachments { attachments } => {
-                self.need(c, caps.attachment_reads, "attachment_reads")?;
-                for &t in self.table.attachments.get(attachments) {
-                    self.table.textures.get(t);
-                }
-                self.attachments = Some(attachments);
+            Command::InputAttachmentBarrier => {
+                self.require(c, caps.attachment_reads, "attachment_reads")?;
             }
-            Command::AttachmentBarrier => {
-                self.need(c, caps.attachment_reads, "attachment_reads")?;
-            }
-            Command::TileSize {
+            Command::TileMemory {
                 width,
                 height,
                 shared,
             } => {
-                self.need(c, caps.tiles, "tiles")?;
-                assert_eq!(open, "outside", "{c} inside begin_{open}");
+                self.require(c, caps.tiles, "tiles")?;
                 let sizes = [8, 16, 32];
                 assert!(
                     sizes.contains(&width) && sizes.contains(&height),
-                    "tile size {width}x{height} is not 8, 16 or 32 on each side"
+                    "{name} size {width}x{height} is not 8, 16 or 32 on each side"
                 );
                 assert!(
                     shared.is_multiple_of(16),
-                    "tile threadgroup memory {shared} is not a multiple of 16"
+                    "{name} shared memory {shared} is not a multiple of 16"
                 );
                 if shared > caps.max_shared {
                     return Err(format!(
-                        "tile threadgroup memory {shared} is over caps.max_shared {}",
+                        "{name} shared memory {shared} is over caps.max_shared {}",
                         caps.max_shared
                     ));
                 }
                 self.tile = Some((width, height));
             }
             Command::DispatchTile { pipeline } => {
-                self.need(c, caps.tiles, "tiles")?;
+                self.require(c, caps.tiles, "tiles")?;
                 let samples = *self.table.tile_pipelines.get(pipeline);
                 assert!(
                     self.tile.is_some(),
-                    "dispatch_tile needs tile_size before begin_render"
+                    "dispatch_tile needs RenderPassInfo.tile set in begin_render_pass"
                 );
                 assert!(
                     self.samples == 0 || samples == self.samples,
-                    "tile pipeline {pipeline} has {samples} samples but the pass has {}",
+                    "dispatch_tile {pipeline} has {samples} samples but the pass has {}",
                     self.samples
                 );
                 self.render = false;
             }
-            Command::SetCull { cull: v } => known("cull", v, cull::valid(v)),
-            Command::SetFace { face: v } => known("face", v, face::valid(v)),
-            Command::SetTopology { topology: v } => {
-                known("topology", v, topology::valid(v));
+            Command::SetCullMode { cull: v } => {
+                assert_known(name, "cull", cull_mode::name(v), cull_mode::valid(v));
+                self.mark_state(0);
+            }
+            Command::SetFrontFace { face: v } => {
+                assert_known(name, "face", front_face::name(v), front_face::valid(v));
+                self.mark_state(1);
+            }
+            Command::SetStencilReference { .. } => self.mark_state(3),
+            Command::SetBlendColor { .. } => self.mark_state(5),
+            Command::SetPrimitiveTopology { topology: v } => {
+                assert_known(name, "topology", topology::name(v), topology::valid(v));
                 self.topology = v;
             }
             Command::SetScissor {
@@ -943,56 +894,59 @@ impl<'a> Check<'a> {
                 let end = (x as u64 + width as u64).max(y as u64 + height as u64);
                 assert!(
                     end <= i32::MAX as u64,
-                    "scissor {x},{y} {width}x{height} is too large"
+                    "set_scissor {x},{y} {width}x{height} ends past i32::MAX"
                 );
+                self.scissors = 1;
             }
-            Command::Draw { .. } => self.draw(c, false),
-            Command::DrawIndexed { .. } => self.draw(c, true),
+            Command::Draw { .. } => self.check_draw(c, false),
+            Command::DrawIndexed { .. } => self.check_draw(c, true),
             Command::SetDepthState { state } => {
                 self.table.states.get(state);
+                self.mark_state(2);
             }
             Command::SetDepthBias { clamp, .. } => {
+                self.mark_state(4);
                 if clamp != 0.0 {
-                    self.need(c, caps.bias_clamp, "bias_clamp")?;
+                    self.require(c, caps.bias_clamp, "bias_clamp")?;
                 }
             }
-            Command::BindUniform {
+            Command::BindUniformBuffer {
                 slot: i,
                 buffer,
                 offset,
                 size,
             } => {
-                self.need(c, caps.slots, "slots")?;
-                slot(i, slot::UNIFORMS);
-                aligned(offset, caps.bind_alignment);
-                self.filled(c, buffer, offset, size, caps.max_uniform)?;
+                self.require(c, caps.slots, "slots")?;
+                assert_slot(name, i, slot::UNIFORMS);
+                assert_aligned(name, offset, caps.bind_alignment);
+                self.limited_range(c, buffer, offset, size, caps.max_uniform)?;
             }
-            Command::BindStorage {
+            Command::BindStorageBuffer {
                 slot: i,
                 buffer,
                 offset,
                 size,
             } => {
-                self.need(c, caps.slots, "slots")?;
-                self.need(c, caps.storage, "storage")?;
-                slot(i, slot::STORAGES);
-                aligned(offset, caps.bind_alignment);
-                self.filled(c, buffer, offset, size, caps.max_storage)?;
+                self.require(c, caps.slots, "slots")?;
+                self.require(c, caps.storage, "storage")?;
+                assert_slot(name, i, slot::STORAGES);
+                assert_aligned(name, offset, caps.bind_alignment);
+                self.limited_range(c, buffer, offset, size, caps.max_storage)?;
             }
             Command::BindTexture { slot: i, texture } => {
-                self.need(c, caps.slots, "slots")?;
-                slot(i, slot::TEXTURES);
-                self.texture(texture, usage::SAMPLED, "SAMPLED");
+                self.require(c, caps.slots, "slots")?;
+                assert_slot(name, i, slot::TEXTURES);
+                self.texture_with_usage(name, texture, texture_usage::SAMPLED, "SAMPLED");
             }
-            Command::BindImage { slot: i, texture } => {
-                self.need(c, caps.slots, "slots")?;
-                self.need(c, caps.storage, "storage")?;
-                slot(i, slot::IMAGES);
-                self.texture(texture, usage::STORAGE, "STORAGE");
+            Command::BindStorageTexture { slot: i, texture } => {
+                self.require(c, caps.slots, "slots")?;
+                self.require(c, caps.storage, "storage")?;
+                assert_slot(name, i, slot::IMAGES);
+                self.texture_with_usage(name, texture, texture_usage::STORAGE, "STORAGE");
             }
             Command::BindSampler { slot: i, sampler } => {
-                self.need(c, caps.slots, "slots")?;
-                slot(i, slot::SAMPLERS);
+                self.require(c, caps.slots, "slots")?;
+                assert_slot(name, i, slot::SAMPLERS);
                 self.table.samplers.get(sampler);
             }
             Command::BindVertexBuffer {
@@ -1000,8 +954,8 @@ impl<'a> Check<'a> {
                 buffer,
                 offset,
             } => {
-                slot(i, slot::VERTICES);
-                self.range(buffer, offset, 0);
+                assert_slot(name, i, slot::VERTICES);
+                self.buffer_range(name, buffer, offset, 0);
                 self.vertices |= 1 << i;
             }
             Command::BindIndexBuffer {
@@ -1009,13 +963,18 @@ impl<'a> Check<'a> {
                 offset,
                 kind,
             } => {
-                known("index kind", kind, index::valid(kind));
-                let size = if kind == index::U16 { 2 } else { 4 };
+                assert_known(
+                    name,
+                    "kind",
+                    index_type::name(kind),
+                    index_type::valid(kind),
+                );
+                let size = if kind == index_type::U16 { 2 } else { 4 };
                 assert!(
                     offset.is_multiple_of(size),
-                    "index buffer offset {offset} is not a multiple of {size}"
+                    "bind_index_buffer offset {offset} is not a multiple of {size}"
                 );
-                self.range(buffer, offset, 0);
+                self.buffer_range(name, buffer, offset, 0);
                 self.index = Some((buffer, offset, kind));
             }
             Command::DrawIndirect {
@@ -1024,12 +983,12 @@ impl<'a> Check<'a> {
                 count,
                 stride,
             } => {
-                self.need(c, caps.indirect, "indirect")?;
+                self.require(c, caps.indirect, "indirect")?;
                 if count > 1 {
-                    self.need(c, caps.multi_draw, "multi_draw")?;
+                    self.require(c, caps.multi_draw, "multi_draw")?;
                 }
-                self.draw(c, false);
-                self.indirect(buffer, offset, count, stride, 16);
+                self.check_draw(c, false);
+                self.check_indirect_buffer(name, buffer, offset, count, stride, 16);
             }
             Command::DrawIndexedIndirect {
                 buffer,
@@ -1037,98 +996,112 @@ impl<'a> Check<'a> {
                 count,
                 stride,
             } => {
-                self.need(c, caps.indirect, "indirect")?;
+                self.require(c, caps.indirect, "indirect")?;
                 if count > 1 {
-                    self.need(c, caps.multi_draw, "multi_draw")?;
+                    self.require(c, caps.multi_draw, "multi_draw")?;
                 }
-                self.draw(c, true);
+                self.check_draw(c, true);
                 if self.index.map(|i| i.1) != Some(0) {
-                    self.need(c, caps.indirect_offset, "indirect_offset")?;
+                    self.require(c, caps.indirect_offset, "indirect_offset")?;
                 }
-                self.indirect(buffer, offset, count, stride, 20);
+                self.check_indirect_buffer(name, buffer, offset, count, stride, 20);
             }
-            Command::DrawMesh { x, y, z } => {
-                self.need(c, caps.mesh, "mesh")?;
-                self.draw(c, false);
+            Command::DrawMeshTasks { x, y, z } => {
+                self.require(c, caps.mesh, "mesh")?;
+                self.check_draw(c, false);
                 let total = x as u64 * y as u64 * z as u64;
                 if x.max(y).max(z) > caps.mesh_axis || total > caps.mesh_groups as u64 {
                     return Err(format!(
-                        "{c} grid {x}x{y}x{z} is over caps.mesh_axis {} or caps.mesh_groups {}",
+                        "{name} grid {x}x{y}x{z} is over caps.mesh_axis {} or caps.mesh_groups {}",
                         caps.mesh_axis, caps.mesh_groups
                     ));
                 }
             }
-            Command::DrawMeshIndirect {
+            Command::DrawMeshTasksIndirect {
                 buffer,
                 offset,
                 count,
                 stride,
             } => {
-                self.need(c, caps.mesh_indirect, "mesh_indirect")?;
+                self.require(c, caps.mesh_indirect, "mesh_indirect")?;
                 if count > 1 {
-                    self.need(c, caps.multi_draw, "multi_draw")?;
+                    self.require(c, caps.multi_draw, "multi_draw")?;
                 }
-                self.draw(c, false);
-                self.indirect(buffer, offset, count, stride, 12);
+                self.check_draw(c, false);
+                self.check_indirect_buffer(name, buffer, offset, count, stride, 12);
             }
-            Command::OcclusionHeap { heap } => {
-                self.queries(heap, &[query::OCCLUSION, query::PRECISE], 0, 0);
-                self.heap = Some(heap);
+            Command::OcclusionPool { pool } => {
+                let kinds = [query_kind::OCCLUSION, query_kind::PRECISE];
+                self.query_range(name, pool, &kinds, 0, 0);
+                self.heap = Some(pool);
             }
-            Command::ResetQueries { heap, first, count } => {
-                self.queries(heap, &[], first, count);
+            Command::ResetQueries { pool, first, count } => {
+                self.query_range(name, pool, &[], first, count);
             }
-            Command::WriteTimestamp { heap, index, stage } => {
+            Command::WriteTimestamp { pool, index, stage } => {
                 assert_eq!(
                     stage.count_ones(),
                     1,
                     "write_timestamp stage {stage:#x} must be one stage"
                 );
-                bits("stage", stage, stage::BITS);
-                self.need(c, caps.timestamps, "timestamps")?;
-                self.queries(heap, &[query::TIMESTAMP], index, 1);
+                assert_bits(name, "stage", stage, stage::BITS, "stage");
+                self.require(c, caps.timestamps, "timestamps")?;
+                self.query_range(name, pool, &[query_kind::TIMESTAMP], index, 1);
             }
-            Command::BeginQuery { heap, index } | Command::EndQuery { heap, index } => {
-                self.need(c, caps.occlusion, "occlusion")?;
+            Command::BeginOcclusionQuery { pool, index }
+            | Command::EndOcclusionQuery { pool, index } => {
+                self.require(c, caps.occlusion, "occlusion")?;
                 assert_eq!(
                     self.heap,
-                    Some(heap),
-                    "{} needs occlusion_heap({heap}) before begin_render",
-                    name(c)
+                    Some(pool),
+                    "{name} needs RenderPassInfo.occlusion set to {pool} in begin_render_pass"
                 );
-                let kinds = [query::OCCLUSION, query::PRECISE];
-                self.queries(heap, &kinds, index, 1);
+                let kinds = [query_kind::OCCLUSION, query_kind::PRECISE];
+                self.query_range(name, pool, &kinds, index, 1);
             }
-            Command::ResolveQueries {
-                heap,
+            Command::ResolveTimestamps {
+                pool,
+                first,
+                count,
+                buffer,
+                offset,
+            }
+            | Command::ResolveOcclusion {
+                pool,
                 first,
                 count,
                 buffer,
                 offset,
             } => {
-                self.queries(heap, &[], first, count);
+                let kinds: &[u32] = if matches!(c, Command::ResolveTimestamps { .. }) {
+                    &[query_kind::TIMESTAMP]
+                } else {
+                    &[query_kind::OCCLUSION, query_kind::PRECISE]
+                };
+                self.query_range(name, pool, kinds, first, count);
                 assert!(
                     offset.is_multiple_of(8),
-                    "resolve_queries offset {offset} is not a multiple of 8"
+                    "{name} offset {offset} is not a multiple of 8"
                 );
-                self.range(buffer, offset, count as u64 * 8);
+                self.buffer_range(name, buffer, offset, count as u64 * 8);
             }
-            Command::BeginLabel { .. } => {
-                self.need(c, caps.labels, "labels")?;
+            Command::BeginDebugLabel { .. } => {
+                self.require(c, caps.labels, "labels")?;
                 self.labels.push(open);
             }
-            Command::EndLabel => {
+            Command::EndDebugLabel => {
                 assert_eq!(
                     self.labels.pop(),
                     Some(open),
-                    "end_label must close a label begun in the same scope"
+                    "end_debug_label has no begin_debug_label open in this pass"
                 );
             }
             Command::SetViewports { viewports } => {
-                rects(viewports, 24, caps.viewports);
-                for v in crate::command::viewports(viewports) {
-                    viewport(v.x, v.y, v.width, v.height, v.near, v.far);
+                assert_rects(name, viewports.len(), caps.viewports);
+                for v in viewports {
+                    assert_viewport(name, v.x, v.y, v.width, v.height, v.near, v.far);
                 }
+                self.views = viewports.len() as u32;
             }
             Command::SetViewport {
                 x,
@@ -1137,112 +1110,30 @@ impl<'a> Check<'a> {
                 height,
                 near,
                 far,
-            } => viewport(x, y, width, height, near, far),
+            } => {
+                assert_viewport(name, x, y, width, height, near, far);
+                self.views = 1;
+            }
             Command::SetScissors { scissors } => {
-                rects(scissors, 16, caps.viewports);
-                for r in crate::command::scissors(scissors) {
+                assert_rects(name, scissors.len(), caps.viewports);
+                for r in scissors {
                     let end = (r.x as u64 + r.width as u64).max(r.y as u64 + r.height as u64);
-                    assert!(end <= i32::MAX as u64, "scissor {r:?} is too large");
+                    assert!(
+                        end <= i32::MAX as u64,
+                        "set_scissors {r:?} ends past i32::MAX"
+                    );
                 }
+                self.scissors = scissors.len() as u32;
             }
-            Command::Callback { index } => {
-                assert!(
-                    (index as usize) < self.natives,
-                    "callback {index} was recorded without its closure"
-                );
-            }
-            Command::ExecuteIndirect {
-                indirect,
-                first,
-                count,
-            } => {
-                let size = self.list(c, indirect)?;
-                assert!(
-                    first as u64 + count as u64 <= size as u64,
-                    "{c} draws {first}..{} past indirect buffer {indirect} of {size}",
-                    first as u64 + count as u64
-                );
-                if count > 1 {
-                    self.need(c, caps.multi_draw, "multi_draw")?;
-                }
-            }
-            Command::ExecuteIndirectCount {
-                indirect,
-                buffer,
-                offset,
-            } => {
-                self.list(c, indirect)?;
-                assert!(
-                    offset.is_multiple_of(4),
-                    "{c} range offset {offset} is not a multiple of 4"
-                );
-                self.range(buffer, offset, 8);
-                self.need(c, caps.indirect_count, "indirect_count")?;
-            }
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            Command::BuildAccel {
-                accel,
-                scratch,
-                scratch_offset,
-                update,
-            } => {
-                self.need(c, caps.ray, "ray")?;
-                let (build, refit) = *self.table.accels.get(accel);
-                assert!(
-                    self.table.geometry.get(accel).1,
-                    "accel {accel} builds from a buffer that was destroyed"
-                );
-                let size = if update != 0 { refit } else { build };
-                assert!(size > 0, "accel {accel} is compacted and cannot be built");
-                assert!(
-                    scratch_offset.is_multiple_of(256),
-                    "build_accel scratch offset {scratch_offset} is not a multiple of 256"
-                );
-                self.range(scratch, scratch_offset, size);
-            }
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            Command::CopyAccel { src, dst, .. } => {
-                self.need(c, caps.ray, "ray")?;
-                self.table.accels.get(src);
-                self.table.accels.get(dst);
-            }
-            #[cfg(any(feature = "vk", feature = "mtl"))]
-            Command::WriteCompactedSize { accel, heap, index } => {
-                self.need(c, caps.ray, "ray")?;
-                self.table.accels.get(accel);
-                self.queries(heap, &[query::COMPACTED], index, 1);
-            }
-            #[cfg(any(feature = "vk", feature = "gl"))]
-            Command::SetShadingRate {
-                width,
-                height,
-                primitive,
-                attachment,
-            } => {
-                self.need(c, caps.shading_rate, "shading_rate")?;
-                assert!(
-                    matches!(width, 1 | 2 | 4) && matches!(height, 1 | 2 | 4),
-                    "shading rate {width}x{height} is not 1, 2 or 4 on each side"
-                );
-                for op in [primitive, attachment] {
-                    known("combiner", op, crate::combiner::valid(op));
-                }
-            }
-            #[cfg(any(feature = "vk", feature = "gl"))]
-            Command::RateAttachment {
-                texture, layout: l, ..
-            } => {
-                self.need(c, caps.rate_images, "rate_images")?;
-                known("layout", l, layout::valid(l));
-                let t = self.texture(texture, usage::RATE, "RATE");
-                assert_eq!(
-                    t.format,
-                    format::R8_UINT,
-                    "rate_attachment texture {texture} must be R8_UINT"
-                );
-            }
-            _ => {}
         }
         Ok(())
+    }
+}
+
+impl Drop for Check<'_> {
+    fn drop(&mut self) {
+        if let Some(pool) = self.table.pools.find(self.pool) {
+            pool.1.set(false);
+        }
     }
 }

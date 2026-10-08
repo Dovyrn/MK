@@ -2,13 +2,16 @@ use crate::register;
 use crate::slot;
 use ash::vk;
 
-const KINDS: [(vk::DescriptorType, u32); 5] = [
+const KINDS: [(vk::DescriptorType, u32); 6] = [
     (vk::DescriptorType::UNIFORM_BUFFER, slot::UNIFORMS),
     (vk::DescriptorType::STORAGE_BUFFER, slot::STORAGES),
     (vk::DescriptorType::STORAGE_IMAGE, slot::IMAGES),
     (vk::DescriptorType::SAMPLED_IMAGE, slot::TEXTURES),
     (vk::DescriptorType::SAMPLER, slot::SAMPLERS),
+    (vk::DescriptorType::INPUT_ATTACHMENT, slot::COLORS),
 ];
+
+pub const SLOTS: usize = (register::ATTACHMENT + slot::COLORS) as usize;
 
 pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
     match kind {
@@ -21,22 +24,10 @@ pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
     }
 }
 
-pub fn attachments(device: &ash::Device) -> Result<vk::DescriptorSetLayout, vk::Result> {
-    let kind = vk::DescriptorType::INPUT_ATTACHMENT;
-    let list: Vec<_> = (0..slot::COLORS)
-        .map(|i| {
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(binding(kind, i))
-                .descriptor_type(kind)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-        })
-        .collect();
-    let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&list);
-    unsafe { device.create_descriptor_set_layout(&info, None) }
-}
-
-pub fn layout(device: &ash::Device, push: bool) -> Result<vk::DescriptorSetLayout, vk::Result> {
+pub fn slot_layout(
+    device: &ash::Device,
+    push: bool,
+) -> Result<vk::DescriptorSetLayout, vk::Result> {
     let mut list = Vec::new();
     if push {
         for (kind, count) in KINDS {
@@ -46,7 +37,11 @@ pub fn layout(device: &ash::Device, push: bool) -> Result<vk::DescriptorSetLayou
                         .binding(binding(kind, i))
                         .descriptor_type(kind)
                         .descriptor_count(1)
-                        .stage_flags(vk::ShaderStageFlags::ALL),
+                        .stage_flags(if kind == vk::DescriptorType::INPUT_ATTACHMENT {
+                            vk::ShaderStageFlags::FRAGMENT
+                        } else {
+                            vk::ShaderStageFlags::ALL
+                        }),
                 );
             }
         }

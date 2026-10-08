@@ -1,7 +1,7 @@
 [[info]]
 name = "TextureInfo"
 fields = [
-    ["dimension", "u32", "dimension::D2"],
+    ["dimension", "u32", "texture_dimension::D2"],
     ["format", "u32", "format::NONE"],
     ["width", "u32", "1"],
     ["height", "u32", "1"],
@@ -19,26 +19,26 @@ fields = [
     ["min", "u32", "filter::LINEAR"],
     ["mag", "u32", "filter::LINEAR"],
     ["mip", "u32", "filter::LINEAR"],
-    ["u", "u32", "address::REPEAT"],
-    ["v", "u32", "address::REPEAT"],
-    ["w", "u32", "address::REPEAT"],
+    ["u", "u32", "address_mode::REPEAT"],
+    ["v", "u32", "address_mode::REPEAT"],
+    ["w", "u32", "address_mode::REPEAT"],
     ["anisotropy", "u32", "1"],
-    ["compare", "u32", "compare::NONE"],
+    ["compare", "u32", "compare_op::NONE"],
     ["min_lod", "f32", "0.0"],
     ["max_lod", "f32", "1000.0"],
-    ["border", "u32", "border::TRANSPARENT_BLACK"],
+    ["border", "u32", "border_color::TRANSPARENT_BLACK"],
 ]
 
 [[info]]
-name = "ViewInfo"
+name = "TextureViewInfo"
 fields = [
-    ["dimension", "u32", "dimension::D2"],
+    ["dimension", "u32", "texture_dimension::D2"],
     ["format", "u32", "format::NONE"],
     ["base_mip", "u32", "0"],
     ["mips", "u32", "1"],
     ["base_layer", "u32", "0"],
     ["layers", "u32", "1"],
-    ["usage", "u32", "usage::SAMPLED"],
+    ["usage", "u32", "texture_usage::SAMPLED"],
 ]
 
 [[info]]
@@ -46,17 +46,17 @@ name = "ColorTarget"
 fields = [
     ["format", "u32", "format::NONE"],
     ["blend", "bool", "false"],
-    ["src", "u32", "blend::ONE"],
-    ["dst", "u32", "blend::ZERO"],
-    ["op", "u32", "op::ADD"],
-    ["src_alpha", "u32", "blend::ONE"],
-    ["dst_alpha", "u32", "blend::ZERO"],
-    ["op_alpha", "u32", "op::ADD"],
-    ["mask", "u32", "mask::ALL"],
+    ["src", "u32", "blend_factor::ONE"],
+    ["dst", "u32", "blend_factor::ZERO"],
+    ["op", "u32", "blend_op::ADD"],
+    ["src_alpha", "u32", "blend_factor::ONE"],
+    ["dst_alpha", "u32", "blend_factor::ZERO"],
+    ["op_alpha", "u32", "blend_op::ADD"],
+    ["mask", "u32", "color_mask::ALL"],
 ]
 
 [[info]]
-name = "VertexBuffer"
+name = "VertexBufferLayout"
 fields = [
     ["stride", "u32", "0"],
     ["instance", "bool", "false"],
@@ -72,7 +72,7 @@ fields = [
 ]
 
 [[info]]
-name = "RenderInfo"
+name = "RenderPipelineInfo"
 fields = [
     ["code", "bytes", ""],
     ["vertex", "str", ""],
@@ -82,28 +82,16 @@ fields = [
     ["stencil", "u32", "format::NONE"],
     ["samples", "u32", "1"],
     ["topology", "u32", "topology::TRIANGLE"],
-    ["fill", "u32", "fill::FILL"],
+    ["fill", "u32", "fill_mode::FILL"],
     ["coverage", "bool", "false"],
-    ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
-    ["buffers", "[VertexBuffer]", ""],
+    ["buffers", "[VertexBufferLayout]", ""],
     ["attributes", "[VertexAttribute]", ""],
 ]
 
 [[info]]
-name = "IndirectInfo"
-fields = [
-    ["size", "u32", "0"],
-    ["pipeline", "u32", "0"],
-    ["indexed", "bool", "false"],
-    ["indices", "u32", "0"],
-    ["offset", "u64", "0"],
-    ["kind", "u32", "index::U16"],
-]
-
-[[info]]
-name = "MeshInfo"
+name = "MeshPipelineInfo"
 fields = [
     ["code", "bytes", ""],
     ["task", "str", ""],
@@ -113,15 +101,14 @@ fields = [
     ["depth", "u32", "format::NONE"],
     ["stencil", "u32", "format::NONE"],
     ["samples", "u32", "1"],
-    ["fill", "u32", "fill::FILL"],
+    ["fill", "u32", "fill_mode::FILL"],
     ["coverage", "bool", "false"],
-    ["indirect", "bool", "false"],
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
 ]
 
 [[info]]
-name = "TileInfo"
+name = "TilePipelineInfo"
 fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
@@ -132,18 +119,18 @@ fields = [
 [[info]]
 name = "StencilFace"
 fields = [
-    ["fail", "u32", "stencil::KEEP"],
-    ["depth_fail", "u32", "stencil::KEEP"],
-    ["pass", "u32", "stencil::KEEP"],
-    ["compare", "u32", "compare::ALWAYS"],
+    ["fail", "u32", "stencil_op::KEEP"],
+    ["depth_fail", "u32", "stencil_op::KEEP"],
+    ["pass", "u32", "stencil_op::KEEP"],
+    ["compare", "u32", "compare_op::ALWAYS"],
     ["read", "u32", "0xff"],
     ["write", "u32", "0xff"],
 ]
 
 [[info]]
-name = "DepthInfo"
+name = "DepthStateInfo"
 fields = [
-    ["compare", "u32", "compare::NONE"],
+    ["compare", "u32", "compare_op::NONE"],
     ["write", "bool", "false"],
     ["stencil", "bool", "false"],
     ["front", "StencilFace", ""],
@@ -151,43 +138,10 @@ fields = [
 ]
 
 [[info]]
-name = "Triangles"
-fields = [
-    ["vertices", "u32", "0"],
-    ["vertex_offset", "u64", "0"],
-    ["format", "u32", "format::RGB32_FLOAT"],
-    ["stride", "u32", "12"],
-    ["vertex_count", "u32", "0"],
-    ["indices", "u32", "!0"],
-    ["index_offset", "u64", "0"],
-    ["index_kind", "u32", "index::U32"],
-    ["count", "u32", "0"],
-    ["opaque", "bool", "true"],
-]
-
-[[info]]
-name = "Boxes"
-fields = [
-    ["buffer", "u32", "0"],
-    ["offset", "u64", "0"],
-    ["stride", "u32", "24"],
-    ["count", "u32", "0"],
-    ["opaque", "bool", "true"],
-]
-
-[[info]]
-name = "AccelInfo"
-fields = [
-    ["triangles", "[Triangles]", ""],
-    ["boxes", "[Boxes]", ""],
-    ["ray_instances", "u32", "!0"],
-    ["flags", "u32", "0"],
-]
-
-[[info]]
 name = "Caps"
 fields = [
     ["mesh", "bool", "false"],
+    ["task", "bool", "false"],
     ["mesh_indirect", "bool", "false"],
     ["mesh_groups", "u32", "0"],
     ["mesh_axis", "u32", "0"],
@@ -199,28 +153,20 @@ fields = [
     ["tick", "f32", "0.0"],
     ["timestamps", "bool", "false"],
     ["precise", "bool", "false"],
-    ["ray", "bool", "false"],
-    ["sparse", "bool", "false"],
-    ["shading_rate", "bool", "false"],
-    ["rate_images", "bool", "false"],
     ["viewports", "u32", "1"],
     ["graphics", "u32", "0"],
     ["labels", "bool", "false"],
-    ["anisotropy", "bool", "false"],
+    ["anisotropy", "u32", "1"],
     ["depth_clamp", "bool", "false"],
     ["line_fill", "bool", "false"],
     ["multi_draw", "bool", "false"],
-    ["indirect_count", "bool", "false"],
-    ["sparse_textures", "bool", "false"],
     ["slots", "bool", "false"],
     ["storage", "bool", "false"],
     ["persistent", "bool", "false"],
     ["bind_alignment", "u32", "0"],
-    ["buffers", "u32", "0"],
     ["compute", "bool", "false"],
     ["texture_views", "bool", "false"],
     ["occlusion", "bool", "false"],
-    ["cache", "bool", "false"],
     ["bias_clamp", "bool", "false"],
     ["blends", "bool", "false"],
     ["indirect", "bool", "false"],
@@ -238,7 +184,6 @@ fields = [
     ["budget", "bool", "false"],
     ["host_read", "bool", "false"],
     ["copy_formats", "bool", "false"],
-    ["texture_clear", "bool", "false"],
     ["buffer_clear", "bool", "false"],
     ["partial_resolve", "bool", "false"],
     ["subgroup", "u32", "0"],
@@ -249,7 +194,6 @@ fields = [
     ["max_threads", "u32", "0"],
     ["max_shared", "u32", "0"],
     ["atomics64", "u32", "0"],
-    ["matrices", "u32", "0"],
     ["transients", "bool", "false"],
     ["transient_reads", "bool", "false"],
     ["attachment_reads", "bool", "false"],
@@ -258,53 +202,17 @@ fields = [
 ]
 
 [[info]]
-name = "Matrix"
-fields = [
-    ["m", "u32", "0"],
-    ["n", "u32", "0"],
-    ["k", "u32", "0"],
-    ["a", "u32", "0"],
-    ["b", "u32", "0"],
-    ["c", "u32", "0"],
-    ["result", "u32", "0"],
-    ["saturate", "bool", "false"],
-]
-
-[[info]]
-name = "Budget"
+name = "MemoryBudget"
 fields = [
     ["budget", "u64", "0"],
     ["usage", "u64", "0"],
 ]
 
 [[info]]
-name = "SparseRange"
-fields = [
-    ["page", "u32", "0"],
-    ["count", "u32", "1"],
-    ["heap_page", "u32", "0"],
-]
-
-[[info]]
-name = "SparseRegion"
-fields = [
-    ["mip", "u32", "0"],
-    ["layer", "u32", "0"],
-    ["x", "u32", "0"],
-    ["y", "u32", "0"],
-    ["z", "u32", "0"],
-    ["width", "u32", "1"],
-    ["height", "u32", "1"],
-    ["depth", "u32", "1"],
-    ["heap_page", "u32", "0"],
-]
-
-[[info]]
-name = "ComputeInfo"
+name = "ComputePipelineInfo"
 fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
-    ["indirect", "bool", "false"],
     ["subgroup", "u32", "0"],
     ["full", "bool", "false"],
 ]
@@ -312,13 +220,11 @@ fields = [
 [[info]]
 name = "TextureBarrier"
 fields = [
-    ["texture", "u32", "0"],
+    ["texture", "Texture", ""],
     ["src_stage", "u32", "0"],
-    ["src_access", "u32", "0"],
     ["dst_stage", "u32", "0"],
-    ["dst_access", "u32", "0"],
-    ["before", "u32", "layout::UNDEFINED"],
-    ["after", "u32", "layout::UNDEFINED"],
+    ["before", "u32", "texture_layout::GENERAL"],
+    ["after", "u32", "texture_layout::GENERAL"],
     ["base_mip", "u32", "0"],
     ["mips", "u32", "!0"],
     ["base_layer", "u32", "0"],
@@ -326,14 +232,13 @@ fields = [
 ]
 
 [[info]]
-name = "TextureCopy"
+name = "BufferTextureCopy"
 fields = [
-    ["buffer", "u32", "0"],
+    ["buffer", "Buffer", ""],
     ["offset", "u64", "0"],
     ["row_length", "u32", "0"],
     ["row_count", "u32", "0"],
-    ["texture", "u32", "0"],
-    ["layout", "u32", "layout::UNDEFINED"],
+    ["texture", "Texture", ""],
     ["mip", "u32", "0"],
     ["layer", "u32", "0"],
     ["x", "u32", "0"],
@@ -345,10 +250,9 @@ fields = [
 ]
 
 [[info]]
-name = "HostCopy"
+name = "HostTextureCopy"
 fields = [
-    ["texture", "u32", "0"],
-    ["layout", "u32", "layout::GENERAL"],
+    ["texture", "Texture", ""],
     ["mip", "u32", "0"],
     ["layer", "u32", "0"],
     ["x", "u32", "0"],
@@ -362,17 +266,15 @@ fields = [
 ]
 
 [[info]]
-name = "CopyInfo"
+name = "TextureCopy"
 fields = [
-    ["src", "u32", "0"],
-    ["src_layout", "u32", "layout::COPY_SRC"],
+    ["src", "Texture", ""],
     ["src_mip", "u32", "0"],
     ["src_layer", "u32", "0"],
     ["src_x", "u32", "0"],
     ["src_y", "u32", "0"],
     ["src_z", "u32", "0"],
-    ["dst", "u32", "0"],
-    ["dst_layout", "u32", "layout::COPY_DST"],
+    ["dst", "Texture", ""],
     ["dst_mip", "u32", "0"],
     ["dst_layer", "u32", "0"],
     ["dst_x", "u32", "0"],
@@ -385,70 +287,27 @@ fields = [
 ]
 
 [[info]]
-name = "BlitInfo"
-fields = [
-    ["src", "u32", "0"],
-    ["src_layout", "u32", "layout::COPY_SRC"],
-    ["src_mip", "u32", "0"],
-    ["src_layer", "u32", "0"],
-    ["src_x", "u32", "0"],
-    ["src_y", "u32", "0"],
-    ["src_width", "u32", "1"],
-    ["src_height", "u32", "1"],
-    ["dst", "u32", "0"],
-    ["dst_layout", "u32", "layout::COPY_DST"],
-    ["dst_mip", "u32", "0"],
-    ["dst_layer", "u32", "0"],
-    ["dst_x", "u32", "0"],
-    ["dst_y", "u32", "0"],
-    ["dst_width", "u32", "1"],
-    ["dst_height", "u32", "1"],
-    ["filter", "u32", "filter::LINEAR"],
-]
-
-[[info]]
-name = "ClearInfo"
-fields = [
-    ["texture", "u32", "0"],
-    ["layout", "u32", "layout::COPY_DST"],
-    ["base_mip", "u32", "0"],
-    ["mips", "u32", "!0"],
-    ["base_layer", "u32", "0"],
-    ["layers", "u32", "!0"],
-    ["r", "f32", "0.0"],
-    ["g", "f32", "0.0"],
-    ["b", "f32", "0.0"],
-    ["a", "f32", "0.0"],
-    ["depth", "f32", "1.0"],
-    ["stencil", "u32", "0"],
-]
-
-[[info]]
 name = "ColorAttachment"
 fields = [
-    ["index", "u32", "0"],
-    ["texture", "u32", "0"],
-    ["layout", "u32", "layout::COLOR"],
-    ["load", "u32", "load::CLEAR"],
-    ["store", "u32", "store::STORE"],
+    ["texture", "Texture", ""],
+    ["load", "u32", "load_op::CLEAR"],
+    ["store", "u32", "store_op::STORE"],
     ["r", "f32", "0.0"],
     ["g", "f32", "0.0"],
     ["b", "f32", "0.0"],
     ["a", "f32", "0.0"],
-    ["resolve", "u32", "!0"],
-    ["resolve_layout", "u32", "layout::COLOR"],
+    ["resolve", "Texture", ""],
 ]
 
 [[info]]
 name = "DepthAttachment"
 fields = [
-    ["texture", "u32", "0"],
-    ["layout", "u32", "layout::DEPTH"],
-    ["load", "u32", "load::CLEAR"],
-    ["store", "u32", "store::STORE"],
+    ["texture", "Texture", ""],
+    ["load", "u32", "load_op::CLEAR"],
+    ["store", "u32", "store_op::STORE"],
     ["depth", "f32", "1.0"],
-    ["stencil_load", "u32", "load::DONT_CARE"],
-    ["stencil_store", "u32", "store::DONT_CARE"],
+    ["stencil_load", "u32", "load_op::DONT_CARE"],
+    ["stencil_store", "u32", "store_op::DONT_CARE"],
     ["stencil", "u32", "0"],
 ]
 
@@ -470,4 +329,32 @@ fields = [
     ["y", "u32", "0"],
     ["width", "u32", "0"],
     ["height", "u32", "0"],
+]
+
+[[info]]
+name = "TileMemory"
+fields = [
+    ["width", "u32", "0"],
+    ["height", "u32", "0"],
+    ["shared", "u32", "0"],
+]
+
+[[info]]
+name = "RenderPassInfo"
+fields = [
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["layers", "u32", "1"],
+    ["colors", "[ColorAttachment]", ""],
+    ["depth", "DepthAttachment", ""],
+    ["occlusion", "QueryPool", ""],
+    ["tile", "TileMemory", ""],
+]
+
+[[info]]
+name = "ImportedPassInfo"
+fields = [
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["samples", "u32", "1"],
 ]

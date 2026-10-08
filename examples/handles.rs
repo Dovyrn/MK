@@ -1,13 +1,21 @@
-use mk::{Commands, ComputeInfo, access, memory, stage};
+#[cfg(not(feature = "gl"))]
+use mk::{ComputePipelineInfo, memory, stage};
 
 #[path = "support/host.rs"]
 mod host;
 
+#[cfg(feature = "gl")]
+pub fn main() {
+    println!("GL shaders reach buffers through slots, not addresses");
+}
+
+#[cfg(not(feature = "gl"))]
 pub fn main() {
     let n = 256u32;
     let mut device = host::device(1);
-    if device.caps().buffers == 0 {
-        println!("no buffer handles in the bindless heap");
+    let pool = device.create_command_pool(0).unwrap();
+    if !device.caps().addresses {
+        println!("no buffer addresses");
         return;
     }
     let data = device.create_buffer(n as u64 * 4, memory::DEVICE).unwrap();
@@ -15,41 +23,33 @@ pub fn main() {
         .create_buffer(n as u64 * 4, memory::READBACK)
         .unwrap();
     let fill = device
-        .create_pipeline(&ComputeInfo {
+        .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("handles"),
             entry: "fill",
             ..Default::default()
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut push = device.buffer_handle(data).unwrap().to_le_bytes().to_vec();
+    let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     let (constants, _) = host::constants(&mut device, &[&push]);
-    let mut c = Commands::default();
-    c.begin_compute();
-    c.bind_pipeline(fill);
-    c.bind_uniform(0, constants, 0, push.len() as u64);
-    c.dispatch(n / 64, 1, 1);
-    c.barrier(
-        stage::COMPUTE,
-        access::SHADER_WRITE,
-        stage::COPY,
-        access::COPY_READ,
-    );
-    c.copy_buffer(data, 0, back, 0, n as u64 * 4);
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    let mut c = device.begin_commands(pool).unwrap();
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.bind_compute_pipeline(fill).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
+        .unwrap();
+    pass.dispatch(n / 64, 1, 1).unwrap();
+    pass.memory_barrier(stage::COMPUTE, stage::COPY);
+    pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let values = unsafe { std::slice::from_raw_parts(device.map(back).cast::<u32>(), n as usize) };
+    let values =
+        unsafe { std::slice::from_raw_parts(device.map_buffer(back).cast::<u32>(), n as usize) };
     for (i, v) in values.iter().enumerate() {
         assert_eq!(*v, i as u32 * 3 + 7, "value {i}");
     }
-    device.unmap(back);
-    println!("{n} values written through a buffer handle from the heap");
+    device.unmap_buffer(back);
+    println!("{n} values written through a buffer address");
 }

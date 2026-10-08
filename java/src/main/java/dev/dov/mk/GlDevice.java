@@ -15,31 +15,43 @@ public class GlDevice extends Device {
 
     private static native long nAdoptRaw(long proc);
 
-    public synchronized int importBuffer(int raw, long size) {
-        return nImportBuffer(handle, raw, size);
+    public synchronized Buffer importBuffer(int raw, long size) {
+        idle("importBuffer");
+        return Buffer.of(nImportBuffer(handle(), raw, size));
     }
 
-    private static native int nImportBuffer(long device, int raw, long size);
+    private static native long nImportBuffer(long device, int raw, long size);
 
-    public synchronized int importTexture(int raw, TextureInfo info) {
+    public synchronized Texture importTexture(int raw, TextureInfo info) {
+        idle("importTexture");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nImportTexture(handle, raw, infoAddress, info.encodedSize());
+            return Texture.of(nImportTexture(handle(), raw, infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nImportTexture(long device, int raw, long info, int infoLength);
+    private static native long nImportTexture(long device, int raw, long info, int infoLength);
 
-    public synchronized int rawBuffer(int buffer) {
-        return nRawBuffer(handle, buffer);
+    public synchronized RenderPass importRenderPass(CommandPool pool, ImportedPassInfo info) {
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
+            info.encode(infoAddress);
+            return RenderPass.adopt(this, nImportRenderPass(handle(), CommandPool.raw(pool), infoAddress, info.encodedSize()));
+        }
     }
 
-    private static native int nRawBuffer(long device, int buffer);
+    private static native long nImportRenderPass(long device, long pool, long info, int infoLength);
 
-    public synchronized int rawTexture(int texture) {
-        return nRawTexture(handle, texture);
+    public synchronized int rawBuffer(Buffer buffer) {
+        return nRawBuffer(handle(), Buffer.raw(buffer));
     }
 
-    private static native int nRawTexture(long device, int texture);
+    private static native int nRawBuffer(long device, long buffer);
+
+    public synchronized int rawTexture(Texture texture) {
+        return nRawTexture(handle(), Texture.raw(texture));
+    }
+
+    private static native int nRawTexture(long device, long texture);
 }

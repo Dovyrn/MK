@@ -1,19 +1,22 @@
 use crate::field::Field;
 use crate::infos::Info;
-use crate::{camel, cfg, class, list, member, pascal};
+use crate::{cfg, list, pascal};
 use serde::Deserialize;
 use std::fmt::Write;
 
 #[derive(Deserialize)]
 pub struct Op {
-    name: String,
-    backend: Option<String>,
-    scope: Option<String>,
-    info: Option<String>,
+    pub name: String,
+    pub backend: Option<String>,
     #[serde(default)]
-    fields: Vec<Field>,
-    #[serde(skip)]
-    items: Vec<Field>,
+    pub scope: String,
+    #[serde(default)]
+    pub internal: bool,
+    #[serde(default)]
+    pub fails: bool,
+    pub info: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<Field>,
 }
 
 fn find<'a>(infos: &'a [Info], name: &str) -> &'a [Field] {
@@ -29,46 +32,17 @@ pub fn resolve(ops: &mut [Op], infos: &[Info]) {
         if let Some(i) = &op.info {
             op.fields = find(infos, i).to_vec();
         }
-        if let Some(i) = op.fields.last().and_then(|f| list(&f.kind)) {
-            op.items = find(infos, i).to_vec();
-        }
-        for (i, f) in op.fields.iter().enumerate() {
-            assert!(
-                !tailing(&f.kind) || i == op.fields.len() - 1,
-                "{}: {} must be last",
-                op.name,
-                f.name
-            );
-        }
     }
 }
 
-fn tailing(kind: &str) -> bool {
-    kind == "bytes" || kind == "str" || list(kind).is_some()
-}
-
-fn width(kind: &str) -> usize {
+pub fn rust_type(kind: &str) -> String {
     match kind {
-        "u8" => 1,
-        "u32" | "i32" | "f32" => 4,
-        "u64" => 8,
-        _ => 0,
-    }
-}
-
-fn fixed(fields: &[Field]) -> usize {
-    fields.iter().map(|f| width(&f.kind)).sum()
-}
-
-fn tail(op: &Op) -> Option<&Field> {
-    op.fields.last().filter(|f| tailing(&f.kind))
-}
-
-fn rust_type(kind: &str) -> &str {
-    match kind {
-        "str" => "&'a str",
-        k if tailing(k) => "&'a [u8]",
-        k => k,
+        "str" => "&'a str".into(),
+        k => match list(k) {
+            Some(item) => format!("&'a [crate::{item}]"),
+            None if k.chars().next().unwrap().is_uppercase() => format!("crate::{k}"),
+            None => k.into(),
+        },
     }
 }
 
@@ -79,25 +53,8 @@ fn gate(op: &Op, indent: &str) -> String {
     }
 }
 
-fn public(op: &Op) -> &str {
-    if op.backend.as_deref() == Some("rust") {
-        "pub(crate)"
-    } else {
-        "pub"
-    }
-}
-
 pub fn command(ops: &[Op]) -> String {
-    let mut s = String::new();
-    let names: Vec<_> = ops.iter().map(|o| format!("{:?}", o.name)).collect();
-    writeln!(
-        s,
-        "pub const NAMES: [&str; {}] = [{}];\n",
-        ops.len(),
-        names.join(", ")
-    )
-    .unwrap();
-    s += "#[derive(Debug, PartialEq)]\npub enum Command<'a> {\n";
+    let mut s = String::from("#[derive(Debug, PartialEq)]\npub enum Command<'a> {\n");
     for op in ops {
         s += &gate(op, "    ");
         if op.fields.is_empty() {
@@ -111,59 +68,18 @@ pub fn command(ops: &[Op]) -> String {
             writeln!(s, "    {} {{ {} }},", pascal(&op.name), fields.join(", ")).unwrap();
         }
     }
-    s += "}\n\nimpl<'a> Command<'a> {\n";
-    s += "    pub fn read(bytes: &mut &'a [u8]) -> Result<Self, &'static str> {\n";
-    s += "        let op = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;\n";
-    s += "        let size = u16::from_le_bytes([bytes[2], bytes[3]]) as usize;\n";
-    s += "        let p: &'a [u8] = &bytes[4..4 + size];\n";
-    s += "        *bytes = &bytes[4 + size..];\n";
-    s += "        Ok(match op {\n";
-    for (i, op) in ops.iter().enumerate() {
-        s += &gate(op, "            ");
-        let mut at = 0;
-        let mut fields = Vec::new();
-        for f in &op.fields {
-            let value = match f.kind.as_str() {
-                "u8" => format!("p[{at}]"),
-                "str" => format!(
-                    "str::from_utf8(&p[{at}..])\n                    .map_err(|_| NAMES[{i}])?\n                    .split('\\0')\n                    .next()\n                    .unwrap()"
-                ),
-                k if tailing(k) => format!("&p[{at}..]"),
-                k => format!(
-                    "{k}::from_le_bytes(p[{at}..{}].try_into().unwrap())",
-                    at + width(k)
-                ),
-            };
-            at += width(&f.kind);
-            fields.push(format!("{}: {value}", f.name));
-        }
-        if fields.is_empty() {
-            writeln!(s, "            {i} => Self::{},", pascal(&op.name)).unwrap();
-        } else {
-            writeln!(
-                s,
-                "            {i} => Self::{} {{\n                {},\n            }},",
-                pascal(&op.name),
-                fields.join(",\n                ")
-            )
-            .unwrap();
-        }
-    }
-    s += "            _ => return Err(NAMES.get(op).copied().unwrap_or(\"unknown\")),\n";
-    s += "        })\n    }\n}\n\n";
-    s += "impl Command<'_> {\n    pub fn scope(&self) -> &'static str {\n        match self {\n";
+    s += "}\n\nimpl Command<'_> {\n    pub fn scope(&self) -> &'static str {\n        match self {\n";
     for op in ops {
-        if let Some(scope) = &op.scope {
-            s += &gate(op, "            ");
-            writeln!(
-                s,
-                "            Self::{} {{ .. }} => {scope:?},",
-                pascal(&op.name)
-            )
-            .unwrap();
-        }
+        s += &gate(op, "            ");
+        writeln!(
+            s,
+            "            Self::{} {{ .. }} => {:?},",
+            pascal(&op.name),
+            op.scope
+        )
+        .unwrap();
     }
-    s += "            _ => \"\",\n        }\n    }\n}\n\n";
+    s += "        }\n    }\n}\n\n";
     s += "impl std::fmt::Display for Command<'_> {\n";
     s += "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n";
     s += "        match self {\n";
@@ -175,7 +91,7 @@ pub fn command(ops: &[Op]) -> String {
             .iter()
             .map(|f| match f.kind.as_str() {
                 "str" => format!(" {0}={{{0}:?}}", f.name),
-                k if tailing(k) => format!(" {0}={{{0}:02x?}}", f.name),
+                k if list(k).is_some() => format!(" {0}={{{0}:?}}", f.name),
                 _ => format!(" {0}={{{0}}}", f.name),
             })
             .collect();
@@ -196,224 +112,280 @@ pub fn command(ops: &[Op]) -> String {
     s
 }
 
-fn rust_put(indent: &str, kind: &str, value: &str) -> String {
-    let call = match kind {
-        "u8" => format!("self.bytes.push({value});"),
-        "str" => format!("self.bytes.extend_from_slice({value}.as_bytes());"),
-        "bytes" => format!("self.bytes.extend_from_slice({value});"),
-        _ => format!("self.bytes.extend_from_slice(&{value}.to_le_bytes());"),
-    };
-    format!("{indent}{call}\n")
+pub fn exposed(op: &Op, class: &str) -> bool {
+    let manual = matches!(
+        op.name.as_str(),
+        "begin_compute_pass" | "end_compute_pass" | "begin_render_pass" | "end_render_pass"
+    );
+    !op.internal && !manual && op.scope.split(' ').any(|s| s == class)
 }
 
-pub fn commands(ops: &[Op]) -> String {
-    let mut s = String::from("impl Commands {\n");
-    for (i, op) in ops.iter().enumerate() {
-        s += &gate(op, "    ");
-        let params: Vec<_> = match &op.info {
-            Some(info) => vec![format!("info: &crate::{info}")],
-            None => op
+fn param(f: &Field) -> String {
+    match list(&f.kind) {
+        Some(item) => format!("{}: &[crate::{item}]", f.name),
+        None => format!("{}: {}", f.name, rust_type(&f.kind).replace("'a ", "")),
+    }
+}
+
+pub fn methods(ops: &[Op]) -> String {
+    let mut s = String::new();
+    for (class, kind) in [
+        ("outside", "crate::CommandBuffer<'_>"),
+        ("compute", "crate::ComputePass<'_, '_>"),
+        ("render", "crate::RenderPass<'_, '_>"),
+    ] {
+        writeln!(s, "impl {kind} {{").unwrap();
+        for op in ops.iter().filter(|o| exposed(o, class)) {
+            s += &gate(op, "    ");
+            let params: Vec<_> = match &op.info {
+                Some(info) => vec![format!("info: &crate::{info}")],
+                None => op.fields.iter().map(param).collect(),
+            };
+            let owner = if op.info.is_some() { "info." } else { "" };
+            let values: Vec<_> = op
                 .fields
                 .iter()
-                .map(|f| {
-                    let kind = match list(&f.kind) {
-                        Some(item) => format!("&[crate::{item}]"),
-                        None => rust_type(&f.kind).replace("'a ", ""),
-                    };
-                    format!("{}: {kind}", f.name)
+                .map(|f| match owner {
+                    "" => f.name.clone(),
+                    _ => format!("{}: {owner}{}", f.name, f.name),
                 })
-                .collect(),
-        };
-        writeln!(
-            s,
-            "    {} fn {}(&mut self, {}) {{",
-            public(op),
-            op.name,
-            params.join(", ")
-        )
-        .unwrap();
-        let size = match tail(op) {
-            Some(f) if list(&f.kind).is_some() => format!(
-                "{} + {}.len() * {}",
-                fixed(&op.fields),
-                f.name,
-                fixed(&op.items)
-            ),
-            Some(f) => format!("{} + {}.len()", fixed(&op.fields), f.name),
-            None => fixed(&op.fields).to_string(),
-        };
-        let size = size.trim_start_matches("0 + ");
-        writeln!(s, "        self.head({i}, {size});").unwrap();
-        let owner = if op.info.is_some() { "info." } else { "" };
-        for f in &op.fields {
-            if list(&f.kind).is_none() {
-                s += &rust_put("        ", &f.kind, &format!("{owner}{}", f.name));
-                continue;
+                .collect();
+            let command = if op.fields.is_empty() {
+                format!("crate::command::Command::{}", pascal(&op.name))
+            } else {
+                format!(
+                    "crate::command::Command::{} {{\n            {},\n        }}",
+                    pascal(&op.name),
+                    values.join(",\n            ")
+                )
+            };
+            let mut list = vec!["&mut self".to_string()];
+            list.extend(params);
+            if op.fails {
+                writeln!(
+                    s,
+                    "    pub fn {}({}) -> Result<(), String> {{\n        self.recording.record({command})\n    }}\n",
+                    op.name,
+                    list.join(", ")
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    s,
+                    "    pub fn {}({}) {{\n        self.recording.run({command})\n    }}\n",
+                    op.name,
+                    list.join(", ")
+                )
+                .unwrap();
             }
-            writeln!(s, "        for x in {} {{", f.name).unwrap();
-            for item in &op.items {
-                s += &rust_put("            ", &item.kind, &format!("x.{}", item.name));
-            }
-            s += "        }\n";
         }
-        s += "    }\n\n";
+        s.truncate(s.len() - 1);
+        s += "}\n\n";
     }
-    s.truncate(s.len() - 1);
-    s += "}\n";
     s
 }
 
-fn java_type(kind: &str) -> String {
-    match kind {
-        "u8" => "byte".into(),
-        "u32" | "i32" => "int".into(),
-        "u64" => "long".into(),
-        "f32" => "float".into(),
-        "bytes" => "long".into(),
-        "str" => "String".into(),
-        k => format!("{}[]", list(k).unwrap()),
+const CLASSES: [(&str, &str); 3] = [
+    ("outside", "CommandBuffer"),
+    ("compute", "ComputePass"),
+    ("render", "RenderPass"),
+];
+
+fn jni_params(f: &Field) -> Vec<(String, &'static str, &'static str)> {
+    let n = crate::camel(&f.name);
+    match f.kind.as_str() {
+        "u32" | "i32" | "u8" => vec![(n, "int", "jint")],
+        "u64" => vec![(n, "long", "jlong")],
+        "f32" => vec![(n, "float", "jfloat")],
+        "bool" => vec![(n, "boolean", "jboolean")],
+        k if crate::handle(k) => vec![(n, "long", "jlong")],
+        _ => vec![
+            (n.clone(), "long", "jlong"),
+            (format!("{n}Length"), "int", "jint"),
+        ],
     }
 }
 
-fn java_put(kind: &str, at: &str, value: &str) -> String {
-    match kind {
-        "u8" => format!("memPutByte({at}, {value});"),
-        "u32" | "i32" => format!("memPutInt({at}, {value});"),
-        "u64" => format!("memPutLong({at}, {value});"),
-        _ => format!("memPutFloat({at}, {value});"),
+fn snake(name: &str) -> String {
+    let mut s = String::new();
+    for c in name.chars() {
+        if c.is_uppercase() {
+            s.push('_');
+            s.push(c.to_ascii_lowercase());
+        } else {
+            s.push(c);
+        }
+    }
+    s
+}
+
+fn rust_value(f: &Field) -> String {
+    let n = snake(&crate::camel(&f.name));
+    match f.kind.as_str() {
+        "u32" => format!("{n} as u32"),
+        "u8" => format!("{n} as u8"),
+        "i32" | "f32" => n,
+        "u64" => format!("{n} as u64"),
+        "bool" => format!("{n} != 0"),
+        "str" => format!("crate::java::str({n}, {n}_length as i64)"),
+        k if crate::handle(k) => format!("crate::{k}::from_raw({n} as u64)"),
+        k => {
+            let item = list(k).unwrap();
+            format!(
+                "&crate::wire::list(&mut crate::java::bytes({n}, {n}_length as i64), crate::{item}::read)"
+            )
+        }
     }
 }
 
-fn offset(base: &str, at: usize) -> String {
-    if at == 0 {
-        base.to_string()
-    } else {
-        format!("{base} + {at}")
+pub fn jni(ops: &[Op]) -> String {
+    let mut s = String::new();
+    for (scope, class) in CLASSES {
+        let getter = snake(class).trim_start_matches('_').to_string();
+        for op in ops.iter().filter(|o| exposed(o, scope)) {
+            let mut params = vec![
+                "mut env: JNIEnv<'local>".to_string(),
+                "_: JClass".to_string(),
+                "target: jlong".to_string(),
+            ];
+            for f in &op.fields {
+                for (n, _, t) in jni_params(f) {
+                    params.push(format!("{}: {t}", snake(&n)));
+                }
+            }
+            let values: Vec<_> = op.fields.iter().map(rust_value).collect();
+            let args = match &op.info {
+                Some(info) => {
+                    let fields: Vec<_> = op
+                        .fields
+                        .iter()
+                        .zip(&values)
+                        .map(|(f, v)| {
+                            if *v == f.name {
+                                v.clone()
+                            } else {
+                                format!("{}: {v}", f.name)
+                            }
+                        })
+                        .collect();
+                    format!("&crate::{info} {{ {} }}", fields.join(", "))
+                }
+                None => values.join(", "),
+            };
+            let call = format!("crate::java::{getter}(target).{}({args})", op.name);
+            let body = if op.fails {
+                call
+            } else {
+                format!("{call};\n        Ok(())")
+            };
+            s += "\n";
+            if let Some(c) = cfg(op.backend.as_deref()) {
+                writeln!(s, "#[cfg({c})]").unwrap();
+            }
+            writeln!(
+                s,
+                "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{class}_n{}<'local>({}) {{\n    crate::java::call(&mut env, |_| {{\n        {body}\n    }})\n}}",
+                pascal(&op.name),
+                params.join(", ")
+            )
+            .unwrap();
+        }
     }
+    s
 }
 
-pub fn java(ops: &[Op], backend: Option<&str>) -> Option<String> {
-    let mine: Vec<_> = ops
-        .iter()
-        .enumerate()
-        .filter(|(_, o)| member(o.backend.as_deref(), backend))
-        .collect();
-    if mine.is_empty() && backend.is_some() {
-        return None;
-    }
-    let kinds: Vec<_> = mine
-        .iter()
-        .flat_map(|(_, o)| &o.fields)
-        .map(|f| f.kind.as_str())
-        .collect();
-    let mut s =
-        String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
-    if kinds.contains(&"str") {
-        s += "import java.nio.charset.StandardCharsets;\n";
-    }
-    if backend.is_none() {
-        s += "import java.lang.ref.Cleaner;\nimport lombok.Getter;\n";
-    }
-    if kinds.contains(&"str") || backend.is_none() {
-        s += "\n";
-    }
-    match backend {
-        None => s += include_str!("commands.java"),
-        Some(_) => writeln!(
-            s,
-            "public class {} extends Commands {{",
-            class(backend, "Commands")
-        )
-        .unwrap(),
-    }
-    for (i, op) in mine {
+pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
+    let mut s = String::from(
+        "package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\nimport java.nio.charset.StandardCharsets;\n\n",
+    );
+    s += &match class {
+        "CommandBuffer" => include_str!("command_buffer.java").to_string(),
+        _ => include_str!("pass.java").replace("NAME", class),
+    };
+    for op in ops.iter().filter(|o| exposed(o, scope)) {
         let params: Vec<_> = match &op.info {
             Some(info) => vec![format!("{info} info")],
             None => op
                 .fields
                 .iter()
-                .flat_map(|f| {
-                    let n = camel(&f.name);
-                    let mut v = vec![format!("{} {n}", java_type(&f.kind))];
-                    if f.kind == "bytes" {
-                        v.push(format!("long {n}Size"));
-                    }
-                    v
+                .map(|f| {
+                    let t = match f.kind.as_str() {
+                        "u32" | "i32" | "u8" => "int".to_string(),
+                        "u64" => "long".into(),
+                        "f32" => "float".into(),
+                        "bool" => "boolean".into(),
+                        "str" => "String".into(),
+                        k if crate::handle(k) => k.into(),
+                        k => format!("{}[]", list(k).unwrap()),
+                    };
+                    format!("{t} {}", crate::camel(&f.name))
                 })
                 .collect(),
         };
         writeln!(
             s,
-            "\n    public void {}({}) {{",
-            camel(&op.name),
+            "\n    public void {}({}) {{\n        synchronized (device) {{",
+            crate::camel(&op.name),
             params.join(", ")
         )
         .unwrap();
-        let fixed = fixed(&op.fields);
-        let size = match tail(op) {
-            Some(f) if f.kind == "str" => {
-                writeln!(
-                    s,
-                    "        var b = {}.getBytes(StandardCharsets.UTF_8);",
-                    camel(&f.name)
-                )
-                .unwrap();
-                format!("{fixed} + b.length")
-            }
-            Some(f) if f.kind == "bytes" => format!("{fixed} + (int) {}Size", camel(&f.name)),
-            Some(f) => format!(
-                "{fixed} + {}.length * {}",
-                camel(&f.name),
-                self::fixed(&op.items)
-            ),
-            None => fixed.to_string(),
-        };
-        if let Some(f) = tail(op).filter(|f| f.kind == "bytes") {
-            let n = camel(&f.name);
-            writeln!(
-                s,
-                "        if ({n}Size < 0 || {n}Size > 0xffff) {{\n            throw new IllegalArgumentException(\"{n}Size \" + {n}Size + \" is outside 0..65535\");\n        }}\n        if ({n} == NULL && {n}Size != 0) {{\n            throw new IllegalArgumentException(\"{n} is null\");\n        }}"
-            )
-            .unwrap();
-        }
-        let call = format!("head({i}, {})", size.trim_start_matches("0 + "));
-        if op.fields.is_empty() {
-            writeln!(s, "        {call};").unwrap();
-        } else {
-            writeln!(s, "        var p = {call};").unwrap();
-        }
         let owner = if op.info.is_some() { "info." } else { "" };
-        let mut at = 0;
+        let mut args = vec!["handle()".to_string()];
+        let mut arena = false;
         for f in &op.fields {
-            let n = camel(&f.name);
-            let p = offset("p", at);
+            let n = format!("{owner}{}", crate::camel(&f.name));
             match f.kind.as_str() {
-                "bytes" => writeln!(s, "        memCopy({n}, {p}, {n}Size);"),
-                "str" => writeln!(s, "        memByteBuffer({p}, b.length).put(b);"),
-                k if list(k).is_some() => {
-                    writeln!(s, "        for (var i = 0; i < {n}.length; i++) {{").unwrap();
+                k if crate::handle(k) => args.push(format!("{k}.raw({n})")),
+                "u8" => args.push(format!("{n} & 0xff")),
+                "str" => {
+                    arena = true;
                     writeln!(
                         s,
-                        "            var q = {p} + i * {};",
-                        self::fixed(&op.items)
+                        "            var encoded = {n}.getBytes(StandardCharsets.UTF_8);"
                     )
                     .unwrap();
-                    let mut step = 0;
-                    for item in &op.items {
-                        let value = format!("{n}[i].{}", camel(&item.name));
-                        let put = java_put(&item.kind, &offset("q", step), &value);
-                        writeln!(s, "            {put}").unwrap();
-                        step += width(&item.kind);
-                    }
-                    writeln!(s, "        }}")
+                    args.push("arena.bytes(encoded)".into());
+                    args.push("encoded.length".into());
                 }
-                k => writeln!(s, "        {}", java_put(k, &p, &format!("{owner}{n}"))),
+                k if list(k).is_some() => {
+                    arena = true;
+                    crate::infos::list_size(&mut s, k, &n, "            ");
+                    writeln!(
+                        s,
+                        "            var list = arena.alloc({n}Size);\n            var at = list;"
+                    )
+                    .unwrap();
+                    crate::infos::list_put(&mut s, k, &n, "at", "            ").unwrap();
+                    args.push("list".into());
+                    args.push(format!("{n}Size"));
+                }
+                _ => args.push(n),
             }
-            .unwrap();
-            at += width(&f.kind);
         }
-        s += "    }\n";
+        let call = format!("n{}({});", pascal(&op.name), args.join(", "));
+        if arena {
+            let s2 = s.clone();
+            let at = s2.rfind("synchronized (device) {").unwrap() + "synchronized (device) {".len();
+            s.insert_str(at, "\n            try (var arena = new Arena()) {");
+            writeln!(s, "                {call}\n            }}").unwrap();
+        } else {
+            writeln!(s, "            {call}").unwrap();
+        }
+        s += "        }\n    }\n";
+        let mut natives = vec!["long target".to_string()];
+        for f in &op.fields {
+            for (n, t, _) in jni_params(f) {
+                natives.push(format!("{t} {n}"));
+            }
+        }
+        writeln!(
+            s,
+            "\n    private static native void n{}({});",
+            pascal(&op.name),
+            natives.join(", ")
+        )
+        .unwrap();
     }
     s += "}\n";
-    Some(s)
+    s
 }

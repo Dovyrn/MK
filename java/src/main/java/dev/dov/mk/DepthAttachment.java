@@ -8,13 +8,12 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class DepthAttachment {
-    public int texture = 0;
-    public int layout = Layout.DEPTH;
-    public int load = Load.CLEAR;
-    public int store = Store.STORE;
+    public Texture texture = null;
+    public int load = LoadOp.CLEAR;
+    public int store = StoreOp.STORE;
     public float depth = 1.0f;
-    public int stencilLoad = Load.DONT_CARE;
-    public int stencilStore = Store.DONT_CARE;
+    public int stencilLoad = LoadOp.DONT_CARE;
+    public int stencilStore = StoreOp.DONT_CARE;
     public int stencil = 0;
 
     public static final int SIZE = 32;
@@ -24,10 +23,8 @@ public class DepthAttachment {
     }
 
     long encode(long p) {
-        memPutInt(p, texture);
-        p += 4;
-        memPutInt(p, layout);
-        p += 4;
+        memPutLong(p, Texture.raw(texture));
+        p += 8;
         memPutInt(p, load);
         p += 4;
         memPutInt(p, store);
@@ -45,10 +42,8 @@ public class DepthAttachment {
 
     static DepthAttachment decode(long p) {
         var r = new DepthAttachment();
-        r.texture = memGetInt(p);
-        p += 4;
-        r.layout = memGetInt(p);
-        p += 4;
+        r.texture = Texture.of(memGetLong(p));
+        p += 8;
         r.load = memGetInt(p);
         p += 4;
         r.store = memGetInt(p);

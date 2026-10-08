@@ -1,20 +1,18 @@
-use crate::vk::Callback;
-use crate::vk::extensions::Extensions;
-use crate::vk::frame::Frame;
-use crate::vk::recorder::Recorder;
+use crate::handle::TimelineId;
 use crate::vk::resources::Resources;
 use ash::vk;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::panic::AssertUnwindSafe;
+
+pub const COMPUTE: [vk::PipelineBindPoint; 1] = [vk::PipelineBindPoint::COMPUTE];
+
+pub const GRAPHICS: [vk::PipelineBindPoint; 2] = [
+    vk::PipelineBindPoint::COMPUTE,
+    vk::PipelineBindPoint::GRAPHICS,
+];
 
 pub struct Queue {
     pub raw: vk::Queue,
     pub family: u32,
-    graphics: bool,
-    pub semaphore: vk::Semaphore,
-    pub count: u64,
-    free: Vec<Frame>,
-    busy: VecDeque<(Frame, u64)>,
+    pub graphics: bool,
 }
 
 pub fn timeline(device: &ash::Device) -> Result<vk::Semaphore, vk::Result> {
@@ -25,127 +23,47 @@ pub fn timeline(device: &ash::Device) -> Result<vk::Semaphore, vk::Result> {
 }
 
 impl Queue {
-    pub fn new(
-        device: &ash::Device,
-        family: u32,
-        index: u32,
-        graphics: bool,
-    ) -> Result<Self, String> {
-        Ok(Self {
+    pub fn new(device: &ash::Device, family: u32, index: u32, graphics: bool) -> Self {
+        Self {
             raw: unsafe { device.get_device_queue(family, index) },
             family,
             graphics,
-            semaphore: timeline(device).map_err(|e| e.to_string())?,
-            count: 0,
-            free: Vec::new(),
-            busy: VecDeque::new(),
-        })
+        }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    pub fn bind_points(&self) -> &'static [vk::PipelineBindPoint] {
+        if self.graphics { &GRAPHICS } else { &COMPUTE }
+    }
+
     pub fn submit(
-        &mut self,
+        &self,
         device: &ash::Device,
-        ext: &Extensions,
-        layout: vk::PipelineLayout,
-        heap: vk::DescriptorSet,
+        buffer: vk::CommandBuffer,
         res: &Resources,
-        (commands, natives): (&[u8], &[Callback]),
-        waits: &[(u32, u64)],
-        signals: &[(u32, u64)],
+        waits: &[(TimelineId, u64)],
+        signals: &[(TimelineId, u64)],
     ) -> Result<(), String> {
-        let done = unsafe { device.get_semaphore_counter_value(self.semaphore) }
-            .map_err(|e| e.to_string())?;
-        while let Some((frame, _)) = self.busy.pop_front_if(|(_, v)| *v <= done) {
-            if let Err(e) = frame.reset(device) {
-                frame.destroy(device);
-                return Err(e.to_string());
-            }
-            self.free.push(frame);
-        }
-        let frame = match self.free.pop() {
-            Some(f) => f,
-            None => Frame::new(device, self.family).map_err(|e| e.to_string())?,
+        unsafe { device.end_command_buffer(buffer) }.map_err(|e| e.to_string())?;
+        let info = |semaphore, value| {
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(semaphore)
+                .value(value)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         };
-        let value = self.count + 1;
-        let mut points = vec![vk::PipelineBindPoint::COMPUTE];
-        if self.graphics {
-            points.push(vk::PipelineBindPoint::GRAPHICS);
-        }
-        let buffer = frame.buffer;
-        let run = || -> Result<(), String> {
-            let begin = vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            unsafe { device.begin_command_buffer(buffer, &begin) }.map_err(|e| e.to_string())?;
-            Recorder {
-                device,
-                ext,
-                buffer,
-                layout,
-                points: &points,
-                res,
-                colors: Vec::new(),
-                depth: None,
-                stencil: vk::RenderingAttachmentInfo::default(),
-                natives,
-                heap,
-                compute: vk::Pipeline::null(),
-                graphics: vk::Pipeline::null(),
-                slots: BTreeMap::new(),
-                stale: vec![BTreeSet::new(); points.len()],
-                rate: None,
-                defaults: false,
-                area: vk::Rect2D::default(),
-            }
-            .run(commands)?;
-            unsafe { device.end_command_buffer(buffer) }.map_err(|e| e.to_string())?;
-            let info = |semaphore, value| {
-                vk::SemaphoreSubmitInfo::default()
-                    .semaphore(semaphore)
-                    .value(value)
-                    .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-            };
-            let waits: Vec<_> = waits
-                .iter()
-                .map(|&(t, v)| info(res.timelines.get(t).raw, v))
-                .collect();
-            let mut signals: Vec<_> = signals
-                .iter()
-                .map(|&(t, v)| info(res.timelines.get(t).raw, v))
-                .collect();
-            signals.push(info(self.semaphore, value));
-            let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(buffer)];
-            let submit = vk::SubmitInfo2::default()
-                .wait_semaphore_infos(&waits)
-                .command_buffer_infos(&buffers)
-                .signal_semaphore_infos(&signals);
-            unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }
-                .map_err(|e| e.to_string())
-        };
-        match std::panic::catch_unwind(AssertUnwindSafe(run)) {
-            Ok(Ok(())) => {
-                self.count = value;
-                self.busy.push_back((frame, value));
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                frame.destroy(device);
-                Err(e)
-            }
-            Err(panic) => {
-                frame.destroy(device);
-                std::panic::resume_unwind(panic)
-            }
-        }
-    }
-
-    pub fn destroy(&mut self, device: &ash::Device) {
-        for frame in self.free.drain(..) {
-            frame.destroy(device);
-        }
-        for (frame, _) in self.busy.drain(..) {
-            frame.destroy(device);
-        }
-        unsafe { device.destroy_semaphore(self.semaphore, None) };
+        let waits: Vec<_> = waits
+            .iter()
+            .map(|&(t, v)| info(res.timelines.get(t).raw, v))
+            .collect();
+        let signals: Vec<_> = signals
+            .iter()
+            .map(|&(t, v)| info(res.timelines.get(t).raw, v))
+            .collect();
+        let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(buffer)];
+        let submit = vk::SubmitInfo2::default()
+            .wait_semaphore_infos(&waits)
+            .command_buffer_infos(&buffers)
+            .signal_semaphore_infos(&signals);
+        unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }
+            .map_err(|e| e.to_string())
     }
 }

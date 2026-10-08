@@ -9,6 +9,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class Caps {
     public boolean mesh = false;
+    public boolean task = false;
     public boolean meshIndirect = false;
     public int meshGroups = 0;
     public int meshAxis = 0;
@@ -20,28 +21,20 @@ public class Caps {
     public float tick = 0.0f;
     public boolean timestamps = false;
     public boolean precise = false;
-    public boolean ray = false;
-    public boolean sparse = false;
-    public boolean shadingRate = false;
-    public boolean rateImages = false;
     public int viewports = 1;
     public int graphics = 0;
     public boolean labels = false;
-    public boolean anisotropy = false;
+    public int anisotropy = 1;
     public boolean depthClamp = false;
     public boolean lineFill = false;
     public boolean multiDraw = false;
-    public boolean indirectCount = false;
-    public boolean sparseTextures = false;
     public boolean slots = false;
     public boolean storage = false;
     public boolean persistent = false;
     public int bindAlignment = 0;
-    public int buffers = 0;
     public boolean compute = false;
     public boolean textureViews = false;
     public boolean occlusion = false;
-    public boolean cache = false;
     public boolean biasClamp = false;
     public boolean blends = false;
     public boolean indirect = false;
@@ -59,7 +52,6 @@ public class Caps {
     public boolean budget = false;
     public boolean hostRead = false;
     public boolean copyFormats = false;
-    public boolean textureClear = false;
     public boolean bufferClear = false;
     public boolean partialResolve = false;
     public int subgroup = 0;
@@ -70,21 +62,22 @@ public class Caps {
     public int maxThreads = 0;
     public int maxShared = 0;
     public int atomics64 = 0;
-    public int matrices = 0;
     public boolean transients = false;
     public boolean transientReads = false;
     public boolean attachmentReads = false;
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 284;
+    public static final int SIZE = 248;
 
     int encodedSize() {
-        return 284;
+        return 248;
     }
 
     long encode(long p) {
         memPutInt(p, mesh ? 1 : 0);
+        p += 4;
+        memPutInt(p, task ? 1 : 0);
         p += 4;
         memPutInt(p, meshIndirect ? 1 : 0);
         p += 4;
@@ -108,31 +101,19 @@ public class Caps {
         p += 4;
         memPutInt(p, precise ? 1 : 0);
         p += 4;
-        memPutInt(p, ray ? 1 : 0);
-        p += 4;
-        memPutInt(p, sparse ? 1 : 0);
-        p += 4;
-        memPutInt(p, shadingRate ? 1 : 0);
-        p += 4;
-        memPutInt(p, rateImages ? 1 : 0);
-        p += 4;
         memPutInt(p, viewports);
         p += 4;
         memPutInt(p, graphics);
         p += 4;
         memPutInt(p, labels ? 1 : 0);
         p += 4;
-        memPutInt(p, anisotropy ? 1 : 0);
+        memPutInt(p, anisotropy);
         p += 4;
         memPutInt(p, depthClamp ? 1 : 0);
         p += 4;
         memPutInt(p, lineFill ? 1 : 0);
         p += 4;
         memPutInt(p, multiDraw ? 1 : 0);
-        p += 4;
-        memPutInt(p, indirectCount ? 1 : 0);
-        p += 4;
-        memPutInt(p, sparseTextures ? 1 : 0);
         p += 4;
         memPutInt(p, slots ? 1 : 0);
         p += 4;
@@ -142,15 +123,11 @@ public class Caps {
         p += 4;
         memPutInt(p, bindAlignment);
         p += 4;
-        memPutInt(p, buffers);
-        p += 4;
         memPutInt(p, compute ? 1 : 0);
         p += 4;
         memPutInt(p, textureViews ? 1 : 0);
         p += 4;
         memPutInt(p, occlusion ? 1 : 0);
-        p += 4;
-        memPutInt(p, cache ? 1 : 0);
         p += 4;
         memPutInt(p, biasClamp ? 1 : 0);
         p += 4;
@@ -186,8 +163,6 @@ public class Caps {
         p += 4;
         memPutInt(p, copyFormats ? 1 : 0);
         p += 4;
-        memPutInt(p, textureClear ? 1 : 0);
-        p += 4;
         memPutInt(p, bufferClear ? 1 : 0);
         p += 4;
         memPutInt(p, partialResolve ? 1 : 0);
@@ -208,8 +183,6 @@ public class Caps {
         p += 4;
         memPutInt(p, atomics64);
         p += 4;
-        memPutInt(p, matrices);
-        p += 4;
         memPutInt(p, transients ? 1 : 0);
         p += 4;
         memPutInt(p, transientReads ? 1 : 0);
@@ -226,6 +199,8 @@ public class Caps {
     static Caps decode(long p) {
         var r = new Caps();
         r.mesh = memGetInt(p) != 0;
+        p += 4;
+        r.task = memGetInt(p) != 0;
         p += 4;
         r.meshIndirect = memGetInt(p) != 0;
         p += 4;
@@ -249,31 +224,19 @@ public class Caps {
         p += 4;
         r.precise = memGetInt(p) != 0;
         p += 4;
-        r.ray = memGetInt(p) != 0;
-        p += 4;
-        r.sparse = memGetInt(p) != 0;
-        p += 4;
-        r.shadingRate = memGetInt(p) != 0;
-        p += 4;
-        r.rateImages = memGetInt(p) != 0;
-        p += 4;
         r.viewports = memGetInt(p);
         p += 4;
         r.graphics = memGetInt(p);
         p += 4;
         r.labels = memGetInt(p) != 0;
         p += 4;
-        r.anisotropy = memGetInt(p) != 0;
+        r.anisotropy = memGetInt(p);
         p += 4;
         r.depthClamp = memGetInt(p) != 0;
         p += 4;
         r.lineFill = memGetInt(p) != 0;
         p += 4;
         r.multiDraw = memGetInt(p) != 0;
-        p += 4;
-        r.indirectCount = memGetInt(p) != 0;
-        p += 4;
-        r.sparseTextures = memGetInt(p) != 0;
         p += 4;
         r.slots = memGetInt(p) != 0;
         p += 4;
@@ -283,15 +246,11 @@ public class Caps {
         p += 4;
         r.bindAlignment = memGetInt(p);
         p += 4;
-        r.buffers = memGetInt(p);
-        p += 4;
         r.compute = memGetInt(p) != 0;
         p += 4;
         r.textureViews = memGetInt(p) != 0;
         p += 4;
         r.occlusion = memGetInt(p) != 0;
-        p += 4;
-        r.cache = memGetInt(p) != 0;
         p += 4;
         r.biasClamp = memGetInt(p) != 0;
         p += 4;
@@ -327,8 +286,6 @@ public class Caps {
         p += 4;
         r.copyFormats = memGetInt(p) != 0;
         p += 4;
-        r.textureClear = memGetInt(p) != 0;
-        p += 4;
         r.bufferClear = memGetInt(p) != 0;
         p += 4;
         r.partialResolve = memGetInt(p) != 0;
@@ -348,8 +305,6 @@ public class Caps {
         r.maxShared = memGetInt(p);
         p += 4;
         r.atomics64 = memGetInt(p);
-        p += 4;
-        r.matrices = memGetInt(p);
         p += 4;
         r.transients = memGetInt(p) != 0;
         p += 4;

@@ -6,13 +6,29 @@ import java.nio.charset.StandardCharsets;
 
 public class Device implements AutoCloseable {
     protected long handle;
+    int recording;
 
     public Device(long handle) {
         this.handle = handle;
     }
 
+    long handle() {
+        if (handle == 0) {
+            throw new IllegalStateException("device used after close");
+        }
+        return handle;
+    }
+
+    void idle(String call) {
+        if (recording > 0) {
+            throw new IllegalStateException(call + " changes the device while " + recording
+                    + " command buffers or imported passes are recording; submit, finish or close them first");
+        }
+    }
+
     @Override
     public synchronized void close() {
+        idle("close");
         var device = handle;
         handle = 0;
         if (device != 0) {
@@ -25,318 +41,287 @@ public class Device implements AutoCloseable {
     public synchronized Caps caps() {
         try (var arena = new Arena()) {
             var out = arena.alloc(Caps.SIZE);
-            nCaps(handle, out);
+            nCaps(handle(), out);
             return Caps.decode(out);
         }
     }
 
     private static native void nCaps(long device, long out);
 
-    public synchronized String name() {
-        return nName(handle);
+    public synchronized String deviceName() {
+        return nDeviceName(handle());
     }
 
-    private static native String nName(long device);
+    private static native String nDeviceName(long device);
 
-    public synchronized int createBuffer(long size, int memory) {
-        return nCreateBuffer(handle, size, memory);
+    public synchronized Buffer createBuffer(long size, int memory) {
+        idle("createBuffer");
+        return Buffer.of(nCreateBuffer(handle(), size, memory));
     }
 
-    private static native int nCreateBuffer(long device, long size, int memory);
+    private static native long nCreateBuffer(long device, long size, int memory);
 
-    public synchronized void destroyBuffer(int buffer) {
-        nDestroyBuffer(handle, buffer);
+    public synchronized void destroyBuffer(Buffer buffer) {
+        idle("destroyBuffer");
+        nDestroyBuffer(handle(), Buffer.raw(buffer));
     }
 
-    private static native void nDestroyBuffer(long device, int buffer);
+    private static native void nDestroyBuffer(long device, long buffer);
 
-    public synchronized int createIndirectBuffer(IndirectInfo info) {
+    public synchronized long mapBuffer(Buffer buffer) {
+        return nMapBuffer(handle(), Buffer.raw(buffer));
+    }
+
+    private static native long nMapBuffer(long device, long buffer);
+
+    public synchronized void unmapBuffer(Buffer buffer) {
+        nUnmapBuffer(handle(), Buffer.raw(buffer));
+    }
+
+    private static native void nUnmapBuffer(long device, long buffer);
+
+    public synchronized long bufferAddress(Buffer buffer) {
+        return nBufferAddress(handle(), Buffer.raw(buffer));
+    }
+
+    private static native long nBufferAddress(long device, long buffer);
+
+    public synchronized MemoryBudget memoryBudget() {
         try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return nCreateIndirectBuffer(handle, infoAddress, info.encodedSize());
-        }
-    }
-
-    private static native int nCreateIndirectBuffer(long device, long info, int infoLength);
-
-    public synchronized void destroyIndirectBuffer(int indirect) {
-        nDestroyIndirectBuffer(handle, indirect);
-    }
-
-    private static native void nDestroyIndirectBuffer(long device, int indirect);
-
-    public synchronized int[] indirectHandle(int indirect) {
-        try (var arena = new Arena()) {
-            var out = arena.alloc(32);
-            nIndirectHandle(handle, indirect, out);
-            return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
-        }
-    }
-
-    private static native void nIndirectHandle(long device, int indirect, long out);
-
-    public synchronized long map(int buffer) {
-        return nMap(handle, buffer);
-    }
-
-    private static native long nMap(long device, int buffer);
-
-    public synchronized long bufferHandle(int buffer) {
-        return nBufferHandle(handle, buffer);
-    }
-
-    private static native long nBufferHandle(long device, int buffer);
-
-    public synchronized void unmap(int buffer) {
-        nUnmap(handle, buffer);
-    }
-
-    private static native void nUnmap(long device, int buffer);
-
-    public synchronized long address(int buffer) {
-        return nAddress(handle, buffer);
-    }
-
-    private static native long nAddress(long device, int buffer);
-
-    public synchronized Matrix matrix(int index) {
-        try (var arena = new Arena()) {
-            var out = arena.alloc(Matrix.SIZE);
-            nMatrix(handle, index, out);
-            return Matrix.decode(out);
-        }
-    }
-
-    private static native void nMatrix(long device, int index, long out);
-
-    public synchronized Budget memoryBudget() {
-        try (var arena = new Arena()) {
-            var out = arena.alloc(Budget.SIZE);
-            nMemoryBudget(handle, out);
-            return Budget.decode(out);
+            var out = arena.alloc(MemoryBudget.SIZE);
+            nMemoryBudget(handle(), out);
+            return MemoryBudget.decode(out);
         }
     }
 
     private static native void nMemoryBudget(long device, long out);
 
-    public synchronized int createPipeline(ComputeInfo info) {
+    public synchronized ComputePipeline createComputePipeline(ComputePipelineInfo info) {
+        idle("createComputePipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreatePipeline(handle, infoAddress, info.encodedSize());
+            return ComputePipeline.of(nCreateComputePipeline(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreatePipeline(long device, long info, int infoLength);
+    private static native long nCreateComputePipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyPipeline(int pipeline) {
-        nDestroyPipeline(handle, pipeline);
+    public synchronized void destroyComputePipeline(ComputePipeline pipeline) {
+        idle("destroyComputePipeline");
+        nDestroyComputePipeline(handle(), ComputePipeline.raw(pipeline));
     }
 
-    private static native void nDestroyPipeline(long device, int pipeline);
+    private static native void nDestroyComputePipeline(long device, long pipeline);
 
-    public synchronized int createRenderPipeline(RenderInfo info) {
+    public synchronized RenderPipeline createRenderPipeline(RenderPipelineInfo info) {
+        idle("createRenderPipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateRenderPipeline(handle, infoAddress, info.encodedSize());
+            return RenderPipeline.of(nCreateRenderPipeline(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateRenderPipeline(long device, long info, int infoLength);
+    private static native long nCreateRenderPipeline(long device, long info, int infoLength);
 
-    public synchronized int createMeshPipeline(MeshInfo info) {
+    public synchronized RenderPipeline createMeshPipeline(MeshPipelineInfo info) {
+        idle("createMeshPipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateMeshPipeline(handle, infoAddress, info.encodedSize());
+            return RenderPipeline.of(nCreateMeshPipeline(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateMeshPipeline(long device, long info, int infoLength);
+    private static native long nCreateMeshPipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyRenderPipeline(int pipeline) {
-        nDestroyRenderPipeline(handle, pipeline);
+    public synchronized void destroyRenderPipeline(RenderPipeline pipeline) {
+        idle("destroyRenderPipeline");
+        nDestroyRenderPipeline(handle(), RenderPipeline.raw(pipeline));
     }
 
-    private static native void nDestroyRenderPipeline(long device, int pipeline);
+    private static native void nDestroyRenderPipeline(long device, long pipeline);
 
-    public synchronized int createTilePipeline(TileInfo info) {
+    public synchronized TilePipeline createTilePipeline(TilePipelineInfo info) {
+        idle("createTilePipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateTilePipeline(handle, infoAddress, info.encodedSize());
+            return TilePipeline.of(nCreateTilePipeline(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateTilePipeline(long device, long info, int infoLength);
+    private static native long nCreateTilePipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyTilePipeline(int pipeline) {
-        nDestroyTilePipeline(handle, pipeline);
+    public synchronized void destroyTilePipeline(TilePipeline pipeline) {
+        idle("destroyTilePipeline");
+        nDestroyTilePipeline(handle(), TilePipeline.raw(pipeline));
     }
 
-    private static native void nDestroyTilePipeline(long device, int pipeline);
+    private static native void nDestroyTilePipeline(long device, long pipeline);
 
-    public synchronized int createAttachments(int[] textures) {
-        try (var arena = new Arena()) {
-            return nCreateAttachments(handle, arena.ints(textures), textures.length);
-        }
-    }
-
-    private static native int nCreateAttachments(long device, long textures, int texturesLength);
-
-    public synchronized void destroyAttachments(int attachments) {
-        nDestroyAttachments(handle, attachments);
-    }
-
-    private static native void nDestroyAttachments(long device, int attachments);
-
-    public synchronized int createDepthState(DepthInfo info) {
+    public synchronized DepthState createDepthState(DepthStateInfo info) {
+        idle("createDepthState");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateDepthState(handle, infoAddress, info.encodedSize());
+            return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateDepthState(long device, long info, int infoLength);
+    private static native long nCreateDepthState(long device, long info, int infoLength);
 
-    public synchronized void destroyDepthState(int state) {
-        nDestroyDepthState(handle, state);
+    public synchronized void destroyDepthState(DepthState state) {
+        idle("destroyDepthState");
+        nDestroyDepthState(handle(), DepthState.raw(state));
     }
 
-    private static native void nDestroyDepthState(long device, int state);
+    private static native void nDestroyDepthState(long device, long state);
 
-    public synchronized int createTexture(TextureInfo info) {
+    public synchronized Texture createTexture(TextureInfo info) {
+        idle("createTexture");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateTexture(handle, infoAddress, info.encodedSize());
+            return Texture.of(nCreateTexture(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateTexture(long device, long info, int infoLength);
+    private static native long nCreateTexture(long device, long info, int infoLength);
 
-    public synchronized void writeTexture(HostCopy copy, long data, long dataSize) {
+    public synchronized void writeTexture(HostTextureCopy copy, long data, long dataSize) {
+        idle("writeTexture");
         try (var arena = new Arena()) {
             var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
-            nWriteTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
+            nWriteTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
         }
     }
 
     private static native void nWriteTexture(long device, long copy, int copyLength, long data, long dataLength);
 
-    public synchronized void readTexture(HostCopy copy, long data, long dataSize) {
+    public synchronized void readTexture(HostTextureCopy copy, long data, long dataSize) {
+        idle("readTexture");
         try (var arena = new Arena()) {
             var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
-            nReadTexture(handle, copyAddress, copy.encodedSize(), data, dataSize);
+            nReadTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
         }
     }
 
     private static native void nReadTexture(long device, long copy, int copyLength, long data, long dataLength);
 
     public synchronized int formatUsage(int format) {
-        return nFormatUsage(handle, format);
+        return nFormatUsage(handle(), format);
     }
 
     private static native int nFormatUsage(long device, int format);
 
     public synchronized int formatSamples(int format, int usage) {
-        return nFormatSamples(handle, format, usage);
+        return nFormatSamples(handle(), format, usage);
     }
 
     private static native int nFormatSamples(long device, int format, int usage);
 
-    public synchronized int createView(int texture, ViewInfo info) {
+    public synchronized Texture createTextureView(Texture texture, TextureViewInfo info) {
+        idle("createTextureView");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateView(handle, texture, infoAddress, info.encodedSize());
+            return Texture.of(nCreateTextureView(handle(), Texture.raw(texture), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateView(long device, int texture, long info, int infoLength);
+    private static native long nCreateTextureView(long device, long texture, long info, int infoLength);
 
-    public synchronized void destroyTexture(int texture) {
-        nDestroyTexture(handle, texture);
+    public synchronized void destroyTexture(Texture texture) {
+        idle("destroyTexture");
+        nDestroyTexture(handle(), Texture.raw(texture));
     }
 
-    private static native void nDestroyTexture(long device, int texture);
+    private static native void nDestroyTexture(long device, long texture);
 
-    public synchronized long imageHandle(int texture) {
-        return nImageHandle(handle, texture);
+    public synchronized long bindlessStorageTexture(Texture texture) {
+        return nBindlessStorageTexture(handle(), Texture.raw(texture));
     }
 
-    private static native long nImageHandle(long device, int texture);
+    private static native long nBindlessStorageTexture(long device, long texture);
 
-    public synchronized int createSampler(SamplerInfo info) {
+    public synchronized Sampler createSampler(SamplerInfo info) {
+        idle("createSampler");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
-            return nCreateSampler(handle, infoAddress, info.encodedSize());
+            return Sampler.of(nCreateSampler(handle(), infoAddress, info.encodedSize()));
         }
     }
 
-    private static native int nCreateSampler(long device, long info, int infoLength);
+    private static native long nCreateSampler(long device, long info, int infoLength);
 
-    public synchronized void destroySampler(int sampler) {
-        nDestroySampler(handle, sampler);
+    public synchronized void destroySampler(Sampler sampler) {
+        idle("destroySampler");
+        nDestroySampler(handle(), Sampler.raw(sampler));
     }
 
-    private static native void nDestroySampler(long device, int sampler);
+    private static native void nDestroySampler(long device, long sampler);
 
-    public synchronized int createQueryHeap(int kind, int count) {
-        return nCreateQueryHeap(handle, kind, count);
+    public synchronized QueryPool createQueryPool(int kind, int count) {
+        idle("createQueryPool");
+        return QueryPool.of(nCreateQueryPool(handle(), kind, count));
     }
 
-    private static native int nCreateQueryHeap(long device, int kind, int count);
+    private static native long nCreateQueryPool(long device, int kind, int count);
 
-    public synchronized void destroyQueryHeap(int heap) {
-        nDestroyQueryHeap(handle, heap);
+    public synchronized void destroyQueryPool(QueryPool pool) {
+        idle("destroyQueryPool");
+        nDestroyQueryPool(handle(), QueryPool.raw(pool));
     }
 
-    private static native void nDestroyQueryHeap(long device, int heap);
-
-    public synchronized void recordCache() {
-        nRecordCache(handle);
-    }
-
-    private static native void nRecordCache(long device);
-
-    public synchronized void saveCache(String path) {
-        try (var arena = new Arena()) {
-            var pathBytes = path.getBytes(StandardCharsets.UTF_8);
-            nSaveCache(handle, arena.bytes(pathBytes), pathBytes.length);
-        }
-    }
-
-    private static native void nSaveCache(long device, long path, int pathLength);
-
-    public synchronized void loadCache(String path) {
-        try (var arena = new Arena()) {
-            var pathBytes = path.getBytes(StandardCharsets.UTF_8);
-            nLoadCache(handle, arena.bytes(pathBytes), pathBytes.length);
-        }
-    }
-
-    private static native void nLoadCache(long device, long path, int pathLength);
+    private static native void nDestroyQueryPool(long device, long pool);
 
     public synchronized Timeline createTimeline() {
-        return new Timeline(nCreateTimeline(handle));
+        idle("createTimeline");
+        return new Timeline(nCreateTimeline(handle()));
     }
 
     private static native long nCreateTimeline(long device);
 
     public synchronized void destroyTimeline(Timeline timeline) {
-        nDestroyTimeline(handle, timeline.take());
+        idle("destroyTimeline");
+        nDestroyTimeline(handle(), timeline.take());
     }
 
     private static native void nDestroyTimeline(long device, long timeline);
 
-    public synchronized void submit(int queue, Commands commands, Point[] waits, Point[] signals) {
+    public synchronized CommandPool createCommandPool(int queue) {
+        idle("createCommandPool");
+        return CommandPool.of(nCreateCommandPool(handle(), queue));
+    }
+
+    private static native long nCreateCommandPool(long device, int queue);
+
+    public synchronized void resetCommandPool(CommandPool pool) {
+        idle("resetCommandPool");
+        nResetCommandPool(handle(), CommandPool.raw(pool));
+    }
+
+    private static native void nResetCommandPool(long device, long pool);
+
+    public synchronized void destroyCommandPool(CommandPool pool) {
+        idle("destroyCommandPool");
+        nDestroyCommandPool(handle(), CommandPool.raw(pool));
+    }
+
+    private static native void nDestroyCommandPool(long device, long pool);
+
+    public synchronized CommandBuffer beginCommands(CommandPool pool) {
+        return CommandBuffer.adopt(this, nBeginCommands(handle(), CommandPool.raw(pool)));
+    }
+
+    private static native long nBeginCommands(long device, long pool);
+
+    public synchronized void submit(CommandBuffer commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         try (var arena = new Arena()) {
             var waitsAddress = arena.alloc(waits.length * 16L);
             for (var i = 0; i < waits.length; i++) {
@@ -348,13 +333,9 @@ public class Device implements AutoCloseable {
                 memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
                 memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
             }
-            try {
-                nSubmit(handle, queue, commands.getAddress(), commands.getSize(), waitsAddress, waits.length, signalsAddress, signals.length);
-            } finally {
-                java.lang.ref.Reference.reachabilityFence(commands);
-            }
+            nSubmit(handle(), commands.take(), waitsAddress, waits.length, signalsAddress, signals.length);
         }
     }
 
-    private static native void nSubmit(long device, int queue, long commands, long commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+    private static native void nSubmit(long device, long commands, long waits, int waitsLength, long signals, int signalsLength);
 }

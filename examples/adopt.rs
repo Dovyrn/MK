@@ -1,13 +1,13 @@
 use mk::{
-    ColorAttachment, Commands, Device, TextureBarrier, TextureCopy, access, format, layout, memory,
-    stage,
+    BufferTextureCopy, ColorAttachment, Device, RenderPassInfo, Scissor, TextureBarrier, Viewport,
+    format, memory, stage, texture_layout,
 };
 
 #[path = "support/host.rs"]
 mod host;
 
 #[cfg(feature = "gl")]
-fn native(n: u32) -> (Device, u32, ()) {
+fn native(n: u32) -> (Device, mk::Texture, ()) {
     use mk::glow::HasContext;
     let proc = host::proc();
     let gl = unsafe { mk::glow::Context::from_loader_function(|name| proc(name)) };
@@ -19,7 +19,7 @@ fn native(n: u32) -> (Device, u32, ()) {
         t.0.get()
     };
     let mut device = Device::adopt(proc).unwrap();
-    println!("{}", device.name());
+    println!("{}", device.device_name());
     let slot = device
         .import_texture(
             texture,
@@ -27,7 +27,7 @@ fn native(n: u32) -> (Device, u32, ()) {
                 format: format::RGBA8_UNORM,
                 width: n,
                 height: n,
-                usage: mk::usage::COLOR | mk::usage::COPY_SRC,
+                usage: mk::texture_usage::COLOR | mk::texture_usage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -36,7 +36,7 @@ fn native(n: u32) -> (Device, u32, ()) {
 }
 
 #[cfg(feature = "mtl")]
-fn native(n: u32) -> (Device, u32, ()) {
+fn native(n: u32) -> (Device, mk::Texture, ()) {
     use mk::objc2_metal::{
         MTLCreateSystemDefaultDevice, MTLDevice, MTLPixelFormat, MTLStorageMode,
         MTLTextureDescriptor, MTLTextureUsage,
@@ -63,7 +63,7 @@ fn native(
     n: u32,
 ) -> (
     Device,
-    u32,
+    mk::Texture,
     (host::Host, mk::ash::vk::Image, mk::ash::vk::DeviceMemory),
 ) {
     use mk::ash::vk;
@@ -123,7 +123,6 @@ fn native(
         .push_next(&mut v12)
         .push_next(&mut v13);
     let mut device = Device::adopt(
-        &host.entry,
         host.instance.clone(),
         host.physical,
         host.raw.clone(),
@@ -138,7 +137,7 @@ fn native(
                 format: format::RGBA8_UNORM,
                 width: n,
                 height: n,
-                usage: mk::usage::COLOR | mk::usage::COPY_SRC,
+                usage: mk::texture_usage::COLOR | mk::texture_usage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -153,60 +152,71 @@ pub fn main() {
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut c = Commands::default();
-    c.texture_barrier(&TextureBarrier {
-        texture,
-        dst_stage: stage::COLOR,
-        dst_access: access::COLOR_WRITE,
-        after: layout::COLOR,
-        ..Default::default()
-    });
-    c.color_attachment(&ColorAttachment {
-        texture,
-        r: 0.2,
-        g: 0.6,
-        b: 1.0,
-        a: 1.0,
-        ..Default::default()
-    });
-    c.begin_render(n, n, 1);
-    c.end_render();
+    let pool = device.create_command_pool(0).unwrap();
+    let mut c = device.begin_commands(pool).unwrap();
     c.texture_barrier(&TextureBarrier {
         texture,
         src_stage: stage::COLOR,
-        src_access: access::COLOR_WRITE,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::COLOR,
-        after: layout::COPY_SRC,
+        dst_stage: stage::COLOR,
+        before: texture_layout::UNDEFINED,
+        ..Default::default()
+    })
+    .unwrap();
+    let mut pass = c
+        .begin_render_pass(&RenderPassInfo {
+            width: n,
+            height: n,
+            colors: &[ColorAttachment {
+                texture,
+                r: 0.2,
+                g: 0.6,
+                b: 1.0,
+                a: 1.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    pass.set_viewport(&Viewport {
+        width: n as f32,
+        height: n as f32,
         ..Default::default()
     });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
+    pass.set_scissor(&Scissor {
+        x: 0,
+        y: 0,
+        width: n,
+        height: n,
+    });
+    pass.end();
+    c.texture_barrier(&TextureBarrier {
         texture,
-        layout: layout::COPY_SRC,
+        src_stage: stage::COLOR,
+        dst_stage: stage::COPY,
+        ..Default::default()
+    })
+    .unwrap();
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
+        texture,
         width: n,
         height: n,
         buffer: back,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
-    let pixels =
-        unsafe { std::slice::from_raw_parts(device.map(back).cast::<[u8; 4]>(), (n * n) as usize) };
+    let pixels = unsafe {
+        std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (n * n) as usize)
+    };
     assert!(
         pixels.iter().all(|p| *p == [51, 153, 255, 255]),
         "{:?}",
         pixels[0]
     );
-    device.unmap(back);
+    device.unmap_buffer(back);
     device.destroy_timeline(timeline);
     drop(device);
     #[cfg(feature = "vk")]

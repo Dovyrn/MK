@@ -3,7 +3,7 @@ use crate::vk::Device;
 use ash::vk;
 use std::rc::Rc;
 
-pub struct Texture {
+pub struct TextureObject {
     pub image: vk::Image,
     pub owner: Option<Rc<vk::DeviceMemory>>,
     pub heap: Option<Rc<vk::DeviceMemory>>,
@@ -16,10 +16,9 @@ pub struct Texture {
     pub mips: u32,
     pub base_layer: u32,
     pub layers: u32,
-    pub tile: vk::Extent3D,
 }
 
-impl Texture {
+impl TextureObject {
     pub fn free(self, d: &Device) {
         unsafe {
             d.raw.destroy_image_view(self.view, None);
@@ -27,10 +26,10 @@ impl Texture {
         }
         if let Some(memory) = self.owner.and_then(Rc::into_inner) {
             unsafe { d.raw.destroy_image(self.image, None) };
-            d.release(memory);
+            d.free_memory(memory);
         }
         if let Some(memory) = self.heap.and_then(Rc::into_inner) {
-            d.release(memory);
+            d.free_memory(memory);
         }
     }
 }

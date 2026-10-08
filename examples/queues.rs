@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Commands, access, memory, stage};
+use mk::{memory, stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -21,39 +21,38 @@ pub fn main() {
         .create_buffer(n as u64 * 4, memory::READBACK)
         .unwrap();
     let pipeline = device
-        .create_pipeline(&mk::ComputeInfo {
+        .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("fill"),
             entry: "fill",
             ..Default::default()
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut push = device.buffer_handle(data).unwrap().to_le_bytes().to_vec();
+    let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(3u32.to_le_bytes());
     let (constants, _) = host::constants(&mut device, &[&push]);
-    let mut compute = Commands::default();
-    compute.begin_compute();
-    compute.bind_pipeline(pipeline);
-    compute.bind_uniform(0, constants, 0, push.len() as u64);
-    compute.dispatch(n / 64, 1, 1);
-    compute.end_compute();
-    let mut copy = Commands::default();
-    copy.begin_compute();
-    copy.copy_buffer(data, 0, back, 0, n as u64 * 4);
-    copy.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    copy.end_compute();
-    device
-        .submit(0, &copy, &[(&timeline, 1)], &[(&timeline, 2)])
+    let pool = device.create_command_pool(0).unwrap();
+    let other = device.create_command_pool(1).unwrap();
+    let mut compute = device.begin_commands(other).unwrap();
+    let mut pass = compute.begin_compute_pass().unwrap();
+    pass.bind_compute_pipeline(pipeline).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
         .unwrap();
-    device.submit(1, &compute, &[], &[(&timeline, 1)]).unwrap();
+    pass.dispatch(n / 64, 1, 1).unwrap();
+    pass.end();
+    let mut copy = device.begin_commands(pool).unwrap();
+    let mut pass = copy.begin_compute_pass().unwrap();
+    pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device
+        .submit(copy, &[(&timeline, 1)], &[(&timeline, 2)])
+        .unwrap();
+    device.submit(compute, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(2, 5000).unwrap());
-    let values = unsafe { std::slice::from_raw_parts(device.map(back).cast::<u32>(), n as usize) };
+    let values =
+        unsafe { std::slice::from_raw_parts(device.map_buffer(back).cast::<u32>(), n as usize) };
     for (i, v) in values.iter().enumerate() {
         assert_eq!(*v, 3 + i as u32, "value {i}");
     }

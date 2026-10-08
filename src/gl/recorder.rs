@@ -1,23 +1,24 @@
+use crate::command::Command;
 mod copy;
 mod draw;
 mod pass;
 mod textures;
 
-use crate::command;
+use crate::caps::same_blend;
 use crate::gl::device::compare;
 use crate::gl::extra::Extra;
-use crate::gl::native::{Callback, Native};
-use crate::gl::pipeline::{Pipeline, uniform};
+use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
-use crate::gl::rates;
 use crate::gl::resources::Resources;
-use crate::gl::state::{State, toggle};
+use crate::gl::state::{State, set_enabled};
 use crate::register;
+use crate::{Buffer, Sampler, Texture};
 use crate::{
-    Caps, ColorAttachment, Command, DepthAttachment, DepthInfo, access, combiner, cull, face,
-    format, index, slot, topology,
+    Caps, DepthAttachment, DepthStateInfo, cull_mode, format, front_face, index_type, slot, stage,
+    topology,
 };
 use glow::HasContext;
+use std::cell::Cell;
 
 const UNUSED: [u32; 19] = [
     glow::RASTERIZER_DISCARD,
@@ -47,6 +48,19 @@ const OFFSETS: [u32; 3] = [
     glow::POLYGON_OFFSET_POINT,
 ];
 
+#[derive(Clone, Copy)]
+pub struct Color {
+    pub index: u32,
+    pub texture: Texture,
+    pub load: u32,
+    pub store: u32,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+    pub resolve: Texture,
+}
+
 pub struct Recorder<'a> {
     gl: &'a glow::Context,
     extra: &'a Extra,
@@ -54,35 +68,33 @@ pub struct Recorder<'a> {
     caps: &'a Caps,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
-    snapshot: &'a dyn Fn() -> State,
     program: Option<&'a Program>,
     render: Option<&'a Pipeline>,
-    colors: Vec<ColorAttachment>,
+    colors: Vec<Color>,
     depth: Option<DepthAttachment>,
-    textures: [Option<u32>; slot::TEXTURES as usize],
-    samplers: [Option<u32>; slot::SAMPLERS as usize],
-    vertices: [Option<(u32, u64)>; slot::VERTICES as usize],
-    index: Option<(u32, u64, u32)>,
+    textures: [Option<Texture>; slot::TEXTURES as usize],
+    samplers: [Option<Sampler>; slot::SAMPLERS as usize],
+    vertices: [Option<(Buffer, u64)>; slot::VERTICES as usize],
+    index: Option<(Buffer, u64, u32)>,
     mode: u32,
-    state: Option<DepthInfo>,
+    state: Option<DepthStateInfo>,
     references: (u32, u32),
     extent: (i32, i32),
     views: Vec<[f32; 4]>,
     scissors: Vec<[i32; 4]>,
     layers: u32,
-    shading: [u32; 4],
-    rate: Option<(u32, u32, u32)>,
-    rated: bool,
     rendering: bool,
     query: Option<u32>,
     labels: u32,
-    natives: &'a [Callback],
+    host: Option<State>,
+    open: &'a Cell<bool>,
+    pub imported: bool,
     used: Option<glow::Program>,
-    units: Vec<Option<(Option<u32>, Option<u32>)>>,
+    units: Vec<Option<(Option<Texture>, Option<Sampler>)>>,
     fed: Option<glow::VertexArray>,
 }
 
-fn mode(t: u32) -> u32 {
+fn gl_primitive_mode(t: u32) -> u32 {
     match t {
         topology::POINT => glow::POINTS,
         topology::LINE => glow::LINES,
@@ -93,7 +105,7 @@ fn mode(t: u32) -> u32 {
     }
 }
 
-fn stencil_op(op: u32) -> u32 {
+fn gl_stencil_op(op: u32) -> u32 {
     [
         glow::KEEP,
         glow::ZERO,
@@ -106,7 +118,7 @@ fn stencil_op(op: u32) -> u32 {
     ][op as usize]
 }
 
-fn factor(f: u32) -> u32 {
+fn gl_blend_factor(f: u32) -> u32 {
     [
         glow::ZERO,
         glow::ONE,
@@ -130,7 +142,7 @@ fn factor(f: u32) -> u32 {
     ][f as usize]
 }
 
-fn equation(op: u32) -> u32 {
+fn gl_blend_equation(op: u32) -> u32 {
     [
         glow::FUNC_ADD,
         glow::FUNC_SUBTRACT,
@@ -140,49 +152,42 @@ fn equation(op: u32) -> u32 {
     ][op as usize]
 }
 
-fn integer(f: u32) -> bool {
+fn is_integer_format(f: u32) -> bool {
     format::uint(f) || format::sint(f)
 }
 
-fn barriers(a: u32) -> u32 {
+fn gl_barrier_bits(stages: u32) -> u32 {
+    let shader = glow::UNIFORM_BARRIER_BIT
+        | glow::SHADER_STORAGE_BARRIER_BIT
+        | glow::SHADER_IMAGE_ACCESS_BARRIER_BIT
+        | glow::TEXTURE_FETCH_BARRIER_BIT;
     let map = [
+        (stage::INDIRECT, glow::COMMAND_BARRIER_BIT),
         (
-            access::INDIRECT_READ,
-            glow::COMMAND_BARRIER_BIT | glow::BUFFER_UPDATE_BARRIER_BIT,
-        ),
-        (access::INDEX_READ, glow::ELEMENT_ARRAY_BARRIER_BIT),
-        (access::VERTEX_READ, glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT),
-        (access::UNIFORM_READ, glow::UNIFORM_BARRIER_BIT),
-        (
-            access::SHADER_READ | access::SHADER_WRITE,
-            glow::SHADER_STORAGE_BARRIER_BIT
-                | glow::SHADER_IMAGE_ACCESS_BARRIER_BIT
-                | glow::TEXTURE_FETCH_BARRIER_BIT,
+            stage::VERTEX,
+            shader | glow::ELEMENT_ARRAY_BARRIER_BIT | glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT,
         ),
         (
-            access::COLOR_READ | access::COLOR_WRITE | access::DEPTH_READ | access::DEPTH_WRITE,
-            glow::FRAMEBUFFER_BARRIER_BIT,
+            stage::FRAGMENT | stage::TASK | stage::MESH | stage::COMPUTE,
+            shader,
         ),
+        (stage::DEPTH | stage::COLOR, glow::FRAMEBUFFER_BARRIER_BIT),
         (
-            access::COPY_READ | access::COPY_WRITE,
+            stage::COPY,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::TEXTURE_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::FRAMEBUFFER_BARRIER_BIT,
         ),
         (
-            access::HOST_READ | access::HOST_WRITE,
+            stage::HOST,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::CLIENT_MAPPED_BUFFER_BARRIER_BIT,
         ),
-        (
-            access::MEMORY_READ | access::MEMORY_WRITE,
-            glow::ALL_BARRIER_BITS,
-        ),
     ];
     map.iter()
-        .filter(|(b, _)| a & b != 0)
+        .filter(|(b, _)| stages & b != 0)
         .fold(0, |m, (_, g)| m | g)
 }
 
@@ -193,8 +198,8 @@ impl<'a> Recorder<'a> {
         res: &'a Resources,
         caps: &'a Caps,
         (fbo, read): (glow::Framebuffer, glow::Framebuffer),
-        snapshot: &'a dyn Fn() -> State,
-        natives: &'a [Callback],
+        host: State,
+        open: &'a Cell<bool>,
     ) -> Self {
         Self {
             gl,
@@ -203,7 +208,6 @@ impl<'a> Recorder<'a> {
             caps,
             fbo,
             read,
-            snapshot,
             program: None,
             render: None,
             colors: Vec::new(),
@@ -219,33 +223,41 @@ impl<'a> Recorder<'a> {
             views: Vec::new(),
             scissors: Vec::new(),
             layers: 0,
-            shading: [1, 1, combiner::KEEP, combiner::KEEP],
-            rate: None,
-            rated: false,
             rendering: false,
             query: None,
             labels: 0,
-            natives,
+            host: Some(host),
+            open,
+            imported: false,
             used: None,
             units: Vec::new(),
             fed: None,
         }
     }
 
-    pub fn run(&mut self, mut bytes: &[u8]) -> Result<(), String> {
-        self.reset();
-        self.shade();
-        self.errors("the submit reset")?;
-        while !bytes.is_empty() {
-            let command = Command::read(&mut bytes)?;
-            let name = command.to_string();
-            self.step(command)?;
-            self.errors(&name)?;
-        }
-        Ok(())
+    pub fn begin(&mut self) -> Result<(), String> {
+        self.reset_state();
+        self.check_errors("begin_commands")
     }
 
-    fn errors(&self, what: &str) -> Result<(), String> {
+    pub fn import(&mut self, width: u32, height: u32) {
+        self.imported = true;
+        self.rendering = true;
+        self.extent = (width as i32, height as i32);
+        self.views = vec![[0.0, 0.0, width as f32, height as f32]];
+        self.layers = 1;
+    }
+
+    pub fn step(&mut self, command: Command) -> Result<(), String> {
+        if !cfg!(debug_assertions) {
+            return self.apply(command);
+        }
+        let name = command.to_string();
+        self.apply(command)?;
+        self.check_errors(&name)
+    }
+
+    fn check_errors(&self, what: &str) -> Result<(), String> {
         if !cfg!(debug_assertions) {
             return Ok(());
         }
@@ -256,27 +268,39 @@ impl<'a> Recorder<'a> {
         Err(format!("GL errors {errors:#x?} in {what}"))
     }
 
-    pub fn finish(&self) {
+    pub fn finish(&mut self) -> Result<(), String> {
+        let Some(host) = self.host.take() else {
+            return Ok(());
+        };
+        self.open.set(false);
         let gl = self.gl;
         unsafe {
-            if let Some(target) = self.query {
+            if let Some(target) = self.query.take() {
                 gl.end_query(target);
             }
             for _ in 0..self.labels {
                 gl.pop_debug_group();
             }
         }
+        self.labels = 0;
+        let mine = crate::gl::errors::drain(gl);
+        host.restore(gl, self.extra)?;
+        if mine.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("recording raised GL errors {mine:#x?}"))
+        }
     }
 
-    fn range(&self, target: u32, index: u32, buffer: u32, offset: u64, size: u64) {
+    fn bind_range(&self, target: u32, index: u32, buffer: Buffer, offset: u64, size: u64) {
         let b = self.res.buffers.get(buffer);
         let size = if size == !0 { b.size - offset } else { size };
         unsafe { (self.extra.range)(target, index, b.raw.0.get(), offset as isize, size as isize) };
     }
 
-    fn colors(&self, p: &Pipeline) {
+    fn apply_blend_state(&self, p: &Pipeline) {
         let gl = self.gl;
-        let uniform = uniform(&p.colors);
+        let uniform = same_blend(&p.colors);
         unsafe {
             for (i, c) in p.colors.iter().enumerate() {
                 let i = i as u32;
@@ -287,9 +311,10 @@ impl<'a> Recorder<'a> {
                     continue;
                 }
                 gl.enable_draw_buffer(glow::BLEND, i);
-                let (src, dst) = (factor(c.src), factor(c.dst));
-                let (src_alpha, dst_alpha) = (factor(c.src_alpha), factor(c.dst_alpha));
-                let (op, op_alpha) = (equation(c.op), equation(c.op_alpha));
+                let (src, dst) = (gl_blend_factor(c.src), gl_blend_factor(c.dst));
+                let (src_alpha, dst_alpha) =
+                    (gl_blend_factor(c.src_alpha), gl_blend_factor(c.dst_alpha));
+                let (op, op_alpha) = (gl_blend_equation(c.op), gl_blend_equation(c.op_alpha));
                 if uniform {
                     gl.blend_func_separate(src, dst, src_alpha, dst_alpha);
                     gl.blend_equation_separate(op, op_alpha);
@@ -301,7 +326,7 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn reset(&mut self) {
+    fn reset_state(&mut self) {
         let gl = self.gl;
         unsafe {
             (self.extra.provoking)(glow::FIRST_VERTEX_CONVENTION);
@@ -324,9 +349,6 @@ impl<'a> Recorder<'a> {
             }
             gl.enable(glow::MULTISAMPLE);
             gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
-            if let Some(r) = &self.extra.rates {
-                (r.bind)(0);
-            }
             (self.extra.clamp_color)(glow::CLAMP_READ_COLOR, glow::FIXED_ONLY);
             for i in 0..slot::COLORS {
                 gl.color_mask_draw_buffer(i, true, true, true, true);
@@ -335,7 +357,7 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn clip(&self) {
+    fn apply_scissors(&self) {
         let (w, h) = self.extent;
         let edge = |a: f32| (a - 0.5).ceil() as i32;
         let boxes: Vec<[i32; 4]> = self
@@ -359,25 +381,7 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn shade(&self) {
-        let Some(r) = &self.extra.rates else {
-            return;
-        };
-        let on = self.rated || self.shading != [1, 1, combiner::KEEP, combiner::KEEP];
-        let palette = rates::palette(self.shading);
-        for i in 0..self.caps.viewports.max(1) {
-            unsafe {
-                if on {
-                    (r.palette)(i, 0, rates::ENTRIES as i32, palette.as_ptr());
-                    self.gl.enable_draw_buffer(rates::ENABLE, i);
-                } else {
-                    self.gl.disable_draw_buffer(rates::ENABLE, i);
-                }
-            }
-        }
-    }
-
-    fn stencil(&self) {
+    fn apply_stencil(&self) {
         let Some(d) = self.state.filter(|d| d.stencil) else {
             return;
         };
@@ -389,9 +393,9 @@ impl<'a> Recorder<'a> {
             ] {
                 gl.stencil_op_separate(
                     side,
-                    stencil_op(f.fail),
-                    stencil_op(f.depth_fail),
-                    stencil_op(f.pass),
+                    gl_stencil_op(f.fail),
+                    gl_stencil_op(f.depth_fail),
+                    gl_stencil_op(f.pass),
                 );
                 gl.stencil_func_separate(side, compare(f.compare), reference as i32, f.read);
                 gl.stencil_mask_separate(side, f.write);
@@ -399,26 +403,26 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn step(&mut self, command: Command) -> Result<(), String> {
+    fn apply(&mut self, command: Command) -> Result<(), String> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
             match command {
-                Command::BeginCompute
-                | Command::EndCompute
-                | Command::OcclusionHeap { .. }
+                Command::BeginComputePass
+                | Command::EndComputePass
+                | Command::OcclusionPool { .. }
                 | Command::ResetQueries { .. } => {}
-                Command::BindPipeline { pipeline } => {
+                Command::BindComputePipeline { pipeline } => {
                     let p = res.pipelines.get(pipeline);
                     self.program = Some(p);
                 }
                 Command::Dispatch { x, y, z } => {
-                    if x.min(y).min(z) != 0 && self.prepare(false)? {
+                    if x.min(y).min(z) != 0 && self.bind_draw_state(false)? {
                         gl.dispatch_compute(x, y, z);
                     }
                 }
                 Command::DispatchIndirect { buffer, offset } => {
-                    if self.prepare(false)? {
+                    if self.bind_draw_state(false)? {
                         gl.bind_buffer(
                             glow::DISPATCH_INDIRECT_BUFFER,
                             Some(res.buffers.get(buffer).raw),
@@ -463,28 +467,25 @@ impl<'a> Recorder<'a> {
                         (&raw const value).cast(),
                     );
                 }
-                Command::Barrier {
-                    src_access,
-                    dst_access,
-                    ..
-                }
-                | Command::QueueBarrier {
-                    src_access,
-                    dst_access,
-                    ..
+                Command::MemoryBarrier {
+                    src_stage,
+                    dst_stage,
                 }
                 | Command::TextureBarrier {
-                    src_access,
-                    dst_access,
+                    src_stage,
+                    dst_stage,
                     ..
                 } => {
-                    if src_access & (access::SHADER_WRITE | access::MEMORY_WRITE) != 0
-                        && self.caps.storage
-                    {
-                        gl.memory_barrier(barriers(dst_access));
+                    let shaders = stage::VERTEX
+                        | stage::FRAGMENT
+                        | stage::TASK
+                        | stage::MESH
+                        | stage::COMPUTE;
+                    if src_stage & shaders != 0 && self.caps.storage {
+                        gl.memory_barrier(gl_barrier_bits(dst_stage));
                     }
                 }
-                Command::BeginLabel { text } => {
+                Command::BeginDebugLabel { text } => {
                     let depth = gl.get_parameter_i32(glow::DEBUG_GROUP_STACK_DEPTH);
                     if depth >= gl.get_parameter_i32(glow::MAX_DEBUG_GROUP_STACK_DEPTH) {
                         return Err("the debug group stack is full".into());
@@ -492,7 +493,7 @@ impl<'a> Recorder<'a> {
                     gl.push_debug_group(glow::DEBUG_SOURCE_APPLICATION, 0, text);
                     self.labels += 1;
                 }
-                Command::EndLabel => {
+                Command::EndDebugLabel => {
                     if self.labels > 0 {
                         gl.pop_debug_group();
                         self.labels -= 1;
@@ -504,12 +505,9 @@ impl<'a> Recorder<'a> {
                 }
                 Command::CopyTextureToBuffer { .. } => self.readback(command)?,
                 Command::CopyTexture { .. } => self.copy_texture(command),
-                Command::BlitTexture { .. } => self.blit_texture(command),
-                Command::ClearTexture { .. } => self.clear_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,
-                    layout,
                     load,
                     store,
                     r,
@@ -517,13 +515,12 @@ impl<'a> Recorder<'a> {
                     b,
                     a,
                     resolve,
-                    resolve_layout,
+                    ..
                 } => {
                     self.colors.retain(|c| c.index != index);
-                    self.colors.push(ColorAttachment {
+                    self.colors.push(Color {
                         index,
                         texture,
-                        layout,
                         load,
                         store,
                         r,
@@ -531,12 +528,10 @@ impl<'a> Recorder<'a> {
                         b,
                         a,
                         resolve,
-                        resolve_layout,
                     });
                 }
                 Command::DepthAttachment {
                     texture,
-                    layout,
                     load,
                     store,
                     depth,
@@ -546,7 +541,6 @@ impl<'a> Recorder<'a> {
                 } => {
                     self.depth = Some(DepthAttachment {
                         texture,
-                        layout,
                         load,
                         store,
                         depth,
@@ -555,31 +549,30 @@ impl<'a> Recorder<'a> {
                         stencil,
                     });
                 }
-                Command::BeginRender {
+                Command::BeginRenderPass {
                     width,
                     height,
                     layers,
                 } => self.begin_render(width, height, layers)?,
-                Command::EndRender => self.end_render()?,
-                Command::BindAttachments { .. }
-                | Command::AttachmentBarrier
-                | Command::TileSize { .. }
+                Command::EndRenderPass => self.end_render()?,
+                Command::InputAttachmentBarrier
+                | Command::TileMemory { .. }
                 | Command::DispatchTile { .. } => {
                     unreachable!("caps.attachment_reads and caps.tiles are false on GL")
                 }
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
-                    self.mode = mode(p.topology);
-                    let fill = if p.fill == crate::fill::LINE {
+                    self.mode = gl_primitive_mode(p.topology);
+                    let fill = if p.fill == crate::fill_mode::LINE {
                         glow::LINE
                     } else {
                         glow::FILL
                     };
                     gl.polygon_mode(glow::FRONT_AND_BACK, fill);
-                    toggle(gl, glow::DEPTH_CLAMP, p.clamp);
-                    toggle(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
-                    self.colors(p);
+                    set_enabled(gl, glow::DEPTH_CLAMP, p.clamp);
+                    set_enabled(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
+                    self.apply_blend_state(p);
                 }
                 Command::SetViewport {
                     x,
@@ -592,7 +585,7 @@ impl<'a> Recorder<'a> {
                     gl.viewport(x as i32, y as i32, width as i32, height as i32);
                     gl.depth_range(near as f64, far as f64);
                     self.views = vec![[x, y, width, height]];
-                    self.clip();
+                    self.apply_scissors();
                 }
                 Command::SetScissor {
                     x,
@@ -601,13 +594,13 @@ impl<'a> Recorder<'a> {
                     height,
                 } => {
                     self.scissors = vec![[x as i32, y as i32, width as i32, height as i32]];
-                    self.clip();
+                    self.apply_scissors();
                 }
-                Command::SetCull { cull: c } => match c {
-                    cull::NONE => gl.disable(glow::CULL_FACE),
-                    cull::FRONT | cull::BACK => {
+                Command::SetCullMode { cull: c } => match c {
+                    cull_mode::NONE => gl.disable(glow::CULL_FACE),
+                    cull_mode::FRONT | cull_mode::BACK => {
                         gl.enable(glow::CULL_FACE);
-                        gl.cull_face(if c == cull::FRONT {
+                        gl.cull_face(if c == cull_mode::FRONT {
                             glow::FRONT
                         } else {
                             glow::BACK
@@ -615,43 +608,30 @@ impl<'a> Recorder<'a> {
                     }
                     c => panic!("unknown cull {c}"),
                 },
-                Command::SetFace { face: f } => gl.front_face(match f {
-                    face::CCW => glow::CW,
-                    face::CW => glow::CCW,
+                Command::SetFrontFace { face: f } => gl.front_face(match f {
+                    front_face::CCW => glow::CW,
+                    front_face::CW => glow::CCW,
                     f => panic!("unknown face {f}"),
                 }),
-                Command::SetTopology { topology } => self.mode = mode(topology),
-                Command::SetShadingRate {
-                    width,
-                    height,
-                    primitive,
-                    attachment,
-                } => {
-                    self.shading = [width, height, primitive, attachment];
-                    self.shade();
+                Command::SetPrimitiveTopology { topology } => {
+                    self.mode = gl_primitive_mode(topology)
                 }
-                Command::RateAttachment {
-                    texture,
-                    texel_width,
-                    texel_height,
-                    ..
-                } => self.rate = Some((texture, texel_width, texel_height)),
                 Command::SetDepthState { state } => {
                     let d = *res.depths.get(state);
-                    toggle(
+                    set_enabled(
                         gl,
                         glow::DEPTH_TEST,
-                        d.compare != crate::compare::NONE || d.write,
+                        d.compare != crate::compare_op::NONE || d.write,
                     );
                     gl.depth_func(compare(d.compare));
                     gl.depth_mask(d.write);
-                    toggle(gl, glow::STENCIL_TEST, d.stencil);
+                    set_enabled(gl, glow::STENCIL_TEST, d.stencil);
                     self.state = Some(d);
-                    self.stencil();
+                    self.apply_stencil();
                 }
                 Command::SetStencilReference { front, back } => {
                     self.references = (front, back);
-                    self.stencil();
+                    self.apply_stencil();
                 }
                 Command::SetDepthBias {
                     constant,
@@ -660,7 +640,7 @@ impl<'a> Recorder<'a> {
                 } => {
                     let on = constant != 0.0 || slope != 0.0;
                     for mode in OFFSETS {
-                        toggle(gl, mode, on);
+                        set_enabled(gl, mode, on);
                     }
                     match self.extra.offset_clamp {
                         Some(offset) => offset(slope, constant, clamp),
@@ -682,8 +662,8 @@ impl<'a> Recorder<'a> {
                     kind,
                 } => {
                     let kind = match kind {
-                        index::U16 => glow::UNSIGNED_SHORT,
-                        index::U32 => glow::UNSIGNED_INT,
+                        index_type::U16 => glow::UNSIGNED_SHORT,
+                        index_type::U32 => glow::UNSIGNED_INT,
                         k => panic!("unknown index {k}"),
                     };
                     self.index = Some((buffer, offset, kind));
@@ -695,8 +675,15 @@ impl<'a> Recorder<'a> {
                     first_vertex,
                     first_instance,
                 } => {
-                    if vertices.min(instances) != 0 && self.prepare(true)? {
-                        self.direct(false, vertices, instances, first_vertex, 0, first_instance);
+                    if vertices.min(instances) != 0 && self.bind_draw_state(true)? {
+                        self.draw_direct(
+                            false,
+                            vertices,
+                            instances,
+                            first_vertex,
+                            0,
+                            first_instance,
+                        );
                     }
                 }
                 Command::DrawIndexed {
@@ -706,8 +693,8 @@ impl<'a> Recorder<'a> {
                     base_vertex,
                     first_instance,
                 } => {
-                    if indices.min(instances) != 0 && self.prepare(true)? {
-                        self.direct(
+                    if indices.min(instances) != 0 && self.bind_draw_state(true)? {
+                        self.draw_direct(
                             true,
                             indices,
                             instances,
@@ -723,8 +710,8 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true)? {
-                        self.indirect(false, buffer, offset, count, stride, None);
+                    if count != 0 && self.bind_draw_state(true)? {
+                        self.draw_indirect_buffer(false, buffer, offset, count, stride, None);
                     }
                 }
                 Command::DrawIndexedIndirect {
@@ -733,81 +720,54 @@ impl<'a> Recorder<'a> {
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true)? {
-                        self.indirect(true, buffer, offset, count, stride, None);
+                    if count != 0 && self.bind_draw_state(true)? {
+                        self.draw_indirect_buffer(true, buffer, offset, count, stride, None);
                     }
                 }
-                Command::ExecuteIndirect {
-                    indirect,
-                    first,
-                    count,
-                } => {
-                    if count != 0 && self.prepare(true)? {
-                        let (info, _, mesh) = *res.table.indirects.get(indirect);
-                        let stride = crate::table::stride(mesh, info.indexed);
-                        let buffer = *res.indirects.get(indirect);
-                        let offset = first as u64 * stride as u64;
-                        if mesh {
-                            self.mesh(buffer, offset, count, stride, None)?;
-                        } else {
-                            self.indirect(info.indexed, buffer, offset, count, stride, None);
-                        }
-                    }
-                }
-                Command::ExecuteIndirectCount {
-                    indirect,
-                    buffer,
-                    offset,
-                } => {
-                    if self.prepare(true)? {
-                        let (info, _, mesh) = *res.table.indirects.get(indirect);
-                        let size = info.size;
-                        let stride = crate::table::stride(mesh, info.indexed);
-                        let commands = *res.indirects.get(indirect);
-                        let range = Some((buffer, offset + 4));
-                        if mesh {
-                            self.mesh(commands, 0, size, stride, range)?;
-                        } else {
-                            let indexed = info.indexed;
-                            self.indirect(indexed, commands, 0, size, stride, range);
-                        }
-                    }
-                }
-                Command::DrawMesh { x, y, z } => {
-                    if x.min(y).min(z) != 0 && self.prepare(true)? {
+                Command::DrawMeshTasks { x, y, z } => {
+                    if x.min(y).min(z) != 0 && self.bind_draw_state(true)? {
                         self.extra.mesh.unwrap()(x, y, z);
                     }
                 }
-                Command::DrawMeshIndirect {
+                Command::DrawMeshTasksIndirect {
                     buffer,
                     offset,
                     count,
                     stride,
                 } => {
-                    if count != 0 && self.prepare(true)? {
-                        self.mesh(buffer, offset, count, stride, None)?;
+                    if count != 0 && self.bind_draw_state(true)? {
+                        self.draw_mesh_tasks(buffer, offset, count, stride, None)?;
                     }
                 }
-                Command::WriteTimestamp { heap, index, .. } => {
+                Command::WriteTimestamp {
+                    pool: heap, index, ..
+                } => {
                     let q = res.queries.get(heap);
                     gl.query_counter(q.ids[index as usize], glow::TIMESTAMP);
                     q.used[index as usize].set(true);
                 }
-                Command::BeginQuery { heap, index } => {
+                Command::BeginOcclusionQuery { pool: heap, index } => {
                     let q = res.queries.get(heap);
                     let target = q.target();
                     gl.begin_query(target, q.ids[index as usize]);
                     q.used[index as usize].set(true);
                     self.query = Some(target);
                 }
-                Command::EndQuery { heap, .. } => {
+                Command::EndOcclusionQuery { pool: heap, .. } => {
                     let target = res.queries.get(heap).target();
                     if self.query.take() == Some(target) {
                         gl.end_query(target);
                     }
                 }
-                Command::ResolveQueries {
-                    heap,
+                Command::ResolveTimestamps {
+                    pool: heap,
+                    first,
+                    count,
+                    buffer,
+                    offset,
+                }
+                | Command::ResolveOcclusion {
+                    pool: heap,
                     first,
                     count,
                     buffer,
@@ -838,7 +798,7 @@ impl<'a> Recorder<'a> {
                     gl.bind_buffer(glow::QUERY_BUFFER, None);
                 }
                 Command::SetViewports { viewports } => {
-                    let views = command::viewports(viewports);
+                    let views: Vec<_> = viewports.iter().collect();
                     match views.as_slice() {
                         [v] => {
                             gl.viewport(v.x as i32, v.y as i32, v.width as i32, v.height as i32);
@@ -861,36 +821,36 @@ impl<'a> Recorder<'a> {
                         .iter()
                         .map(|v| [v.x, v.y, v.width, v.height])
                         .collect();
-                    self.clip();
+                    self.apply_scissors();
                 }
                 Command::SetScissors { scissors } => {
-                    self.scissors = command::scissors(scissors)
+                    self.scissors = scissors
                         .iter()
                         .map(|r| [r.x as i32, r.y as i32, r.width as i32, r.height as i32])
                         .collect();
-                    self.clip();
+                    self.apply_scissors();
                 }
-                Command::BindUniform {
+                Command::BindUniformBuffer {
                     slot,
                     buffer,
                     offset,
                     size,
-                } => self.range(
+                } => self.bind_range(
                     glow::UNIFORM_BUFFER,
                     register::UNIFORM + slot,
                     buffer,
                     offset,
                     size,
                 ),
-                Command::BindStorage {
+                Command::BindStorageBuffer {
                     slot,
                     buffer,
                     offset,
                     size,
                 } => {
-                    self.range(glow::SHADER_STORAGE_BUFFER, slot, buffer, offset, size);
+                    self.bind_range(glow::SHADER_STORAGE_BUFFER, slot, buffer, offset, size);
                 }
-                Command::BindImage { slot, texture } => {
+                Command::BindStorageTexture { slot, texture } => {
                     let t = res.textures.get(texture);
                     let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
                     gl.bind_image_texture(
@@ -909,18 +869,14 @@ impl<'a> Recorder<'a> {
                 Command::BindSampler { slot, sampler } => {
                     self.samplers[slot as usize] = Some(sampler)
                 }
-                Command::Callback { index } => {
-                    self.prepare(self.rendering)?;
-                    let state = (self.snapshot)();
-                    self.natives[index as usize](&Native { gl });
-                    state.restore(gl, self.extra)?;
-                    self.fed = None;
-                    if self.rendering {
-                        self.bind(self.layers)?;
-                    }
-                }
             }
         }
         Ok(())
+    }
+}
+
+impl Drop for Recorder<'_> {
+    fn drop(&mut self) {
+        let _ = self.finish();
     }
 }

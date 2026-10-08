@@ -5,17 +5,16 @@ use crate::memory;
 use glow::HasContext;
 use std::cell::Cell;
 
-pub struct Buffer {
+pub struct BufferObject {
     pub raw: glow::Buffer,
     pub size: u64,
     pub memory: u32,
     pub data: Cell<*mut u8>,
     pub persistent: bool,
     pub own: bool,
-    pub address: Cell<u64>,
 }
 
-impl Buffer {
+impl BufferObject {
     pub fn new(gl: &glow::Context, extra: &Extra, size: u64, memory: u32) -> Result<Self, String> {
         let persistent = extra.storage.is_some();
         let (flags, usage) = match memory {
@@ -66,7 +65,6 @@ impl Buffer {
                 data: Cell::new(data),
                 persistent,
                 own: true,
-                address: Cell::new(0),
             })
         }
     }

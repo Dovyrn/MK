@@ -1,6 +1,6 @@
 use mk::{
-    Commands, HostCopy, TextureBarrier, TextureCopy, TextureInfo, access, dimension, format,
-    layout, memory, stage, usage,
+    BufferTextureCopy, HostTextureCopy, TextureInfo, format, memory, stage, texture_dimension,
+    texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -13,8 +13,9 @@ fn pattern(size: usize, seed: usize) -> Vec<u8> {
 pub fn main() {
     let n = 64u32;
     let mut device = host::device(1);
-    if device.format_usage(format::RGBA8_UNORM) & usage::HOST == 0 {
-        println!("no usage::HOST for RGBA8_UNORM");
+    let pool = device.create_command_pool(0).unwrap();
+    if device.format_usage(format::RGBA8_UNORM) & texture_usage::HOST == 0 {
+        println!("no texture_usage::HOST for RGBA8_UNORM");
         return;
     }
     if !device.caps().host_read {
@@ -27,12 +28,12 @@ pub fn main() {
             width: n,
             height: n,
             mips: 2,
-            usage: usage::SAMPLED | usage::HOST,
+            usage: texture_usage::SAMPLED | texture_usage::HOST,
             ..Default::default()
         })
         .unwrap();
     let pixels = pattern((n * n * 4) as usize, 0);
-    let whole = HostCopy {
+    let whole = HostTextureCopy {
         texture,
         width: n,
         height: n,
@@ -43,56 +44,37 @@ pub fn main() {
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let mut c = Commands::default();
-    c.texture_barrier(&TextureBarrier {
-        texture,
-        src_stage: stage::HOST,
-        src_access: access::HOST_WRITE,
-        dst_stage: stage::COPY,
-        dst_access: access::COPY_READ,
-        before: layout::GENERAL,
-        after: layout::COPY_SRC,
-        ..Default::default()
-    });
-    c.begin_compute();
-    c.copy_texture_to_buffer(&TextureCopy {
+    let mut c = device.begin_commands(pool).unwrap();
+    c.memory_barrier(stage::HOST, stage::COPY);
+    let mut pass = c.begin_compute_pass().unwrap();
+    pass.copy_texture_to_buffer(&BufferTextureCopy {
         buffer: back,
         texture,
-        layout: layout::COPY_SRC,
         width: n,
         height: n,
         ..Default::default()
     });
-    c.barrier(
-        stage::COPY,
-        access::COPY_WRITE,
-        stage::HOST,
-        access::HOST_READ,
-    );
-    c.end_compute();
-    device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+    pass.memory_barrier(stage::COPY, stage::HOST);
+    pass.end();
+    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 5000).unwrap());
-    let seen = unsafe { std::slice::from_raw_parts(device.map(back), pixels.len()) };
+    let seen = unsafe { std::slice::from_raw_parts(device.map_buffer(back), pixels.len()) };
     assert_eq!(seen, pixels, "the GPU copy differs from the host write");
-    device.unmap(back);
+    device.unmap_buffer(back);
     let mut read = vec![0; pixels.len()];
-    let moved = HostCopy {
-        layout: layout::COPY_SRC,
-        ..whole
-    };
-    device.read_texture(&moved, &mut read).unwrap();
+    device.read_texture(&whole, &mut read).unwrap();
     assert_eq!(read, pixels, "the host read differs from the host write");
     let m = n / 2;
     let base = pattern((m * m * 4) as usize, 3);
-    let mip = HostCopy {
+    let mip = HostTextureCopy {
         mip: 1,
         width: m,
         height: m,
-        ..moved
+        ..whole
     };
     device.write_texture(&mip, &base).unwrap();
     let patch = pattern(20 * 8 * 4, 9);
-    let rows = HostCopy {
+    let rows = HostTextureCopy {
         x: 8,
         y: 4,
         width: 16,
@@ -119,7 +101,7 @@ pub fn main() {
     let mut part = vec![0; 12 * 8 * 4];
     device
         .read_texture(
-            &HostCopy {
+            &HostTextureCopy {
                 x: 2,
                 y: 3,
                 width: 8,
@@ -139,17 +121,17 @@ pub fn main() {
     }
     let layers = device
         .create_texture(&TextureInfo {
-            dimension: dimension::D2_ARRAY,
+            dimension: texture_dimension::D2_ARRAY,
             format: format::R32_FLOAT,
             width: 16,
             height: 16,
             layers: 3,
-            usage: usage::HOST,
+            usage: texture_usage::HOST,
             ..Default::default()
         })
         .unwrap();
     let slices: Vec<Vec<u8>> = (0..3).map(|i| pattern(16 * 16 * 4, i * 5)).collect();
-    let slice = |layer| HostCopy {
+    let slice = |layer| HostTextureCopy {
         texture: layers,
         layer,
         width: 16,
@@ -164,21 +146,21 @@ pub fn main() {
         device.read_texture(&slice(i as u32), &mut out).unwrap();
         assert_eq!(&out, s, "layer {i}");
     }
-    let bc = device.format_usage(format::BC1_UNORM) & usage::HOST != 0;
-    let readable = device.format_usage(format::BC1_UNORM) & usage::COPY_SRC != 0;
+    let bc = device.format_usage(format::BC1_UNORM) & texture_usage::HOST != 0;
+    let readable = device.format_usage(format::BC1_UNORM) & texture_usage::COPY_SRC != 0;
     if bc {
-        let source = if readable { usage::COPY_SRC } else { 0 };
+        let source = if readable { texture_usage::COPY_SRC } else { 0 };
         let blocks = device
             .create_texture(&TextureInfo {
                 format: format::BC1_UNORM,
                 width: 16,
                 height: 16,
-                usage: usage::SAMPLED | usage::HOST | source,
+                usage: texture_usage::SAMPLED | texture_usage::HOST | source,
                 ..Default::default()
             })
             .unwrap();
         let data = pattern(16 * 8, 1);
-        let all = HostCopy {
+        let all = HostTextureCopy {
             texture: blocks,
             width: 16,
             height: 16,
@@ -186,7 +168,7 @@ pub fn main() {
         };
         device.write_texture(&all, &data).unwrap();
         let mut out = vec![0; 2 * 2 * 8];
-        let corner = HostCopy {
+        let corner = HostTextureCopy {
             x: 8,
             y: 8,
             width: 8,
@@ -205,40 +187,25 @@ pub fn main() {
         if readable {
             let back = device.create_buffer(2 * 2 * 8, memory::READBACK).unwrap();
             let timeline = device.create_timeline().unwrap();
-            let mut c = Commands::default();
-            c.texture_barrier(&TextureBarrier {
-                texture: blocks,
-                src_stage: stage::HOST,
-                src_access: access::HOST_WRITE,
-                dst_stage: stage::COPY,
-                dst_access: access::COPY_READ,
-                before: layout::GENERAL,
-                after: layout::COPY_SRC,
-                ..Default::default()
-            });
-            c.begin_compute();
-            c.copy_texture_to_buffer(&TextureCopy {
+            let mut c = device.begin_commands(pool).unwrap();
+            c.memory_barrier(stage::HOST, stage::COPY);
+            let mut pass = c.begin_compute_pass().unwrap();
+            pass.copy_texture_to_buffer(&BufferTextureCopy {
                 buffer: back,
                 texture: blocks,
-                layout: layout::COPY_SRC,
                 x: 8,
                 y: 8,
                 width: 8,
                 height: 8,
                 ..Default::default()
             });
-            c.barrier(
-                stage::COPY,
-                access::COPY_WRITE,
-                stage::HOST,
-                access::HOST_READ,
-            );
-            c.end_compute();
-            device.submit(0, &c, &[], &[(&timeline, 1)]).unwrap();
+            pass.memory_barrier(stage::COPY, stage::HOST);
+            pass.end();
+            device.submit(c, &[], &[(&timeline, 1)]).unwrap();
             assert!(timeline.wait(1, 5000).unwrap());
-            let seen = unsafe { std::slice::from_raw_parts(device.map(back), out.len()) };
+            let seen = unsafe { std::slice::from_raw_parts(device.map_buffer(back), out.len()) };
             assert_eq!(seen, out, "bc1 readback differs from the host read");
-            device.unmap(back);
+            device.unmap_buffer(back);
         }
     }
     let budget = match device.memory_budget() {

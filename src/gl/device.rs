@@ -2,15 +2,11 @@ mod budget;
 mod copies;
 mod host;
 
-use crate::IndirectInfo;
 use crate::caps;
 use crate::check::Check;
-use crate::gl::addresses::GPU_ADDRESS;
-use crate::gl::buffer::Buffer;
-use crate::gl::cache::Cache;
+use crate::gl::buffer::BufferObject;
 use crate::gl::extra::Extra;
 use crate::gl::fences::Fences;
-use crate::gl::native::Callback;
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::query::Query;
@@ -18,15 +14,21 @@ use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
 use crate::gl::sampler;
 use crate::gl::state::{self, State};
-use crate::gl::texture::{Texture, target};
+use crate::gl::texture::{TextureObject, target};
+use crate::handle::TimelineId;
+use crate::recording::{Held, Recording};
 use crate::{
-    Caps, ComputeInfo, DepthInfo, Matrix, MeshInfo, RenderInfo, SamplerInfo, TextureInfo, TileInfo,
-    Timeline, ViewInfo, atomic, dimension, format, memory, query, stage, subgroup, topology, usage,
+    Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
+    RenderPass, RenderPipeline, Sampler, Texture, TilePipeline,
+};
+use crate::{
+    Caps, ComputePipelineInfo, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo, SamplerInfo,
+    TextureInfo, TextureViewInfo, TilePipelineInfo, Timeline, atomic64, format, memory, slot,
+    stage, subgroup_op, texture_dimension, texture_usage, topology,
 };
 use glow::HasContext;
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, c_void};
-use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::rc::Rc;
 
 pub struct Device {
@@ -37,10 +39,9 @@ pub struct Device {
     res: Resources,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
-    cache: Option<Cache>,
+    open: Cell<bool>,
     units: u32,
     caps: Caps,
-    anisotropy: f32,
     samples: [i32; 4],
     thread: std::thread::ThreadId,
 }
@@ -69,8 +70,8 @@ const TASK_SHADER_BIT: u32 = 0x80;
 
 pub fn compare(c: u32) -> u32 {
     match c {
-        crate::compare::NONE => glow::ALWAYS,
-        crate::compare::NEVER..=crate::compare::ALWAYS => glow::NEVER + c - 1,
+        crate::compare_op::NONE => glow::ALWAYS,
+        crate::compare_op::NEVER..=crate::compare_op::ALWAYS => glow::NEVER + c - 1,
         c => panic!("unknown compare {c}"),
     }
 }
@@ -151,20 +152,22 @@ impl Device {
                 timestamps: results,
                 precise: results,
                 viewports: if has(99, "GL_ARB_shader_viewport_layer_array") {
-                    int(glow::MAX_VIEWPORTS) as u32
+                    (int(glow::MAX_VIEWPORTS) as u32).min(slot::VIEWPORTS)
                 } else {
                     1
                 },
                 graphics: 1,
                 labels: has(43, "GL_KHR_debug"),
-                anisotropy: has(46, "GL_ARB_texture_filter_anisotropic")
-                    || has(99, "GL_EXT_texture_filter_anisotropic"),
+                anisotropy: if has(46, "GL_ARB_texture_filter_anisotropic")
+                    || has(99, "GL_EXT_texture_filter_anisotropic")
+                {
+                    gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY) as u32
+                } else {
+                    1
+                },
                 depth_clamp: true,
                 line_fill: true,
                 multi_draw: has(43, "GL_ARB_multi_draw_indirect"),
-                indirect_count: has(42, "GL_ARB_draw_indirect")
-                    && has(42, "GL_ARB_base_instance")
-                    && has(46, "GL_ARB_indirect_parameters"),
                 slots: true,
                 storage,
                 persistent: has(44, "GL_ARB_buffer_storage"),
@@ -178,8 +181,6 @@ impl Device {
                 compute,
                 texture_views: has(43, "GL_ARB_texture_view"),
                 occlusion: results,
-                cache: has(41, "GL_ARB_get_program_binary")
-                    && int(glow::NUM_PROGRAM_BINARY_FORMATS) > 0,
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
                 blends: has(40, "GL_ARB_draw_buffers_blend"),
                 indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
@@ -190,7 +191,6 @@ impl Device {
                 copy_formats: has(43, "GL_ARB_copy_image")
                     && has(43, "GL_ARB_texture_view")
                     && has(42, "GL_ARB_texture_storage"),
-                texture_clear: has(44, "GL_ARB_clear_texture"),
                 buffer_clear: extra.clear.is_some(),
                 partial_resolve: true,
                 max_buffer: isize::MAX as u64,
@@ -206,7 +206,7 @@ impl Device {
                 max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
                 subgroup: group(SUBGROUP_SIZE),
                 subgroup_sizes: group(SUBGROUP_SIZE),
-                subgroup_ops: group(SUBGROUP_FEATURES) & subgroup::BITS,
+                subgroup_ops: group(SUBGROUP_FEATURES) & subgroup_op::BITS,
                 subgroup_stages: stages,
                 max_threads: if compute {
                     int(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS) as u32
@@ -219,11 +219,12 @@ impl Device {
                     0
                 },
                 atomics64: if has(99, "GL_NV_shader_atomic_int64") {
-                    atomic::MIN_MAX | atomic::SIGNED
+                    atomic64::MIN_MAX | atomic64::SIGNED
                 } else {
                     0
                 },
                 mesh: extra.mesh.is_some(),
+                task: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
                 mesh_groups: if extra.mesh.is_some() {
                     int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
@@ -241,25 +242,12 @@ impl Device {
                 },
                 budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
                 host_read: has(45, "GL_ARB_get_texture_sub_image"),
-                buffers: if extra.addresses.is_some() {
-                    u32::MAX
-                } else {
-                    0
-                },
-                addresses: extra.addresses.is_some(),
-                shading_rate: extra.rates.is_some(),
-                rate_images: extra.rates.is_some(),
                 images: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
                     0
                 },
                 ..Default::default()
-            };
-            let anisotropy = if caps.anisotropy {
-                gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY)
-            } else {
-                1.0
             };
             let samples = [
                 int(glow::MAX_DEPTH_TEXTURE_SAMPLES),
@@ -279,12 +267,11 @@ impl Device {
                 version,
                 extensions,
                 caps,
-                anisotropy,
                 samples,
                 res: Resources::default(),
                 fbo,
                 read,
-                cache: None,
+                open: Cell::new(false),
                 units: 0,
                 thread: std::thread::current().id(),
             })
@@ -308,78 +295,50 @@ impl Device {
         self.caps
     }
 
-    pub fn matrix(&self, index: u32) -> Matrix {
-        self.thread();
-        self.caps.matrix(index);
-        unreachable!()
-    }
-
-    pub fn name(&self) -> String {
+    pub fn device_name(&self) -> String {
         self.thread();
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<u32, String> {
+    pub fn create_buffer(&mut self, size: u64, memory: u32) -> Result<Buffer, String> {
         self.thread();
-        self.caps.buffer(size, memory)?;
+        self.caps.check_buffer(size, memory)?;
         let id = self
             .res
             .buffers
-            .insert(Buffer::new(&self.gl, &self.extra, size, memory)?);
+            .insert(BufferObject::new(&self.gl, &self.extra, size, memory)?);
         self.res.table.buffers.set(id, size);
         Ok(id)
     }
 
-    pub fn create_indirect_buffer(&mut self, info: &IndirectInfo) -> Result<u32, String> {
-        let entry = self.res.table.indirect(info);
-        let stride = crate::table::stride(entry.2, info.indexed);
-        let buffer = self.create_buffer(info.size as u64 * stride as u64, memory::DEVICE)?;
-        let id = self.res.indirects.insert(buffer);
-        self.res.table.indirects.set(id, entry);
-        Ok(id)
-    }
-
-    pub fn destroy_indirect_buffer(&mut self, indirect: u32) {
-        self.thread();
-        self.res.table.indirects.clear(indirect);
-        let buffer = self.res.indirects.remove(indirect);
-        self.destroy_buffer(buffer);
-    }
-
-    pub fn indirect_handle(&self, indirect: u32) -> Result<[u32; 8], String> {
-        let handle = self.buffer_handle(*self.res.indirects.get(indirect))?;
-        Ok(self.res.table.handle(indirect, handle, 0, [0; 6]))
-    }
-
-    pub fn import_buffer(&mut self, raw: u32, size: u64) -> u32 {
+    pub fn import_buffer(&mut self, raw: u32, size: u64) -> Buffer {
         self.thread();
         let raw = glow::NativeBuffer(std::num::NonZeroU32::new(raw).expect("buffer 0"));
-        let id = self.res.buffers.insert(Buffer {
+        let id = self.res.buffers.insert(BufferObject {
             raw,
             size,
             memory: memory::DEVICE,
             data: Cell::new(std::ptr::null_mut()),
             persistent: false,
             own: false,
-            address: Cell::new(0),
         });
         self.res.table.buffers.set(id, size);
         id
     }
 
-    pub fn raw_buffer(&self, buffer: u32) -> u32 {
+    pub fn raw_buffer(&self, buffer: Buffer) -> u32 {
         self.thread();
         self.res.table.buffers.get(buffer);
         self.res.buffers.get(buffer).raw.0.get()
     }
 
-    pub fn destroy_buffer(&mut self, buffer: u32) {
+    pub fn destroy_buffer(&mut self, buffer: Buffer) {
         self.thread();
         self.res.table.drop_buffer(buffer);
         self.res.buffers.remove(buffer).delete(&self.gl);
     }
 
-    pub fn map(&self, buffer: u32) -> *mut u8 {
+    pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.thread();
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
@@ -402,7 +361,7 @@ impl Device {
         b.data.get()
     }
 
-    pub fn unmap(&self, buffer: u32) {
+    pub fn unmap_buffer(&self, buffer: Buffer) {
         self.thread();
         self.res.table.buffers.get(buffer);
         let b = self.res.buffers.get(buffer);
@@ -418,75 +377,39 @@ impl Device {
         b.data.set(std::ptr::null_mut());
     }
 
-    pub fn buffer_handle(&self, buffer: u32) -> Result<u64, String> {
+    pub fn buffer_address(&self, buffer: Buffer) -> u64 {
         self.thread();
         self.res.table.buffers.get(buffer);
-        if self.extra.addresses.is_none() {
-            return Err("buffer handles need GL_NV_shader_buffer_load".into());
-        }
-        Ok(self.resident(buffer))
+        self.caps.assert_addresses();
+        unreachable!("caps.addresses is false on GL")
     }
 
-    pub fn address(&self, buffer: u32) -> u64 {
+    pub fn create_compute_pipeline(
+        &mut self,
+        info: &ComputePipelineInfo,
+    ) -> Result<ComputePipeline, String> {
         self.thread();
-        self.res.table.buffers.get(buffer);
-        self.caps.address();
-        self.resident(buffer)
-    }
-
-    fn resident(&self, buffer: u32) -> u64 {
-        let b = self.res.buffers.get(buffer);
-        if b.address.get() == 0 {
-            let a = self.extra.addresses.as_ref().unwrap();
-            let target = glow::COPY_WRITE_BUFFER;
-            unsafe {
-                let old = state::buffer(self.gl.get_parameter_i32(glow::COPY_WRITE_BUFFER_BINDING));
-                self.gl.bind_buffer(target, Some(b.raw));
-                (a.resident)(target, glow::READ_WRITE);
-                let mut address = 0;
-                (a.parameter)(target, GPU_ADDRESS, &mut address);
-                self.gl.bind_buffer(target, old);
-                b.address.set(address);
-            }
-        }
-        b.address.get()
-    }
-
-    pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
-        self.thread();
-        self.caps.compute(info)?;
-        if !self.has(43, "GL_ARB_compute_shader") {
-            return Err("compute shaders need GL 4.3".into());
-        }
-        self.programs()?;
-        let program = Program::new(
-            &self.gl,
-            info.code,
-            &[(glow::COMPUTE_SHADER, info.entry)],
-            self.cache.as_mut(),
-        )?;
+        self.caps.check_compute_pipeline(info)?;
+        self.check_host_programs()?;
+        let program = Program::new(&self.gl, info.code, &[(glow::COMPUTE_SHADER, info.entry)])?;
         self.units = self.units.max(program.pairs.len() as u32);
         let id = self.res.pipelines.insert(program);
         self.res.table.pipelines.set(id, ());
         Ok(id)
     }
 
-    pub fn destroy_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_compute_pipeline(&mut self, pipeline: ComputePipeline) {
         self.thread();
         self.res.table.pipelines.clear(pipeline);
         self.res.pipelines.remove(pipeline).delete(&self.gl);
     }
 
-    pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+    pub fn create_render_pipeline(
+        &mut self,
+        info: &RenderPipelineInfo,
+    ) -> Result<RenderPipeline, String> {
         self.thread();
-        crate::caps::targets(
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-        );
-        crate::caps::primitive(info.topology);
+        self.caps.check_render_pipeline(info)?;
         let stages = [
             (glow::VERTEX_SHADER, info.vertex),
             (glow::FRAGMENT_SHADER, info.fragment),
@@ -494,119 +417,103 @@ impl Device {
         self.render(info, &stages)
     }
 
-    pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+    pub fn create_mesh_pipeline(
+        &mut self,
+        info: &MeshPipelineInfo,
+    ) -> Result<RenderPipeline, String> {
         self.thread();
-        crate::caps::targets(
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-        );
-        if !self.caps.mesh {
-            return Err("GL_EXT_mesh_shader is not supported".into());
-        }
+        self.caps.check_mesh_pipeline(info)?;
         let mut stages = Vec::new();
         if !info.task.is_empty() {
             stages.push((TASK_SHADER, info.task));
         }
         stages.push((MESH_SHADER, info.mesh));
         stages.push((glow::FRAGMENT_SHADER, info.fragment));
-        let render = RenderInfo {
+        let render = RenderPipelineInfo {
             code: info.code,
             colors: info.colors,
             topology: topology::TRIANGLE,
             fill: info.fill,
             coverage: info.coverage,
             clamp: info.clamp,
-            indirect: info.indirect,
             ordered: info.ordered,
             ..Default::default()
         };
         self.render(&render, &stages)
     }
 
-    fn render(&mut self, info: &RenderInfo, stages: &[(u32, &str)]) -> Result<u32, String> {
-        if info.ordered {
-            return Err("ordered needs caps.ordered_reads".into());
-        }
-        self.programs()?;
-        let cache = self.cache.as_mut();
-        let p = Pipeline::new(&self.gl, cache, self.caps.blends, info, stages)?;
+    fn render(
+        &mut self,
+        info: &RenderPipelineInfo,
+        stages: &[(u32, &str)],
+    ) -> Result<RenderPipeline, String> {
+        self.check_host_programs()?;
+        let p = Pipeline::new(&self.gl, info, stages)?;
         self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
         let mesh = stages.iter().any(|s| s.0 == MESH_SHADER);
         self.res.table.renders.set(
             id,
-            (
-                info.samples,
-                info.indirect,
-                info.topology,
+            crate::table::RenderEntry {
+                samples: info.samples,
+                topology: info.topology,
                 mesh,
-                crate::table::vertices(info),
-                0,
-            ),
+                vertices: crate::table::vertex_buffer_mask(info),
+                reads: 0,
+            },
         );
         Ok(id)
     }
 
-    pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_render_pipeline(&mut self, pipeline: RenderPipeline) {
         self.thread();
         self.res.table.renders.clear(pipeline);
         self.res.renders.remove(pipeline).delete(&self.gl);
     }
 
-    pub fn create_attachments(&mut self, textures: &[u32]) -> Result<u32, String> {
+    pub fn create_tile_pipeline(
+        &mut self,
+        info: &TilePipelineInfo,
+    ) -> Result<TilePipeline, String> {
         self.thread();
-        self.res.table.check_attachments(textures);
-        Err("create_attachments needs caps.attachment_reads".into())
-    }
-
-    pub fn destroy_attachments(&mut self, attachments: u32) {
-        self.thread();
-        self.res.table.attachments.clear(attachments);
-    }
-
-    pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
-        self.thread();
-        crate::caps::tile(info);
+        crate::caps::check_tile_pipeline(info);
         Err("create_tile_pipeline needs caps.tiles".into())
     }
 
-    pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
         self.thread();
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, String> {
         self.thread();
-        self.caps.depth(info);
+        self.caps.check_depth_state(info);
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
     }
 
-    pub fn destroy_depth_state(&mut self, state: u32) {
+    pub fn destroy_depth_state(&mut self, state: DepthState) {
         self.thread();
         self.res.table.states.clear(state);
         self.res.depths.remove(state);
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<u32, String> {
+    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, String> {
         self.thread();
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        self.caps.texture(info, usable, counts)?;
+        self.caps.check_texture(info, usable, counts)?;
         let storage = self.has(42, "GL_ARB_texture_storage");
-        let texture = Texture::new(&self.gl, &self.extra, info, storage)?;
+        let texture = TextureObject::new(&self.gl, &self.extra, info, storage)?;
         let id = self.res.textures.insert(texture);
-        self.res.table.textures.set(id, *info);
+        self.res.table.add_texture(id, info);
         Ok(id)
     }
 
-    pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<u32, String> {
+    pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<Texture, String> {
         self.thread();
-        let id = self.res.textures.insert(Texture {
+        let id = self.res.textures.insert(TextureObject {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
             target: target(info.dimension, info.samples),
             format: info.format,
@@ -617,21 +524,21 @@ impl Device {
         Ok(id)
     }
 
-    pub fn raw_texture(&self, texture: u32) -> u32 {
+    pub fn raw_texture(&self, texture: Texture) -> u32 {
         self.thread();
         self.res.table.textures.get(texture);
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
     }
 
-    pub fn image_handle(&self, texture: u32) -> u64 {
+    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
         self.thread();
         let info = self.res.table.textures.get(texture);
-        self.caps.image(texture);
+        self.caps.assert_image_slot(texture);
         let t = self.res.textures.get(texture);
         if t.image.get() == 0 {
             let b = self.extra.bindless.as_ref().unwrap();
             let raw = t.raw.map_or(0, |r| r.0.get());
-            let layered = info.layers > 1 || info.dimension == dimension::D3;
+            let layered = info.layers > 1 || info.dimension == texture_dimension::D3;
             let internal = format::gl(t.format)[0];
             unsafe {
                 let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
@@ -668,15 +575,15 @@ impl Device {
             return 0;
         }
         let views = self.has(43, "GL_ARB_texture_view") && self.has(42, "GL_ARB_texture_storage");
-        let base = usage::SAMPLED | if views { usage::VIEW } else { 0 };
-        let copies = usage::COPY_SRC | usage::COPY_DST;
+        let base = texture_usage::SAMPLED | if views { texture_usage::VIEW } else { 0 };
+        let copies = texture_usage::COPY_SRC | texture_usage::COPY_DST;
         let readable = self.extra.compressed_sub.is_some() && self.extra.copy_image.is_some();
         match kind {
-            0 if readable => base | copies | usage::HOST,
-            0 => base | usage::COPY_DST | usage::HOST,
-            glow::DEPTH_STENCIL if format == format::D24_UNORM_S8 => base | usage::DEPTH,
+            0 if readable => base | copies | texture_usage::HOST,
+            0 => base | texture_usage::COPY_DST | texture_usage::HOST,
+            glow::DEPTH_STENCIL if format == format::D24_UNORM_S8 => base | texture_usage::DEPTH,
             glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
-                base | usage::DEPTH | copies
+                base | texture_usage::DEPTH | copies
             }
             _ => {
                 let unrenderable = matches!(
@@ -702,14 +609,14 @@ impl Device {
                         | format::RGB32_SINT
                         | format::RGB32_FLOAT
                 );
-                let mut u = base | usage::COPY_DST | usage::HOST;
+                let mut u = base | texture_usage::COPY_DST | texture_usage::HOST;
                 if !unrenderable {
-                    u |= usage::COLOR | usage::COPY_SRC | usage::BLIT;
+                    u |= texture_usage::COLOR | texture_usage::COPY_SRC;
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
-                    u |= usage::STORAGE;
+                    u |= texture_usage::STORAGE;
                     if matches!(format, format::R32_UINT | format::R32_SINT) {
-                        u |= usage::ATOMIC;
+                        u |= texture_usage::ATOMIC;
                     }
                 }
                 u
@@ -729,7 +636,7 @@ impl Device {
             _ if format::uint(format) || format::sint(format) => integer,
             _ => color,
         };
-        if usage & usage::STORAGE != 0 {
+        if usage & texture_usage::STORAGE != 0 {
             max = max.min(image);
         }
         (0..7)
@@ -738,87 +645,62 @@ impl Device {
             .fold(0, |m, n| m | n as u32)
     }
 
-    pub fn create_view(&mut self, texture: u32, info: &ViewInfo) -> Result<u32, String> {
+    pub fn create_texture_view(
+        &mut self,
+        texture: Texture,
+        info: &TextureViewInfo,
+    ) -> Result<Texture, String> {
         self.thread();
-        let info = &self.res.table.resolve(texture, info);
-        self.caps.view(info.dimension)?;
+        let info = &self.res.table.resolve_view(texture, info);
+        self.caps.check_view(info.dimension)?;
         let view = self.extra.view.ok_or("texture views need GL 4.3")?;
         let parent = self.res.textures.get(texture);
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        caps::supports(info.format, info.usage | usage::VIEW, 1, usable, counts)?;
-        let view = Texture::view(&self.gl, &self.extra, view, parent, info)?;
+        caps::check_support(
+            "create_texture_view",
+            info.format,
+            info.usage | texture_usage::VIEW,
+            1,
+            usable,
+            counts,
+        )?;
+        let view = TextureObject::view(&self.gl, &self.extra, view, parent, info)?;
         let id = self.res.textures.insert(view);
-        self.res.table.view(id, texture, info);
+        self.res.table.check_view(id, texture, info);
         Ok(id)
     }
 
-    pub fn destroy_texture(&mut self, texture: u32) {
+    pub fn destroy_texture(&mut self, texture: Texture) {
         self.thread();
         self.res.table.drop_texture(texture);
         self.res.textures.remove(texture).delete(&self.gl);
     }
 
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<u32, String> {
+    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, String> {
         self.thread();
-        self.caps.sampler(info)?;
-        let raw = sampler::create(&self.gl, info, self.anisotropy)?;
+        self.caps.check_sampler(info)?;
+        let raw = sampler::create(&self.gl, info)?;
         let id = self.res.samplers.insert(raw);
         self.res.table.samplers.set(id, ());
         Ok(id)
     }
 
-    pub fn destroy_sampler(&mut self, sampler: u32) {
+    pub fn destroy_sampler(&mut self, sampler: Sampler) {
         self.thread();
         self.res.table.samplers.clear(sampler);
         sampler::delete(&self.gl, self.res.samplers.remove(sampler));
     }
 
-    pub fn record_cache(&mut self) -> Result<(), String> {
+    pub fn create_query_pool(&mut self, kind: u32, count: u32) -> Result<QueryPool, String> {
         self.thread();
-        if !self.caps.cache {
-            return Err("program binaries are not supported".into());
-        }
-        self.cache.get_or_insert_default();
-        Ok(())
-    }
-
-    pub fn save_cache(&self, path: &str) -> Result<(), String> {
-        self.thread();
-        let cache = self.cache.as_ref().ok_or("record_cache was not called")?;
-        std::fs::write(path, cache.encode()).map_err(|e| e.to_string())
-    }
-
-    pub fn load_cache(&mut self, path: &str) -> Result<(), String> {
-        self.thread();
-        if !self.caps.cache {
-            return Err("program binaries are not supported".into());
-        }
-        let data = std::fs::read(path).map_err(|e| e.to_string())?;
-        self.cache = Some(Cache::decode(&data)?);
-        Ok(())
-    }
-
-    pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
-        self.thread();
-        self.caps.queries(kind, count)?;
-        let results = self.has(44, "GL_ARB_query_buffer_object");
-        match kind {
-            query::TIMESTAMP | query::OCCLUSION | query::PRECISE if !results => {
-                return Err("query results need GL 4.4".into());
-            }
-            query::TIMESTAMP | query::OCCLUSION | query::PRECISE => {}
-            query::COMPACTED => {
-                return Err("acceleration structures are not supported on GL".into());
-            }
-            k => panic!("unknown query kind {k}"),
-        }
+        self.caps.check_query_pool(kind, count)?;
         let id = self.res.queries.insert(Query::new(&self.gl, kind, count)?);
         self.res.table.queries.set(id, (kind, count));
         Ok(id)
     }
 
-    pub fn destroy_query_heap(&mut self, heap: u32) {
+    pub fn destroy_query_pool(&mut self, heap: QueryPool) {
         self.thread();
         self.res.table.queries.clear(heap);
         self.res.queries.remove(heap).delete(&self.gl);
@@ -855,73 +737,122 @@ impl Device {
         }
     }
 
-    pub(crate) fn replay(
-        &mut self,
-        queue: usize,
-        (commands, natives): (&[u8], &[Callback]),
-        waits: &[(&Timeline, u64)],
-        signals: &[(&Timeline, u64)],
-    ) -> Result<(), String> {
+    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, String> {
         self.thread();
         assert_eq!(queue, 0, "GL has one queue");
-        let waits = &self.res.table.points(waits);
-        let signals = &self.res.table.points(signals);
-        Check::run(commands, natives.len(), &self.caps, &self.res.table)?;
-        if let Some(i) = self
+        let pool = self.res.pools.insert(());
+        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        Ok(pool)
+    }
+
+    pub fn reset_command_pool(&mut self, pool: CommandPool) -> Result<(), String> {
+        self.thread();
+        self.res.table.pools.get(pool);
+        Ok(())
+    }
+
+    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
+        self.thread();
+        self.res.table.pools.clear(pool);
+        self.res.pools.remove(pool);
+    }
+
+    fn recording(
+        &self,
+        pool: CommandPool,
+        base: &'static str,
+        samples: u32,
+    ) -> Result<Recording<'_>, String> {
+        self.thread();
+        assert!(
+            !self.open.get(),
+            "GL runs commands as they are recorded; submit, finish or drop the open command buffer first"
+        );
+        let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
+        if let Some(b) = self
             .res
             .buffers
+            .values()
             .find(|b| !b.persistent && !b.data.get().is_null())
         {
-            return Err(format!("submit while buffer {i} is mapped; unmap it first"));
+            let _ = b;
+            return Err("a buffer is mapped; unmap it before recording".into());
         }
-        self.programs()?;
-        self.queries()?;
-        self.res.table.submit(queue, signals);
+        self.check_host_programs()?;
+        self.check_host_queries()?;
         self.healthy()?;
-        self.waits(waits);
-        let snapshot = || {
-            State::save(
-                &self.gl,
-                &self.extra,
-                &self.caps,
-                &|v, e| self.has(v, e),
-                self.units.max(1),
-            )
-        };
         let host = crate::gl::errors::drain(&self.gl);
-        let state = snapshot();
-        let saved = crate::gl::errors::drain(&self.gl);
-        state.clear(&self.gl, &self.extra);
-        let cleared = crate::gl::errors::drain(&self.gl);
-        let mut recorder = Recorder::new(
+        let state = State::save(
+            &self.gl,
+            &self.extra,
+            &self.caps,
+            &|v, e| self.has(v, e),
+            self.units.max(1),
+        );
+        crate::gl::errors::raise(&self.gl, &self.extra, &host);
+        if base == "outside" {
+            state.clear(&self.gl, &self.extra);
+        }
+        let recorder = Recorder::new(
             &self.gl,
             &self.extra,
             &self.res,
             &self.caps,
             (self.fbo, self.read),
-            &snapshot,
-            natives,
+            state,
+            &self.open,
         );
-        let result = catch_unwind(AssertUnwindSafe(|| recorder.run(commands)));
-        recorder.finish();
-        let restored = state.restore(&self.gl, &self.extra);
-        let mine = crate::gl::errors::drain(&self.gl);
-        crate::gl::errors::raise(&self.gl, &self.extra, &host);
-        result.unwrap_or_else(|p| resume_unwind(p))?;
-        restored?;
-        for (errors, what) in [
-            (saved, "saving host state"),
-            (cleared, "clearing host state"),
-            (mine, "the submit or restoring host state"),
-        ] {
-            if !errors.is_empty() {
-                return Err(format!("submit raised GL errors {errors:#x?} while {what}"));
-            }
-        }
-        self.signals(queue, signals)
+        self.open.set(true);
+        Ok(Recording { check, recorder })
     }
 
-    fn waits(&self, waits: &[(u32, u64)]) {
+    pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, String> {
+        let mut recording = self.recording(pool, "outside", 0)?;
+        recording.recorder.begin()?;
+        Ok(CommandBuffer { recording })
+    }
+
+    pub fn import_render_pass(
+        &self,
+        pool: CommandPool,
+        info: &ImportedPassInfo,
+    ) -> Result<RenderPass<'_, '_>, String> {
+        let mut recording = self.recording(pool, "render", info.samples)?;
+        recording.recorder.import(info.width, info.height);
+        Ok(RenderPass {
+            recording: Held::Owned(Box::new(recording)),
+        })
+    }
+
+    pub fn submit(
+        &self,
+        mut commands: CommandBuffer<'_>,
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
+    ) -> Result<(), String> {
+        self.thread();
+        let table = &self.res.table;
+        let waits = &table.timeline_points(waits);
+        let signals = &table.timeline_points(signals);
+        let recording = &mut commands.recording;
+        recording.check.finish();
+        let queue = recording.check.queue();
+        table.check_signals(queue, signals);
+        recording.recorder.finish()?;
+        self.waits(waits);
+        for &(id, value) in signals {
+            self.res
+                .timelines
+                .get(id)
+                .borrow_mut()
+                .signal(&self.gl, value)?;
+        }
+        table.record_signals(queue, signals);
+        unsafe { self.gl.flush() };
+        Ok(())
+    }
+
+    fn waits(&self, waits: &[(TimelineId, u64)]) {
         for &(id, value) in waits {
             let e = self.res.timelines.get(id).borrow();
             if e.value >= value {
@@ -934,19 +865,6 @@ impl Device {
                 .expect("wait on a timeline value no submit signals");
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
-    }
-
-    fn signals(&mut self, queue: usize, signals: &[(u32, u64)]) -> Result<(), String> {
-        for &(id, value) in signals {
-            self.res
-                .timelines
-                .get(id)
-                .borrow_mut()
-                .signal(&self.gl, value)?;
-        }
-        self.res.table.signal(queue, signals);
-        unsafe { self.gl.flush() };
-        Ok(())
     }
 }
 

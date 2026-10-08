@@ -1,32 +1,19 @@
 use super::Device;
-use crate::query;
+use crate::QueryPool;
+use crate::query_kind;
 use crate::vk::query::Query;
 use ash::vk;
 
 impl Device {
-    pub fn create_query_heap(&mut self, kind: u32, count: u32) -> Result<u32, String> {
-        self.caps.queries(kind, count)?;
-        let caps = self.caps;
+    pub fn create_query_pool(&mut self, kind: u32, count: u32) -> Result<QueryPool, String> {
+        self.caps.check_query_pool(kind, count)?;
         let none = vk::QueryControlFlags::empty();
         let wanted = kind;
         let (kind, flags) = match kind {
-            query::TIMESTAMP if !caps.timestamps => {
-                return Err("timestamps are not supported".into());
-            }
-            query::TIMESTAMP => (vk::QueryType::TIMESTAMP, none),
-            query::COMPACTED if !caps.ray => {
-                return Err("VK_KHR_acceleration_structure is not enabled".into());
-            }
-            query::COMPACTED => (
-                vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                none,
-            ),
-            query::OCCLUSION => (vk::QueryType::OCCLUSION, none),
-            query::PRECISE if !caps.precise => {
-                return Err("precise occlusion queries are not supported".into());
-            }
-            query::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
-            k => panic!("unknown query kind {k}"),
+            query_kind::TIMESTAMP => (vk::QueryType::TIMESTAMP, none),
+            query_kind::OCCLUSION => (vk::QueryType::OCCLUSION, none),
+            query_kind::PRECISE => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
+            _ => unreachable!(),
         };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)
@@ -41,7 +28,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_query_heap(&mut self, heap: u32) {
+    pub fn destroy_query_pool(&mut self, heap: QueryPool) {
         self.res.table.queries.clear(heap);
         let query = self.res.queries.remove(heap);
         unsafe { self.raw.destroy_query_pool(query.pool, None) };

@@ -1,10 +1,10 @@
 use super::Device;
-use crate::HostCopy;
+use crate::HostTextureCopy;
 use objc2::rc::autoreleasepool;
 use objc2_metal::{MTLOrigin, MTLRegion, MTLSize, MTLTexture};
 use std::ptr::NonNull;
 
-fn region(c: &HostCopy) -> MTLRegion {
+fn region(c: &HostTextureCopy) -> MTLRegion {
     MTLRegion {
         origin: MTLOrigin {
             x: c.x as usize,
@@ -20,9 +20,9 @@ fn region(c: &HostCopy) -> MTLRegion {
 }
 
 impl Device {
-    pub fn write_texture(&mut self, copy: &HostCopy, data: &[u8]) -> Result<(), String> {
+    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), String> {
         autoreleasepool(|_| {
-            let (pitch, image) = self.res.table.host(copy, data.len());
+            let (pitch, image) = self.res.table.check_host_copy(copy, data.len());
             let raw = &self.res.textures.get(copy.texture).raw;
             let image = if copy.depth > 1 { image } else { 0 };
             unsafe {
@@ -39,9 +39,9 @@ impl Device {
         })
     }
 
-    pub fn read_texture(&mut self, copy: &HostCopy, data: &mut [u8]) -> Result<(), String> {
+    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), String> {
         autoreleasepool(|_| {
-            let (pitch, image) = self.res.table.host(copy, data.len());
+            let (pitch, image) = self.res.table.check_host_copy(copy, data.len());
             let raw = &self.res.textures.get(copy.texture).raw;
             let image = if copy.depth > 1 { image } else { 0 };
             unsafe {

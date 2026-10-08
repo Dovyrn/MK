@@ -1,47 +1,48 @@
-use super::{Device, compare, function, size, vertex_format};
+use super::{Device, function_descriptor, mtl_compare, size, vertex_format};
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::VERTICES;
 use crate::mtl::render::Render;
 use crate::{
-    ColorTarget, ComputeInfo, DepthInfo, MeshInfo, RenderInfo, StencilFace, TileInfo, blend, fill,
-    format, mask, topology,
+    ColorTarget, ComputePipelineInfo, DepthStateInfo, MeshPipelineInfo, RenderPipelineInfo,
+    StencilFace, TilePipelineInfo, blend_factor, color_mask, fill_mode, format, topology,
 };
+use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
-    MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
-    MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
-    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
-    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
-    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
+    MTL4TileRenderPipelineDescriptor, MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask,
+    MTLComputePipelineState, MTLDepthClipMode, MTLDepthStencilDescriptor, MTLDevice, MTLFunction,
+    MTLLibrary, MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState,
+    MTLStencilDescriptor, MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor,
+    MTLVertexStepFunction,
 };
 
-fn factor(f: u32) -> MTLBlendFactor {
+fn mtl_blend_factor(f: u32) -> MTLBlendFactor {
     match f {
-        blend::ZERO => MTLBlendFactor::Zero,
-        blend::ONE => MTLBlendFactor::One,
-        blend::SRC_COLOR => MTLBlendFactor::SourceColor,
-        blend::ONE_MINUS_SRC_COLOR => MTLBlendFactor::OneMinusSourceColor,
-        blend::DST_COLOR => MTLBlendFactor::DestinationColor,
-        blend::ONE_MINUS_DST_COLOR => MTLBlendFactor::OneMinusDestinationColor,
-        blend::SRC_ALPHA => MTLBlendFactor::SourceAlpha,
-        blend::ONE_MINUS_SRC_ALPHA => MTLBlendFactor::OneMinusSourceAlpha,
-        blend::DST_ALPHA => MTLBlendFactor::DestinationAlpha,
-        blend::ONE_MINUS_DST_ALPHA => MTLBlendFactor::OneMinusDestinationAlpha,
-        blend::CONSTANT_COLOR => MTLBlendFactor::BlendColor,
-        blend::ONE_MINUS_CONSTANT_COLOR => MTLBlendFactor::OneMinusBlendColor,
-        blend::CONSTANT_ALPHA => MTLBlendFactor::BlendAlpha,
-        blend::ONE_MINUS_CONSTANT_ALPHA => MTLBlendFactor::OneMinusBlendAlpha,
-        blend::SRC_ALPHA_SATURATE => MTLBlendFactor::SourceAlphaSaturated,
-        blend::SRC1_COLOR => MTLBlendFactor::Source1Color,
-        blend::ONE_MINUS_SRC1_COLOR => MTLBlendFactor::OneMinusSource1Color,
-        blend::SRC1_ALPHA => MTLBlendFactor::Source1Alpha,
-        blend::ONE_MINUS_SRC1_ALPHA => MTLBlendFactor::OneMinusSource1Alpha,
+        blend_factor::ZERO => MTLBlendFactor::Zero,
+        blend_factor::ONE => MTLBlendFactor::One,
+        blend_factor::SRC_COLOR => MTLBlendFactor::SourceColor,
+        blend_factor::ONE_MINUS_SRC_COLOR => MTLBlendFactor::OneMinusSourceColor,
+        blend_factor::DST_COLOR => MTLBlendFactor::DestinationColor,
+        blend_factor::ONE_MINUS_DST_COLOR => MTLBlendFactor::OneMinusDestinationColor,
+        blend_factor::SRC_ALPHA => MTLBlendFactor::SourceAlpha,
+        blend_factor::ONE_MINUS_SRC_ALPHA => MTLBlendFactor::OneMinusSourceAlpha,
+        blend_factor::DST_ALPHA => MTLBlendFactor::DestinationAlpha,
+        blend_factor::ONE_MINUS_DST_ALPHA => MTLBlendFactor::OneMinusDestinationAlpha,
+        blend_factor::CONSTANT_COLOR => MTLBlendFactor::BlendColor,
+        blend_factor::ONE_MINUS_CONSTANT_COLOR => MTLBlendFactor::OneMinusBlendColor,
+        blend_factor::CONSTANT_ALPHA => MTLBlendFactor::BlendAlpha,
+        blend_factor::ONE_MINUS_CONSTANT_ALPHA => MTLBlendFactor::OneMinusBlendAlpha,
+        blend_factor::SRC_ALPHA_SATURATE => MTLBlendFactor::SourceAlphaSaturated,
+        blend_factor::SRC1_COLOR => MTLBlendFactor::Source1Color,
+        blend_factor::ONE_MINUS_SRC1_COLOR => MTLBlendFactor::OneMinusSource1Color,
+        blend_factor::SRC1_ALPHA => MTLBlendFactor::Source1Alpha,
+        blend_factor::ONE_MINUS_SRC1_ALPHA => MTLBlendFactor::OneMinusSource1Alpha,
         f => panic!("unknown blend factor {f}"),
     }
 }
@@ -51,7 +52,7 @@ fn stencil(face: &StencilFace) -> Retained<MTLStencilDescriptor> {
     desc.setStencilFailureOperation(MTLStencilOperation(face.fail as usize));
     desc.setDepthFailureOperation(MTLStencilOperation(face.depth_fail as usize));
     desc.setDepthStencilPassOperation(MTLStencilOperation(face.pass as usize));
-    desc.setStencilCompareFunction(compare(face.compare));
+    desc.setStencilCompareFunction(mtl_compare(face.compare));
     desc.setReadMask(face.read);
     desc.setWriteMask(face.write);
     desc
@@ -59,7 +60,7 @@ fn stencil(face: &StencilFace) -> Retained<MTLStencilDescriptor> {
 
 type Groups = Vec<(String, [u32; 3], u32)>;
 
-fn word(rest: &mut &[u8]) -> Option<u32> {
+fn read_word(rest: &mut &[u8]) -> Option<u32> {
     let (head, tail) = rest.split_first_chunk::<4>()?;
     *rest = tail;
     Some(u32::from_le_bytes(*head))
@@ -68,12 +69,12 @@ fn word(rest: &mut &[u8]) -> Option<u32> {
 fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
     let rest = &mut code;
     let mut groups = Vec::new();
-    for _ in 0..word(rest)? {
-        let length = word(rest)? as usize;
+    for _ in 0..read_word(rest)? {
+        let length = read_word(rest)? as usize;
         let name = String::from_utf8(rest.get(..length)?.to_vec()).ok()?;
         *rest = &rest[length..];
-        let size = [word(rest)?, word(rest)?, word(rest)?];
-        groups.push((name, size, word(rest)?));
+        let size = [read_word(rest)?, read_word(rest)?, read_word(rest)?];
+        groups.push((name, size, read_word(rest)?));
     }
     Some((groups, code))
 }
@@ -86,14 +87,14 @@ fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], String> {
         .ok_or_else(|| format!("entry {entry} has no thread group size in its code"))
 }
 
-fn reads(groups: &Groups, entry: &str) -> u32 {
+fn attachment_reads(groups: &Groups, entry: &str) -> u32 {
     groups
         .iter()
         .find(|(name, ..)| name == entry)
         .map_or(0, |&(.., reads)| reads)
 }
 
-fn threads(group: [u32; 3], max: usize) -> Result<(), String> {
+fn check_threads(group: [u32; 3], max: usize) -> Result<(), String> {
     let count = group.iter().map(|&g| g as usize).product::<usize>();
     if count > max {
         return Err(format!(
@@ -103,15 +104,15 @@ fn threads(group: [u32; 3], max: usize) -> Result<(), String> {
     Ok(())
 }
 
-fn fill(f: u32) -> MTLTriangleFillMode {
+fn mtl_fill_mode(f: u32) -> MTLTriangleFillMode {
     match f {
-        fill::LINE => MTLTriangleFillMode::Lines,
-        fill::FILL => MTLTriangleFillMode::Fill,
+        fill_mode::LINE => MTLTriangleFillMode::Lines,
+        fill_mode::FILL => MTLTriangleFillMode::Fill,
         f => panic!("unknown fill {f}"),
     }
 }
 
-fn clip(clamp: bool) -> MTLDepthClipMode {
+fn depth_clip(clamp: bool) -> MTLDepthClipMode {
     if clamp {
         MTLDepthClipMode::Clamp
     } else {
@@ -119,19 +120,11 @@ fn clip(clamp: bool) -> MTLDepthClipMode {
     }
 }
 
-fn coverage(on: bool) -> MTL4AlphaToCoverageState {
+fn alpha_coverage(on: bool) -> MTL4AlphaToCoverageState {
     if on {
         MTL4AlphaToCoverageState::Enabled
     } else {
         MTL4AlphaToCoverageState::Disabled
-    }
-}
-
-fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
-    if on {
-        MTL4IndirectCommandBufferSupportState::Enabled
-    } else {
-        MTL4IndirectCommandBufferSupportState::Disabled
     }
 }
 
@@ -144,18 +137,18 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
         } else {
             MTL4BlendState::Disabled
         });
-        a.setSourceRGBBlendFactor(factor(c.src));
-        a.setDestinationRGBBlendFactor(factor(c.dst));
+        a.setSourceRGBBlendFactor(mtl_blend_factor(c.src));
+        a.setDestinationRGBBlendFactor(mtl_blend_factor(c.dst));
         a.setRgbBlendOperation(MTLBlendOperation(c.op as usize));
-        a.setSourceAlphaBlendFactor(factor(c.src_alpha));
-        a.setDestinationAlphaBlendFactor(factor(c.dst_alpha));
+        a.setSourceAlphaBlendFactor(mtl_blend_factor(c.src_alpha));
+        a.setDestinationAlphaBlendFactor(mtl_blend_factor(c.dst_alpha));
         a.setAlphaBlendOperation(MTLBlendOperation(c.op_alpha as usize));
         let mut m = MTLColorWriteMask::None;
         for (bit, flag) in [
-            (mask::R, MTLColorWriteMask::Red),
-            (mask::G, MTLColorWriteMask::Green),
-            (mask::B, MTLColorWriteMask::Blue),
-            (mask::A, MTLColorWriteMask::Alpha),
+            (color_mask::R, MTLColorWriteMask::Red),
+            (color_mask::G, MTLColorWriteMask::Green),
+            (color_mask::B, MTLColorWriteMask::Blue),
+            (color_mask::A, MTLColorWriteMask::Alpha),
         ] {
             if c.mask & bit != 0 {
                 m |= flag;
@@ -190,14 +183,16 @@ impl Device {
         Ok((library, groups))
     }
 
-    pub fn create_pipeline(&mut self, info: &ComputeInfo) -> Result<u32, String> {
-        self.caps.compute(info)?;
+    pub fn create_compute_pipeline(
+        &mut self,
+        info: &ComputePipelineInfo,
+    ) -> Result<ComputePipeline, String> {
+        self.caps.check_compute_pipeline(info)?;
         autoreleasepool(|_| {
             let (library, groups) = self.library(info.code)?;
             let shape = group(&groups, info.entry)?;
             let desc = MTL4ComputePipelineDescriptor::new();
-            desc.setComputeFunctionDescriptor(Some(&*function(&library, info.entry)?));
-            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            desc.setComputeFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
             let state = self
                 .compiler
                 .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
@@ -205,7 +200,7 @@ impl Device {
                     Some(&self.options),
                 )
                 .map_err(|e| e.localizedDescription().to_string())?;
-            threads(shape, state.maxTotalThreadsPerThreadgroup())?;
+            check_threads(shape, state.maxTotalThreadsPerThreadgroup())?;
             let group = size(shape);
             let id = self.res.pipelines.insert(Pipeline { state, group });
             self.res.table.pipelines.set(id, ());
@@ -213,25 +208,21 @@ impl Device {
         })
     }
 
-    pub fn destroy_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_compute_pipeline(&mut self, pipeline: ComputePipeline) {
         self.res.table.pipelines.clear(pipeline);
         let pipeline = self.res.pipelines.remove(pipeline);
         drop(pipeline);
     }
 
-    pub fn create_render_pipeline(&mut self, info: &RenderInfo) -> Result<u32, String> {
+    pub fn create_render_pipeline(
+        &mut self,
+        info: &RenderPipelineInfo,
+    ) -> Result<RenderPipeline, String> {
         autoreleasepool(|_| {
-            crate::caps::targets(
-                info.colors,
-                info.depth,
-                info.stencil,
-                info.samples,
-                info.fill,
-            );
-            crate::caps::primitive(info.topology);
+            self.caps.check_render_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
-            desc.setVertexFunctionDescriptor(Some(&*function(&library, info.vertex)?));
+            desc.setVertexFunctionDescriptor(Some(&*function_descriptor(&library, info.vertex)?));
             let inputs = library
                 .newFunctionWithName(&NSString::from_str(info.vertex))
                 .and_then(|f| f.vertexAttributes());
@@ -242,7 +233,10 @@ impl Device {
                 }
             }
             if !info.fragment.is_empty() {
-                desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
+                desc.setFragmentFunctionDescriptor(Some(&*function_descriptor(
+                    &library,
+                    info.fragment,
+                )?));
             }
             if !info.attributes.is_empty() {
                 let layout = MTLVertexDescriptor::new();
@@ -279,44 +273,36 @@ impl Device {
                 }
                 t => panic!("unknown topology {t}"),
             });
-            desc.setAlphaToCoverageState(coverage(info.coverage));
-            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            desc.setAlphaToCoverageState(alpha_coverage(info.coverage));
             let state = self.compile(&desc)?;
             let id = self.res.renders.insert(Render {
                 state,
-                fill: fill(info.fill),
-                clip: clip(info.clamp),
+                fill: mtl_fill_mode(info.fill),
+                clip: depth_clip(info.clamp),
                 primitive: MTLPrimitiveType(info.topology as usize),
                 task: size([1, 1, 1]),
                 mesh: size([1, 1, 1]),
             });
             self.res.table.renders.set(
                 id,
-                (
-                    info.samples,
-                    info.indirect,
-                    info.topology,
-                    false,
-                    crate::table::vertices(info),
-                    reads(&groups, info.fragment),
-                ),
+                crate::table::RenderEntry {
+                    samples: info.samples,
+                    topology: info.topology,
+                    mesh: false,
+                    vertices: crate::table::vertex_buffer_mask(info),
+                    reads: attachment_reads(&groups, info.fragment),
+                },
             );
             Ok(id)
         })
     }
 
-    pub fn create_mesh_pipeline(&mut self, info: &MeshInfo) -> Result<u32, String> {
+    pub fn create_mesh_pipeline(
+        &mut self,
+        info: &MeshPipelineInfo,
+    ) -> Result<RenderPipeline, String> {
         autoreleasepool(|_| {
-            crate::caps::targets(
-                info.colors,
-                info.depth,
-                info.stencil,
-                info.samples,
-                info.fill,
-            );
-            if !self.caps.mesh {
-                return Err("create_mesh_pipeline needs caps.mesh".into());
-            }
+            self.caps.check_mesh_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
             let mesh = group(&groups, info.mesh)?;
             let task = if info.task.is_empty() {
@@ -326,59 +312,63 @@ impl Device {
             };
             let desc = MTL4MeshRenderPipelineDescriptor::new();
             if !info.task.is_empty() {
-                desc.setObjectFunctionDescriptor(Some(&*function(&library, info.task)?));
+                desc.setObjectFunctionDescriptor(Some(&*function_descriptor(&library, info.task)?));
             }
-            desc.setMeshFunctionDescriptor(Some(&*function(&library, info.mesh)?));
+            desc.setMeshFunctionDescriptor(Some(&*function_descriptor(&library, info.mesh)?));
             if !info.fragment.is_empty() {
-                desc.setFragmentFunctionDescriptor(Some(&*function(&library, info.fragment)?));
+                desc.setFragmentFunctionDescriptor(Some(&*function_descriptor(
+                    &library,
+                    info.fragment,
+                )?));
             }
             colors(&desc.colorAttachments(), info.colors);
             unsafe { desc.setRasterSampleCount(info.samples as usize) };
-            desc.setAlphaToCoverageState(coverage(info.coverage));
-            desc.setSupportIndirectCommandBuffers(support(info.indirect));
+            desc.setAlphaToCoverageState(alpha_coverage(info.coverage));
             let state = self.compile(&desc)?;
-            threads(mesh, state.maxTotalThreadsPerMeshThreadgroup())?;
+            check_threads(mesh, state.maxTotalThreadsPerMeshThreadgroup())?;
             if !info.task.is_empty() {
-                threads(task, state.maxTotalThreadsPerObjectThreadgroup())?;
+                check_threads(task, state.maxTotalThreadsPerObjectThreadgroup())?;
             }
             let id = self.res.renders.insert(Render {
                 state,
-                fill: fill(info.fill),
-                clip: clip(info.clamp),
+                fill: mtl_fill_mode(info.fill),
+                clip: depth_clip(info.clamp),
                 primitive: MTLPrimitiveType::Triangle,
                 task: size(task),
                 mesh: size(mesh),
             });
             self.res.table.renders.set(
                 id,
-                (
-                    info.samples,
-                    info.indirect,
-                    topology::TRIANGLE,
-                    true,
-                    0,
-                    reads(&groups, info.fragment),
-                ),
+                crate::table::RenderEntry {
+                    samples: info.samples,
+                    topology: topology::TRIANGLE,
+                    mesh: true,
+                    vertices: 0,
+                    reads: attachment_reads(&groups, info.fragment),
+                },
             );
             Ok(id)
         })
     }
 
-    pub fn destroy_render_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_render_pipeline(&mut self, pipeline: RenderPipeline) {
         self.res.table.renders.clear(pipeline);
         let pipeline = self.res.renders.remove(pipeline);
         drop(pipeline);
     }
 
-    pub fn create_tile_pipeline(&mut self, info: &TileInfo) -> Result<u32, String> {
+    pub fn create_tile_pipeline(
+        &mut self,
+        info: &TilePipelineInfo,
+    ) -> Result<TilePipeline, String> {
         autoreleasepool(|_| {
-            crate::caps::tile(info);
+            crate::caps::check_tile_pipeline(info);
             if !self.caps.tiles {
                 return Err("create_tile_pipeline needs caps.tiles".into());
             }
             let (library, _) = self.library(info.code)?;
             let desc = MTL4TileRenderPipelineDescriptor::new();
-            desc.setTileFunctionDescriptor(Some(&*function(&library, info.entry)?));
+            desc.setTileFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
             for (i, c) in info.colors.iter().enumerate() {
                 let a = unsafe { desc.colorAttachments().objectAtIndexedSubscript(i) };
                 a.setPixelFormat(format::mtl(c.format));
@@ -392,17 +382,17 @@ impl Device {
         })
     }
 
-    pub fn destroy_tile_pipeline(&mut self, pipeline: u32) {
+    pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
         self.res.table.tile_pipelines.clear(pipeline);
         let pipeline = self.res.tiles.remove(pipeline);
         drop(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthInfo) -> Result<u32, String> {
+    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, String> {
         autoreleasepool(|_| {
-            self.caps.depth(info);
+            self.caps.check_depth_state(info);
             let desc = MTLDepthStencilDescriptor::new();
-            desc.setDepthCompareFunction(compare(info.compare));
+            desc.setDepthCompareFunction(mtl_compare(info.compare));
             desc.setDepthWriteEnabled(info.write);
             if info.stencil {
                 desc.setFrontFaceStencil(Some(&stencil(&info.front)));
@@ -418,7 +408,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_depth_state(&mut self, state: u32) {
+    pub fn destroy_depth_state(&mut self, state: DepthState) {
         self.res.table.states.clear(state);
         let state = self.res.depths.remove(state);
         drop(state);

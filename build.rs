@@ -6,6 +6,8 @@ mod constants;
 mod field;
 #[path = "build/formats.rs"]
 mod formats;
+#[path = "build/handles.rs"]
+mod handles;
 #[path = "build/infos.rs"]
 mod infos;
 #[path = "build/ops.rs"]
@@ -25,6 +27,7 @@ fn main() {
         "formats.toml",
         "infos.toml",
         "calls.toml",
+        "handles.toml",
     ] {
         println!("cargo:rerun-if-changed={file}");
     }
@@ -32,11 +35,29 @@ fn main() {
     let out = Path::new(&out);
     let dir = Path::new(JAVA);
     fs::create_dir_all(dir).unwrap();
+    let mut table: toml::Table = fs::read_to_string("handles.toml").unwrap().parse().unwrap();
+    let names: Vec<String> = table.remove("handles").unwrap().try_into().unwrap();
+    HANDLES.set(names.clone()).unwrap();
     let infos: Vec<infos::Info> = load("infos.toml", "info");
     let mut list = load("commands.toml", "command");
     ops::resolve(&mut list, &infos);
     fs::write(out.join("command.rs"), ops::command(&list)).unwrap();
-    fs::write(out.join("commands.rs"), ops::commands(&list)).unwrap();
+    fs::write(out.join("methods.rs"), ops::methods(&list)).unwrap();
+    fs::write(out.join("commands_jni.rs"), ops::jni(&list)).unwrap();
+    for (scope, class) in [
+        ("outside", "CommandBuffer"),
+        ("compute", "ComputePass"),
+        ("render", "RenderPass"),
+    ] {
+        save(
+            &dir.join(format!("{class}.java")),
+            &ops::java(&list, scope, class),
+        );
+    }
+    fs::write(out.join("handles.rs"), handles::rust(&names)).unwrap();
+    for name in &names {
+        save(&dir.join(format!("{name}.java")), &handles::java(name));
+    }
     let table = fs::read_to_string("constants.toml")
         .unwrap()
         .parse()
@@ -55,7 +76,10 @@ fn main() {
         &dir.join("Timeline.java"),
         include_str!("build/timeline.java"),
     );
-    save(&dir.join("Point.java"), include_str!("build/point.java"));
+    save(
+        &dir.join("TimelinePoint.java"),
+        include_str!("build/timeline_point.java"),
+    );
     let borrowing: Vec<String> = infos
         .iter()
         .filter(|i| infos::borrows(i))
@@ -68,13 +92,6 @@ fn main() {
     let calls: Vec<calls::Call> = load("calls.toml", "call");
     fs::write(out.join("java.rs"), calls::rust(&calls, &borrowing)).unwrap();
     for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
-        let path = dir.join(format!("{}.java", class(backend, "Commands")));
-        match ops::java(&list, backend) {
-            Some(text) => save(&path, &text),
-            None => {
-                let _ = fs::remove_file(path);
-            }
-        }
         let path = dir.join(format!("{}.java", class(backend, "Device")));
         save(&path, &calls::java(&calls, backend));
     }
@@ -83,6 +100,12 @@ fn main() {
 fn load<T: DeserializeOwned>(file: &str, key: &str) -> Vec<T> {
     let mut table: toml::Table = fs::read_to_string(file).unwrap().parse().unwrap();
     table.remove(key).unwrap().try_into().unwrap()
+}
+
+static HANDLES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn handle(kind: &str) -> bool {
+    HANDLES.get().unwrap().iter().any(|h| h == kind)
 }
 
 static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());

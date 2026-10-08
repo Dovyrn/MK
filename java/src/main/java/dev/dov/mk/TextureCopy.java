@@ -8,49 +8,53 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class TextureCopy {
-    public int buffer = 0;
-    public long offset = 0;
-    public int rowLength = 0;
-    public int rowCount = 0;
-    public int texture = 0;
-    public int layout = Layout.UNDEFINED;
-    public int mip = 0;
-    public int layer = 0;
-    public int x = 0;
-    public int y = 0;
-    public int z = 0;
+    public Texture src = null;
+    public int srcMip = 0;
+    public int srcLayer = 0;
+    public int srcX = 0;
+    public int srcY = 0;
+    public int srcZ = 0;
+    public Texture dst = null;
+    public int dstMip = 0;
+    public int dstLayer = 0;
+    public int dstX = 0;
+    public int dstY = 0;
+    public int dstZ = 0;
     public int width = 1;
     public int height = 1;
     public int depth = 1;
+    public int layers = 1;
 
-    public static final int SIZE = 60;
+    public static final int SIZE = 72;
 
     int encodedSize() {
-        return 60;
+        return 72;
     }
 
     long encode(long p) {
-        memPutInt(p, buffer);
-        p += 4;
-        memPutLong(p, offset);
+        memPutLong(p, Texture.raw(src));
         p += 8;
-        memPutInt(p, rowLength);
+        memPutInt(p, srcMip);
         p += 4;
-        memPutInt(p, rowCount);
+        memPutInt(p, srcLayer);
         p += 4;
-        memPutInt(p, texture);
+        memPutInt(p, srcX);
         p += 4;
-        memPutInt(p, layout);
+        memPutInt(p, srcY);
         p += 4;
-        memPutInt(p, mip);
+        memPutInt(p, srcZ);
         p += 4;
-        memPutInt(p, layer);
+        memPutLong(p, Texture.raw(dst));
+        p += 8;
+        memPutInt(p, dstMip);
         p += 4;
-        memPutInt(p, x);
+        memPutInt(p, dstLayer);
         p += 4;
-        memPutInt(p, y);
+        memPutInt(p, dstX);
         p += 4;
-        memPutInt(p, z);
+        memPutInt(p, dstY);
+        p += 4;
+        memPutInt(p, dstZ);
         p += 4;
         memPutInt(p, width);
         p += 4;
@@ -58,38 +62,44 @@ public class TextureCopy {
         p += 4;
         memPutInt(p, depth);
         p += 4;
+        memPutInt(p, layers);
+        p += 4;
         return p;
     }
 
     static TextureCopy decode(long p) {
         var r = new TextureCopy();
-        r.buffer = memGetInt(p);
-        p += 4;
-        r.offset = memGetLong(p);
+        r.src = Texture.of(memGetLong(p));
         p += 8;
-        r.rowLength = memGetInt(p);
+        r.srcMip = memGetInt(p);
         p += 4;
-        r.rowCount = memGetInt(p);
+        r.srcLayer = memGetInt(p);
         p += 4;
-        r.texture = memGetInt(p);
+        r.srcX = memGetInt(p);
         p += 4;
-        r.layout = memGetInt(p);
+        r.srcY = memGetInt(p);
         p += 4;
-        r.mip = memGetInt(p);
+        r.srcZ = memGetInt(p);
         p += 4;
-        r.layer = memGetInt(p);
+        r.dst = Texture.of(memGetLong(p));
+        p += 8;
+        r.dstMip = memGetInt(p);
         p += 4;
-        r.x = memGetInt(p);
+        r.dstLayer = memGetInt(p);
         p += 4;
-        r.y = memGetInt(p);
+        r.dstX = memGetInt(p);
         p += 4;
-        r.z = memGetInt(p);
+        r.dstY = memGetInt(p);
+        p += 4;
+        r.dstZ = memGetInt(p);
         p += 4;
         r.width = memGetInt(p);
         p += 4;
         r.height = memGetInt(p);
         p += 4;
         r.depth = memGetInt(p);
+        p += 4;
+        r.layers = memGetInt(p);
         p += 4;
         return r;
     }

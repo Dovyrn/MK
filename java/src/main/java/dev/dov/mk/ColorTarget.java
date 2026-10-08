@@ -10,13 +10,13 @@ import lombok.experimental.Accessors;
 public class ColorTarget {
     public int format = Format.NONE;
     public boolean blend = false;
-    public int src = Blend.ONE;
-    public int dst = Blend.ZERO;
-    public int op = Op.ADD;
-    public int srcAlpha = Blend.ONE;
-    public int dstAlpha = Blend.ZERO;
-    public int opAlpha = Op.ADD;
-    public int mask = Mask.ALL;
+    public int src = BlendFactor.ONE;
+    public int dst = BlendFactor.ZERO;
+    public int op = BlendOp.ADD;
+    public int srcAlpha = BlendFactor.ONE;
+    public int dstAlpha = BlendFactor.ZERO;
+    public int opAlpha = BlendOp.ADD;
+    public int mask = ColorMask.ALL;
 
     public static final int SIZE = 36;
 

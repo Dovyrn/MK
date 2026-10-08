@@ -1,16 +1,12 @@
-mod addresses;
 mod bindless;
 mod buffer;
-mod cache;
 mod device;
 mod errors;
 mod extra;
 mod fences;
-mod native;
 mod pipeline;
 mod program;
 mod query;
-mod rates;
 mod recorder;
 mod resources;
 mod sampler;
@@ -19,5 +15,5 @@ mod texture;
 mod timeline;
 
 pub use device::Device;
-pub use native::{Callback, Native};
+pub(crate) use recorder::Recorder;
 pub use timeline::Timeline;

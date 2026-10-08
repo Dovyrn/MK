@@ -1,10 +1,10 @@
 use super::Device;
-use crate::Budget;
+use crate::MemoryBudget;
 use objc2_metal::MTLDevice;
 
 impl Device {
-    pub fn memory_budget(&self) -> Result<Budget, String> {
-        Ok(Budget {
+    pub fn memory_budget(&self) -> Result<MemoryBudget, String> {
+        Ok(MemoryBudget {
             budget: self.raw.recommendedMaxWorkingSetSize(),
             usage: self.raw.currentAllocatedSize() as u64,
         })

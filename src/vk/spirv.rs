@@ -1,4 +1,4 @@
-use crate::{atomic, subgroup};
+use crate::{atomic64, subgroup_op};
 use std::io::Cursor;
 
 const ENTRY: u32 = 15;
@@ -73,15 +73,15 @@ pub fn subgroups(words: &[u32]) -> u32 {
     instructions(words)
         .filter(|(op, _)| *op == CAPABILITY)
         .map(|(_, args)| match args[0] {
-            61 => subgroup::BASIC,
-            62 => subgroup::VOTE,
-            63 => subgroup::ARITHMETIC,
-            64 => subgroup::BALLOT,
-            65 => subgroup::SHUFFLE,
-            66 => subgroup::RELATIVE,
-            67 => subgroup::CLUSTERED,
-            68 => subgroup::QUAD,
-            6026 => subgroup::ROTATE,
+            61 => subgroup_op::BASIC,
+            62 => subgroup_op::VOTE,
+            63 => subgroup_op::ARITHMETIC,
+            64 => subgroup_op::BALLOT,
+            65 => subgroup_op::SHUFFLE,
+            66 => subgroup_op::RELATIVE,
+            67 => subgroup_op::CLUSTERED,
+            68 => subgroup_op::QUAD,
+            6026 => subgroup_op::ROTATE,
             _ => 0,
         })
         .fold(0, |a, b| a | b)
@@ -89,11 +89,16 @@ pub fn subgroups(words: &[u32]) -> u32 {
 
 pub fn atomics(words: &[u32]) -> u32 {
     let image = if declares(words, 5016) {
-        atomic::IMAGE
+        atomic64::IMAGE
     } else {
         0
     };
-    image | if declares(words, 12) { atomic::ALL } else { 0 }
+    image
+        | if declares(words, 12) {
+            atomic64::ALL
+        } else {
+            0
+        }
 }
 
 pub fn declares(words: &[u32], capability: u32) -> bool {

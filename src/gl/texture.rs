@@ -2,11 +2,11 @@ use crate::gl::errors::{drain, raise};
 use crate::gl::extra::{Extra, View};
 use crate::gl::state::buffer;
 use crate::gl::state::{PIXELS, binding};
-use crate::{TextureCopy, TextureInfo, ViewInfo, dimension, format};
+use crate::{BufferTextureCopy, TextureInfo, TextureViewInfo, format, texture_dimension};
 use glow::HasContext;
 use std::cell::Cell;
 
-pub struct Texture {
+pub struct TextureObject {
     pub raw: Option<glow::Texture>,
     pub target: u32,
     pub format: u32,
@@ -16,15 +16,15 @@ pub struct Texture {
 
 pub fn target(dimension: u32, samples: u32) -> u32 {
     match (dimension, samples > 1) {
-        (dimension::D1, _) => glow::TEXTURE_1D,
-        (dimension::D1_ARRAY, _) => glow::TEXTURE_1D_ARRAY,
-        (dimension::D2, false) => glow::TEXTURE_2D,
-        (dimension::D2, true) => glow::TEXTURE_2D_MULTISAMPLE,
-        (dimension::D2_ARRAY, false) => glow::TEXTURE_2D_ARRAY,
-        (dimension::D2_ARRAY, true) => glow::TEXTURE_2D_MULTISAMPLE_ARRAY,
-        (dimension::D3, _) => glow::TEXTURE_3D,
-        (dimension::CUBE, _) => glow::TEXTURE_CUBE_MAP,
-        (dimension::CUBE_ARRAY, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
+        (texture_dimension::D1, _) => glow::TEXTURE_1D,
+        (texture_dimension::D1_ARRAY, _) => glow::TEXTURE_1D_ARRAY,
+        (texture_dimension::D2, false) => glow::TEXTURE_2D,
+        (texture_dimension::D2, true) => glow::TEXTURE_2D_MULTISAMPLE,
+        (texture_dimension::D2_ARRAY, false) => glow::TEXTURE_2D_ARRAY,
+        (texture_dimension::D2_ARRAY, true) => glow::TEXTURE_2D_MULTISAMPLE_ARRAY,
+        (texture_dimension::D3, _) => glow::TEXTURE_3D,
+        (texture_dimension::CUBE, _) => glow::TEXTURE_CUBE_MAP,
+        (texture_dimension::CUBE_ARRAY, _) => glow::TEXTURE_CUBE_MAP_ARRAY,
         (d, _) => panic!("unknown dimension {d}"),
     }
 }
@@ -40,7 +40,7 @@ pub fn aspect(f: u32) -> (u32, u32) {
     }
 }
 
-impl Texture {
+impl TextureObject {
     pub fn new(
         gl: &glow::Context,
         extra: &Extra,
@@ -181,8 +181,8 @@ impl Texture {
         gl: &glow::Context,
         extra: &Extra,
         view: View,
-        parent: &Texture,
-        info: &ViewInfo,
+        parent: &TextureObject,
+        info: &TextureViewInfo,
     ) -> Result<Self, String> {
         let [internal, _, _] = format::gl(info.format);
         let multisample = matches!(
@@ -221,7 +221,13 @@ impl Texture {
         }
     }
 
-    pub unsafe fn upload(&self, gl: &glow::Context, e: &Extra, c: &TextureCopy, base: *const u8) {
+    pub unsafe fn upload(
+        &self,
+        gl: &glow::Context,
+        e: &Extra,
+        c: &BufferTextureCopy,
+        base: *const u8,
+    ) {
         let internal = format::gl(self.format)[0];
         let (f, ty) = aspect(self.format);
         let (width, height, depth) = (c.width, c.height, c.depth);

@@ -1,11 +1,9 @@
 use super::Device;
 use crate::{
-    Caps, Matrix, TextureInfo, atomic, component, dimension, format, stage, subgroup, usage,
+    Caps, TextureInfo, atomic64, format, stage, subgroup_op, texture_dimension, texture_usage,
 };
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
-
-const MATRICES: [u32; 3] = [component::F16, component::BF16, component::F32];
 
 impl Device {
     pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize, width: u32) -> Caps {
@@ -19,16 +17,14 @@ impl Device {
             1024
         };
         let size = if apple10 { 32768 } else { 16384 };
-        let sparse = cfg!(target_os = "macos") || raw.supportsFamily(MTLGPUFamily::Apple8);
         Caps {
             subgroup: width,
             subgroup_sizes: width,
-            subgroup_ops: subgroup::BITS & !subgroup::CLUSTERED,
+            subgroup_ops: subgroup_op::BITS & !subgroup_op::CLUSTERED,
             subgroup_stages: stage::COMPUTE | stage::FRAGMENT,
             full_subgroups: false,
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
-            matrices: MATRICES.len() as u32,
             transients: true,
             transient_reads: true,
             attachment_reads: true,
@@ -37,11 +33,12 @@ impl Device {
             atomics64: if apple9
                 || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
             {
-                atomic::MIN_MAX | atomic::IMAGE
+                atomic64::MIN_MAX | atomic64::IMAGE
             } else {
                 0
             },
             mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
+            task: raw.supportsFamily(MTLGPUFamily::Apple7),
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
             mesh_groups: groups,
             mesh_axis: groups,
@@ -57,37 +54,28 @@ impl Device {
             tick: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise: true,
-            ray: raw.supportsRaytracing() && apple9,
-            sparse,
-            shading_rate: false,
-            rate_images: false,
             viewports: 16,
             graphics: u32::MAX >> (32 - queues),
             labels: true,
-            anisotropy: true,
+            anisotropy: 16,
             depth_clamp: true,
             line_fill: true,
-            multi_draw: true,
-            sparse_textures: sparse,
+            multi_draw: false,
             slots: true,
             storage: true,
             persistent: true,
             bind_alignment: 256,
-            buffers: 500_000,
             compute: true,
             texture_views: true,
             occlusion: true,
-            cache: true,
             bias_clamp: true,
             blends: true,
             indirect: true,
-            indirect_count: true,
             indirect_offset: true,
             max_queries: 4096,
             cube_arrays: true,
             mirror_clamp: true,
-            copy_formats: true,
-            texture_clear: false,
+            copy_formats: false,
             buffer_clear: true,
             partial_resolve: false,
             max_buffer: raw.maxBufferLength() as u64,
@@ -106,27 +94,12 @@ impl Device {
         self.caps
     }
 
-    pub fn matrix(&self, index: u32) -> Matrix {
-        self.caps.matrix(index);
-        let t = MATRICES[index as usize];
-        Matrix {
-            m: 8,
-            n: 8,
-            k: 8,
-            a: t,
-            b: t,
-            c: t,
-            result: t,
-            saturate: false,
-        }
-    }
-
     pub fn format_usage(&self, format: u32) -> u32 {
         let usage = match format {
             format::B5G6R5_UNORM
             | format::A1BGR5_UNORM
             | format::ABGR4_UNORM
-            | format::BGR5A1_UNORM => usage::SAMPLED | usage::COLOR,
+            | format::BGR5A1_UNORM => texture_usage::SAMPLED | texture_usage::COLOR,
             format::R8_UNORM
             | format::R8_UINT
             | format::R8_SINT
@@ -142,25 +115,32 @@ impl Device {
             | format::RGBA16_SINT
             | format::RGBA32_FLOAT
             | format::RGBA32_UINT
-            | format::RGBA32_SINT => usage::SAMPLED | usage::STORAGE | usage::COLOR,
-            format::R32_UINT | format::R32_SINT => {
-                usage::SAMPLED | usage::STORAGE | usage::ATOMIC | usage::COLOR
+            | format::RGBA32_SINT => {
+                texture_usage::SAMPLED | texture_usage::STORAGE | texture_usage::COLOR
             }
-            format::A8_UNORM..=format::RGBA32_FLOAT => usage::SAMPLED | usage::COLOR,
-            format::R64_UINT if self.caps.atomics64 & atomic::IMAGE != 0 => {
-                usage::STORAGE | usage::ATOMIC
+            format::R32_UINT | format::R32_SINT => {
+                texture_usage::SAMPLED
+                    | texture_usage::STORAGE
+                    | texture_usage::ATOMIC
+                    | texture_usage::COLOR
+            }
+            format::A8_UNORM..=format::RGBA32_FLOAT => {
+                texture_usage::SAMPLED | texture_usage::COLOR
+            }
+            format::R64_UINT if self.caps.atomics64 & atomic64::IMAGE != 0 => {
+                texture_usage::STORAGE | texture_usage::ATOMIC
             }
             format::D24_UNORM_S8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => 0,
-            format::D16_UNORM..=format::S8_UINT => usage::SAMPLED | usage::DEPTH,
+            format::D16_UNORM..=format::S8_UINT => texture_usage::SAMPLED | texture_usage::DEPTH,
             format::BC1_UNORM..=format::BC7_SRGB if !self.raw.supportsBCTextureCompression() => 0,
-            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => usage::SAMPLED,
+            format::BC1_UNORM..=format::ASTC_12X12_FLOAT => texture_usage::SAMPLED,
             _ => 0,
         };
         if usage == 0 {
             return 0;
         }
-        let usage = if usage & usage::COLOR != 0 {
-            usage | usage::INPUT
+        let usage = if usage & texture_usage::COLOR != 0 {
+            usage | texture_usage::INPUT
         } else {
             usage
         };
@@ -168,16 +148,16 @@ impl Device {
         let host = if depth || !self.raw.hasUnifiedMemory() {
             0
         } else {
-            usage::HOST
+            texture_usage::HOST
         };
-        usage | usage::COPY_SRC | usage::COPY_DST | usage::VIEW | host
+        usage | texture_usage::COPY_SRC | texture_usage::COPY_DST | texture_usage::VIEW | host
     }
 
     pub fn format_samples(&self, format: u32, usage: u32) -> u32 {
         if self.format_usage(format) & usage != usage {
             return 0;
         }
-        let msaa = usage & usage::STORAGE == 0
+        let msaa = usage & texture_usage::STORAGE == 0
             && match format {
                 format::BC1_UNORM..=format::ASTC_12X12_FLOAT => false,
                 format::R32_UINT | format::R32_SINT | format::RGBA32_UINT | format::RGBA32_SINT => {
@@ -197,9 +177,12 @@ impl Device {
     pub(super) fn supports(&self, info: &TextureInfo) -> Result<(), String> {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        self.caps.texture(info, usable, counts)?;
-        let line = matches!(info.dimension, dimension::D1 | dimension::D1_ARRAY);
-        if line && info.usage & (usage::COLOR | usage::DEPTH) != 0 {
+        self.caps.check_texture(info, usable, counts)?;
+        let line = matches!(
+            info.dimension,
+            texture_dimension::D1 | texture_dimension::D1_ARRAY
+        );
+        if line && info.usage & (texture_usage::COLOR | texture_usage::DEPTH) != 0 {
             return Err("a 1D texture cannot be a render target on Metal".into());
         }
         Ok(())
