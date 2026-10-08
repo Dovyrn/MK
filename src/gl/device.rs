@@ -228,6 +228,7 @@ impl Device {
                 task: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
                 indirect_count: false,
+                multi_draw: false,
                 mesh_groups: if extra.mesh.is_some() {
                     int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
                 } else {

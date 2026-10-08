@@ -1048,6 +1048,9 @@ impl<'a> Check<'a> {
                 count,
             } => {
                 let draws = self.indirect_list(c, indirect)?;
+                if count > 1 {
+                    self.require(c, caps.multi_draw, "multi_draw")?;
+                }
                 assert!(
                     first as u64 + count as u64 <= draws as u64,
                     "execute_indirect draws {first}..{} past the {draws} draws of {indirect}",
@@ -1059,7 +1062,9 @@ impl<'a> Check<'a> {
                 buffer,
                 offset,
             } => {
-                self.indirect_list(c, indirect)?;
+                if self.indirect_list(c, indirect)? > 1 {
+                    self.require(c, caps.multi_draw, "multi_draw")?;
+                }
                 assert!(
                     offset.is_multiple_of(4),
                     "execute_indirect_count offset {offset} is not a multiple of 4"

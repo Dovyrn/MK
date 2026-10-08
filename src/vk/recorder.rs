@@ -868,23 +868,16 @@ impl Recorder<'_> {
                     let e = *self.res.table.indirects.get(indirect);
                     let stride = indirect_stride(e.mesh, e.info.indexed);
                     let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
-                    let at = |i: u32| (first + i) as u64 * stride as u64;
-                    let (batch, n) = if self.ext.features.multi_draw_indirect != 0 {
-                        (count, count.min(1))
-                    } else {
-                        (count.min(1), count)
-                    };
-                    for i in 0..n {
-                        match (e.mesh, e.info.indexed) {
-                            (true, _) => self
-                                .ext
-                                .mesh
-                                .as_ref()
-                                .unwrap()
-                                .cmd_draw_mesh_tasks_indirect(b, raw, at(i), batch, stride),
-                            (_, true) => d.cmd_draw_indexed_indirect(b, raw, at(i), batch, stride),
-                            _ => d.cmd_draw_indirect(b, raw, at(i), batch, stride),
-                        }
+                    let at = first as u64 * stride as u64;
+                    match (e.mesh, e.info.indexed) {
+                        (true, _) => self
+                            .ext
+                            .mesh
+                            .as_ref()
+                            .unwrap()
+                            .cmd_draw_mesh_tasks_indirect(b, raw, at, count, stride),
+                        (_, true) => d.cmd_draw_indexed_indirect(b, raw, at, count, stride),
+                        _ => d.cmd_draw_indirect(b, raw, at, count, stride),
                     }
                 }
                 Command::ExecuteIndirectCount {
