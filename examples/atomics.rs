@@ -37,6 +37,9 @@ pub fn main() {
         return;
     }
     let buffer = device.create_buffer(16, memory::READBACK).unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[buffer], &[], &[]);
+    device.commit_residency(set);
     let mut entries = vec![("extremes", [0, u64::MAX], [63 << 33, 63])];
     if caps.atomics64 & atomic64::ALL != 0 {
         entries.push(("sums", [0, 0], [64 << 32, u64::MAX]));
@@ -56,6 +59,7 @@ pub fn main() {
         let data = device.map_buffer(buffer).cast::<[u64; 2]>();
         unsafe { *data = *start };
         let mut c = device.begin_commands(pool).unwrap();
+        c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
         pass.bind_compute_pipeline(pipeline).unwrap();
         pass.bind_storage_buffer(0, buffer, 0, 16).unwrap();
@@ -120,7 +124,11 @@ fn textures(
         height: 4,
         ..Default::default()
     };
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[zeros, back], &[texture], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
         src_stage: stage::COPY,
@@ -159,5 +167,6 @@ fn textures(
     }
     device.unmap_buffer(back);
     device.destroy_compute_pipeline(pipeline);
+    device.destroy_residency_set(set);
     device.destroy_texture(texture);
 }

@@ -1,7 +1,7 @@
 use mk::{
     BufferTextureCopy, ColorTarget, CommandPool, Device, ImportedPassInfo, RenderPipeline,
-    RenderPipelineInfo, Scissor, Texture, TextureBarrier, TextureInfo, Viewport, format, memory,
-    stage, texture_layout, texture_usage,
+    RenderPipelineInfo, ResidencySet, Scissor, Texture, TextureBarrier, TextureInfo, Viewport,
+    format, memory, stage, texture_layout, texture_usage,
 };
 
 #[path = "support/host.rs"]
@@ -35,7 +35,13 @@ fn to_color(texture: Texture) -> TextureBarrier {
     }
 }
 
-fn read_back(commands: &mut mk::CommandBuffer, texture: Texture, back: mk::Buffer) {
+fn read_back(
+    commands: &mut mk::CommandBuffer,
+    set: ResidencySet,
+    texture: Texture,
+    back: mk::Buffer,
+) {
+    commands.use_residency_set(set);
     commands
         .texture_barrier(&TextureBarrier {
             texture,
@@ -65,6 +71,7 @@ fn host_frame(
     back: mk::Buffer,
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
+    set: ResidencySet,
 ) {
     use mk::ash::vk;
     let families = unsafe {
@@ -88,6 +95,7 @@ fn host_frame(
         raw.begin_command_buffer(buffer, &vk::CommandBufferBeginInfo::default())
             .unwrap();
         let mut commands = device.import_commands(pool, buffer).unwrap();
+        commands.use_residency_set(set);
         commands.texture_barrier(&to_color(texture)).unwrap();
         commands.finish().unwrap();
         let view = device.raw_texture(texture).1;
@@ -124,7 +132,7 @@ fn host_frame(
         pass.end();
         raw.cmd_end_rendering(buffer);
         let mut commands = device.import_commands(pool, buffer).unwrap();
-        read_back(&mut commands, texture, back);
+        read_back(&mut commands, set, texture, back);
         commands.finish().unwrap();
         raw.end_command_buffer(buffer).unwrap();
         let fence = raw
@@ -148,6 +156,7 @@ fn host_frame(
     back: mk::Buffer,
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
+    set: ResidencySet,
 ) {
     use mk::objc2::runtime::ProtocolObject;
     use mk::objc2_metal::{
@@ -161,6 +170,7 @@ fn host_frame(
     let buffer = raw.newCommandBuffer().unwrap();
     buffer.beginCommandBufferWithAllocator(&allocator);
     let mut commands = device.import_commands(pool, &buffer).unwrap();
+    commands.use_residency_set(set);
     commands.texture_barrier(&to_color(texture)).unwrap();
     commands.finish().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
@@ -187,7 +197,7 @@ fn host_frame(
     pass.end();
     encoder.endEncoding();
     let mut commands = device.import_commands(pool, &buffer).unwrap();
-    read_back(&mut commands, texture, back);
+    read_back(&mut commands, set, texture, back);
     commands.finish().unwrap();
     buffer.endCommandBuffer();
     let queue = device.raw_queue(0);
@@ -206,6 +216,7 @@ fn host_frame(
     back: mk::Buffer,
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
+    set: ResidencySet,
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
@@ -242,7 +253,7 @@ fn host_frame(
         gl.delete_framebuffer(framebuffer);
     }
     let mut commands = device.begin_commands(pool).unwrap();
-    read_back(&mut commands, texture, back);
+    read_back(&mut commands, set, texture, back);
     device.submit(commands, &[], &[(timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
 }
@@ -276,7 +287,10 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    host_frame(&device, pool, texture, back, pipeline, &timeline);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back], &[texture], &[]);
+    device.commit_residency(set);
+    host_frame(&device, pool, texture, back, pipeline, &timeline, set);
     let pixels = unsafe {
         std::slice::from_raw_parts(device.map_buffer(back).cast::<[u8; 4]>(), (N * N) as usize)
     };

@@ -4,8 +4,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice,
-    MTLEvent, MTLResidencySet,
+    MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice, MTLEvent,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
@@ -18,13 +17,11 @@ pub struct Queue {
 impl Queue {
     pub fn new(
         device: &ProtocolObject<dyn MTLDevice>,
-        shared: &ProtocolObject<dyn MTLResidencySet>,
         lost: Arc<Mutex<Option<String>>>,
     ) -> Result<Self, String> {
         let raw = device
             .newMTL4CommandQueue()
             .ok_or("command queue allocation failed")?;
-        raw.addResidencySet(shared);
         Ok(Self { raw, lost })
     }
 

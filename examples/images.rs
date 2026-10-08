@@ -48,7 +48,11 @@ pub fn main() {
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
     let (constants, _) = host::constants(&mut device, &[&push]);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[upload, back, constants], &[texture], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture,
         src_stage: stage::COPY,

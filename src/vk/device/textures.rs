@@ -48,6 +48,7 @@ impl Device {
     ) -> Result<Texture, String> {
         let id = self.create_views(image, None, &whole_view(info))?;
         self.res.table.textures.set(id, *info);
+        self.res.table.residency.exempt_texture(id);
         Ok(id)
     }
 

@@ -33,7 +33,11 @@ pub fn main() {
     let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     let (constants, _) = host::constants(&mut device, &[&push]);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[data, back, constants], &[], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.bind_compute_pipeline(fill).unwrap();
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)

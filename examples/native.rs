@@ -47,7 +47,11 @@ pub fn main() {
     let data = device.create_buffer(n, memory::DEVICE).unwrap();
     let back = device.create_buffer(n, memory::READBACK).unwrap();
     let timeline = device.create_timeline().unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[data, back], &[], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
     fill(&device, &mut pass, data, n);
     pass.memory_barrier(stage::COPY, stage::COPY);

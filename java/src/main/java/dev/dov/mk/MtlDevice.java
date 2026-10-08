@@ -70,6 +70,12 @@ public class MtlDevice extends Device {
 
     private static native long nImportComputePass(long device, long pool, long raw);
 
+    public synchronized long rawResidencySet(ResidencySet set) {
+        return nRawResidencySet(handle(), ResidencySet.raw(set));
+    }
+
+    private static native long nRawResidencySet(long device, long set);
+
     public synchronized long rawBuffer(Buffer buffer) {
         return nRawBuffer(handle(), Buffer.raw(buffer));
     }

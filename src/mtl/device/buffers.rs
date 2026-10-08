@@ -12,7 +12,6 @@ impl Device {
                 .raw
                 .newBufferWithLength_options(size as usize, resource_options(memory))
                 .ok_or("buffer allocation failed")?;
-            self.residency.add(ProtocolObject::from_ref(&*buffer));
             let id = self.res.buffers.insert(buffer);
             self.res.table.buffers.set(id, size);
             Ok(id)
@@ -21,11 +20,11 @@ impl Device {
 
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> Buffer {
         autoreleasepool(|_| {
-            self.residency.add(ProtocolObject::from_ref(&*raw));
             let size = raw.length() as u64;
             let id = self.res.buffers.insert(raw);
             self.res.table.buffers.set(id, size);
             self.res.imports.insert(id);
+            self.res.table.residency.exempt_buffer(id);
             id
         })
     }
@@ -38,8 +37,7 @@ impl Device {
     pub fn destroy_buffer(&mut self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
         self.res.imports.remove(&buffer);
-        let buffer = self.res.buffers.remove(buffer);
-        self.residency.remove(ProtocolObject::from_ref(&*buffer));
+        self.res.buffers.remove(buffer);
     }
 
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {

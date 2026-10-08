@@ -4,6 +4,7 @@ mod caps;
 mod copies;
 mod pipelines;
 mod queries;
+mod residency;
 mod samplers;
 mod textures;
 mod timelines;
@@ -12,7 +13,6 @@ use crate::check::Check;
 use crate::mtl::pool::Pool;
 use crate::mtl::queue::Queue;
 use crate::mtl::recorder::{Kind, Recorder};
-use crate::mtl::residency::Residency;
 use crate::mtl::resources::Resources;
 use crate::recording::{Held, Recording};
 use crate::slots::Slots;
@@ -193,7 +193,6 @@ pub struct Device {
     pub raw: Retained<ProtocolObject<dyn MTLDevice>>,
     compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
     options: Retained<MTL4CompilerTaskOptions>,
-    residency: Residency,
     res: Resources,
     queues: Vec<Queue>,
     pools: Slots<Pool>,
@@ -206,7 +205,6 @@ impl Drop for Device {
         autoreleasepool(|_| {
             self.queues.clear();
             self.res = Resources::default();
-            self.residency.clear();
         })
     }
 }
@@ -227,17 +225,15 @@ impl Device {
             let compiler = raw
                 .newCompilerWithDescriptor_error(&MTL4CompilerDescriptor::new())
                 .map_err(|e| e.localizedDescription().to_string())?;
-            let residency = Residency::new(&raw)?;
             let lost = Arc::new(Mutex::new(None));
             let queues = (0..queues)
-                .map(|_| Queue::new(&raw, &residency.set, lost.clone()))
+                .map(|_| Queue::new(&raw, lost.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
             let caps = Self::detect(&raw, queues.len(), execution_width(&raw)?);
             Ok(Self {
                 raw,
                 compiler,
                 options: MTL4CompilerTaskOptions::new(),
-                residency,
                 res: Resources::default(),
                 queues,
                 pools: Slots::default(),
@@ -291,7 +287,6 @@ impl Device {
         kind: Kind,
         samples: u32,
     ) -> Recording<'_> {
-        self.residency.commit();
         let base = match kind {
             Kind::Render => "render",
             Kind::Compute => "compute",

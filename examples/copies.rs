@@ -75,8 +75,13 @@ pub fn main() {
         total += (s.2 * s.3 * 4) as u64;
     }
     let back = device.create_buffer(total, memory::READBACK).unwrap();
+    let set = device.create_residency_set().unwrap();
+    let textures = [a, cast, array, depth, depth2, srgb, line];
+    device.add_residency(set, &[upload, back], &textures, &[]);
+    device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
     for texture in [a, cast, array, depth, depth2, srgb, line] {
         pass.texture_barrier(&TextureBarrier {
@@ -227,6 +232,7 @@ pub fn main() {
     let mut refused = Vec::new();
     if !caps.copy_formats {
         let mut c = device.begin_commands(pool).unwrap();
+        c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
         refused.push(pass.copy_texture(&reinterpret).unwrap_err());
     }

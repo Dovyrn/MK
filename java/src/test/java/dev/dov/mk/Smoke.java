@@ -32,7 +32,11 @@ public class Smoke {
             memPutInt(push, n);
             memPutInt(push + 4, 100);
             device.unmapBuffer(constants);
+            var set = device.createResidencySet();
+            device.addResidency(set, new Buffer[] {buffer, constants}, new Texture[0], new QueryPool[0]);
+            device.commitResidency(set);
             var commands = device.beginCommands(pool);
+            commands.useResidencySet(set);
             try (var pass = commands.beginComputePass()) {
                 pass.bindComputePipeline(pipeline);
                 pass.bindStorageBuffer(0, buffer, 0, n * 4L);

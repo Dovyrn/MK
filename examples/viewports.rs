@@ -68,7 +68,11 @@ pub fn main() {
         },
     ];
     let timeline = device.create_timeline().unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back], &[color], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture: color,
         src_stage: stage::COLOR,

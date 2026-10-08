@@ -7,5 +7,6 @@ handles = [
     "TilePipeline",
     "DepthState",
     "QueryPool",
+    "ResidencySet",
     "CommandPool",
 ]

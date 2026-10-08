@@ -6,7 +6,8 @@ use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTLBuffer, MTLDepthStencilState, MTLRenderPipelineState, MTLSamplerState, MTLSharedEvent,
+    MTLBuffer, MTLDepthStencilState, MTLRenderPipelineState, MTLResidencySet, MTLSamplerState,
+    MTLSharedEvent,
 };
 use std::collections::HashSet;
 
@@ -21,6 +22,7 @@ pub struct Resources {
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
+    pub sets: Slots<Retained<ProtocolObject<dyn MTLResidencySet>>>,
     pub imports: HashSet<crate::Buffer>,
     pub table: crate::table::Table,
 }

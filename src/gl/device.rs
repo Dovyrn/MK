@@ -1,6 +1,7 @@
 mod budget;
 mod copies;
 mod host;
+mod residency;
 
 use crate::caps;
 use crate::check::Check;
@@ -323,6 +324,7 @@ impl Device {
             own: false,
         });
         self.res.table.buffers.set(id, size);
+        self.res.table.residency.exempt_buffer(id);
         id
     }
 
@@ -521,6 +523,7 @@ impl Device {
             image: Cell::new(0),
         });
         self.res.table.textures.set(id, *info);
+        self.res.table.residency.exempt_texture(id);
         Ok(id)
     }
 
@@ -702,7 +705,7 @@ impl Device {
 
     pub fn destroy_query_pool(&mut self, heap: QueryPool) {
         self.thread();
-        self.res.table.queries.clear(heap);
+        self.res.table.drop_query(heap);
         self.res.queries.remove(heap).delete(&self.gl);
     }
 

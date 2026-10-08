@@ -29,7 +29,7 @@ impl Device {
     }
 
     pub fn destroy_query_pool(&mut self, heap: QueryPool) {
-        self.res.table.queries.clear(heap);
+        self.res.table.drop_query(heap);
         let query = self.res.queries.remove(heap);
         unsafe { self.raw.destroy_query_pool(query.pool, None) };
     }

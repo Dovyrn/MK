@@ -130,6 +130,14 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native void nTextureBarrier(long target, long texture, int srcStage, int dstStage, int before, int after, int baseMip, int mips, int baseLayer, int layers);
 
+    public void useResidencySet(ResidencySet set) {
+        synchronized (device) {
+            nUseResidencySet(handle(), ResidencySet.raw(set));
+        }
+    }
+
+    private static native void nUseResidencySet(long target, long set);
+
     public void bindUniformBuffer(int slot, Buffer buffer, long offset, long size) {
         synchronized (device) {
             nBindUniformBuffer(handle(), slot, Buffer.raw(buffer), offset, size);

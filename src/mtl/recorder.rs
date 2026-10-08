@@ -641,6 +641,10 @@ impl<'a> Recorder<'a> {
             Command::SetBlendColor { r, g, b, a } => self
                 .render_encoder()
                 .setBlendColorRed_green_blue_alpha(r, g, b, a),
+            Command::UseResidencySet { set } => {
+                let raw = self.res.sets.get(set);
+                self.command_buffer().useResidencySet(raw);
+            }
             Command::BindUniformBuffer {
                 slot,
                 buffer,

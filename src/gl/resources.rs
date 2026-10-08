@@ -20,5 +20,6 @@ pub struct Resources {
     pub queries: Slots<Query>,
     pub timelines: Slots<Rc<RefCell<Fences>>>,
     pub pools: Slots<()>,
+    pub sets: Slots<()>,
     pub table: crate::table::Table,
 }

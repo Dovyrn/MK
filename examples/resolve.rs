@@ -14,6 +14,9 @@ pub fn main() {
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back], &[], &[]);
+    device.commit_residency(set);
     let mut value = 0;
     let mut done = Vec::new();
     let area = if device.caps().partial_resolve {
@@ -45,7 +48,10 @@ pub fn main() {
             println!("format {f}: {}", created.unwrap_err());
             continue;
         };
+        device.add_residency(set, &[], &[ms, dst], &[]);
+        device.commit_residency(set);
         let mut c = device.begin_commands(pool).unwrap();
+        c.use_residency_set(set);
         for t in [ms, dst] {
             c.texture_barrier(&TextureBarrier {
                 texture: t,

@@ -22,9 +22,6 @@ impl Device {
                 .raw
                 .newTextureWithDescriptor(&desc)
                 .ok_or("texture allocation failed")?;
-            if info.memory != memory::TRANSIENT {
-                self.residency.add(ProtocolObject::from_ref(&*raw));
-            }
             let id = self.res.textures.insert(TextureObject {
                 raw,
                 format: info.format,
@@ -83,9 +80,6 @@ impl Device {
             if flags.contains(MTLTextureUsage::PixelFormatView) {
                 usage |= texture_usage::VIEW;
             }
-            if mode != MTLStorageMode::Memoryless {
-                self.residency.add(ProtocolObject::from_ref(&*raw));
-            }
             let info = TextureInfo {
                 dimension,
                 format,
@@ -104,6 +98,7 @@ impl Device {
             };
             let id = self.res.textures.insert(TextureObject { raw, format });
             self.res.table.textures.set(id, info);
+            self.res.table.residency.exempt_texture(id);
             Ok(id)
         })
     }
@@ -166,9 +161,7 @@ impl Device {
 
     pub fn destroy_texture(&mut self, texture: Texture) {
         self.res.table.drop_texture(texture);
-        let texture = self.res.textures.remove(texture);
-        self.residency
-            .remove(ProtocolObject::from_ref(&*texture.raw));
+        self.res.textures.remove(texture);
     }
 
     pub fn bindless_texture(&self, texture: Texture) -> u64 {

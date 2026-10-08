@@ -1,9 +1,10 @@
 use crate::entries::Entries;
 use crate::handle::TimelineId;
+use crate::residency::{Members, Residency};
 use crate::{
     Buffer, CommandPool, ComputePipeline, DepthState, HostTextureCopy, QueryPool, RenderPipeline,
-    Sampler, Texture, TextureInfo, TextureViewInfo, TilePipeline, format, texture_dimension,
-    texture_usage,
+    ResidencySet, Sampler, Texture, TextureInfo, TextureViewInfo, TilePipeline, format, memory,
+    texture_dimension, texture_usage,
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Weak};
@@ -33,6 +34,7 @@ pub struct Table {
     pub parents: Entries<Texture, Texture>,
     pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
     pub undefined: RefCell<Vec<Texture>>,
+    pub residency: Residency,
 }
 
 fn rest(base: u32, count: u32, total: u32, what: &str, texture: Texture) -> u32 {
@@ -56,10 +58,41 @@ pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
 impl Table {
     pub fn drop_buffer(&mut self, buffer: Buffer) {
         self.buffers.clear(buffer);
+        self.residency.free_buffer(buffer);
+    }
+
+    pub fn drop_query(&mut self, pool: QueryPool) {
+        self.queries.clear(pool);
+        self.residency.free_query(pool);
+    }
+
+    pub fn change_residency(&mut self, set: ResidencySet, items: Members, add: bool) {
+        for &b in &items.buffers {
+            self.buffers.get(b);
+        }
+        for &t in &items.textures {
+            self.textures.get(t);
+            assert!(
+                self.parents.find(t).is_none(),
+                "add_residency and remove_residency take whole textures, not view {t}"
+            );
+            assert_ne!(
+                self.textures.get(t).memory,
+                memory::TRANSIENT,
+                "{t} is memory::TRANSIENT and has no memory to make resident"
+            );
+        }
+        for &q in &items.queries {
+            self.queries.get(q);
+        }
+        self.residency.change(set, &items, add);
     }
 
     pub fn add_texture(&mut self, texture: Texture, info: &TextureInfo) {
         self.textures.set(texture, *info);
+        if info.memory == memory::TRANSIENT {
+            self.residency.exempt_texture(texture);
+        }
         if info.usage & texture_usage::HOST == 0 {
             self.undefined.get_mut().push(texture);
         }
@@ -87,6 +120,9 @@ impl Table {
             "destroy_texture on {texture} while views of it live; destroy the views first"
         );
         self.textures.clear(texture);
+        if self.parents.find(texture).is_none() {
+            self.residency.free_texture(texture);
+        }
         self.parents.forget(texture);
         self.undefined.get_mut().retain(|&t| t != texture);
     }

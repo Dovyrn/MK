@@ -16,5 +16,6 @@ pub struct Resources {
     pub depths: Slots<DepthStateInfo>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
+    pub sets: Slots<()>,
     pub table: crate::table::Table,
 }

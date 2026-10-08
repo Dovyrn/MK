@@ -3,7 +3,6 @@ use crate::QueryPool;
 use crate::mtl::query::Query;
 use crate::query_kind;
 use objc2::rc::autoreleasepool;
-use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTLResourceOptions};
 
 impl Device {
@@ -28,7 +27,6 @@ impl Device {
                         .raw
                         .newBufferWithLength_options(count as usize * 8, options)
                         .ok_or("visibility buffer allocation failed")?;
-                    self.residency.add(ProtocolObject::from_ref(&*buffer));
                     Query::Buffer(buffer)
                 }
                 k => panic!("unknown query kind {k}"),
@@ -40,10 +38,7 @@ impl Device {
     }
 
     pub fn destroy_query_pool(&mut self, heap: QueryPool) {
-        self.res.table.queries.clear(heap);
-        let heap = self.res.queries.remove(heap);
-        if let Query::Buffer(buffer) = &heap {
-            self.residency.remove(ProtocolObject::from_ref(&**buffer));
-        }
+        self.res.table.drop_query(heap);
+        self.res.queries.remove(heap);
     }
 }

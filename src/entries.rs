@@ -41,6 +41,13 @@ impl<H: Handle, T> Entries<H, T> {
         self.items.iter().flatten().map(|i| &i.1)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (H, &T)> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| item.as_ref().map(|(g, t)| (H::new(i as u32, *g), t)))
+    }
+
     pub fn find(&self, h: H) -> Option<&T> {
         let (generation, item) = self.items.get(h.index() as usize)?.as_ref()?;
         (*generation == h.generation()).then_some(item)

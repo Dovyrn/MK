@@ -5,7 +5,6 @@ mod query;
 mod queue;
 mod recorder;
 mod render;
-mod residency;
 mod resources;
 mod texture;
 mod timeline;

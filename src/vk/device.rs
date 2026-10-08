@@ -4,6 +4,7 @@ mod caps;
 mod copies;
 mod pipelines;
 mod queries;
+mod residency;
 mod samplers;
 mod textures;
 mod timelines;

@@ -43,8 +43,12 @@ pub fn main() {
     let back = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back], &[texture], &[]);
+    device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     c.memory_barrier(stage::HOST, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
@@ -186,8 +190,11 @@ pub fn main() {
         }
         if readable {
             let back = device.create_buffer(2 * 2 * 8, memory::READBACK).unwrap();
+            device.add_residency(set, &[back], &[blocks], &[]);
+            device.commit_residency(set);
             let timeline = device.create_timeline().unwrap();
             let mut c = device.begin_commands(pool).unwrap();
+            c.use_residency_set(set);
             c.memory_barrier(stage::HOST, stage::COPY);
             let mut pass = c.begin_compute_pass().unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {

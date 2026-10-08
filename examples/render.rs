@@ -102,7 +102,11 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let (constants, stride) =
         host::constants(&mut device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[vbuf, ibuf, back, constants], &[color, depth], &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     for (texture, stage) in [(color, stage::COLOR), (depth, stage::DEPTH)] {
         c.texture_barrier(&TextureBarrier {
             texture,

@@ -830,6 +830,7 @@ impl<'a> Recorder<'a> {
                         .collect();
                     self.apply_scissors();
                 }
+                Command::UseResidencySet { .. } => {}
                 Command::BindUniformBuffer {
                     slot,
                     buffer,

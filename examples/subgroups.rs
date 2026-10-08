@@ -23,6 +23,9 @@ pub fn main() {
     }
     let buffer = device.create_buffer(64 * 11 * 4, memory::READBACK).unwrap();
     let timeline = device.create_timeline().unwrap();
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[buffer], &[], &[]);
+    device.commit_residency(set);
     let sizes: Vec<u32> = (0..7)
         .map(|i| 1u32 << i)
         .filter(|n| caps.subgroup_sizes & n != 0 && *n >= 4)
@@ -44,6 +47,7 @@ pub fn main() {
             })
             .unwrap();
         let mut c = device.begin_commands(pool).unwrap();
+        c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
         pass.bind_compute_pipeline(pipeline).unwrap();
         pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4).unwrap();

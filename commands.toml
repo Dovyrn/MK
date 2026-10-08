@@ -145,6 +145,11 @@ scope = "render"
 fields = [["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"]]
 
 [[command]]
+name = "use_residency_set"
+scope = "outside"
+fields = [["set", "ResidencySet"]]
+
+[[command]]
 name = "bind_uniform_buffer"
 scope = "outside compute render"
 fails = true

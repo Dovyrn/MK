@@ -32,9 +32,13 @@ pub fn main() {
     push.extend(n.to_le_bytes());
     push.extend(3u32.to_le_bytes());
     let (constants, _) = host::constants(&mut device, &[&push]);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[data, back, constants], &[], &[]);
+    device.commit_residency(set);
     let pool = device.create_command_pool(0).unwrap();
     let other = device.create_command_pool(1).unwrap();
     let mut compute = device.begin_commands(other).unwrap();
+    compute.use_residency_set(set);
     let mut pass = compute.begin_compute_pass().unwrap();
     pass.bind_compute_pipeline(pipeline).unwrap();
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
@@ -42,6 +46,7 @@ pub fn main() {
     pass.dispatch(n / 64, 1, 1).unwrap();
     pass.end();
     let mut copy = device.begin_commands(pool).unwrap();
+    copy.use_residency_set(set);
     let mut pass = copy.begin_compute_pass().unwrap();
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
     pass.memory_barrier(stage::COPY, stage::HOST);

@@ -63,6 +63,7 @@ impl Device {
             device: false,
         });
         self.res.table.buffers.set(id, size);
+        self.res.table.residency.exempt_buffer(id);
         id
     }
 

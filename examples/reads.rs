@@ -106,7 +106,18 @@ pub fn main() {
         &mut device,
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
     );
+    let mut textures = vec![color];
+    if memory != memory::TRANSIENT {
+        textures.push(value);
+    }
+    if !caps.transients {
+        textures.push(depth);
+    }
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back, constants], &textures, &[]);
+    device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
+    c.use_residency_set(set);
     c.texture_barrier(&TextureBarrier {
         texture: value,
         src_stage: stage::COLOR,

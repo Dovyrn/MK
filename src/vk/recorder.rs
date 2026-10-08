@@ -759,6 +759,7 @@ impl Recorder<'_> {
                 Command::SetBlendColor { r, g, b: blue, a } => {
                     d.cmd_set_blend_constants(b, &[r, g, blue, a])
                 }
+                Command::UseResidencySet { .. } => {}
                 Command::BindUniformBuffer {
                     slot,
                     buffer,

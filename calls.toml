@@ -166,6 +166,27 @@ name = "destroy_query_pool"
 params = [["pool", "QueryPool"]]
 
 [[call]]
+name = "create_residency_set"
+result = "ResidencySet"
+fails = true
+
+[[call]]
+name = "destroy_residency_set"
+params = [["set", "ResidencySet"]]
+
+[[call]]
+name = "add_residency"
+params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"]]
+
+[[call]]
+name = "remove_residency"
+params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"]]
+
+[[call]]
+name = "commit_residency"
+params = [["set", "ResidencySet"]]
+
+[[call]]
 name = "create_timeline"
 result = "timeline"
 fails = true
@@ -313,6 +334,13 @@ backend = "mtl"
 params = [["pool", "CommandPool"], ["raw", "objref"]]
 result = "ComputePass"
 fails = true
+shared = true
+
+[[call]]
+name = "raw_residency_set"
+backend = "mtl"
+params = [["set", "ResidencySet"]]
+result = "object"
 shared = true
 
 [[call]]

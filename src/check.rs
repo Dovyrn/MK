@@ -1,5 +1,6 @@
 use crate::caps::is_depth_format;
 use crate::command::Command;
+use crate::residency::Residency;
 use crate::table::Table;
 use crate::{
     Buffer, Caps, CommandPool, QueryPool, Texture, TextureInfo, cull_mode, format, front_face,
@@ -35,6 +36,7 @@ pub struct Check<'a> {
     fresh: u32,
     barrier: bool,
     passes: bool,
+    resident: bool,
 }
 
 const STATES: [&str; 6] = [
@@ -165,6 +167,7 @@ impl<'a> Check<'a> {
             fresh: 0,
             barrier: false,
             passes: false,
+            resident: base != "outside",
         }
     }
 
@@ -197,8 +200,23 @@ impl<'a> Check<'a> {
         }
     }
 
+    fn assert_resident(&self, name: &str, what: &dyn std::fmt::Display, count: u32) {
+        if Residency::is_exempt(count) {
+            return;
+        }
+        assert!(
+            count > 0,
+            "{name} uses {what}, which no committed residency set holds; add_residency it and commit_residency"
+        );
+        assert!(
+            self.resident,
+            "{name} uses {what} before use_residency_set in this command buffer"
+        );
+    }
+
     fn buffer_range(&self, name: &str, buffer: Buffer, offset: u64, size: u64) -> u64 {
         let total = *self.table.buffers.get(buffer);
+        self.assert_resident(name, &buffer, self.table.residency.buffer(buffer));
         let end = if size == !0 {
             total
         } else {
@@ -263,6 +281,8 @@ impl<'a> Check<'a> {
             "{name} needs {texture} created with texture_usage::{what}"
         );
         self.table.assert_defined(name, texture);
+        let root = self.table.parents.find(texture).copied().unwrap_or(texture);
+        self.assert_resident(name, &texture, self.table.residency.texture(root));
         t
     }
 
@@ -293,6 +313,7 @@ impl<'a> Check<'a> {
 
     fn query_range(&self, name: &str, pool: QueryPool, kinds: &[u32], first: u32, count: u32) {
         let &(kind, total) = self.table.queries.get(pool);
+        self.assert_resident(name, &pool, self.table.residency.query(pool));
         let names: Vec<_> = kinds.iter().map(|&k| query_kind::name(k)).collect();
         assert!(
             kinds.is_empty() || kinds.contains(&kind),
@@ -909,6 +930,10 @@ impl<'a> Check<'a> {
                 if clamp != 0.0 {
                     self.require(c, caps.bias_clamp, "bias_clamp")?;
                 }
+            }
+            Command::UseResidencySet { set } => {
+                self.table.residency.assert_set(set);
+                self.resident = true;
             }
             Command::BindUniformBuffer {
                 slot: i,

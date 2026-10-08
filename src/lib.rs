@@ -20,6 +20,7 @@ mod java;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod recording;
+mod residency;
 mod slots;
 mod table;
 #[cfg(feature = "vk")]

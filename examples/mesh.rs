@@ -61,8 +61,12 @@ pub fn main() {
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
     let (half, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &[back, groups, half], &[color], &[]);
+    device.commit_residency(set);
     for round in passes.into_iter().flatten() {
         let mut c = device.begin_commands(pool).unwrap();
+        c.use_residency_set(set);
         c.texture_barrier(&TextureBarrier {
             texture: color,
             src_stage: stage::COLOR,
