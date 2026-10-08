@@ -115,16 +115,14 @@ pub fn main() {
     c.reset_queries(samples, 0, 1);
     let mut pass = c.begin_compute_pass().unwrap();
     if let Some(times) = times {
-        pass.write_timestamp(times, 0, stage::COMPUTE).unwrap();
+        pass.write_timestamp(times, 0, stage::COMPUTE);
     }
-    pass.bind_compute_pipeline(fill).unwrap();
-    pass.bind_storage_buffer(0, data, 0, count as u64 * 4)
-        .unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
-        .unwrap();
-    pass.dispatch(count / 64, 1, 1).unwrap();
+    pass.bind_compute_pipeline(fill);
+    pass.bind_storage_buffer(0, data, 0, count as u64 * 4);
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
-        pass.write_timestamp(times, 1, stage::COMPUTE).unwrap();
+        pass.write_timestamp(times, 1, stage::COMPUTE);
     }
     pass.end();
     c.texture_barrier(&TextureBarrier {
@@ -133,8 +131,7 @@ pub fn main() {
         dst_stage: stage::COLOR,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,
@@ -148,30 +145,30 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: n,
         height: n,
-    });
+    }]);
     pass.bind_render_pipeline(triangle);
     pass.bind_vertex_buffer(0, vbuf, 0);
-    pass.bind_uniform_buffer(0, constants, stride, 4).unwrap();
-    pass.begin_occlusion_query(samples, 0).unwrap();
+    pass.bind_uniform_buffer(0, constants, stride, 4);
+    pass.begin_occlusion_query(samples, 0);
     pass.draw(3, 1, 0, 0);
-    pass.end_occlusion_query(samples, 0).unwrap();
+    pass.end_occlusion_query(samples, 0);
     pass.end();
     c.memory_barrier(stage::FRAGMENT, stage::COPY);
     if let Some(times) = times {
-        c.resolve_timestamps(times, 0, 2, out, 0).unwrap();
+        c.resolve_timestamps(times, 0, 2, out, 0);
     }
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.resolve_occlusion(samples, 0, 1, out, 16).unwrap();
+    pass.resolve_occlusion(samples, 0, 1, out, 16);
     pass.memory_barrier(stage::COPY, stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();

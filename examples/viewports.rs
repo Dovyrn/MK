@@ -79,8 +79,7 @@ pub fn main() {
         dst_stage: stage::COLOR,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: w,
@@ -95,8 +94,8 @@ pub fn main() {
         })
         .unwrap();
     pass.bind_render_pipeline(pipeline);
-    pass.set_viewports(&viewports);
-    pass.set_scissors(&scissors);
+    pass.set_viewport(&viewports);
+    pass.set_scissor(&scissors);
     pass.draw(3, 2, 0, 0);
     pass.end();
     c.memory_barrier(stage::COLOR, stage::COPY);

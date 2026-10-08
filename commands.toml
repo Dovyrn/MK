@@ -10,19 +10,16 @@ scope = "compute"
 [[command]]
 name = "bind_compute_pipeline"
 scope = "compute"
-fails = true
 fields = [["pipeline", "ComputePipeline"]]
 
 [[command]]
 name = "dispatch"
 scope = "compute"
-fails = true
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
 name = "dispatch_indirect"
 scope = "compute"
-fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
@@ -33,7 +30,6 @@ fields = [["src", "Buffer"], ["src_offset", "u64"], ["dst", "Buffer"], ["dst_off
 [[command]]
 name = "fill_buffer"
 scope = "compute"
-fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"], ["value", "u8"]]
 
 [[command]]
@@ -44,7 +40,6 @@ fields = [["src_stage", "u32"], ["dst_stage", "u32"]]
 [[command]]
 name = "begin_debug_label"
 scope = "outside compute render"
-fails = true
 fields = [["text", "str"]]
 
 [[command]]
@@ -54,7 +49,6 @@ scope = "outside compute render"
 [[command]]
 name = "texture_barrier"
 scope = "outside compute"
-fails = true
 info = "TextureBarrier"
 
 [[command]]
@@ -70,7 +64,6 @@ info = "BufferTextureCopy"
 [[command]]
 name = "copy_texture"
 scope = "compute"
-fails = true
 info = "TextureCopy"
 
 [[command]]
@@ -97,16 +90,6 @@ scope = "render"
 name = "bind_render_pipeline"
 scope = "render"
 fields = [["pipeline", "RenderPipeline"]]
-
-[[command]]
-name = "set_viewport"
-scope = "render"
-info = "Viewport"
-
-[[command]]
-name = "set_scissor"
-scope = "render"
-info = "Scissor"
 
 [[command]]
 name = "set_cull_mode"
@@ -136,7 +119,6 @@ fields = [["front", "u32"], ["back", "u32"]]
 [[command]]
 name = "set_depth_bias"
 scope = "render"
-fails = true
 fields = [["constant", "f32"], ["slope", "f32"], ["clamp", "f32"]]
 
 [[command]]
@@ -152,31 +134,26 @@ fields = [["set", "ResidencySet"]]
 [[command]]
 name = "bind_uniform_buffer"
 scope = "outside compute render"
-fails = true
 fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "bind_storage_buffer"
 scope = "outside compute render"
-fails = true
 fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "bind_texture"
 scope = "outside compute render"
-fails = true
 fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
 name = "bind_storage_texture"
 scope = "outside compute render"
-fails = true
 fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
 name = "bind_sampler"
 scope = "outside compute render"
-fails = true
 fields = [["slot", "u32"], ["sampler", "Sampler"]]
 
 [[command]]
@@ -202,37 +179,31 @@ fields = [["indices", "u32"], ["instances", "u32"], ["first_index", "u32"], ["ba
 [[command]]
 name = "draw_indirect"
 scope = "render"
-fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "draw_indexed_indirect"
 scope = "render"
-fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "execute_indirect"
 scope = "render"
-fails = true
 fields = [["indirect", "IndirectBuffer"], ["first", "u32"], ["count", "u32"]]
 
 [[command]]
 name = "execute_indirect_count"
 scope = "render"
-fails = true
 fields = [["indirect", "IndirectBuffer"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "draw_mesh_tasks"
 scope = "render"
-fails = true
 fields = [["x", "u32"], ["y", "u32"], ["z", "u32"]]
 
 [[command]]
 name = "draw_mesh_tasks_indirect"
 scope = "render"
-fails = true
 fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
@@ -248,47 +219,41 @@ fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"]]
 [[command]]
 name = "write_timestamp"
 scope = "outside compute render"
-fails = true
 fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "u32"]]
 
 [[command]]
 name = "begin_occlusion_query"
 scope = "render"
-fails = true
 fields = [["pool", "QueryPool"], ["index", "u32"]]
 
 [[command]]
 name = "end_occlusion_query"
 scope = "render"
-fails = true
 fields = [["pool", "QueryPool"], ["index", "u32"]]
 
 [[command]]
 name = "resolve_timestamps"
 scope = "outside"
-fails = true
 fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
 name = "resolve_occlusion"
 scope = "compute"
-fails = true
 fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
-name = "set_viewports"
+name = "set_viewport"
 scope = "render"
 fields = [["viewports", "[Viewport]"]]
 
 [[command]]
-name = "set_scissors"
+name = "set_scissor"
 scope = "render"
 fields = [["scissors", "[Scissor]"]]
 
 [[command]]
 name = "input_attachment_barrier"
 scope = "render"
-fails = true
 
 [[command]]
 name = "tile_memory"
@@ -298,5 +263,4 @@ info = "TileMemory"
 [[command]]
 name = "dispatch_tile"
 scope = "render"
-fails = true
 fields = [["pipeline", "TilePipeline"]]

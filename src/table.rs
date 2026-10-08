@@ -117,7 +117,7 @@ impl Table {
         commands: u64,
         indices: u64,
         groups: [u32; 6],
-    ) -> [u32; 8] {
+    ) -> crate::IndirectShaderHandle {
         let e = *self.indirects.get(indirect);
         let mut words = [commands as u32, (commands >> 32) as u32, 0, 0, 0, 0, 0, 0];
         if e.mesh {
@@ -133,7 +133,7 @@ impl Table {
         } else {
             words[2] = e.topology;
         }
-        words
+        crate::IndirectShaderHandle(words)
     }
 
     pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {

@@ -39,6 +39,7 @@ mod entries;
 #[cfg(feature = "gl")]
 pub mod gl;
 mod handle;
+mod indirect;
 #[cfg(feature = "jni")]
 mod java;
 #[cfg(feature = "mtl")]
@@ -58,6 +59,7 @@ pub use ash;
 pub use gl::{Device, Timeline};
 #[cfg(feature = "gl")]
 pub use glow;
+pub use indirect::IndirectShaderHandle;
 #[cfg(feature = "mtl")]
 pub use mtl::{Device, Timeline};
 #[cfg(feature = "mtl")]

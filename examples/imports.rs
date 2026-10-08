@@ -10,16 +10,16 @@ mod host;
 const N: u32 = 32;
 
 fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: N as f32,
         height: N as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         width: N,
         height: N,
         ..Default::default()
-    });
+    }]);
     pass.bind_render_pipeline(pipeline);
     pass.draw(3, 1, 0, 0);
 }
@@ -42,15 +42,13 @@ fn read_back(
     back: mk::Buffer,
 ) {
     commands.use_residency_set(set);
-    commands
-        .texture_barrier(&TextureBarrier {
-            texture,
-            src_stage: stage::COLOR,
-            dst_stage: stage::COPY,
-            before: texture_layout::COLOR,
-            ..Default::default()
-        })
-        .unwrap();
+    commands.texture_barrier(&TextureBarrier {
+        texture,
+        src_stage: stage::COLOR,
+        dst_stage: stage::COPY,
+        before: texture_layout::COLOR,
+        ..Default::default()
+    });
     let mut pass = commands.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
@@ -96,7 +94,7 @@ fn host_frame(
             .unwrap();
         let mut commands = device.import_commands(pool, buffer).unwrap();
         commands.use_residency_set(set);
-        commands.texture_barrier(&to_color(texture)).unwrap();
+        commands.texture_barrier(&to_color(texture));
         commands.finish().unwrap();
         let view = device.raw_texture(texture).1;
         let clear = vk::ClearValue {
@@ -171,7 +169,7 @@ fn host_frame(
     buffer.beginCommandBufferWithAllocator(&allocator);
     let mut commands = device.import_commands(pool, &buffer).unwrap();
     commands.use_residency_set(set);
-    commands.texture_barrier(&to_color(texture)).unwrap();
+    commands.texture_barrier(&to_color(texture));
     commands.finish().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
@@ -220,7 +218,7 @@ fn host_frame(
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
-    commands.texture_barrier(&to_color(texture)).unwrap();
+    commands.texture_barrier(&to_color(texture));
     device.submit(commands, &[], &[]).unwrap();
     let gl = &device.gl;
     let raw =

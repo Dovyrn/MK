@@ -660,6 +660,14 @@ impl Recorder<'_> {
                     if !self.defaults {
                         self.record_defaults();
                     }
+                    let full = vk::Viewport {
+                        width: width as f32,
+                        height: height as f32,
+                        max_depth: 1.0,
+                        ..Default::default()
+                    };
+                    d.cmd_set_viewport_with_count(b, &[full]);
+                    d.cmd_set_scissor_with_count(b, &[area]);
                 }
                 Command::EndRenderPass => d.cmd_end_rendering(b),
                 Command::InputAttachmentBarrier => {
@@ -696,39 +704,6 @@ impl Recorder<'_> {
                         d.cmd_set_primitive_topology(b, topology);
                     }
                 }
-                Command::SetViewport {
-                    x,
-                    y,
-                    width,
-                    height,
-                    near,
-                    far,
-                } => d.cmd_set_viewport_with_count(
-                    b,
-                    &[vk::Viewport {
-                        x,
-                        y,
-                        width,
-                        height,
-                        min_depth: near,
-                        max_depth: far,
-                    }],
-                ),
-                Command::SetScissor {
-                    x,
-                    y,
-                    width,
-                    height,
-                } => d.cmd_set_scissor_with_count(
-                    b,
-                    &[vk::Rect2D {
-                        offset: vk::Offset2D {
-                            x: x as i32,
-                            y: y as i32,
-                        },
-                        extent: vk::Extent2D { width, height },
-                    }],
-                ),
                 Command::SetCullMode { cull } => {
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull))
                 }
@@ -962,7 +937,7 @@ impl Recorder<'_> {
                         vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
                     )
                 }
-                Command::SetViewports { viewports } => {
+                Command::SetViewport { viewports } => {
                     let mut list = [vk::Viewport::default(); slot::VIEWPORTS as usize];
                     let views = viewports.iter();
                     for (v, out) in views.zip(&mut list) {
@@ -977,7 +952,7 @@ impl Recorder<'_> {
                     }
                     d.cmd_set_viewport_with_count(b, &list[..viewports.len()])
                 }
-                Command::SetScissors { scissors } => {
+                Command::SetScissor { scissors } => {
                     let mut list = [vk::Rect2D::default(); slot::VIEWPORTS as usize];
                     for (r, out) in scissors.iter().zip(&mut list) {
                         *out = vk::Rect2D {

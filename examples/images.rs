@@ -62,8 +62,7 @@ pub fn main() {
         dst_stage: stage::COPY,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
@@ -75,10 +74,9 @@ pub fn main() {
     pass.end();
     c.memory_barrier(stage::COPY, stage::COMPUTE);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.bind_compute_pipeline(pipeline).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
-        .unwrap();
-    pass.dispatch(n / 8, n / 8, 1).unwrap();
+    pass.bind_compute_pipeline(pipeline);
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.dispatch(n / 8, n / 8, 1);
     pass.end();
     c.memory_barrier(stage::COMPUTE, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();

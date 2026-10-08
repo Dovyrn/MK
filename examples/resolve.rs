@@ -59,8 +59,7 @@ pub fn main() {
                 dst_stage: stage::COLOR,
                 before: texture_layout::UNDEFINED,
                 ..Default::default()
-            })
-            .unwrap();
+            });
         }
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -75,17 +74,17 @@ pub fn main() {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_viewport(&Viewport {
+        pass.set_viewport(&[Viewport {
             width: n as f32,
             height: n as f32,
             ..Default::default()
-        });
-        pass.set_scissor(&Scissor {
+        }]);
+        pass.set_scissor(&[Scissor {
             x: 0,
             y: 0,
             width: n,
             height: n,
-        });
+        }]);
         pass.end();
         c.memory_barrier(stage::COLOR, stage::COLOR);
         let mut pass = c
@@ -101,17 +100,17 @@ pub fn main() {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_viewport(&Viewport {
+        pass.set_viewport(&[Viewport {
             width: n as f32,
             height: n as f32,
             ..Default::default()
-        });
-        pass.set_scissor(&Scissor {
+        }]);
+        pass.set_scissor(&[Scissor {
             x: 0,
             y: 0,
             width: n,
             height: n,
-        });
+        }]);
         pass.end();
         c.memory_barrier(stage::COLOR, stage::COLOR);
         let mut pass = c
@@ -127,17 +126,17 @@ pub fn main() {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_viewport(&Viewport {
+        pass.set_viewport(&[Viewport {
             width: area as f32,
             height: area as f32,
             ..Default::default()
-        });
-        pass.set_scissor(&Scissor {
+        }]);
+        pass.set_scissor(&[Scissor {
             x: 0,
             y: 0,
             width: area,
             height: area,
-        });
+        }]);
         pass.end();
         c.memory_barrier(stage::COLOR, stage::COPY);
         let mut pass = c.begin_compute_pass().unwrap();

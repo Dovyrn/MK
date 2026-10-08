@@ -124,8 +124,7 @@ pub fn main() {
             dst_stage: stage,
             before: texture_layout::UNDEFINED,
             ..Default::default()
-        })
-        .unwrap();
+        });
     }
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -145,24 +144,24 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: n,
         height: n,
-    });
+    }]);
     pass.bind_render_pipeline(pipeline);
     pass.set_depth_state(less);
     pass.bind_vertex_buffer(0, vbuf, 0);
     pass.bind_index_buffer(ibuf, 0, index_type::U16);
-    pass.bind_uniform_buffer(0, constants, 0, 4).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, 4);
     pass.draw_indexed(3, 1, 0, 0, 0);
-    pass.bind_uniform_buffer(0, constants, stride, 4).unwrap();
+    pass.bind_uniform_buffer(0, constants, stride, 4);
     pass.draw_indexed(3, 1, 0, 3, 0);
     pass.end();
     c.memory_barrier(stage::COLOR, stage::COPY);

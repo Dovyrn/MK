@@ -55,7 +55,7 @@ impl Device {
         self.res.indirects.remove(indirect);
     }
 
-    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> [u32; 8] {
+    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> crate::IndirectShaderHandle {
         let info = self.res.table.indirects.get(indirect).info;
         let list = self.res.indirects.get(indirect);
         let indices = if info.indexed {

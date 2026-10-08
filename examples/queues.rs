@@ -40,10 +40,9 @@ pub fn main() {
     let mut compute = device.begin_commands(other).unwrap();
     compute.use_residency_set(set);
     let mut pass = compute.begin_compute_pass().unwrap();
-    pass.bind_compute_pipeline(pipeline).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
-        .unwrap();
-    pass.dispatch(n / 64, 1, 1).unwrap();
+    pass.bind_compute_pipeline(pipeline);
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.dispatch(n / 64, 1, 1);
     pass.end();
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);

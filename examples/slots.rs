@@ -88,7 +88,7 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(source, stage::COPY)).unwrap();
+    pass.texture_barrier(&discard(source, stage::COPY));
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
@@ -97,7 +97,7 @@ pub fn main() {
     });
     pass.end();
     c.memory_barrier(stage::COPY, stage::FRAGMENT | stage::COMPUTE);
-    c.texture_barrier(&discard(target, stage::COLOR)).unwrap();
+    c.texture_barrier(&discard(target, stage::COLOR));
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -109,21 +109,21 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: 4.0,
         height: 4.0,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: 4,
         height: 4,
-    });
+    }]);
     pass.bind_render_pipeline(draw);
-    pass.bind_uniform_buffer(1, upload, at, 16).unwrap();
-    pass.bind_texture(0, source).unwrap();
-    pass.bind_sampler(0, sampler).unwrap();
+    pass.bind_uniform_buffer(1, upload, at, 16);
+    pass.bind_texture(0, source);
+    pass.bind_sampler(0, sampler);
     pass.draw(3, 1, 0, 0);
     pass.end();
     c.memory_barrier(stage::COLOR, stage::COPY);
@@ -174,16 +174,15 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(image, stage::COMPUTE))
-        .unwrap();
-    pass.bind_compute_pipeline(fill).unwrap();
-    pass.bind_uniform_buffer(1, upload, at, 16).unwrap();
-    pass.bind_storage_buffer(0, data, 0, 64 * 4).unwrap();
-    pass.bind_storage_texture(0, image).unwrap();
-    pass.bind_texture(0, source).unwrap();
-    pass.bind_sampler(0, sampler).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, 4).unwrap();
-    pass.dispatch(1, 1, 1).unwrap();
+    pass.texture_barrier(&discard(image, stage::COMPUTE));
+    pass.bind_compute_pipeline(fill);
+    pass.bind_uniform_buffer(1, upload, at, 16);
+    pass.bind_storage_buffer(0, data, 0, 64 * 4);
+    pass.bind_storage_texture(0, image);
+    pass.bind_texture(0, source);
+    pass.bind_sampler(0, sampler);
+    pass.bind_uniform_buffer(0, constants, 0, 4);
+    pass.dispatch(1, 1, 1);
     pass.memory_barrier(stage::COMPUTE, stage::COPY);
     pass.copy_buffer(data, 0, out, 0, 64 * 4);
     pass.copy_texture_to_buffer(&BufferTextureCopy {

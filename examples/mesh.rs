@@ -76,8 +76,7 @@ pub fn main() {
             dst_stage: stage::COLOR,
             before: texture_layout::UNDEFINED,
             ..Default::default()
-        })
-        .unwrap();
+        });
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: n,
@@ -91,23 +90,23 @@ pub fn main() {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_viewport(&Viewport {
+        pass.set_viewport(&[Viewport {
             width: n as f32,
             height: n as f32,
             ..Default::default()
-        });
-        pass.set_scissor(&Scissor {
+        }]);
+        pass.set_scissor(&[Scissor {
             x: 0,
             y: 0,
             width: n,
             height: n,
-        });
+        }]);
         pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
-        pass.bind_uniform_buffer(0, half, 0, 4).unwrap();
+        pass.bind_uniform_buffer(0, half, 0, 4);
         if round == 1 {
-            pass.draw_mesh_tasks_indirect(groups, 0).unwrap();
+            pass.draw_mesh_tasks_indirect(groups, 0);
         } else {
-            pass.draw_mesh_tasks(1, 1, 1).unwrap();
+            pass.draw_mesh_tasks(1, 1, 1);
         }
         pass.end();
         c.memory_barrier(stage::COLOR, stage::COPY);
@@ -199,7 +198,7 @@ fn executed(
         })
         .unwrap();
     let mut bytes = device.buffer_address(range).to_le_bytes().to_vec();
-    for word in device.indirect_shader_handle(list) {
+    for word in device.indirect_shader_handle(list).0 {
         bytes.extend(word.to_le_bytes());
     }
     let (half, _) = host::constants(device, &[&0.5f32.to_le_bytes()]);
@@ -220,10 +219,9 @@ fn executed(
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.bind_compute_pipeline(encode).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64)
-        .unwrap();
-    pass.dispatch(1, 1, 1).unwrap();
+    pass.bind_compute_pipeline(encode);
+    pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
+    pass.dispatch(1, 1, 1);
     pass.end();
     c.memory_barrier(stage::COMPUTE, stage::INDIRECT);
     c.texture_barrier(&TextureBarrier {
@@ -232,8 +230,7 @@ fn executed(
         dst_stage: stage::COLOR,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,
@@ -247,20 +244,20 @@ fn executed(
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: n,
         height: n,
-    });
+    }]);
     pass.bind_render_pipeline(single);
-    pass.bind_uniform_buffer(0, half, 0, 4).unwrap();
-    pass.execute_indirect(list, 0, 1).unwrap();
+    pass.bind_uniform_buffer(0, half, 0, 4);
+    pass.execute_indirect(list, 0, 1);
     pass.end();
     c.memory_barrier(stage::COLOR, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();

@@ -31,16 +31,14 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.begin_debug_label("fill").unwrap();
+    c.begin_debug_label("fill");
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff).unwrap();
+    pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff);
     pass.memory_barrier(stage::COPY, stage::COMPUTE);
-    pass.bind_compute_pipeline(pipeline).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
-        .unwrap();
-    pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4)
-        .unwrap();
-    pass.dispatch(n / 64, 1, 1).unwrap();
+    pass.bind_compute_pipeline(pipeline);
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4);
+    pass.dispatch(n / 64, 1, 1);
     pass.memory_barrier(stage::COMPUTE, stage::HOST);
     pass.end();
     c.end_debug_label();

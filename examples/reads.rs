@@ -126,24 +126,21 @@ pub fn main() {
         dst_stage: stage::COLOR | stage::FRAGMENT,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     c.texture_barrier(&TextureBarrier {
         texture: depth,
         src_stage: stage::DEPTH,
         dst_stage: stage::DEPTH,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     c.texture_barrier(&TextureBarrier {
         texture: color,
         src_stage: stage::COLOR,
         dst_stage: stage::COLOR,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,
@@ -168,25 +165,25 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: n,
         height: n,
-    });
+    }]);
     pass.bind_render_pipeline(fill);
-    pass.bind_uniform_buffer(0, constants, 0, 4).unwrap();
+    pass.bind_uniform_buffer(0, constants, 0, 4);
     pass.draw(3, 1, 0, 0);
-    pass.input_attachment_barrier().unwrap();
+    pass.input_attachment_barrier();
     pass.bind_render_pipeline(add);
-    pass.bind_uniform_buffer(0, constants, stride, 4).unwrap();
+    pass.bind_uniform_buffer(0, constants, stride, 4);
     pass.draw(3, count, 0, 0);
-    pass.input_attachment_barrier().unwrap();
+    pass.input_attachment_barrier();
     pass.bind_render_pipeline(copy);
     pass.draw(3, 1, 0, 0);
     pass.end();

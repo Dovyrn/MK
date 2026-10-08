@@ -163,8 +163,8 @@ impl<'a> Check<'a> {
             inputs: [Texture::default(); slot::COLORS as usize],
             reads: 0,
             tile: None,
-            views: 0,
-            scissors: 0,
+            views: (base == "render") as u32,
+            scissors: (base == "render") as u32,
             carried: 0,
             fresh: 0,
             barrier: false,
@@ -341,11 +341,6 @@ impl<'a> Check<'a> {
         check!(
             self.render,
             "{} needs bind_render_pipeline earlier in this pass",
-            command_name(c)
-        );
-        check!(
-            self.views > 0 && self.scissors > 0,
-            "{} needs set_viewport and set_scissor earlier in this pass; passes start with neither",
             command_name(c)
         );
         check_eq!(
@@ -604,8 +599,8 @@ impl<'a> Check<'a> {
                 self.barrier = false;
                 self.passes = true;
                 self.render = false;
-                self.views = 0;
-                self.scissors = 0;
+                self.views = 1;
+                self.scissors = 1;
                 self.carried |= self.fresh;
                 self.fresh = 0;
             }
@@ -937,19 +932,6 @@ impl<'a> Check<'a> {
                 assert_known(name, "topology", topology::name(v), topology::valid(v));
                 self.topology = v;
             }
-            Command::SetScissor {
-                x,
-                y,
-                width,
-                height,
-            } => {
-                let end = (x as u64 + width as u64).max(y as u64 + height as u64);
-                check!(
-                    end <= i32::MAX as u64,
-                    "set_scissor {x},{y} {width}x{height} ends past i32::MAX"
-                );
-                self.scissors = 1;
-            }
             Command::Draw { .. } => self.check_draw(c, false),
             Command::DrawIndexed { .. } => self.check_draw(c, true),
             Command::SetDepthState { state } => {
@@ -1157,31 +1139,20 @@ impl<'a> Check<'a> {
                     "end_debug_label has no begin_debug_label open in this pass"
                 );
             }
-            Command::SetViewports { viewports } => {
+            Command::SetViewport { viewports } => {
                 assert_rects(name, viewports.len(), caps.viewports);
                 for v in viewports {
                     assert_viewport(name, v.x, v.y, v.width, v.height, v.near, v.far);
                 }
                 self.views = viewports.len() as u32;
             }
-            Command::SetViewport {
-                x,
-                y,
-                width,
-                height,
-                near,
-                far,
-            } => {
-                assert_viewport(name, x, y, width, height, near, far);
-                self.views = 1;
-            }
-            Command::SetScissors { scissors } => {
+            Command::SetScissor { scissors } => {
                 assert_rects(name, scissors.len(), caps.viewports);
                 for r in scissors {
                     let end = (r.x as u64 + r.width as u64).max(r.y as u64 + r.height as u64);
                     check!(
                         end <= i32::MAX as u64,
-                        "set_scissors {r:?} ends past i32::MAX"
+                        "set_scissor {r:?} ends past i32::MAX"
                     );
                 }
                 self.scissors = scissors.len() as u32;

@@ -49,9 +49,9 @@ pub fn main() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
-        pass.bind_compute_pipeline(pipeline).unwrap();
-        pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4).unwrap();
-        pass.dispatch(1, 1, 1).unwrap();
+        pass.bind_compute_pipeline(pipeline);
+        pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4);
+        pass.dispatch(1, 1, 1);
         pass.memory_barrier(stage::COMPUTE, stage::HOST);
         pass.end();
         device.submit(c, &[], &[(&timeline, value)]).unwrap();

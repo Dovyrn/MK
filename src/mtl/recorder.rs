@@ -585,29 +585,6 @@ impl<'a> Recorder<'a> {
                 self.primitive = p.primitive;
                 self.render_pipeline = Some(p);
             }
-            Command::SetViewport {
-                x,
-                y,
-                width,
-                height,
-                near,
-                far,
-            } => self.render_encoder().setViewport(MTLViewport {
-                originX: x as f64,
-                originY: y as f64,
-                width: width as f64,
-                height: height as f64,
-                znear: near as f64,
-                zfar: far as f64,
-            }),
-            Command::SetScissor {
-                x,
-                y,
-                width,
-                height,
-            } => self
-                .render_encoder()
-                .setScissorRect(self.clamp_scissor(x, y, width, height)),
             Command::SetCullMode { cull } => self
                 .render_encoder()
                 .setCullMode(MTLCullMode(cull as usize)),
@@ -923,7 +900,7 @@ impl<'a> Recorder<'a> {
                     },
                 }
             }
-            Command::SetViewports { viewports } => {
+            Command::SetViewport { viewports } => {
                 let mut list = [MTLViewport {
                     originX: 0.0,
                     originY: 0.0,
@@ -949,7 +926,7 @@ impl<'a> Recorder<'a> {
                         .setViewports_count(NonNull::new(list.as_mut_ptr()).unwrap(), n)
                 }
             }
-            Command::SetScissors { scissors } => {
+            Command::SetScissor { scissors } => {
                 let mut list = [MTLScissorRect {
                     x: 0,
                     y: 0,

@@ -29,7 +29,7 @@ impl Device {
         self.destroy_buffer(buffer);
     }
 
-    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> [u32; 8] {
+    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> crate::IndirectShaderHandle {
         let buffer = *self.res.indirects.get(indirect);
         let commands = self.buffer_address(buffer);
         self.res.table.shader_handle(indirect, commands, 0, [0; 6])

@@ -17,7 +17,7 @@ impl Device {
         self.res.table.drop_indirect(indirect);
     }
 
-    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> [u32; 8] {
+    pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> crate::IndirectShaderHandle {
         self.res.table.indirects.get(indirect);
         unreachable!("caps.addresses is false on GL")
     }

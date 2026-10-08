@@ -57,8 +57,7 @@ pub fn main() {
         dst_stage: stage::COLOR,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,
@@ -76,18 +75,18 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: n,
         height: n,
-    });
-    pass.dispatch_tile(stamp).unwrap();
+    }]);
+    pass.dispatch_tile(stamp);
     pass.end();
     c.memory_barrier(stage::COLOR | stage::FRAGMENT, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();

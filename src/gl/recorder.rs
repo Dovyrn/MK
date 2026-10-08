@@ -559,7 +559,14 @@ impl<'a> Recorder<'a> {
                     width,
                     height,
                     layers,
-                } => self.begin_render(width, height, layers)?,
+                } => {
+                    self.begin_render(width, height, layers)?;
+                    gl.viewport(0, 0, width as i32, height as i32);
+                    gl.depth_range(0.0, 1.0);
+                    self.views = vec![[0.0, 0.0, width as f32, height as f32]];
+                    self.scissors = vec![[0, 0, width as i32, height as i32]];
+                    self.apply_scissors();
+                }
                 Command::EndRenderPass => self.end_render()?,
                 Command::InputAttachmentBarrier
                 | Command::TileMemory { .. }
@@ -579,28 +586,6 @@ impl<'a> Recorder<'a> {
                     set_enabled(gl, glow::DEPTH_CLAMP, p.clamp);
                     set_enabled(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
                     self.apply_blend_state(p);
-                }
-                Command::SetViewport {
-                    x,
-                    y,
-                    width,
-                    height,
-                    near,
-                    far,
-                } => {
-                    gl.viewport(x as i32, y as i32, width as i32, height as i32);
-                    gl.depth_range(near as f64, far as f64);
-                    self.views = vec![[x, y, width, height]];
-                    self.apply_scissors();
-                }
-                Command::SetScissor {
-                    x,
-                    y,
-                    width,
-                    height,
-                } => {
-                    self.scissors = vec![[x as i32, y as i32, width as i32, height as i32]];
-                    self.apply_scissors();
                 }
                 Command::SetCullMode { cull: c } => match c {
                     cull_mode::NONE => gl.disable(glow::CULL_FACE),
@@ -791,7 +776,7 @@ impl<'a> Recorder<'a> {
                     }
                     gl.bind_buffer(glow::QUERY_BUFFER, None);
                 }
-                Command::SetViewports { viewports } => {
+                Command::SetViewport { viewports } => {
                     let views: Vec<_> = viewports.iter().collect();
                     match views.as_slice() {
                         [v] => {
@@ -817,7 +802,7 @@ impl<'a> Recorder<'a> {
                         .collect();
                     self.apply_scissors();
                 }
-                Command::SetScissors { scissors } => {
+                Command::SetScissor { scissors } => {
                     self.scissors = scissors
                         .iter()
                         .map(|r| [r.x as i32, r.y as i32, r.width as i32, r.height as i32])

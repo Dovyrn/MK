@@ -86,22 +86,6 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nBindRenderPipeline(long target, long pipeline);
 
-    public void setViewport(Viewport info) {
-        synchronized (device) {
-            nSetViewport(handle(), info.x, info.y, info.width, info.height, info.near, info.far);
-        }
-    }
-
-    private static native void nSetViewport(long target, float x, float y, float width, float height, float near, float far);
-
-    public void setScissor(Scissor info) {
-        synchronized (device) {
-            nSetScissor(handle(), info.x, info.y, info.width, info.height);
-        }
-    }
-
-    private static native void nSetScissor(long target, int x, int y, int width, int height);
-
     public void setCullMode(int cull) {
         synchronized (device) {
             nSetCullMode(handle(), cull);
@@ -302,7 +286,7 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nEndOcclusionQuery(long target, long pool, int index);
 
-    public void setViewports(Viewport[] viewports) {
+    public void setViewport(Viewport[] viewports) {
         synchronized (device) {
             try (var arena = new Arena()) {
             var viewportsSize = 4;
@@ -316,14 +300,14 @@ public class RenderPass implements AutoCloseable {
             for (var x : viewports) {
                 at = x.encode(at);
             }
-                nSetViewports(handle(), list, viewportsSize);
+                nSetViewport(handle(), list, viewportsSize);
             }
         }
     }
 
-    private static native void nSetViewports(long target, long viewports, int viewportsLength);
+    private static native void nSetViewport(long target, long viewports, int viewportsLength);
 
-    public void setScissors(Scissor[] scissors) {
+    public void setScissor(Scissor[] scissors) {
         synchronized (device) {
             try (var arena = new Arena()) {
             var scissorsSize = 4;
@@ -337,12 +321,12 @@ public class RenderPass implements AutoCloseable {
             for (var x : scissors) {
                 at = x.encode(at);
             }
-                nSetScissors(handle(), list, scissorsSize);
+                nSetScissor(handle(), list, scissorsSize);
             }
         }
     }
 
-    private static native void nSetScissors(long target, long scissors, int scissorsLength);
+    private static native void nSetScissor(long target, long scissors, int scissorsLength);
 
     public void inputAttachmentBarrier() {
         synchronized (device) {

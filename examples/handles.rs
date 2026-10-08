@@ -39,10 +39,9 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.bind_compute_pipeline(fill).unwrap();
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64)
-        .unwrap();
-    pass.dispatch(n / 64, 1, 1).unwrap();
+    pass.bind_compute_pipeline(fill);
+    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.dispatch(n / 64, 1, 1);
     pass.memory_barrier(stage::COMPUTE, stage::COPY);
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
     pass.memory_barrier(stage::COPY, stage::HOST);

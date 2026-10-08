@@ -50,8 +50,7 @@ pub fn main() {
         mips: 1,
         layers: 1,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -67,17 +66,17 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    pass.set_viewport(&Viewport {
+    pass.set_viewport(&[Viewport {
         width: 4.0,
         height: 4.0,
         ..Default::default()
-    });
-    pass.set_scissor(&Scissor {
+    }]);
+    pass.set_scissor(&[Scissor {
         x: 0,
         y: 0,
         width: 4,
         height: 4,
-    });
+    }]);
     pass.end();
     c.memory_barrier(stage::COLOR, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();

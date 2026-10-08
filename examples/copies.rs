@@ -104,8 +104,7 @@ pub fn main() {
             dst_stage: stage::COPY | stage::COLOR | stage::DEPTH,
             before: texture_layout::UNDEFINED,
             ..Default::default()
-        })
-        .unwrap();
+        });
     }
     pass.copy_buffer(upload, 0, back, 0, size);
     let row = (N * 4) as u64;
@@ -135,8 +134,7 @@ pub fn main() {
             width: N,
             height: N,
             ..Default::default()
-        })
-        .unwrap();
+        });
     }
     pass.copy_texture(&TextureCopy {
         src: array,
@@ -147,8 +145,7 @@ pub fn main() {
         width: 4,
         height: 4,
         ..Default::default()
-    })
-    .unwrap();
+    });
     pass.end();
     c.begin_render_pass(&RenderPassInfo {
         width: 8,
@@ -186,8 +183,7 @@ pub fn main() {
         width: 8,
         height: 8,
         ..Default::default()
-    })
-    .unwrap();
+    });
     pass.memory_barrier(stage::COPY, stage::COPY);
     for (s, &offset) in slots.iter().zip(&offsets) {
         pass.copy_texture_to_buffer(&BufferTextureCopy {

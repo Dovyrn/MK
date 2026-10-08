@@ -39,8 +39,7 @@ impl Frame {
             dst_stage: stage::COLOR,
             before: texture_layout::UNDEFINED,
             ..Default::default()
-        })
-        .unwrap();
+        });
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: N,
@@ -54,17 +53,17 @@ impl Frame {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_viewport(&Viewport {
+        pass.set_viewport(&[Viewport {
             width: N as f32,
             height: N as f32,
             ..Default::default()
-        });
-        pass.set_scissor(&Scissor {
+        }]);
+        pass.set_scissor(&[Scissor {
             x: 0,
             y: 0,
             width: N,
             height: N,
-        });
+        }]);
         pass.bind_render_pipeline(self.pipeline);
         pass.bind_index_buffer(self.indices, 0, index_type::U16);
         draw(&mut pass);
@@ -153,12 +152,10 @@ pub fn main() {
     let single = device.caps().indirect;
     if single {
         let none = |_: &mut CommandBuffer| {};
-        let plain = frame.center(&device, &timeline, 1, &none, &|p| {
-            p.draw_indirect(args, 0).unwrap()
-        });
+        let plain = frame.center(&device, &timeline, 1, &none, &|p| p.draw_indirect(args, 0));
         assert_eq!(plain, RED, "draw_indirect");
         let indexed = frame.center(&device, &timeline, 2, &none, &|p| {
-            p.draw_indexed_indirect(args, 16).unwrap()
+            p.draw_indexed_indirect(args, 16)
         });
         assert_eq!(indexed, RED, "draw_indexed_indirect");
     }
@@ -205,7 +202,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
     let push = |count: u32| {
         let mut bytes = device.buffer_address(range).to_le_bytes().to_vec();
         for word in [list, indexed]
-            .map(|l| device.indirect_shader_handle(l))
+            .map(|l| device.indirect_shader_handle(l).0)
             .as_flattened()
         {
             bytes.extend(word.to_le_bytes());
@@ -233,16 +230,15 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         let at = count.unwrap_or(0) as u64 * stride;
         let encoded = |c: &mut CommandBuffer| {
             let mut pass = c.begin_compute_pass().unwrap();
-            pass.bind_compute_pipeline(encode).unwrap();
-            pass.bind_uniform_buffer(0, constants, at, blocks[0].len() as u64)
-                .unwrap();
-            pass.dispatch(1, 1, 1).unwrap();
+            pass.bind_compute_pipeline(encode);
+            pass.bind_uniform_buffer(0, constants, at, blocks[0].len() as u64);
+            pass.dispatch(1, 1, 1);
             pass.end();
             c.memory_barrier(stage::COMPUTE, stage::INDIRECT);
         };
         let draw = |pass: &mut RenderPass| match count {
-            Some(_) => pass.execute_indirect_count(target, range, 0).unwrap(),
-            None => pass.execute_indirect(target, 0, 1).unwrap(),
+            Some(_) => pass.execute_indirect_count(target, range, 0),
+            None => pass.execute_indirect(target, 0, 1),
         };
         let got = p.center(device, &timeline, ran, &encoded, &draw);
         assert_eq!(got, center, "{target} with count {count:?}");
@@ -264,7 +260,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             })
             .unwrap();
         let mut bytes = device.buffer_address(range).to_le_bytes().to_vec();
-        for word in device.indirect_shader_handle(pair) {
+        for word in device.indirect_shader_handle(pair).0 {
             bytes.extend(word.to_le_bytes());
         }
         let (constants, _) = host::constants(device, &[&bytes]);
@@ -274,18 +270,17 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             ran += 1;
             let encoded = |c: &mut CommandBuffer| {
                 let mut pass = c.begin_compute_pass().unwrap();
-                pass.bind_compute_pipeline(encode).unwrap();
-                pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64)
-                    .unwrap();
-                pass.dispatch(1, 1, 1).unwrap();
+                pass.bind_compute_pipeline(encode);
+                pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
+                pass.dispatch(1, 1, 1);
                 pass.end();
                 c.memory_barrier(stage::COMPUTE, stage::INDIRECT);
             };
             let draw = |pass: &mut RenderPass| {
                 if gpu {
-                    pass.execute_indirect_count(pair, range, 0).unwrap()
+                    pass.execute_indirect_count(pair, range, 0)
                 } else {
-                    pass.execute_indirect(pair, 0, 2).unwrap()
+                    pass.execute_indirect(pair, 0, 2)
                 }
             };
             let got = p.center(device, &timeline, ran, &encoded, &draw);

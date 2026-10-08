@@ -61,10 +61,10 @@ pub fn main() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
         let mut pass = c.begin_compute_pass().unwrap();
-        pass.bind_compute_pipeline(pipeline).unwrap();
-        pass.bind_storage_buffer(0, buffer, 0, 16).unwrap();
-        pass.bind_storage_buffer(1, buffer, 0, 16).unwrap();
-        pass.dispatch(1, 1, 1).unwrap();
+        pass.bind_compute_pipeline(pipeline);
+        pass.bind_storage_buffer(0, buffer, 0, 16);
+        pass.bind_storage_buffer(1, buffer, 0, 16);
+        pass.dispatch(1, 1, 1);
         pass.memory_barrier(stage::COMPUTE, stage::HOST);
         pass.end();
         let value = value + 2;
@@ -135,16 +135,15 @@ fn textures(
         dst_stage: stage::COPY,
         before: texture_layout::UNDEFINED,
         ..Default::default()
-    })
-    .unwrap();
+    });
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_buffer_to_texture(&BufferTextureCopy { ..copy(zeros) });
     pass.end();
     c.memory_barrier(stage::COPY, stage::COMPUTE);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.bind_compute_pipeline(pipeline).unwrap();
-    pass.bind_storage_texture(0, texture).unwrap();
-    pass.dispatch(1, 1, 1).unwrap();
+    pass.bind_compute_pipeline(pipeline);
+    pass.bind_storage_texture(0, texture);
+    pass.dispatch(1, 1, 1);
     pass.end();
     c.memory_barrier(stage::COMPUTE, stage::COPY);
     let mut pass = c.begin_compute_pass().unwrap();
