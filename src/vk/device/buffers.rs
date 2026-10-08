@@ -59,7 +59,7 @@ impl Device {
             data,
             own: false,
         });
-        self.res.table.buffers.set(id, size);
+        self.res.table.add_buffer(id, size, !data.is_null());
         self.res.table.residency.exempt_buffer(id);
         id
     }
@@ -77,11 +77,8 @@ impl Device {
 
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
+        self.res.table.assert_mappable(buffer);
         let b = self.res.buffers.get(buffer);
-        check!(
-            !b.data.is_null(),
-            "map_buffer on {buffer}, which has no host mapping; create it with memory::UPLOAD or memory::READBACK, or import it with its mapped pointer"
-        );
         b.data
     }
 
@@ -90,8 +87,9 @@ impl Device {
     }
 
     pub(super) fn insert_buffer(&mut self, buffer: BufferObject, size: u64) -> Buffer {
+        let mappable = !buffer.data.is_null();
         let slot = self.res.buffers.insert(buffer);
-        self.res.table.buffers.set(slot, size);
+        self.res.table.add_buffer(slot, size, mappable);
         slot
     }
 

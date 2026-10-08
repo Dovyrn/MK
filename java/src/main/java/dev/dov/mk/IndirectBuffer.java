@@ -8,4 +8,8 @@ public record IndirectBuffer(long raw) {
     static long raw(IndirectBuffer handle) {
         return handle == null ? 0 : handle.raw;
     }
+
+    public Resource resource() {
+        return new Resource().kind(ResourceKind.INDIRECT_BUFFER).handle(raw);
+    }
 }

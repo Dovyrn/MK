@@ -12,8 +12,9 @@ impl Device {
                 .raw
                 .newBufferWithLength_options(size as usize, resource_options(memory))
                 .ok_or("buffer allocation failed")?;
+            let mappable = buffer.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(buffer);
-            self.res.table.buffers.set(id, size);
+            self.res.table.add_buffer(id, size, mappable);
             Ok(id)
         })
     }
@@ -21,8 +22,9 @@ impl Device {
     pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> Buffer {
         autoreleasepool(|_| {
             let size = raw.length() as u64;
+            let mappable = raw.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(raw);
-            self.res.table.buffers.set(id, size);
+            self.res.table.add_buffer(id, size, mappable);
             self.res.table.residency.exempt_buffer(id);
             id
         })
@@ -40,12 +42,8 @@ impl Device {
 
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.res.table.buffers.get(buffer);
+        self.res.table.assert_mappable(buffer);
         let b = self.res.buffers.get(buffer);
-        check_ne!(
-            b.storageMode(),
-            MTLStorageMode::Private,
-            "map_buffer on {buffer}, which is in private storage and has no host mapping"
-        );
         b.contents().as_ptr().cast()
     }
 

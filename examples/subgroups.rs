@@ -24,7 +24,7 @@ pub fn main() {
     let buffer = device.create_buffer(64 * 11 * 4, memory::READBACK).unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[buffer], &[], &[], &[]);
+    device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
     let sizes: Vec<u32> = (0..7)
         .map(|i| 1u32 << i)

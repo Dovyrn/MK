@@ -114,7 +114,9 @@ pub fn main() {
         textures.push(depth);
     }
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back, constants], &textures, &[], &[]);
+    let mut list: Vec<mk::Resource> = vec![back.into(), constants.into()];
+    list.extend(textures.iter().map(|&t| mk::Resource::from(t)));
+    device.add_residency(set, &list);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

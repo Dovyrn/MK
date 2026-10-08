@@ -38,7 +38,7 @@ pub fn main() {
     }
     let buffer = device.create_buffer(16, memory::READBACK).unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[buffer], &[], &[], &[]);
+    device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
     let mut entries = vec![("extremes", [0, u64::MAX], [63 << 33, 63])];
     if caps.atomics64 & atomic64::ALL != 0 {
@@ -125,7 +125,7 @@ fn textures(
         ..Default::default()
     };
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[zeros, back], &[texture], &[], &[]);
+    device.add_residency(set, &[zeros.into(), back.into(), texture.into()]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

@@ -27,7 +27,7 @@ pub fn main() {
     push.extend(100u32.to_le_bytes());
     let (constants, _) = host::constants(&mut device, &[&push]);
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[buffer, constants], &[], &[], &[]);
+    device.add_residency(set, &[buffer.into(), constants.into()]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

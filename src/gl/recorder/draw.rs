@@ -12,9 +12,7 @@ impl Recorder<'_> {
         } else {
             self.program
         };
-        let Some(program) = program else {
-            return Ok(false);
-        };
+        let program = program.expect("bind a pipeline before drawing or dispatching");
         unsafe {
             if self.used != Some(program.raw) {
                 gl.use_program(Some(program.raw));
@@ -154,9 +152,6 @@ impl Recorder<'_> {
     }
 
     pub fn draw_indirect_buffer(&self, indexed: bool, buffer: Buffer, offset: u64) {
-        if self.render.is_none() || indexed && self.index.is_none() {
-            return;
-        }
         let kind = self.index.map_or(0, |(_, _, k)| k);
         let raw = self.res.buffers.get(buffer).raw;
         let pointer = offset as usize as *const std::ffi::c_void;

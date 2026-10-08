@@ -14,5 +14,5 @@ Uniform<Push> push : UNIFORM(0);
 void encode() {
     push.list.draw(0, 3, 1, 0, 0);
     push.indexed.draw(0, 3, 1, 1, 0, 0);
-    push.range[0] = uint2(0, push.count);
+    write_indirect_count(push.range, push.count);
 }

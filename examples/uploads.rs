@@ -44,7 +44,7 @@ pub fn main() {
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back], &[texture], &[], &[]);
+    device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
@@ -190,7 +190,7 @@ pub fn main() {
         }
         if readable {
             let back = device.create_buffer(2 * 2 * 8, memory::READBACK).unwrap();
-            device.add_residency(set, &[back], &[blocks], &[], &[]);
+            device.add_residency(set, &[back.into(), blocks.into()]);
             device.commit_residency(set);
             let timeline = device.create_timeline().unwrap();
             let mut c = device.begin_commands(pool).unwrap();

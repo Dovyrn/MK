@@ -62,7 +62,10 @@ pub fn main() {
     let mut wrong = Vec::new();
     let (half, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back, groups, half], &[color], &[], &[]);
+    device.add_residency(
+        set,
+        &[back.into(), groups.into(), half.into(), color.into()],
+    );
     device.commit_residency(set);
     for round in passes.into_iter().flatten() {
         let mut c = device.begin_commands(pool).unwrap();
@@ -202,7 +205,17 @@ fn executed(
     let (half, _) = host::constants(device, &[&0.5f32.to_le_bytes()]);
     let (constants, _) = host::constants(device, &[&bytes]);
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back, range, half, constants], &[color], &[], &[list]);
+    device.add_residency(
+        set,
+        &[
+            back.into(),
+            range.into(),
+            half.into(),
+            constants.into(),
+            color.into(),
+            list.into(),
+        ],
+    );
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

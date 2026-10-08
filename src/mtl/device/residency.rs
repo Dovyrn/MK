@@ -1,7 +1,7 @@
 use super::Device;
 use crate::mtl::query::Query;
 use crate::residency::Members;
-use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Texture};
+use crate::{ResidencySet, Resource};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
@@ -24,71 +24,52 @@ impl Device {
         self.res.sets.remove(set);
     }
 
-    pub fn add_residency(
-        &mut self,
-        set: ResidencySet,
-        buffers: &[Buffer],
-        textures: &[Texture],
-        queries: &[QueryPool],
-        indirects: &[IndirectBuffer],
-    ) {
-        self.change_residency(set, buffers, textures, queries, indirects, true);
+    pub fn add_residency(&mut self, set: ResidencySet, resources: &[Resource]) {
+        self.change_residency(set, resources, true);
     }
 
-    pub fn remove_residency(
-        &mut self,
-        set: ResidencySet,
-        buffers: &[Buffer],
-        textures: &[Texture],
-        queries: &[QueryPool],
-        indirects: &[IndirectBuffer],
-    ) {
-        self.change_residency(set, buffers, textures, queries, indirects, false);
+    pub fn remove_residency(&mut self, set: ResidencySet, resources: &[Resource]) {
+        self.change_residency(set, resources, false);
     }
 
-    fn change_residency(
-        &mut self,
-        set: ResidencySet,
-        buffers: &[Buffer],
-        textures: &[Texture],
-        queries: &[QueryPool],
-        indirects: &[IndirectBuffer],
-        add: bool,
-    ) {
-        let items = Members {
-            buffers: buffers.to_vec(),
-            textures: textures.to_vec(),
-            queries: queries.to_vec(),
-            indirects: indirects.to_vec(),
-        };
-        self.res.table.change_residency(set, items, add);
-        let raw = self.res.sets.get(set);
+    fn change_residency(&mut self, set: ResidencySet, resources: &[Resource], add: bool) {
+        let items = Members::from(resources);
         let res = &self.res;
-        let allocations = buffers
+        let allocations: Vec<&ProtocolObject<dyn MTLAllocation>> = items
+            .buffers
             .iter()
             .map(|&b| ProtocolObject::from_ref(&**res.buffers.get(b)))
             .chain(
-                textures
+                items
+                    .textures
                     .iter()
                     .map(|&t| ProtocolObject::from_ref(&*res.textures.get(t).raw)),
             )
-            .chain(queries.iter().filter_map(|&q| match res.queries.get(q) {
-                Query::Buffer(b) => Some(ProtocolObject::from_ref(&**b)),
-                Query::Timestamp(_) => None,
-            }))
             .chain(
-                indirects
+                items
+                    .queries
+                    .iter()
+                    .filter_map(|&q| match res.queries.get(q) {
+                        Query::Buffer(b) => Some(ProtocolObject::from_ref(&**b)),
+                        Query::Timestamp(_) => None,
+                    }),
+            )
+            .chain(
+                items
+                    .indirects
                     .iter()
                     .map(|&i| ProtocolObject::from_ref(&*res.indirects.get(i).raw)),
-            );
+            )
+            .collect();
+        let raw = res.sets.get(set);
         for a in allocations {
-            let a: &ProtocolObject<dyn MTLAllocation> = a;
             if add {
                 raw.addAllocation(a);
             } else {
                 raw.removeAllocation(a);
             }
         }
+        self.res.table.change_residency(set, items, add);
     }
 
     pub fn commit_residency(&mut self, set: ResidencySet) {

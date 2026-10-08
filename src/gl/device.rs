@@ -307,7 +307,9 @@ impl Device {
             .res
             .buffers
             .insert(BufferObject::new(&self.gl, &self.extra, size, memory)?);
-        self.res.table.buffers.set(id, size);
+        self.res
+            .table
+            .add_buffer(id, size, memory != memory::DEVICE);
         Ok(id)
     }
 
@@ -322,7 +324,7 @@ impl Device {
             persistent: false,
             own: false,
         });
-        self.res.table.buffers.set(id, size);
+        self.res.table.add_buffer(id, size, true);
         self.res.table.residency.exempt_buffer(id);
         id
     }
@@ -342,11 +344,8 @@ impl Device {
     pub fn map_buffer(&self, buffer: Buffer) -> *mut u8 {
         self.thread();
         self.res.table.buffers.get(buffer);
+        self.res.table.assert_mappable(buffer);
         let b = self.res.buffers.get(buffer);
-        check!(
-            !b.own || b.memory != memory::DEVICE,
-            "map_buffer on {buffer}, which was created with memory::DEVICE and has no host mapping"
-        );
         if b.persistent || !b.data.get().is_null() {
             return b.data.get();
         }

@@ -28,6 +28,8 @@ mod queues;
 mod reads;
 #[path = "../examples/render.rs"]
 mod render;
+#[path = "../examples/residency.rs"]
+mod residency;
 #[path = "../examples/resolve.rs"]
 mod resolve;
 #[path = "../examples/slots.rs"]
@@ -58,5 +60,6 @@ macro_rules! examples {
 
 examples!(
     adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, queries,
-    queues, reads, render, resolve, slots, subgroups, texture, tiles, uploads, view, viewports
+    queues, reads, render, residency, resolve, slots, subgroups, texture, tiles, uploads, view,
+    viewports
 );

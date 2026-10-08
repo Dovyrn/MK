@@ -1,6 +1,6 @@
 use crate::entries::Entries;
 use crate::handle::Handle;
-use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Texture};
+use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Resource, Texture, resource_kind};
 
 const EXEMPT: u32 = 1 << 31;
 
@@ -10,6 +10,60 @@ pub struct Members {
     pub textures: Vec<Texture>,
     pub queries: Vec<QueryPool>,
     pub indirects: Vec<IndirectBuffer>,
+}
+
+impl From<Buffer> for Resource {
+    fn from(h: Buffer) -> Self {
+        Self {
+            kind: resource_kind::BUFFER,
+            handle: h.to_raw(),
+        }
+    }
+}
+
+impl From<Texture> for Resource {
+    fn from(h: Texture) -> Self {
+        Self {
+            kind: resource_kind::TEXTURE,
+            handle: h.to_raw(),
+        }
+    }
+}
+
+impl From<QueryPool> for Resource {
+    fn from(h: QueryPool) -> Self {
+        Self {
+            kind: resource_kind::QUERY_POOL,
+            handle: h.to_raw(),
+        }
+    }
+}
+
+impl From<IndirectBuffer> for Resource {
+    fn from(h: IndirectBuffer) -> Self {
+        Self {
+            kind: resource_kind::INDIRECT_BUFFER,
+            handle: h.to_raw(),
+        }
+    }
+}
+
+impl From<&[Resource]> for Members {
+    fn from(list: &[Resource]) -> Self {
+        let mut m = Members::default();
+        for r in list {
+            match r.kind {
+                resource_kind::BUFFER => m.buffers.push(Buffer::from_raw(r.handle)),
+                resource_kind::TEXTURE => m.textures.push(Texture::from_raw(r.handle)),
+                resource_kind::QUERY_POOL => m.queries.push(QueryPool::from_raw(r.handle)),
+                resource_kind::INDIRECT_BUFFER => {
+                    m.indirects.push(IndirectBuffer::from_raw(r.handle))
+                }
+                k => panic!("resource kind is {}", resource_kind::name(k)),
+            }
+        }
+        m
+    }
 }
 
 #[derive(Default)]

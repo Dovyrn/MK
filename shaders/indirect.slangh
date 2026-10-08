@@ -2,6 +2,10 @@ uint64_t mk_address(uint2 v) {
     return uint64_t(v.x) | (uint64_t(v.y) << 32);
 }
 
+void write_indirect_count(uint2* range, uint count) {
+    range[0] = uint2(0, count);
+}
+
 struct IndirectBuffer {
     uint2 commands;
     uint topology;

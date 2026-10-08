@@ -85,6 +85,22 @@ impl std::fmt::Display for {name} {{
 }
 
 pub fn java(name: &str) -> String {
+    let kind = match name {
+        "Buffer" => Some("BUFFER"),
+        "Texture" => Some("TEXTURE"),
+        "QueryPool" => Some("QUERY_POOL"),
+        "IndirectBuffer" => Some("INDIRECT_BUFFER"),
+        _ => None,
+    };
+    let resource = kind.map_or(String::new(), |k| {
+        format!(
+            "
+    public Resource resource() {{
+        return new Resource().kind(ResourceKind.{k}).handle(raw);
+    }}
+"
+        )
+    });
     format!(
         "package dev.dov.mk;
 
@@ -96,7 +112,7 @@ public record {name}(long raw) {{
     static long raw({name} handle) {{
         return handle == null ? 0 : handle.raw;
     }}
-}}
+{resource}}}
 "
     )
 }

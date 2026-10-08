@@ -105,10 +105,14 @@ pub fn main() {
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
-        &[vbuf, ibuf, back, constants],
-        &[color, depth],
-        &[],
-        &[],
+        &[
+            vbuf.into(),
+            ibuf.into(),
+            back.into(),
+            constants.into(),
+            color.into(),
+            depth.into(),
+        ],
     );
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();

@@ -136,7 +136,10 @@ pub fn main() {
     device.unmap_buffer(indices);
     device.unmap_buffer(args);
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back, indices, args], &[color], &[], &[]);
+    device.add_residency(
+        set,
+        &[back.into(), indices.into(), args.into(), color.into()],
+    );
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let frame = Frame {
@@ -212,7 +215,10 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
     };
     let blocks = [push(0), push(1)];
     let (constants, stride) = host::constants(device, &[&blocks[0], &blocks[1]]);
-    device.add_residency(p.set, &[range, constants], &[], &[], &[list, indexed]);
+    device.add_residency(
+        p.set,
+        &[range.into(), constants.into(), list.into(), indexed.into()],
+    );
     device.commit_residency(p.set);
     let counted = device.caps().indirect_count;
     let timeline = device.create_timeline().unwrap();
@@ -241,7 +247,52 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         let got = p.center(device, &timeline, ran, &encoded, &draw);
         assert_eq!(got, center, "{target} with count {count:?}");
     }
+    let multi = device.caps().multi_draw;
+    if multi {
+        let pair = device
+            .create_indirect_buffer(&IndirectBufferInfo {
+                draws: 2,
+                pipeline: p.pipeline,
+                ..Default::default()
+            })
+            .unwrap();
+        let encode = device
+            .create_compute_pipeline(&mk::ComputePipelineInfo {
+                code: host::code!("encode_pair"),
+                entry: "encode",
+                ..Default::default()
+            })
+            .unwrap();
+        let mut bytes = device.buffer_address(range).to_le_bytes().to_vec();
+        for word in device.indirect_shader_handle(pair) {
+            bytes.extend(word.to_le_bytes());
+        }
+        let (constants, _) = host::constants(device, &[&bytes]);
+        device.add_residency(p.set, &[constants.into(), pair.into()]);
+        device.commit_residency(p.set);
+        for gpu in [false, true].into_iter().filter(|&g| !g || counted) {
+            ran += 1;
+            let encoded = |c: &mut CommandBuffer| {
+                let mut pass = c.begin_compute_pass().unwrap();
+                pass.bind_compute_pipeline(encode).unwrap();
+                pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64)
+                    .unwrap();
+                pass.dispatch(1, 1, 1).unwrap();
+                pass.end();
+                c.memory_barrier(stage::COMPUTE, stage::INDIRECT);
+            };
+            let draw = |pass: &mut RenderPass| {
+                if gpu {
+                    pass.execute_indirect_count(pair, range, 0).unwrap()
+                } else {
+                    pass.execute_indirect(pair, 0, 2).unwrap()
+                }
+            };
+            let got = p.center(device, &timeline, ran, &encoded, &draw);
+            assert_eq!(got, RED, "second of two draws, GPU count: {gpu}");
+        }
+    }
     format!(
-        "draws and indexed draws encoded on the GPU and executed from indirect buffers, with a GPU count: {counted}"
+        "draws and indexed draws encoded on the GPU and executed from indirect buffers, with a GPU count: {counted}, two draws in one call: {multi}"
     )
 }

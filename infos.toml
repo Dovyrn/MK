@@ -220,6 +220,13 @@ fields = [
 ]
 
 [[info]]
+name = "Resource"
+fields = [
+    ["kind", "u32", "resource_kind::BUFFER"],
+    ["handle", "u64", "0"],
+]
+
+[[info]]
 name = "IndirectBufferInfo"
 fields = [
     ["draws", "u32", "0"],

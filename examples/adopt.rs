@@ -146,16 +146,89 @@ fn native(
     (device, slot, (host, image, memory))
 }
 
+#[cfg(feature = "gl")]
+fn imported(device: &mut Device, _: &()) -> (mk::Buffer, ()) {
+    use mk::glow::HasContext;
+    let gl = device.gl.clone();
+    let raw = unsafe {
+        let b = gl.create_buffer().unwrap();
+        gl.bind_buffer(mk::glow::COPY_READ_BUFFER, Some(b));
+        gl.buffer_data_size(mk::glow::COPY_READ_BUFFER, 16, mk::glow::DYNAMIC_DRAW);
+        gl.bind_buffer(mk::glow::COPY_READ_BUFFER, None);
+        b.0.get()
+    };
+    (device.import_buffer(raw, 16), ())
+}
+
+#[cfg(feature = "mtl")]
+fn imported(device: &mut Device, _: &()) -> (mk::Buffer, ()) {
+    use mk::objc2_metal::{MTLDevice, MTLResourceOptions};
+    let raw = device
+        .raw
+        .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
+        .unwrap();
+    (device.import_buffer(raw), ())
+}
+
+#[cfg(feature = "vk")]
+fn imported(
+    device: &mut Device,
+    host: &(host::Host, mk::ash::vk::Image, mk::ash::vk::DeviceMemory),
+) -> (mk::Buffer, (mk::ash::vk::Buffer, mk::ash::vk::DeviceMemory)) {
+    use mk::ash::vk;
+    let host = &host.0;
+    let info = vk::BufferCreateInfo::default()
+        .size(16)
+        .usage(vk::BufferUsageFlags::TRANSFER_SRC);
+    unsafe {
+        let raw = host.raw.create_buffer(&info, None).unwrap();
+        let needs = host.raw.get_buffer_memory_requirements(raw);
+        let types = host
+            .instance
+            .get_physical_device_memory_properties(host.physical);
+        let visible =
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+        let index = (0..types.memory_type_count)
+            .find(|&i| {
+                needs.memory_type_bits & (1 << i) != 0
+                    && types.memory_types[i as usize]
+                        .property_flags
+                        .contains(visible)
+            })
+            .unwrap();
+        let alloc = vk::MemoryAllocateInfo::default()
+            .allocation_size(needs.size)
+            .memory_type_index(index);
+        let memory = host.raw.allocate_memory(&alloc, None).unwrap();
+        host.raw.bind_buffer_memory(raw, memory, 0).unwrap();
+        let data = host
+            .raw
+            .map_memory(memory, 0, 16, vk::MemoryMapFlags::empty())
+            .unwrap();
+        (device.import_buffer(raw, 16, data.cast()), (raw, memory))
+    }
+}
+
 pub fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
     let back = device
         .create_buffer((n * n * 4) as u64, memory::READBACK)
         .unwrap();
+    let (source, native) = imported(&mut device, &host);
+    let words = device.create_buffer(16, memory::READBACK).unwrap();
+    unsafe {
+        let data = device.map_buffer(source).cast::<u32>();
+        std::ptr::copy_nonoverlapping([7u32, 8, 9, 10].as_ptr(), data, 4);
+    }
+    device.unmap_buffer(source);
     let timeline = device.create_timeline().unwrap();
     let pool = device.create_command_pool(0).unwrap();
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back], &[texture], &[], &[]);
+    device.add_residency(
+        set,
+        &[back.into(), texture.into(), source.into(), words.into()],
+    );
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
@@ -209,6 +282,7 @@ pub fn main() {
         buffer: back,
         ..Default::default()
     });
+    pass.copy_buffer(source, 0, words, 0, 16);
     pass.memory_barrier(stage::COPY, stage::HOST);
     pass.end();
     device.submit(c, &[], &[(&timeline, 1)]).unwrap();
@@ -222,6 +296,13 @@ pub fn main() {
         pixels[0]
     );
     device.unmap_buffer(back);
+    let copied = unsafe { *device.map_buffer(words).cast::<[u32; 4]>() };
+    assert_eq!(
+        copied,
+        [7, 8, 9, 10],
+        "imported buffer written through map_buffer"
+    );
+    device.unmap_buffer(words);
     device.destroy_timeline(timeline);
     drop(device);
     #[cfg(feature = "vk")]
@@ -229,8 +310,10 @@ pub fn main() {
         let (host, image, memory) = host;
         host.raw.destroy_image(image, None);
         host.raw.free_memory(memory, None);
+        host.raw.destroy_buffer(native.0, None);
+        host.raw.free_memory(native.1, None);
     }
     #[cfg(not(feature = "vk"))]
-    let () = host;
-    println!("cleared a native texture through an adopted device");
+    let ((), ()) = (host, native);
+    println!("cleared a native texture and mapped a native buffer through an adopted device");
 }

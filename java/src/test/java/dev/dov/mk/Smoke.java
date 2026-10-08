@@ -11,6 +11,7 @@ public class Smoke {
         try (var device = device(args[0])) {
             var caps = device.caps();
             System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slots + ", tiles " + caps.tiles);
+            clear(device);
             if (!caps.compute) {
                 System.out.println("java: no compute");
                 return;
@@ -33,7 +34,7 @@ public class Smoke {
             memPutInt(push + 4, 100);
             device.unmapBuffer(constants);
             var set = device.createResidencySet();
-            device.addResidency(set, new Buffer[] {buffer, constants}, new Texture[0], new QueryPool[0], new IndirectBuffer[0]);
+            device.addResidency(set, new Resource[] {buffer.resource(), constants.resource()});
             device.commitResidency(set);
             var commands = device.beginCommands(pool);
             commands.useResidencySet(set);
@@ -72,6 +73,59 @@ public class Smoke {
             nmemFree(code);
             System.out.println("java: 1024 values match");
         }
+    }
+
+    static void clear(Device device) {
+        var size = 4;
+        var texture = device.createTexture(new TextureInfo()
+                .format(Format.RGBA8_UNORM)
+                .width(size)
+                .height(size)
+                .usage(TextureUsage.COLOR | TextureUsage.COPY_SRC));
+        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK);
+        var timeline = device.createTimeline();
+        var pool = device.createCommandPool(0);
+        var set = device.createResidencySet();
+        device.addResidency(set, new Resource[] {texture.resource(), pixels.resource()});
+        device.commitResidency(set);
+        var commands = device.beginCommands(pool);
+        commands.useResidencySet(set);
+        commands.textureBarrier(new TextureBarrier()
+                .texture(texture)
+                .srcStage(Stage.COLOR)
+                .dstStage(Stage.COLOR)
+                .before(TextureLayout.UNDEFINED));
+        var color = new ColorAttachment().texture(texture).r(1).g(0.5f).b(0).a(1);
+        try (var pass = commands.beginRenderPass(new RenderPassInfo()
+                .width(size)
+                .height(size)
+                .colors(new ColorAttachment[] {color}))) {
+        }
+        commands.memoryBarrier(Stage.COLOR, Stage.COPY);
+        try (var pass = commands.beginComputePass()) {
+            pass.copyTextureToBuffer(new BufferTextureCopy()
+                    .texture(texture)
+                    .width(size)
+                    .height(size)
+                    .buffer(pixels));
+            pass.memoryBarrier(Stage.COPY, Stage.HOST);
+        }
+        device.submit(commands, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
+        if (!timeline.await(1, 1000)) {
+            throw new IllegalStateException("timeout");
+        }
+        var data = memByteBuffer(device.mapBuffer(pixels), size * size * 4);
+        for (var i = 0; i < size * size; i++) {
+            var r = data.get(i * 4) & 0xff;
+            var g = data.get(i * 4 + 1) & 0xff;
+            if (r != 255 || Math.abs(g - 128) > 1 || data.get(i * 4 + 3) != (byte) 255) {
+                throw new IllegalStateException("pixel " + i + " is " + r + ", " + g);
+            }
+        }
+        device.unmapBuffer(pixels);
+        device.destroyCommandPool(pool);
+        device.destroyTimeline(timeline);
+        System.out.println("java: render pass cleared and read back");
     }
 
     static Device device(String library) {

@@ -8,4 +8,8 @@ public record Texture(long raw) {
     static long raw(Texture handle) {
         return handle == null ? 0 : handle.raw;
     }
+
+    public Resource resource() {
+        return new Resource().kind(ResourceKind.TEXTURE).handle(raw);
+    }
 }

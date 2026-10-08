@@ -21,6 +21,12 @@ COPY_SRC = 6
 COPY_DST = 7
 PRESENT = 8
 
+[resource_kind]
+BUFFER = 0
+TEXTURE = 1
+QUERY_POOL = 2
+INDIRECT_BUFFER = 3
+
 [texture_usage]
 SAMPLED = 1
 STORAGE = 2

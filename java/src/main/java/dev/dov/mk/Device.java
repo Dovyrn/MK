@@ -323,119 +323,45 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyResidencySet(long device, long set);
 
-    public synchronized void addResidency(ResidencySet set, Buffer[] buffers, Texture[] textures, QueryPool[] queries, IndirectBuffer[] indirects) {
+    public synchronized void addResidency(ResidencySet set, Resource[] resources) {
         idle("addResidency");
         try (var arena = new Arena()) {
-            var buffersSize = 4;
-            for (var x : buffers) {
-                buffersSize += 8;
+            var resourcesSize = 4;
+            for (var x : resources) {
+                resourcesSize += x.encodedSize();
             }
-            var buffersAddress = arena.alloc(buffersSize);
-            var buffersAt = buffersAddress;
-            memPutInt(buffersAt, buffers.length);
-            buffersAt += 4;
-            for (var x : buffers) {
-                memPutLong(buffersAt, Buffer.raw(x));
-                buffersAt += 8;
+            var resourcesAddress = arena.alloc(resourcesSize);
+            var resourcesAt = resourcesAddress;
+            memPutInt(resourcesAt, resources.length);
+            resourcesAt += 4;
+            for (var x : resources) {
+                resourcesAt = x.encode(resourcesAt);
             }
-            var texturesSize = 4;
-            for (var x : textures) {
-                texturesSize += 8;
-            }
-            var texturesAddress = arena.alloc(texturesSize);
-            var texturesAt = texturesAddress;
-            memPutInt(texturesAt, textures.length);
-            texturesAt += 4;
-            for (var x : textures) {
-                memPutLong(texturesAt, Texture.raw(x));
-                texturesAt += 8;
-            }
-            var queriesSize = 4;
-            for (var x : queries) {
-                queriesSize += 8;
-            }
-            var queriesAddress = arena.alloc(queriesSize);
-            var queriesAt = queriesAddress;
-            memPutInt(queriesAt, queries.length);
-            queriesAt += 4;
-            for (var x : queries) {
-                memPutLong(queriesAt, QueryPool.raw(x));
-                queriesAt += 8;
-            }
-            var indirectsSize = 4;
-            for (var x : indirects) {
-                indirectsSize += 8;
-            }
-            var indirectsAddress = arena.alloc(indirectsSize);
-            var indirectsAt = indirectsAddress;
-            memPutInt(indirectsAt, indirects.length);
-            indirectsAt += 4;
-            for (var x : indirects) {
-                memPutLong(indirectsAt, IndirectBuffer.raw(x));
-                indirectsAt += 8;
-            }
-            nAddResidency(handle(), ResidencySet.raw(set), buffersAddress, buffersSize, texturesAddress, texturesSize, queriesAddress, queriesSize, indirectsAddress, indirectsSize);
+            nAddResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
         }
     }
 
-    private static native void nAddResidency(long device, long set, long buffers, int buffersLength, long textures, int texturesLength, long queries, int queriesLength, long indirects, int indirectsLength);
+    private static native void nAddResidency(long device, long set, long resources, int resourcesLength);
 
-    public synchronized void removeResidency(ResidencySet set, Buffer[] buffers, Texture[] textures, QueryPool[] queries, IndirectBuffer[] indirects) {
+    public synchronized void removeResidency(ResidencySet set, Resource[] resources) {
         idle("removeResidency");
         try (var arena = new Arena()) {
-            var buffersSize = 4;
-            for (var x : buffers) {
-                buffersSize += 8;
+            var resourcesSize = 4;
+            for (var x : resources) {
+                resourcesSize += x.encodedSize();
             }
-            var buffersAddress = arena.alloc(buffersSize);
-            var buffersAt = buffersAddress;
-            memPutInt(buffersAt, buffers.length);
-            buffersAt += 4;
-            for (var x : buffers) {
-                memPutLong(buffersAt, Buffer.raw(x));
-                buffersAt += 8;
+            var resourcesAddress = arena.alloc(resourcesSize);
+            var resourcesAt = resourcesAddress;
+            memPutInt(resourcesAt, resources.length);
+            resourcesAt += 4;
+            for (var x : resources) {
+                resourcesAt = x.encode(resourcesAt);
             }
-            var texturesSize = 4;
-            for (var x : textures) {
-                texturesSize += 8;
-            }
-            var texturesAddress = arena.alloc(texturesSize);
-            var texturesAt = texturesAddress;
-            memPutInt(texturesAt, textures.length);
-            texturesAt += 4;
-            for (var x : textures) {
-                memPutLong(texturesAt, Texture.raw(x));
-                texturesAt += 8;
-            }
-            var queriesSize = 4;
-            for (var x : queries) {
-                queriesSize += 8;
-            }
-            var queriesAddress = arena.alloc(queriesSize);
-            var queriesAt = queriesAddress;
-            memPutInt(queriesAt, queries.length);
-            queriesAt += 4;
-            for (var x : queries) {
-                memPutLong(queriesAt, QueryPool.raw(x));
-                queriesAt += 8;
-            }
-            var indirectsSize = 4;
-            for (var x : indirects) {
-                indirectsSize += 8;
-            }
-            var indirectsAddress = arena.alloc(indirectsSize);
-            var indirectsAt = indirectsAddress;
-            memPutInt(indirectsAt, indirects.length);
-            indirectsAt += 4;
-            for (var x : indirects) {
-                memPutLong(indirectsAt, IndirectBuffer.raw(x));
-                indirectsAt += 8;
-            }
-            nRemoveResidency(handle(), ResidencySet.raw(set), buffersAddress, buffersSize, texturesAddress, texturesSize, queriesAddress, queriesSize, indirectsAddress, indirectsSize);
+            nRemoveResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
         }
     }
 
-    private static native void nRemoveResidency(long device, long set, long buffers, int buffersLength, long textures, int texturesLength, long queries, int queriesLength, long indirects, int indirectsLength);
+    private static native void nRemoveResidency(long device, long set, long resources, int resourcesLength);
 
     public synchronized void commitResidency(ResidencySet set) {
         idle("commitResidency");

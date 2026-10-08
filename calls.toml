@@ -191,11 +191,11 @@ params = [["set", "ResidencySet"]]
 
 [[call]]
 name = "add_residency"
-params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"], ["indirects", "[IndirectBuffer]"]]
+params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
 
 [[call]]
 name = "remove_residency"
-params = [["set", "ResidencySet"], ["buffers", "[Buffer]"], ["textures", "[Texture]"], ["queries", "[QueryPool]"], ["indirects", "[IndirectBuffer]"]]
+params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
 
 [[call]]
 name = "commit_residency"

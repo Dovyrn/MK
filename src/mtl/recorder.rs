@@ -696,7 +696,7 @@ impl<'a> Recorder<'a> {
                 first_vertex,
                 first_instance,
             } => {
-                if self.render_pipeline.is_none() || vertices == 0 || instances == 0 {
+                if vertices == 0 || instances == 0 {
                     return Ok(());
                 }
                 unsafe {
@@ -717,11 +717,7 @@ impl<'a> Recorder<'a> {
                 base_vertex,
                 first_instance,
             } => {
-                let (Some(_), Some((address, length, kind, size))) =
-                    (self.render_pipeline, self.index)
-                else {
-                    return Ok(());
-                };
+                let (address, length, kind, size) = self.index.expect("bind_index_buffer");
                 if indices == 0 || instances == 0 {
                     return Ok(());
                 }
@@ -741,18 +737,12 @@ impl<'a> Recorder<'a> {
                 };
             }
             Command::DrawIndirect { buffer, offset, .. } => {
-                if self.render_pipeline.is_none() {
-                    return Ok(());
-                }
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 self.render_encoder()
                     .drawPrimitives_indirectBuffer(self.primitive, address);
             }
             Command::DrawIndexedIndirect { buffer, offset, .. } => {
-                let (Some(_), Some((index, length, kind, _))) = (self.render_pipeline, self.index)
-                else {
-                    return Ok(());
-                };
+                let (index, length, kind, _) = self.index.expect("bind_index_buffer");
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
                     self.render_encoder()
@@ -794,9 +784,7 @@ impl<'a> Recorder<'a> {
                 self.render_encoder().dispatchThreadsPerTile(self.tile);
             }
             Command::DrawMeshTasks { x, y, z } => {
-                let Some(p) = self.render_pipeline else {
-                    return Ok(());
-                };
+                let p = self.render_pipeline.expect("bind_render_pipeline");
                 if [x, y, z].contains(&0) {
                     return Ok(());
                 }
@@ -812,7 +800,7 @@ impl<'a> Recorder<'a> {
                 first,
                 count,
             } => {
-                if self.render_pipeline.is_none() || count == 0 {
+                if count == 0 {
                     return Ok(());
                 }
                 let icb = &self.res.indirects.get(indirect).raw;
@@ -827,9 +815,6 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
             } => {
-                if self.render_pipeline.is_none() {
-                    return Ok(());
-                }
                 let icb = &self.res.indirects.get(indirect).raw;
                 let range = self.res.buffers.get(buffer).gpuAddress() + offset;
                 unsafe {
@@ -838,9 +823,7 @@ impl<'a> Recorder<'a> {
                 };
             }
             Command::DrawMeshTasksIndirect { buffer, offset, .. } => {
-                let Some(p) = self.render_pipeline else {
-                    return Ok(());
-                };
+                let p = self.render_pipeline.expect("bind_render_pipeline");
                 let address = self.res.buffers.get(buffer).gpuAddress() + offset;
                 self.render_encoder()
                     .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(

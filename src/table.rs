@@ -37,6 +37,7 @@ pub struct Table {
     pub undefined: RefCell<Vec<Texture>>,
     pub residency: Residency,
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
+    pub mappable: Entries<Buffer, bool>,
 }
 
 #[derive(Clone, Copy)]
@@ -66,8 +67,9 @@ pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
 
 impl Table {
     pub fn drop_buffer(&mut self, buffer: Buffer) {
-        self.buffers.clear(buffer);
+        self.buffers.get(buffer);
         self.residency.free_buffer(buffer);
+        self.buffers.clear(buffer);
     }
 
     pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
@@ -135,13 +137,27 @@ impl Table {
     }
 
     pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {
-        self.indirects.clear(indirect);
+        self.indirects.get(indirect);
         self.residency.free_indirect(indirect);
+        self.indirects.clear(indirect);
+    }
+
+    pub fn add_buffer(&mut self, buffer: Buffer, size: u64, mappable: bool) {
+        self.buffers.set(buffer, size);
+        self.mappable.set(buffer, mappable);
+    }
+
+    pub fn assert_mappable(&self, buffer: Buffer) {
+        check!(
+            *self.mappable.get(buffer),
+            "map_buffer on {buffer}, which has no host mapping; create it with memory::UPLOAD or memory::READBACK, or import a mapped buffer"
+        );
     }
 
     pub fn drop_query(&mut self, pool: QueryPool) {
-        self.queries.clear(pool);
+        self.queries.get(pool);
         self.residency.free_query(pool);
+        self.queries.clear(pool);
     }
 
     pub fn change_residency(&mut self, set: ResidencySet, items: Members, add: bool) {
@@ -200,10 +216,11 @@ impl Table {
             !self.parents.values().any(|&p| p == texture),
             "destroy_texture on {texture} while views of it live; destroy the views first"
         );
-        self.textures.clear(texture);
+        self.textures.get(texture);
         if self.parents.find(texture).is_none() {
             self.residency.free_texture(texture);
         }
+        self.textures.clear(texture);
         self.parents.forget(texture);
         self.undefined.get_mut().retain(|&t| t != texture);
     }

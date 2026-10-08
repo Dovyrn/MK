@@ -49,7 +49,10 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let (constants, _) = host::constants(&mut device, &[&push]);
     let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[upload, back, constants], &[texture], &[], &[]);
+    device.add_residency(
+        set,
+        &[upload.into(), back.into(), constants.into(), texture.into()],
+    );
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);

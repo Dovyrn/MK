@@ -89,7 +89,9 @@ pub fn main() {
     });
     let set = device.create_residency_set().unwrap();
     let textures = [a, cast, array, depth, depth2, srgb, line];
-    device.add_residency(set, &[upload, back], &textures, &[], &[]);
+    let mut list: Vec<mk::Resource> = vec![upload.into(), back.into()];
+    list.extend(textures.iter().map(|&t| mk::Resource::from(t)));
+    device.add_residency(set, &list);
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
