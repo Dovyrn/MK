@@ -39,7 +39,7 @@ impl Device {
         let allocations: Vec<&ProtocolObject<dyn MTLAllocation>> = items
             .buffers
             .iter()
-            .map(|&b| ProtocolObject::from_ref(&**res.buffers.get(b)))
+            .map(|&b| ProtocolObject::from_ref(&*res.buffers.get(b).raw))
             .chain(
                 items
                     .textures

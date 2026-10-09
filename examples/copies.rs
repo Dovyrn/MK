@@ -98,15 +98,15 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    for texture in [a, cast, array, depth, depth2, srgb, line] {
-        pass.texture_barrier(&TextureBarrier {
+    pass.texture_barriers(&[a, cast, array, depth, depth2, srgb, line].map(|texture| {
+        TextureBarrier {
             texture,
             src_stage: Stage::COPY,
             dst_stage: Stage::COPY | Stage::COLOR | Stage::DEPTH,
             before: TextureLayout::Undefined,
             ..Default::default()
-        });
-    }
+        }
+    }));
     pass.copy_buffer(upload, 0, back, 0, size);
     let row = (N * 4) as u64;
     for (texture, layer, offset, width, height) in [

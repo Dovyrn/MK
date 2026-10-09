@@ -33,13 +33,13 @@ impl Frame {
         let mut c = device.begin_commands(self.pool).unwrap();
         c.use_residency_set(self.set);
         before(&mut c);
-        c.texture_barrier(&TextureBarrier {
+        c.texture_barriers(&[TextureBarrier {
             texture: self.color,
             src_stage: Stage::COLOR,
             dst_stage: Stage::COLOR,
             before: TextureLayout::Undefined,
             ..Default::default()
-        });
+        }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: N,

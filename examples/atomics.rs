@@ -139,13 +139,13 @@ fn textures(
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barrier(&TextureBarrier {
+    c.texture_barriers(&[TextureBarrier {
         texture,
         src_stage: Stage::COPY,
         dst_stage: Stage::COPY,
         before: TextureLayout::Undefined,
         ..Default::default()
-    });
+    }]);
     let mut pass = c.begin_compute_pass().unwrap();
     pass.copy_buffer_to_texture(&BufferTextureCopy { ..copy(zeros) });
     pass.end();

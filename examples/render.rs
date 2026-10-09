@@ -107,15 +107,15 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    for (texture, stage) in [(color, Stage::COLOR), (depth, Stage::DEPTH)] {
-        c.texture_barrier(&TextureBarrier {
+    c.texture_barriers(
+        &[(color, Stage::COLOR), (depth, Stage::DEPTH)].map(|(texture, stage)| TextureBarrier {
             texture,
             src_stage: stage,
             dst_stage: stage,
             before: TextureLayout::Undefined,
             ..Default::default()
-        });
-    }
+        }),
+    );
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,

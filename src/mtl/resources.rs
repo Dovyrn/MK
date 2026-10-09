@@ -1,3 +1,4 @@
+use crate::mtl::buffer::BufferObject;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
@@ -6,15 +7,15 @@ use crate::slots::Slots;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTLBuffer, MTLDepthStencilState, MTLRenderPipelineState, MTLResidencySet, MTLSamplerState,
+    MTLDepthStencilState, MTLRenderPipelineState, MTLResidencySet, MTLResourceID, MTLSamplerState,
     MTLSharedEvent,
 };
 
 #[derive(Default)]
 pub struct Resources {
-    pub buffers: Slots<Retained<ProtocolObject<dyn MTLBuffer>>>,
+    pub buffers: Slots<BufferObject>,
     pub textures: Slots<TextureObject>,
-    pub samplers: Slots<Retained<ProtocolObject<dyn MTLSamplerState>>>,
+    pub samplers: Slots<(Retained<ProtocolObject<dyn MTLSamplerState>>, MTLResourceID)>,
     pub pipelines: Slots<Pipeline>,
     pub renders: Slots<Render>,
     pub tiles: Slots<Retained<ProtocolObject<dyn MTLRenderPipelineState>>>,

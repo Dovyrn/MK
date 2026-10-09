@@ -702,31 +702,25 @@ impl<'a> Check<'a> {
                 let general = (TextureLayout::General, TextureLayout::General);
                 self.check_barrier(name, src_stage, dst_stage, general)
             }
-            Command::TextureBarrier {
-                texture,
-                src_stage,
-                dst_stage,
-                before,
-                after,
-                base_mip,
-                mips,
-                base_layer,
-                layers,
-            } => {
-                self.check_barrier(name, src_stage, dst_stage, (before, after));
-                check_ne!(
-                    after,
-                    TextureLayout::Undefined,
-                    "{name} after is TextureLayout::Undefined; transition to a defined layout"
-                );
-                if before == TextureLayout::Undefined {
-                    self.table.define(texture);
-                } else {
-                    self.table.assert_defined(name, texture);
+            Command::TextureBarriers { barriers } => {
+                check!(!barriers.is_empty(), "{name} has no barriers");
+                for b in barriers {
+                    let texture = b.texture;
+                    self.check_barrier(name, b.src_stage, b.dst_stage, (b.before, b.after));
+                    check_ne!(
+                        b.after,
+                        TextureLayout::Undefined,
+                        "{name} after is TextureLayout::Undefined; transition to a defined layout"
+                    );
+                    if b.before == TextureLayout::Undefined {
+                        self.table.define(texture);
+                    } else {
+                        self.table.assert_defined(name, texture);
+                    }
+                    let t = self.table.textures.get(texture);
+                    assert_span(name, "mip", b.base_mip, b.mips, t.mips, texture);
+                    assert_span(name, "layer", b.base_layer, b.layers, t.layers, texture);
                 }
-                let t = self.table.textures.get(texture);
-                assert_span(name, "mip", base_mip, mips, t.mips, texture);
-                assert_span(name, "layer", base_layer, layers, t.layers, texture);
             }
             Command::CopyBufferToTexture { .. } | Command::CopyTextureToBuffer { .. } => {
                 self.check_buffer_copy(c);

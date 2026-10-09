@@ -86,7 +86,7 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(source, Stage::COPY));
+    pass.texture_barriers(&[discard(source, Stage::COPY)]);
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
@@ -95,7 +95,7 @@ pub fn main() {
     });
     pass.end();
     c.memory_barrier(Stage::COPY, Stage::FRAGMENT | Stage::COMPUTE);
-    c.texture_barrier(&discard(target, Stage::COLOR));
+    c.texture_barriers(&[discard(target, Stage::COLOR)]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -173,7 +173,7 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barrier(&discard(image, Stage::COMPUTE));
+    pass.texture_barriers(&[discard(image, Stage::COMPUTE)]);
     pass.bind_compute_pipeline(fill);
     pass.bind_uniform_buffer(1, upload, at, 16);
     pass.bind_storage_buffer(0, data, 0, 64 * 4);

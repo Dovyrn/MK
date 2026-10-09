@@ -4,7 +4,7 @@ use crate::mtl::indirect::Indirect;
 use crate::{IndirectBuffer, IndirectBufferInfo};
 use objc2::rc::autoreleasepool;
 use objc2_metal::{
-    MTLBuffer, MTLDevice, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
+    MTLDevice, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
     MTLIndirectCommandType, MTLResourceOptions,
 };
 
@@ -62,7 +62,7 @@ impl Device {
         let info = self.res.table.indirects.get(indirect).info;
         let list = self.res.indirects.get(indirect);
         let indices = if info.indexed {
-            self.res.buffers.get(info.indices).gpuAddress() + info.offset
+            self.res.buffers.get(info.indices).address + info.offset
         } else {
             0
         };

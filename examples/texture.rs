@@ -92,15 +92,13 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c.begin_compute_pass().unwrap();
-    for texture in [src, dst] {
-        pass.texture_barrier(&TextureBarrier {
-            texture,
-            src_stage: Stage::COPY,
-            dst_stage: Stage::COPY | Stage::COMPUTE,
-            before: TextureLayout::Undefined,
-            ..Default::default()
-        });
-    }
+    pass.texture_barriers(&[src, dst].map(|texture| TextureBarrier {
+        texture,
+        src_stage: Stage::COPY,
+        dst_stage: Stage::COPY | Stage::COMPUTE,
+        before: TextureLayout::Undefined,
+        ..Default::default()
+    }));
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: src,

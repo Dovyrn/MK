@@ -284,6 +284,9 @@ impl Recorder<'_> {
             dev.cmd_set_depth_write_enable(b, d.write);
             dev.cmd_set_depth_compare_op(b, vk_compare_op(d.compare));
             dev.cmd_set_stencil_test_enable(b, d.stencil);
+            if !d.stencil {
+                return;
+            }
             for (mask, f) in [
                 (vk::StencilFaceFlags::FRONT, &d.front),
                 (vk::StencilFaceFlags::BACK, &d.back),
@@ -462,36 +465,31 @@ impl Recorder<'_> {
                     let info = vk::DependencyInfo::default().memory_barriers(&barriers);
                     d.cmd_pipeline_barrier2(b, &info)
                 }
-                Command::TextureBarrier {
-                    texture,
-                    src_stage,
-                    dst_stage,
-                    before,
-                    after,
-                    base_mip,
-                    mips,
-                    base_layer,
-                    layers,
-                } => {
-                    let t = self.res.textures.get(texture);
-                    let barrier = vk::ImageMemoryBarrier2::default()
-                        .src_stage_mask(vk_stages(src_stage))
-                        .src_access_mask(vk_access(src_stage, false))
-                        .dst_stage_mask(vk_stages(dst_stage))
-                        .dst_access_mask(vk_access(dst_stage, true))
-                        .old_layout(vk_layout(before))
-                        .new_layout(vk_layout(after))
-                        .image(t.image)
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: t.aspect,
-                            base_mip_level: t.base_mip + base_mip,
-                            level_count: count(mips, base_mip, t.mips),
-                            base_array_layer: t.base_layer + base_layer,
-                            layer_count: count(layers, base_layer, t.layers),
-                        });
-                    let barriers = [barrier];
-                    let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
-                    d.cmd_pipeline_barrier2(b, &info);
+                Command::TextureBarriers { barriers } => {
+                    for chunk in barriers.chunks(16) {
+                        let mut list = [vk::ImageMemoryBarrier2::default(); 16];
+                        for (out, x) in list.iter_mut().zip(chunk) {
+                            let t = self.res.textures.get(x.texture);
+                            *out = vk::ImageMemoryBarrier2::default()
+                                .src_stage_mask(vk_stages(x.src_stage))
+                                .src_access_mask(vk_access(x.src_stage, false))
+                                .dst_stage_mask(vk_stages(x.dst_stage))
+                                .dst_access_mask(vk_access(x.dst_stage, true))
+                                .old_layout(vk_layout(x.before))
+                                .new_layout(vk_layout(x.after))
+                                .image(t.image)
+                                .subresource_range(vk::ImageSubresourceRange {
+                                    aspect_mask: t.aspect,
+                                    base_mip_level: t.base_mip + x.base_mip,
+                                    level_count: count(x.mips, x.base_mip, t.mips),
+                                    base_array_layer: t.base_layer + x.base_layer,
+                                    layer_count: count(x.layers, x.base_layer, t.layers),
+                                });
+                        }
+                        let list = &list[..chunk.len()];
+                        let info = vk::DependencyInfo::default().image_memory_barriers(list);
+                        d.cmd_pipeline_barrier2(b, &info);
+                    }
                 }
                 Command::CopyBufferToTexture {
                     buffer,

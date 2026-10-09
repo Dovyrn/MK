@@ -472,15 +472,8 @@ impl<'a> Recorder<'a> {
                         (&raw const value).cast(),
                     );
                 }
-                Command::MemoryBarrier {
-                    src_stage,
-                    dst_stage,
-                }
-                | Command::TextureBarrier {
-                    src_stage,
-                    dst_stage,
-                    ..
-                } => {
+                Command::MemoryBarrier { .. } | Command::TextureBarriers { .. } => {
+                    let (src_stage, dst_stage) = command.barrier_stages();
                     let shaders = Stage::VERTEX
                         | Stage::FRAGMENT
                         | Stage::TASK

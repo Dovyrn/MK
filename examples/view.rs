@@ -41,7 +41,7 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barrier(&TextureBarrier {
+    c.texture_barriers(&[TextureBarrier {
         texture,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
@@ -50,7 +50,7 @@ pub fn main() {
         mips: 1,
         layers: 1,
         ..Default::default()
-    });
+    }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,

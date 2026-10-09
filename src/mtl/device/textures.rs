@@ -24,6 +24,7 @@ impl Device {
                 .newTextureWithDescriptor(&desc)
                 .ok_or_else(|| Error::OutOfMemory("texture allocation failed".into()))?;
             let id = self.res.textures.insert(TextureObject {
+                id: raw.gpuResourceID(),
                 raw,
                 format: info.format,
             });
@@ -102,7 +103,11 @@ impl Device {
                     Memory::Device
                 },
             };
-            let id = self.res.textures.insert(TextureObject { raw, format });
+            let id = self.res.textures.insert(TextureObject {
+                id: raw.gpuResourceID(),
+                raw,
+                format,
+            });
             self.res.table.textures.set(id, info);
             self.res.table.residency.exempt_texture(id);
             Ok(id)
@@ -157,6 +162,7 @@ impl Device {
                     .ok_or_else(|| Error::OutOfMemory("view allocation failed".into()))?
             };
             let id = self.res.textures.insert(TextureObject {
+                id: raw.gpuResourceID(),
                 raw,
                 format: info.format,
             });
@@ -173,12 +179,12 @@ impl Device {
     pub fn bindless_texture(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_texture_slot(texture);
-        id(self.res.textures.get(texture).raw.gpuResourceID())
+        id(self.res.textures.get(texture).id)
     }
 
     pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
-        id(self.res.textures.get(texture).raw.gpuResourceID())
+        id(self.res.textures.get(texture).id)
     }
 }

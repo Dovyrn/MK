@@ -49,7 +49,8 @@ impl Device {
                 .raw
                 .newSamplerStateWithDescriptor(&desc)
                 .ok_or_else(|| Error::OutOfMemory("sampler allocation failed".into()))?;
-            let id = self.res.samplers.insert(sampler);
+            let id = sampler.gpuResourceID();
+            let id = self.res.samplers.insert((sampler, id));
             self.res.table.samplers.set(id, ());
             Ok(id)
         })
@@ -64,6 +65,6 @@ impl Device {
     pub fn bindless_sampler(&self, sampler: Sampler) -> u64 {
         self.res.table.samplers.get(sampler);
         self.caps.assert_sampler_slot(sampler);
-        id(self.res.samplers.get(sampler).gpuResourceID())
+        id(self.res.samplers.get(sampler).1)
     }
 }

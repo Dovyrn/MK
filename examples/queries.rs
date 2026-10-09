@@ -119,13 +119,13 @@ pub fn main() {
         pass.write_timestamp(times, 1, Stage::COMPUTE);
     }
     pass.end();
-    c.texture_barrier(&TextureBarrier {
+    c.texture_barriers(&[TextureBarrier {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
         before: TextureLayout::Undefined,
         ..Default::default()
-    });
+    }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,

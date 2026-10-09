@@ -47,9 +47,9 @@ name = "end_debug_label"
 scope = "outside compute render"
 
 [[command]]
-name = "texture_barrier"
+name = "texture_barriers"
 scope = "outside compute"
-info = "TextureBarrier"
+fields = [["barriers", "[TextureBarrier]"]]
 
 [[command]]
 name = "copy_buffer_to_texture"

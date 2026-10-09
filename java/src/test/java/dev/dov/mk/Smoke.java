@@ -91,11 +91,11 @@ public class Smoke {
         device.commitResidency(set);
         var commands = device.beginCommands(pool);
         commands.useResidencySet(set);
-        commands.textureBarrier(new TextureBarrier()
+        commands.textureBarriers(new TextureBarrier[] {new TextureBarrier()
                 .texture(texture)
                 .srcStage(Stage.COLOR)
                 .dstStage(Stage.COLOR)
-                .before(TextureLayout.UNDEFINED));
+                .before(TextureLayout.UNDEFINED)});
         var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
         try (var pass = commands.beginRenderPass(new RenderPassInfo()
                 .width(size)

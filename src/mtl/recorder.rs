@@ -17,9 +17,9 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
-    MTLCullMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
-    MTLSamplerState, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture, MTLViewport,
-    MTLVisibilityResultMode, MTLWinding,
+    MTLCullMode, MTLDepthClipMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
+    MTLRenderStages, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture,
+    MTLTriangleFillMode, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 use std::cell::RefCell;
 use std::ptr::NonNull;
@@ -48,6 +48,7 @@ pub struct Recorder<'a> {
     width: u32,
     height: u32,
     primitive: MTLPrimitiveType,
+    raster: Option<(MTLTriangleFillMode, MTLDepthClipMode)>,
     index: Option<(u64, usize, MTLIndexType, u64)>,
     tile: MTLSize,
     shared: usize,
@@ -176,6 +177,7 @@ impl<'a> Recorder<'a> {
             width: 0,
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
+            raster: None,
             index: None,
             tile: MTLSize {
                 width: 0,
@@ -228,6 +230,7 @@ impl<'a> Recorder<'a> {
         self.bind_argument_table(&encoder);
         self.width = width;
         self.height = height;
+        self.raster = None;
         self.render = Some(encoder);
     }
 
@@ -282,8 +285,8 @@ impl<'a> Recorder<'a> {
             IndexType::U32 => (MTLIndexType::UInt32, 4),
         };
         (
-            b.gpuAddress() + offset,
-            b.length().saturating_sub(offset as usize),
+            b.address + offset,
+            b.length.saturating_sub(offset as usize),
             kind,
             size,
         )
@@ -337,7 +340,7 @@ impl<'a> Recorder<'a> {
                 let Some(p) = self.compute_pipeline else {
                     return Ok(());
                 };
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 unsafe {
                     self.compute_encoder()
                         .dispatchThreadgroupsWithIndirectBuffer_threadsPerThreadgroup(
@@ -354,9 +357,9 @@ impl<'a> Recorder<'a> {
             } => unsafe {
                 self.compute_encoder()
                     .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
-                        self.res.buffers.get(src),
+                        &self.res.buffers.get(src).raw,
                         src_offset as usize,
-                        self.res.buffers.get(dst),
+                        &self.res.buffers.get(dst).raw,
                         dst_offset as usize,
                         size as usize,
                     )
@@ -369,27 +372,20 @@ impl<'a> Recorder<'a> {
             } => {
                 let b = self.res.buffers.get(buffer);
                 let size = if size == !0 {
-                    b.length() - offset as usize
+                    b.length - offset as usize
                 } else {
                     size as usize
                 };
                 unsafe {
                     self.compute_encoder().fillBuffer_range_value(
-                        b,
+                        &b.raw,
                         NSRange::new(offset as usize, size),
                         value,
                     )
                 }
             }
-            Command::MemoryBarrier {
-                src_stage,
-                dst_stage,
-            }
-            | Command::TextureBarrier {
-                src_stage,
-                dst_stage,
-                ..
-            } => {
+            Command::MemoryBarrier { .. } | Command::TextureBarriers { .. } => {
+                let (src_stage, dst_stage) = command.barrier_stages();
                 let options = MTL4VisibilityOptions::Device;
                 let (from, to) = (mtl_stages(src_stage), mtl_stages(dst_stage));
                 let Some(encoder) = &self.compute else {
@@ -436,7 +432,7 @@ impl<'a> Recorder<'a> {
                 unsafe {
                     self.compute_encoder()
                         .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin_options(
-                            self.res.buffers.get(buffer),
+                            &self.res.buffers.get(buffer).raw,
                             offset as usize,
                             row,
                             image,
@@ -476,7 +472,7 @@ impl<'a> Recorder<'a> {
                             mip as usize,
                             origin(x, y, z),
                             size(width, height, depth),
-                            self.res.buffers.get(buffer),
+                            &self.res.buffers.get(buffer).raw,
                             offset as usize,
                             row,
                             image,
@@ -561,6 +557,7 @@ impl<'a> Recorder<'a> {
                 self.bind_argument_table(&encoder);
                 self.apply_pending(ProtocolObject::from_ref(&*encoder), RENDER);
                 self.render = Some(encoder);
+                self.raster = Some((MTLTriangleFillMode::Fill, MTLDepthClipMode::Clip));
                 self.pass = MTL4RenderPassDescriptor::new();
                 self.width = width;
                 self.height = height;
@@ -572,9 +569,16 @@ impl<'a> Recorder<'a> {
             }
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);
-                self.render_encoder().setRenderPipelineState(&p.state);
-                self.render_encoder().setTriangleFillMode(p.fill);
-                self.render_encoder().setDepthClipMode(p.clip);
+                let e = self.render_encoder();
+                e.setRenderPipelineState(&p.state);
+                let (fill, clip) = self.raster.unzip();
+                if fill != Some(p.fill) {
+                    e.setTriangleFillMode(p.fill);
+                }
+                if clip != Some(p.clip) {
+                    e.setDepthClipMode(p.clip);
+                }
+                self.raster = Some((p.fill, p.clip));
                 self.primitive = p.primitive;
                 self.render_pipeline = Some(p);
             }
@@ -618,7 +622,7 @@ impl<'a> Recorder<'a> {
                 offset,
                 ..
             } => {
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 let index = (register::UNIFORM + slot) as usize;
                 unsafe { self.table.setAddress_atIndex(address, index) };
             }
@@ -628,21 +632,21 @@ impl<'a> Recorder<'a> {
                 offset,
                 ..
             } => {
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 let index = (register::STORAGE + slot) as usize;
                 unsafe { self.table.setAddress_atIndex(address, index) };
             }
             Command::BindTexture { slot, texture } => {
-                let id = self.res.textures.get(texture).raw.gpuResourceID();
+                let id = self.res.textures.get(texture).id;
                 unsafe { self.table.setTexture_atIndex(id, slot as usize) };
             }
             Command::BindStorageTexture { slot, texture } => {
-                let id = self.res.textures.get(texture).raw.gpuResourceID();
+                let id = self.res.textures.get(texture).id;
                 let index = (register::IMAGE + slot) as usize;
                 unsafe { self.table.setTexture_atIndex(id, index) };
             }
             Command::BindSampler { slot, sampler } => {
-                let id = self.res.samplers.get(sampler).gpuResourceID();
+                let id = self.res.samplers.get(sampler).1;
                 unsafe { self.table.setSamplerState_atIndex(id, slot as usize) };
             }
             Command::BindVertexBuffer {
@@ -650,7 +654,7 @@ impl<'a> Recorder<'a> {
                 buffer,
                 offset,
             } => {
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 unsafe {
                     self.table
                         .setAddress_atIndex(address, VERTICES + slot as usize)
@@ -708,13 +712,13 @@ impl<'a> Recorder<'a> {
                 };
             }
             Command::DrawIndirect { buffer, offset, .. } => {
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 self.render_encoder()
                     .drawPrimitives_indirectBuffer(self.primitive, address);
             }
             Command::DrawIndexedIndirect { buffer, offset, .. } => {
                 let (index, length, kind, _) = self.index.expect("bind_index_buffer");
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 unsafe {
                     self.render_encoder()
                         .drawIndexedPrimitives_indexType_indexBuffer_indexBufferLength_indirectBuffer(
@@ -787,7 +791,7 @@ impl<'a> Recorder<'a> {
                 offset,
             } => {
                 let icb = &self.res.indirects.get(indirect).raw;
-                let range = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let range = self.res.buffers.get(buffer).address + offset;
                 unsafe {
                     self.render_encoder()
                         .executeCommandsInBuffer_indirectBuffer(icb, range)
@@ -795,7 +799,7 @@ impl<'a> Recorder<'a> {
             }
             Command::DrawMeshTasksIndirect { buffer, offset, .. } => {
                 let p = self.render_pipeline.expect("bind_render_pipeline");
-                let address = self.res.buffers.get(buffer).gpuAddress() + offset;
+                let address = self.res.buffers.get(buffer).address + offset;
                 self.render_encoder()
                     .drawMeshThreadgroupsWithIndirectBuffer_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
                         address,
@@ -867,7 +871,7 @@ impl<'a> Recorder<'a> {
                 if count == 0 {
                     return Ok(());
                 }
-                let dst = self.res.buffers.get(buffer);
+                let dst = &self.res.buffers.get(buffer).raw;
                 match self.res.queries.get(heap) {
                     Query::Timestamp(heap) => unsafe {
                         self.command_buffer()

@@ -1,6 +1,7 @@
 use super::{Device, resource_options};
 use crate::Buffer;
 use crate::Error;
+use crate::mtl::buffer::BufferObject;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
@@ -14,7 +15,7 @@ impl Device {
                 .newBufferWithLength_options(size as usize, resource_options(memory))
                 .ok_or_else(|| Error::OutOfMemory("buffer allocation failed".into()))?;
             let mappable = buffer.storageMode() != MTLStorageMode::Private;
-            let id = self.res.buffers.insert(buffer);
+            let id = self.res.buffers.insert(BufferObject::new(buffer));
             self.res.table.add_buffer(id, size, mappable);
             Ok(id)
         })
@@ -24,7 +25,7 @@ impl Device {
         autoreleasepool(|_| {
             let size = raw.length() as u64;
             let mappable = raw.storageMode() != MTLStorageMode::Private;
-            let id = self.res.buffers.insert(raw);
+            let id = self.res.buffers.insert(BufferObject::new(raw));
             self.res.table.add_buffer(id, size, mappable);
             self.res.table.residency.exempt_buffer(id);
             id
@@ -33,7 +34,7 @@ impl Device {
 
     pub fn raw_buffer(&self, buffer: Buffer) -> &ProtocolObject<dyn MTLBuffer> {
         self.res.table.buffers.get(buffer);
-        self.res.buffers.get(buffer)
+        &self.res.buffers.get(buffer).raw
     }
 
     pub fn destroy_buffer(&mut self, buffer: Buffer) {
@@ -45,7 +46,11 @@ impl Device {
     #[allow(clippy::missing_safety_doc, clippy::mut_from_ref)]
     pub unsafe fn map_buffer<T: Copy>(&self, buffer: Buffer) -> &mut [T] {
         let b = self.res.buffers.get(buffer);
-        unsafe { self.res.table.mapping(buffer, b.contents().as_ptr().cast()) }
+        unsafe {
+            self.res
+                .table
+                .mapping(buffer, b.raw.contents().as_ptr().cast())
+        }
     }
 
     pub fn unmap_buffer(&self, buffer: Buffer) {
@@ -55,6 +60,6 @@ impl Device {
     pub fn buffer_address(&self, buffer: Buffer) -> u64 {
         self.res.table.buffers.get(buffer);
         self.caps.assert_addresses();
-        self.res.buffers.get(buffer).gpuAddress()
+        self.res.buffers.get(buffer).address
     }
 }

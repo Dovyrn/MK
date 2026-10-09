@@ -122,13 +122,26 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native void nEndDebugLabel(long target);
 
-    public void textureBarrier(TextureBarrier info) {
+    public void textureBarriers(TextureBarrier[] barriers) {
         synchronized (device) {
-            nTextureBarrier(handle(), Texture.raw(info.texture), info.srcStage, info.dstStage, info.before.value, info.after.value, info.baseMip, info.mips, info.baseLayer, info.layers);
+            try (var arena = new Arena()) {
+            var barriersSize = 4;
+            for (var x : barriers) {
+                barriersSize += x.encodedSize();
+            }
+            var list = arena.alloc(barriersSize);
+            var at = list;
+            memPutInt(at, barriers.length);
+            at += 4;
+            for (var x : barriers) {
+                at = x.encode(at);
+            }
+                nTextureBarriers(handle(), list, barriersSize);
+            }
         }
     }
 
-    private static native void nTextureBarrier(long target, long texture, int srcStage, int dstStage, int before, int after, int baseMip, int mips, int baseLayer, int layers);
+    private static native void nTextureBarriers(long target, long barriers, int barriersLength);
 
     public void useResidencySet(ResidencySet set) {
         synchronized (device) {

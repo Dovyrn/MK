@@ -42,13 +42,13 @@ fn read_back(
     back: mk::Buffer,
 ) {
     commands.use_residency_set(set);
-    commands.texture_barrier(&TextureBarrier {
+    commands.texture_barriers(&[TextureBarrier {
         texture,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COPY,
         before: TextureLayout::Color,
         ..Default::default()
-    });
+    }]);
     let mut pass = commands.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
@@ -94,7 +94,7 @@ fn host_frame(
             .unwrap();
         let mut commands = device.import_commands(pool, buffer).unwrap();
         commands.use_residency_set(set);
-        commands.texture_barrier(&to_color(texture));
+        commands.texture_barriers(&[to_color(texture)]);
         commands.end().unwrap();
         let view = device.raw_texture(texture).1;
         let clear = vk::ClearValue {
@@ -169,7 +169,7 @@ fn host_frame(
     buffer.beginCommandBufferWithAllocator(&allocator);
     let mut commands = device.import_commands(pool, &buffer).unwrap();
     commands.use_residency_set(set);
-    commands.texture_barrier(&to_color(texture));
+    commands.texture_barriers(&[to_color(texture)]);
     commands.end().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
@@ -218,7 +218,7 @@ fn host_frame(
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
-    commands.texture_barrier(&to_color(texture));
+    commands.texture_barriers(&[to_color(texture)]);
     commands.end().unwrap();
     device.submit([commands], &[], &[]).unwrap();
     let gl = &device.gl;

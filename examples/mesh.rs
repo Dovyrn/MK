@@ -69,13 +69,13 @@ pub fn main() {
     for round in passes.into_iter().flatten() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.texture_barrier(&TextureBarrier {
+        c.texture_barriers(&[TextureBarrier {
             texture: color,
             src_stage: Stage::COLOR,
             dst_stage: Stage::COLOR,
             before: TextureLayout::Undefined,
             ..Default::default()
-        });
+        }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width: n,
@@ -221,13 +221,13 @@ fn executed(
     pass.dispatch(1, 1, 1);
     pass.end();
     c.memory_barrier(Stage::COMPUTE, Stage::INDIRECT);
-    c.texture_barrier(&TextureBarrier {
+    c.texture_barriers(&[TextureBarrier {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
         before: TextureLayout::Undefined,
         ..Default::default()
-    });
+    }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: n,
