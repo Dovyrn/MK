@@ -212,7 +212,7 @@ params = [["timeline", "taken"]]
 
 [[call]]
 name = "create_command_pool"
-params = [["queue", "usize"]]
+params = [["queue", "u32"]]
 result = "CommandPool"
 fails = true
 
@@ -297,14 +297,14 @@ shared = true
 [[call]]
 name = "raw_queue"
 backend = "vk"
-params = [["queue", "usize"]]
+params = [["queue", "u32"]]
 result = "handle"
 shared = true
 
 [[call]]
 name = "import_device_raw"
 backend = "mtl"
-params = [["device", "u64"], ["compiler", "u64"], ["queues", "usize"]]
+params = [["device", "u64"], ["compiler", "u64"], ["queues", "u32"]]
 result = "device"
 fails = true
 
@@ -375,7 +375,7 @@ shared = true
 [[call]]
 name = "raw_queue"
 backend = "mtl"
-params = [["queue", "usize"]]
+params = [["queue", "u32"]]
 result = "object"
 shared = true
 

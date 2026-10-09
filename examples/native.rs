@@ -58,6 +58,7 @@ pub fn main() {
     pass.copy_buffer(data, 0, back, 0, n);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
+    c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let bytes = unsafe { device.map_buffer::<u8>(back) };

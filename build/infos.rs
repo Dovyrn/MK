@@ -10,7 +10,7 @@ pub struct Info {
 }
 
 fn scalar(kind: &str) -> bool {
-    matches!(kind, "u32" | "u64" | "f32" | "bool" | "u32x3")
+    matches!(kind, "u32" | "u64" | "f32" | "bool" | "f32x4")
 }
 
 pub fn borrows(info: &Info) -> bool {
@@ -26,7 +26,7 @@ fn rust_type(kind: &str) -> String {
     match kind {
         "bytes" => "&'a [u8]".into(),
         "str" => "&'a str".into(),
-        "u32x3" => "[u32; 3]".into(),
+        "f32x4" => "[f32; 4]".into(),
         "[str]" => "&'a [&'a str]".into(),
         k => match list(k) {
             Some(item) => format!("&'a [{item}]"),
@@ -118,7 +118,7 @@ pub fn rust(infos: &[Info]) -> String {
 
 pub fn reader(kind: &str) -> String {
     match kind {
-        "u32" | "u64" | "f32" | "bool" | "bytes" | "str" | "u32x3" => {
+        "u32" | "u64" | "f32" | "bool" | "bytes" | "str" | "f32x4" => {
             format!("crate::wire::{kind}")
         }
         k => format!("crate::{k}::read"),
@@ -147,7 +147,7 @@ fn rust_write(kind: &str, value: &str) -> String {
             assert!(handle(optional(k).unwrap()), "{k} needs a borrowing info");
             format!("{value}.unwrap_or_default().write(out)")
         }
-        "u32" | "u64" | "f32" | "bool" | "u32x3" => {
+        "u32" | "u64" | "f32" | "bool" | "f32x4" => {
             format!("crate::wire::put_{kind}(out, {value})")
         }
         _ => format!("{value}.write(out)"),
@@ -165,7 +165,8 @@ pub fn java_type(kind: &str) -> String {
         "bool" => "boolean".into(),
         "bytes" => "long".into(),
         "str" => "String".into(),
-        "u32x3" | "[u32]" => "int[]".into(),
+        "[u32]" => "int[]".into(),
+        "f32x4" => "float[]".into(),
         k if flags(k) => "int".into(),
         "[str]" => "String[]".into(),
         k => match list(k) {
@@ -180,10 +181,15 @@ fn java_value(f: &Field) -> String {
         k if optional(k).is_some() => "null".into(),
         "bytes" => "0".into(),
         "str" => "\"\"".into(),
-        "u32x3" => format!(
-            "new int[] {{{}}}",
-            f.value.trim_matches(|c| c == '[' || c == ']')
-        ),
+        "f32x4" => {
+            let items: Vec<_> = f
+                .value
+                .trim_matches(|c| c == '[' || c == ']')
+                .split(", ")
+                .map(|v| format!("{v}f"))
+                .collect();
+            format!("new float[] {{{}}}", items.join(", "))
+        }
         "f32" => format!("{}f", f.value),
         "[str]" => "new String[0]".into(),
         "[u32]" => "new int[0]".into(),
@@ -269,7 +275,7 @@ pub fn java(info: &Info) -> String {
         for f in &info.fields {
             match java_kind(&f.kind) {
                 "u64" => fixed += 8,
-                "u32x3" => fixed += 12,
+                "f32x4" => fixed += 16,
                 "u32" | "f32" | "bool" => fixed += 4,
                 k if handle(k) => fixed += 8,
                 k if word(k) => fixed += 4,
@@ -300,7 +306,7 @@ pub fn java(info: &Info) -> String {
             }
             "u32" | "f32" | "bool" => fixed += 4,
             "u64" => fixed += 8,
-            "u32x3" => fixed += 12,
+            "f32x4" => fixed += 16,
             k if handle(k) => fixed += 8,
             k if word(k) => fixed += 4,
             "bytes" => fixed += 16,
@@ -336,9 +342,9 @@ pub fn java(info: &Info) -> String {
             "f32" => writeln!(s, "        memPutFloat(p, {n});\n        p += 4;"),
             "bool" => writeln!(s, "        memPutInt(p, {n} ? 1 : 0);\n        p += 4;"),
             "u64" => writeln!(s, "        memPutLong(p, {n});\n        p += 8;"),
-            "u32x3" => writeln!(
+            "f32x4" => writeln!(
                 s,
-                "        if ({n}.length != 3) {{\n            throw new IllegalArgumentException(\"{n} has 3 values\");\n        }}\n        for (var x : {n}) {{\n            memPutInt(p, x);\n            p += 4;\n        }}"
+                "        if ({n}.length != 4) {{\n            throw new IllegalArgumentException(\"{n} has 4 values\");\n        }}\n        for (var x : {n}) {{\n            memPutFloat(p, x);\n            p += 4;\n        }}"
             ),
             "bytes" => writeln!(
                 s,
@@ -370,9 +376,9 @@ pub fn java(info: &Info) -> String {
                 "f32" => writeln!(s, "        r.{n} = memGetFloat(p);\n        p += 4;"),
                 "bool" => writeln!(s, "        r.{n} = memGetInt(p) != 0;\n        p += 4;"),
                 "u64" => writeln!(s, "        r.{n} = memGetLong(p);\n        p += 8;"),
-                "u32x3" => writeln!(
+                "f32x4" => writeln!(
                     s,
-                    "        for (var i = 0; i < 3; i++) {{\n            r.{n}[i] = memGetInt(p);\n            p += 4;\n        }}"
+                    "        for (var i = 0; i < 4; i++) {{\n            r.{n}[i] = memGetFloat(p);\n            p += 4;\n        }}"
                 ),
                 k if handle(k) => writeln!(s, "        r.{n} = {k}.of(memGetLong(p));\n        p += 8;"),
                 k => writeln!(s, "        r.{n} = {k}.decode(p);\n        p += r.{n}.encodedSize();"),

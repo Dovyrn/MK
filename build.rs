@@ -91,6 +91,25 @@ fn main() {
         include_str!("build/timeline.java"),
     );
     save(
+        &dir.join("MkException.java"),
+        include_str!("build/mk_exception.java"),
+    );
+    for name in [
+        "Unsupported",
+        "OutOfMemory",
+        "DeviceLost",
+        "Shader",
+        "Invalid",
+        "Driver",
+    ] {
+        save(
+            &dir.join(format!("{name}Exception.java")),
+            &format!(
+                "package dev.dov.mk;\n\npublic class {name}Exception extends MkException {{\n    {name}Exception(String message) {{\n        super(message);\n    }}\n}}\n"
+            ),
+        );
+    }
+    save(
         &dir.join("TimelinePoint.java"),
         include_str!("build/timeline_point.java"),
     );

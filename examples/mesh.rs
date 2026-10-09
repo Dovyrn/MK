@@ -82,8 +82,7 @@ pub fn main() {
                 height: n,
                 colors: &[ColorAttachment {
                     texture: color,
-                    b: 1.0,
-                    a: 1.0,
+                    clear: [0.0, 0.0, 1.0, 1.0],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -119,6 +118,7 @@ pub fn main() {
         });
         pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
+        c.end().unwrap();
         device.submit([c], &[], &[(&timeline, round + 1)]).unwrap();
         assert!(timeline.wait(round + 1, 1000).unwrap());
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
@@ -234,8 +234,7 @@ fn executed(
             height: n,
             colors: &[ColorAttachment {
                 texture: color,
-                b: 1.0,
-                a: 1.0,
+                clear: [0.0, 0.0, 1.0, 1.0],
                 ..Default::default()
             }],
             ..Default::default()
@@ -267,6 +266,7 @@ fn executed(
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
+    c.end().unwrap();
     device.submit([c], &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };

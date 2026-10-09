@@ -54,6 +54,7 @@ pub fn main() {
         pass.dispatch(1, 1, 1);
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
+        c.end().unwrap();
         device.submit([c], &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         let r = unsafe { device.map_buffer::<[u32; 11]>(buffer) };

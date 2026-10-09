@@ -39,6 +39,7 @@ pub struct Check<'a> {
     barrier: bool,
     passes: bool,
     resident: bool,
+    ended: bool,
 }
 
 const STATES: [&str; 6] = [
@@ -125,7 +126,7 @@ impl<'a> Check<'a> {
         let busy = &table.pools.get(pool).1;
         check!(
             !busy.get(),
-            "begin_commands on {pool}, which is already recording a command buffer; submit, finish or drop that one first"
+            "begin_commands on {pool}, which is already recording a command buffer; end or drop that one first"
         );
         busy.set(true);
         Check {
@@ -158,6 +159,7 @@ impl<'a> Check<'a> {
             barrier: false,
             passes: false,
             resident: base != "outside",
+            ended: false,
         }
     }
 
@@ -180,6 +182,19 @@ impl<'a> Check<'a> {
         check!(
             !self.barrier,
             "a barrier with no pass before or after it in its command buffer orders nothing on Metal; record it next to the pass that writes or reads the results"
+        );
+    }
+
+    pub fn end(&mut self) {
+        self.finish();
+        self.ended = true;
+        self.table.pools.get(self.pool).1.set(false);
+    }
+
+    pub fn assert_ended(&self) {
+        check!(
+            self.ended,
+            "submit needs command buffers ended with end(); call end() on each first"
         );
     }
 
@@ -546,6 +561,10 @@ impl<'a> Check<'a> {
         let open = self.open;
         let name = &command_name(c);
         check!(
+            !self.ended,
+            "{name} after end(); record into a new command buffer"
+        );
+        check!(
             scope.is_empty() || scope.split(' ').any(|s| s == open),
             "{name} runs only in {scope}, not {open}"
         );
@@ -828,7 +847,7 @@ impl<'a> Check<'a> {
                 texture,
                 load: ld,
                 store: st,
-                depth,
+                clear_depth: depth,
                 stencil_load,
                 stencil_store,
                 ..
@@ -1129,7 +1148,9 @@ impl<'a> Check<'a> {
 
 impl Drop for Check<'_> {
     fn drop(&mut self) {
-        if let Some(pool) = self.table.pools.find(self.pool) {
+        if !self.ended
+            && let Some(pool) = self.table.pools.find(self.pool)
+        {
             pool.1.set(false);
         }
     }

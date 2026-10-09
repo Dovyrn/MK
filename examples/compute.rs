@@ -42,6 +42,7 @@ pub fn main() {
     pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
     pass.end();
     c.end_debug_label();
+    c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     #[cfg(not(feature = "gl"))]
     let (waited, name) = std::thread::scope(|s| {

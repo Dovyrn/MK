@@ -153,7 +153,7 @@ pub fn main() {
         height: 8,
         depth: Some(DepthAttachment {
             texture: depth,
-            depth: 0.25,
+            clear_depth: 0.25,
             ..Default::default()
         }),
         ..Default::default()
@@ -166,10 +166,7 @@ pub fn main() {
         colors: &[ColorAttachment {
             texture: srgb,
             load: LoadOp::Clear,
-            r: 0.5,
-            g: 0.5,
-            b: 0.5,
-            a: 1.0,
+            clear: [0.5, 0.5, 0.5, 1.0],
             ..Default::default()
         }],
         ..Default::default()
@@ -199,6 +196,7 @@ pub fn main() {
     }
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
+    c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let data = unsafe { device.map_buffer::<u8>(back) };

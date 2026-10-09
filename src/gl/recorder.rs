@@ -55,10 +55,7 @@ pub struct Color {
     pub texture: Texture,
     pub load: LoadOp,
     pub store: StoreOp,
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
+    pub clear: [f32; 4],
     pub resolve: Option<Texture>,
 }
 
@@ -268,7 +265,7 @@ impl<'a> Recorder<'a> {
         Err(Error::Driver(format!("GL errors {errors:#x?} in {what}")))
     }
 
-    pub fn finish(&mut self) -> Result<(), Error> {
+    pub fn end(&mut self) -> Result<(), Error> {
         let Some(host) = self.host.take() else {
             return Ok(());
         };
@@ -524,10 +521,7 @@ impl<'a> Recorder<'a> {
                     texture,
                     load,
                     store,
-                    r,
-                    g,
-                    b,
-                    a,
+                    clear,
                     resolve,
                     ..
                 } => {
@@ -537,10 +531,7 @@ impl<'a> Recorder<'a> {
                         texture,
                         load,
                         store,
-                        r,
-                        g,
-                        b,
-                        a,
+                        clear,
                         resolve,
                     });
                 }
@@ -548,19 +539,19 @@ impl<'a> Recorder<'a> {
                     texture,
                     load,
                     store,
-                    depth,
+                    clear_depth,
                     stencil_load,
                     stencil_store,
-                    stencil,
+                    clear_stencil,
                 } => {
                     self.depth = Some(DepthAttachment {
                         texture,
                         load,
                         store,
-                        depth,
+                        clear_depth,
                         stencil_load,
                         stencil_store,
-                        stencil,
+                        clear_stencil,
                     });
                 }
                 Command::BeginRenderPass {
@@ -644,7 +635,9 @@ impl<'a> Recorder<'a> {
                         None => gl.polygon_offset(slope, constant),
                     }
                 }
-                Command::SetBlendColor { r, g, b, a } => gl.blend_color(r, g, b, a),
+                Command::SetBlendColor {
+                    color: [r, g, b, a],
+                } => gl.blend_color(r, g, b, a),
                 Command::BindVertexBuffer {
                     slot,
                     buffer,
@@ -862,6 +855,6 @@ impl<'a> Recorder<'a> {
 
 impl Drop for Recorder<'_> {
     fn drop(&mut self) {
-        let _ = self.finish();
+        let _ = self.end();
     }
 }

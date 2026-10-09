@@ -230,10 +230,10 @@ pub fn proc() -> Proc {
     }
 }
 
-pub fn device(queues: usize) -> mk::Device {
+pub fn device(queues: u32) -> mk::Device {
     try_device(queues).expect("GL has one queue")
 }
 
-pub fn try_device(queues: usize) -> Option<mk::Device> {
+pub fn try_device(queues: u32) -> Option<mk::Device> {
     (queues <= 1).then(|| mk::Device::import_device(proc()).unwrap())
 }

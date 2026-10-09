@@ -73,6 +73,7 @@ pub fn main() {
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
         let value = value + 2;
+        c.end().unwrap();
         device.submit([c], &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         assert_eq!(
@@ -159,6 +160,7 @@ fn textures(
     pass.copy_texture_to_buffer(&BufferTextureCopy { ..copy(back) });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
+    c.end().unwrap();
     device.submit([c], &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
     for t in 0..16u64 {

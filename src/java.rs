@@ -1,4 +1,4 @@
-use crate::{CommandBuffer, ComputePass, Device, RenderPass, Timeline};
+use crate::{CommandBuffer, ComputePass, Device, Error, RenderPass, Timeline};
 use jni::JNIEnv;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jint, jlong};
@@ -6,11 +6,16 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 pub fn call<'local, T: Default>(
     env: &mut JNIEnv<'local>,
-    f: impl FnOnce(&mut JNIEnv<'local>) -> Result<T, String>,
+    f: impl FnOnce(&mut JNIEnv<'local>) -> Result<T, Error>,
 ) -> T {
     let (class, message) = match catch_unwind(AssertUnwindSafe(|| f(env))) {
         Ok(Ok(v)) => return v,
-        Ok(Err(e)) => ("java/lang/RuntimeException", e),
+        Ok(Err(Error::Unsupported(m))) => ("dev/dov/mk/UnsupportedException", m),
+        Ok(Err(Error::OutOfMemory(m))) => ("dev/dov/mk/OutOfMemoryException", m),
+        Ok(Err(Error::DeviceLost(m))) => ("dev/dov/mk/DeviceLostException", m),
+        Ok(Err(Error::Shader(m))) => ("dev/dov/mk/ShaderException", m),
+        Ok(Err(Error::Invalid(m))) => ("dev/dov/mk/InvalidException", m),
+        Ok(Err(Error::Driver(m))) => ("dev/dov/mk/DriverException", m),
         Err(p) => (
             "java/lang/AssertionError",
             p.downcast_ref::<String>()
@@ -89,9 +94,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
 ) -> jlong {
     call(&mut env, |_| {
         Ok(new_compute_pass(
-            command_buffer(commands)
-                .begin_compute_pass()
-                .map_err(|e| e.to_string())?,
+            command_buffer(commands).begin_compute_pass()?,
         ))
     })
 }
@@ -108,21 +111,18 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginRenderPass(
         let commands = command_buffer(commands);
         let pass = crate::RenderPassInfo::decode(&mut bytes(info, length as i64), |info| {
             commands.begin_render_pass(info)
-        })
-        .map_err(|e| e.to_string())?;
+        })?;
         Ok(new_render_pass(pass))
     })
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nFinish(
+pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nEnd(
     mut env: JNIEnv,
     _: JClass,
     commands: jlong,
 ) {
-    call(&mut env, |_| {
-        take_commands(commands).finish().map_err(|e| e.to_string())
-    })
+    call(&mut env, |_| command_buffer(commands).end())
 }
 
 #[unsafe(no_mangle)]
@@ -148,7 +148,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nRaw(
         #[cfg(any(feature = "vk", feature = "mtl"))]
         return Ok(raw_commands(command_buffer(commands).raw()));
         #[cfg(feature = "gl")]
-        Err("GL has no command buffers".to_string())
+        Err(Error::Unsupported("GL has no command buffers".into()))
     })
 }
 
@@ -179,7 +179,7 @@ pub extern "system" fn Java_dev_dov_mk_ComputePass_nRaw(
         #[cfg(any(feature = "vk", feature = "mtl"))]
         return Ok(raw_commands(compute_pass(pass).raw()));
         #[cfg(feature = "gl")]
-        Err("GL has no encoders".to_string())
+        Err(Error::Unsupported("GL has no encoders".into()))
     })
 }
 
@@ -194,7 +194,7 @@ pub extern "system" fn Java_dev_dov_mk_RenderPass_nRaw(
         #[cfg(any(feature = "vk", feature = "mtl"))]
         return Ok(raw_commands(render_pass(pass).raw()));
         #[cfg(feature = "gl")]
-        Err("GL has no encoders".to_string())
+        Err(Error::Unsupported("GL has no encoders".into()))
     })
 }
 

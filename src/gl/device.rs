@@ -766,11 +766,11 @@ impl Device {
         }
     }
 
-    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, Error> {
+    pub fn create_command_pool(&mut self, queue: u32) -> Result<CommandPool, Error> {
         self.thread();
         check_eq!(queue, 0, "GL has one queue");
         let pool = self.res.pools.insert(());
-        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        self.res.table.pools.set(pool, (0, Cell::new(false)));
         Ok(pool)
     }
 
@@ -795,7 +795,7 @@ impl Device {
         self.thread();
         check!(
             !self.open.get(),
-            "GL runs commands as they are recorded; submit, finish or drop the open command buffer first"
+            "GL runs commands as they are recorded; end or drop the open command buffer first"
         );
         let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
         if let Some(b) = self
@@ -866,9 +866,9 @@ impl Device {
         table.check_timelines(waits);
         table.check_timelines(signals);
         let mut queue = None;
-        for mut c in commands {
-            let recording = &mut c.recording;
-            recording.check.finish();
+        for c in commands {
+            let recording = &c.recording;
+            recording.check.assert_ended();
             let q = recording.check.queue();
             check!(
                 queue.is_none_or(|p| p == q),
@@ -876,7 +876,6 @@ impl Device {
                 queue.unwrap_or(q)
             );
             queue = Some(q);
-            recording.recorder.finish()?;
         }
         let queue = queue.expect("submit needs at least one command buffer");
         table.check_signals(queue, signals);

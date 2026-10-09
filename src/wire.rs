@@ -16,6 +16,10 @@ pub fn f32(b: &mut &[u8]) -> f32 {
     f32::from_le_bytes(take(b, 4).try_into().unwrap())
 }
 
+pub fn f32x4(b: &mut &[u8]) -> [f32; 4] {
+    [f32(b), f32(b), f32(b), f32(b)]
+}
+
 pub fn bool(b: &mut &[u8]) -> bool {
     u32(b) != 0
 }
@@ -44,6 +48,12 @@ pub fn put_u64(out: &mut Vec<u8>, v: u64) {
 
 pub fn put_f32(out: &mut Vec<u8>, v: f32) {
     out.extend_from_slice(&v.to_le_bytes());
+}
+
+pub fn put_f32x4(out: &mut Vec<u8>, v: [f32; 4]) {
+    for x in v {
+        put_f32(out, x);
+    }
 }
 
 pub fn put_bool(out: &mut Vec<u8>, v: bool) {

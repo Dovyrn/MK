@@ -69,7 +69,7 @@ info = "TextureCopy"
 [[command]]
 name = "color_attachment"
 internal = true
-fields = [["index", "u32"], ["texture", "Texture"], ["load", "LoadOp"], ["store", "StoreOp"], ["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"], ["resolve", "Texture?"]]
+fields = [["index", "u32"], ["texture", "Texture"], ["load", "LoadOp"], ["store", "StoreOp"], ["clear", "f32x4"], ["resolve", "Texture?"]]
 
 [[command]]
 name = "depth_attachment"
@@ -124,7 +124,7 @@ fields = [["constant", "f32"], ["slope", "f32"], ["clamp", "f32"]]
 [[command]]
 name = "set_blend_color"
 scope = "render"
-fields = [["r", "f32"], ["g", "f32"], ["b", "f32"], ["a", "f32"]]
+fields = [["color", "f32x4"]]
 
 [[command]]
 name = "use_residency_set"

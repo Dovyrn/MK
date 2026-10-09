@@ -95,7 +95,7 @@ fn host_frame(
         let mut commands = device.import_commands(pool, buffer).unwrap();
         commands.use_residency_set(set);
         commands.texture_barrier(&to_color(texture));
-        commands.finish().unwrap();
+        commands.end().unwrap();
         let view = device.raw_texture(texture).1;
         let clear = vk::ClearValue {
             color: vk::ClearColorValue {
@@ -131,7 +131,7 @@ fn host_frame(
         raw.cmd_end_rendering(buffer);
         let mut commands = device.import_commands(pool, buffer).unwrap();
         read_back(&mut commands, set, texture, back);
-        commands.finish().unwrap();
+        commands.end().unwrap();
         raw.end_command_buffer(buffer).unwrap();
         let fence = raw
             .create_fence(&vk::FenceCreateInfo::default(), None)
@@ -170,7 +170,7 @@ fn host_frame(
     let mut commands = device.import_commands(pool, &buffer).unwrap();
     commands.use_residency_set(set);
     commands.texture_barrier(&to_color(texture));
-    commands.finish().unwrap();
+    commands.end().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
     color.setTexture(Some(device.raw_texture(texture)));
@@ -196,7 +196,7 @@ fn host_frame(
     encoder.endEncoding();
     let mut commands = device.import_commands(pool, &buffer).unwrap();
     read_back(&mut commands, set, texture, back);
-    commands.finish().unwrap();
+    commands.end().unwrap();
     buffer.endCommandBuffer();
     let queue = device.raw_queue(0);
     let mut list = NonNull::from(&*buffer);
@@ -219,6 +219,7 @@ fn host_frame(
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
     commands.texture_barrier(&to_color(texture));
+    commands.end().unwrap();
     device.submit([commands], &[], &[]).unwrap();
     let gl = &device.gl;
     let raw =
@@ -252,6 +253,7 @@ fn host_frame(
     }
     let mut commands = device.begin_commands(pool).unwrap();
     read_back(&mut commands, set, texture, back);
+    commands.end().unwrap();
     device.submit([commands], &[], &[(timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
 }

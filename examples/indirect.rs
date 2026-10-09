@@ -46,8 +46,7 @@ impl Frame {
                 height: N,
                 colors: &[ColorAttachment {
                     texture: self.color,
-                    b: 1.0,
-                    a: 1.0,
+                    clear: [0.0, 0.0, 1.0, 1.0],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -79,6 +78,7 @@ impl Frame {
         });
         pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
+        c.end().unwrap();
         device.submit([c], &[], &[(timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(self.back) };

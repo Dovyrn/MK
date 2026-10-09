@@ -134,13 +134,13 @@ public class RenderPass implements AutoCloseable {
 
     private static native void nSetDepthBias(long target, float constant, float slope, float clamp);
 
-    public void setBlendColor(float r, float g, float b, float a) {
+    public void setBlendColor(float[] color) {
         synchronized (device) {
-            nSetBlendColor(handle(), r, g, b, a);
+            nSetBlendColor(handle(), color[0], color[1], color[2], color[3]);
         }
     }
 
-    private static native void nSetBlendColor(long target, float r, float g, float b, float a);
+    private static native void nSetBlendColor(long target, float color0, float color1, float color2, float color3);
 
     public void bindUniformBuffer(int slot, Buffer buffer, long offset, long size) {
         synchronized (device) {

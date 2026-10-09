@@ -11,10 +11,7 @@ public class ColorAttachment {
     public Texture texture = null;
     public LoadOp load = LoadOp.CLEAR;
     public StoreOp store = StoreOp.STORE;
-    public float r = 0.0f;
-    public float g = 0.0f;
-    public float b = 0.0f;
-    public float a = 0.0f;
+    public float[] clear = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
     public Texture resolve = null;
 
     public static final int SIZE = 40;
@@ -30,14 +27,13 @@ public class ColorAttachment {
         p += 4;
         memPutInt(p, store.value);
         p += 4;
-        memPutFloat(p, r);
-        p += 4;
-        memPutFloat(p, g);
-        p += 4;
-        memPutFloat(p, b);
-        p += 4;
-        memPutFloat(p, a);
-        p += 4;
+        if (clear.length != 4) {
+            throw new IllegalArgumentException("clear has 4 values");
+        }
+        for (var x : clear) {
+            memPutFloat(p, x);
+            p += 4;
+        }
         memPutLong(p, Texture.raw(resolve));
         p += 8;
         return p;
@@ -51,14 +47,10 @@ public class ColorAttachment {
         p += 4;
         r.store = StoreOp.of(memGetInt(p));
         p += 4;
-        r.r = memGetFloat(p);
-        p += 4;
-        r.g = memGetFloat(p);
-        p += 4;
-        r.b = memGetFloat(p);
-        p += 4;
-        r.a = memGetFloat(p);
-        p += 4;
+        for (var i = 0; i < 4; i++) {
+            r.clear[i] = memGetFloat(p);
+            p += 4;
+        }
         r.resolve = Texture.of(memGetLong(p));
         p += 8;
         return r;

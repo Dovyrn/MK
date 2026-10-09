@@ -239,16 +239,12 @@ impl<'a> Recorder<'a> {
         self.compute = Some(encoder);
     }
 
-    pub fn end(&mut self) -> Result<Retained<ProtocolObject<dyn MTL4CommandBuffer>>, Error> {
+    pub fn end(&mut self) -> Result<(), Error> {
         self.close();
-        self.ended = true;
-        let buffer = self.buffer.clone().unwrap();
-        buffer.endCommandBuffer();
-        Ok(buffer)
-    }
-
-    pub fn finish(&mut self) -> Result<(), Error> {
-        self.close();
+        if self.kind == Kind::Owned {
+            self.ended = true;
+            self.buffer.as_deref().unwrap().endCommandBuffer();
+        }
         Ok(())
     }
 
@@ -494,10 +490,7 @@ impl<'a> Recorder<'a> {
                 texture,
                 load: l,
                 store: s,
-                r,
-                g,
-                b,
-                a,
+                clear: [r, g, b, a],
                 resolve,
                 ..
             } => {
@@ -526,10 +519,10 @@ impl<'a> Recorder<'a> {
                 texture,
                 load: l,
                 store: s,
-                depth,
+                clear_depth: depth,
                 stencil_load,
                 stencil_store,
-                stencil,
+                clear_stencil: stencil,
                 ..
             } => {
                 let t = self.res.textures.get(texture);
@@ -610,7 +603,9 @@ impl<'a> Recorder<'a> {
             } => self
                 .render_encoder()
                 .setDepthBias_slopeScale_clamp(constant, slope, clamp),
-            Command::SetBlendColor { r, g, b, a } => self
+            Command::SetBlendColor {
+                color: [r, g, b, a],
+            } => self
                 .render_encoder()
                 .setBlendColorRed_green_blue_alpha(r, g, b, a),
             Command::UseResidencySet { set } => {

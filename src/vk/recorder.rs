@@ -367,8 +367,11 @@ impl Recorder<'_> {
         self.buffer
     }
 
-    pub fn finish(&mut self) -> Result<(), Error> {
-        Ok(())
+    pub fn end(&mut self) -> Result<(), Error> {
+        if self.imported {
+            return Ok(());
+        }
+        unsafe { self.device.end_command_buffer(self.buffer) }.map_err(Error::from)
     }
 
     pub fn record_defaults(&mut self) {
@@ -562,14 +565,10 @@ impl Recorder<'_> {
                     texture,
                     load,
                     store,
-                    r,
-                    g,
-                    b: blue,
-                    a,
+                    clear: color,
                     resolve,
                 } => {
                     let f = self.res.textures.get(texture).format;
-                    let color = [r, g, blue, a];
                     let clear = vk::ClearValue {
                         color: if f.sint() {
                             vk::ClearColorValue {
@@ -615,10 +614,10 @@ impl Recorder<'_> {
                     texture,
                     load,
                     store,
-                    depth,
+                    clear_depth: depth,
                     stencil_load,
                     stencil_store,
-                    stencil,
+                    clear_stencil: stencil,
                 } => {
                     let clear = vk::ClearValue {
                         depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
@@ -729,9 +728,7 @@ impl Recorder<'_> {
                     d.cmd_set_depth_bias_enable(b, constant != 0.0 || slope != 0.0);
                     d.cmd_set_depth_bias(b, constant, clamp, slope);
                 }
-                Command::SetBlendColor { r, g, b: blue, a } => {
-                    d.cmd_set_blend_constants(b, &[r, g, blue, a])
-                }
+                Command::SetBlendColor { color } => d.cmd_set_blend_constants(b, &color),
                 Command::UseResidencySet { .. } => {}
                 Command::BindUniformBuffer {
                     slot,

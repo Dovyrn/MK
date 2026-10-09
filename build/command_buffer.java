@@ -15,7 +15,7 @@ public class CommandBuffer implements AutoCloseable {
 
     long handle() {
         if (handle == 0) {
-            throw new IllegalStateException("command buffer used after submit, finish or close");
+            throw new IllegalStateException("command buffer used after submit or close");
         }
         if (passing) {
             throw new IllegalStateException("command buffer used while one of its passes is open; end the pass first");
@@ -55,9 +55,9 @@ public class CommandBuffer implements AutoCloseable {
         }
     }
 
-    public void finish() {
+    public void end() {
         synchronized (device) {
-            nFinish(take());
+            nEnd(handle());
         }
     }
 
@@ -83,7 +83,7 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native long nBeginRenderPass(long commands, long info, int infoLength);
 
-    private static native void nFinish(long commands);
+    private static native void nEnd(long commands);
 
     private static native long nRaw(long commands);
 

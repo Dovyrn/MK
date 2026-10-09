@@ -387,13 +387,19 @@ impl Device {
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
     }
 
-    pub fn raw_queue(&self, queue: usize) -> vk::Queue {
-        let count = self.queues.len();
-        check!(queue < count, "queue {queue} is outside 0..{count}");
+    pub fn raw_queue(&self, queue: u32) -> vk::Queue {
+        let queue = queue as usize;
+        self.check_queue(queue);
         self.queues[queue].raw
     }
 
-    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, Error> {
+    fn check_queue(&self, queue: usize) {
+        let count = self.queues.len();
+        check!(queue < count, "queue {queue} is outside 0..{count}");
+    }
+
+    pub fn create_command_pool(&mut self, queue: u32) -> Result<CommandPool, Error> {
+        let queue = queue as usize;
         let family = self.raw_queue_family(queue);
         let pool = Pool::new(&self.raw, family, queue).map_err(Error::from)?;
         let pool = self.pools.insert(pool);
@@ -412,7 +418,7 @@ impl Device {
     }
 
     fn raw_queue_family(&self, queue: usize) -> u32 {
-        self.raw_queue(queue);
+        self.check_queue(queue);
         self.queues[queue].family
     }
 
@@ -495,10 +501,10 @@ impl Device {
         let mut queue = None;
         for c in commands {
             let recording = &c.recording;
-            recording.check.finish();
+            recording.check.assert_ended();
             check!(
                 !recording.recorder.imported,
-                "an imported command buffer is submitted by its owner; call finish instead"
+                "an imported command buffer is submitted by its owner; call end() and drop it instead"
             );
             let q = recording.check.queue();
             check!(
@@ -507,9 +513,9 @@ impl Device {
                 queue.unwrap_or(q)
             );
             queue = Some(q);
-            let buffer = recording.recorder.buffer;
-            unsafe { self.raw.end_command_buffer(buffer) }.map_err(Error::from)?;
-            submits.push(vk::CommandBufferSubmitInfo::default().command_buffer(buffer));
+            submits.push(
+                vk::CommandBufferSubmitInfo::default().command_buffer(recording.recorder.buffer),
+            );
         }
         let queue = queue.expect("submit needs at least one command buffer");
         table.check_signals(queue, signals);

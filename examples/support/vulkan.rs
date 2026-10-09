@@ -46,11 +46,12 @@ fn has(list: &[vk::ExtensionProperties], name: &CStr) -> bool {
     list.iter().any(|e| e.extension_name_as_c_str() == Ok(name))
 }
 
-pub fn device(queues: usize) -> Host {
+pub fn device(queues: u32) -> Host {
     try_device(queues).expect("not enough queues")
 }
 
-pub fn try_device(queues: usize) -> Option<Host> {
+pub fn try_device(queues: u32) -> Option<Host> {
+    let queues = queues as usize;
     unsafe {
         let entry = ash::Entry::load().unwrap();
         let available = entry.enumerate_instance_extension_properties(None).unwrap();

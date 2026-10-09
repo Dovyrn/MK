@@ -132,7 +132,7 @@ pub fn main() {
             height: n,
             colors: &[ColorAttachment {
                 texture: color,
-                a: 1.0,
+                clear: [0.0, 0.0, 0.0, 1.0],
                 ..Default::default()
             }],
             occlusion: Some(samples),
@@ -165,6 +165,7 @@ pub fn main() {
     pass.resolve_occlusion(samples, 0, 1, out, 16);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
+    c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let r = unsafe { device.map_buffer::<u64>(out) };

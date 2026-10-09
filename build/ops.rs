@@ -41,6 +41,7 @@ pub fn rust_type(kind: &str) -> String {
     }
     match kind {
         "str" => "&'a str".into(),
+        "f32x4" => "[f32; 4]".into(),
         k => match list(k) {
             Some(item) => format!("&'a [crate::{item}]"),
             None if k.chars().next().unwrap().is_uppercase() => format!("crate::{k}"),
@@ -93,7 +94,7 @@ pub fn command(ops: &[Op]) -> String {
             .fields
             .iter()
             .map(|f| match f.kind.as_str() {
-                "str" => format!(" {0}={{{0}:?}}", f.name),
+                "str" | "f32x4" => format!(" {0}={{{0}:?}}", f.name),
                 k if list(k).is_some() || crate::word(k) || crate::optional(k).is_some() => {
                     format!(" {0}={{{0}:?}}", f.name)
                 }
@@ -203,6 +204,9 @@ fn jni_params(f: &Field) -> Vec<(String, &'static str, &'static str)> {
         k if crate::word(k) => vec![(n, "int", "jint")],
         "u64" => vec![(n, "long", "jlong")],
         "f32" => vec![(n, "float", "jfloat")],
+        "f32x4" => (0..4)
+            .map(|i| (format!("{n}{i}"), "float", "jfloat"))
+            .collect(),
         "bool" => vec![(n, "boolean", "jboolean")],
         k if crate::handle(k) => vec![(n, "long", "jlong")],
         _ => vec![
@@ -231,6 +235,7 @@ fn rust_value(f: &Field) -> String {
         "u32" => format!("{n} as u32"),
         "u8" => format!("{n} as u8"),
         "i32" | "f32" => n,
+        "f32x4" => format!("[{n}0, {n}1, {n}2, {n}3]"),
         "u64" => format!("{n} as u64"),
         "bool" => format!("{n} != 0"),
         "str" => format!("crate::java::str({n}, {n}_length as i64)"),
@@ -281,7 +286,7 @@ pub fn jni(ops: &[Op]) -> String {
             };
             let call = format!("crate::java::{getter}(target).{}({args})", op.name);
             let body = if op.fails {
-                format!("{call}.map_err(|e| e.to_string())")
+                call
             } else {
                 format!("{call};\n        Ok(())")
             };
@@ -322,6 +327,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
                         k if crate::enumerated(k) => k.into(),
                         "u64" => "long".into(),
                         "f32" => "float".into(),
+                        "f32x4" => "float[]".into(),
                         "bool" => "boolean".into(),
                         "str" => "String".into(),
                         k if crate::handle(k) => k.into(),
@@ -346,6 +352,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
             match f.kind.as_str() {
                 k if crate::handle(k) => args.push(format!("{k}.raw({n})")),
                 "u8" => args.push(format!("{n} & 0xff")),
+                "f32x4" => args.extend((0..4).map(|i| format!("{n}[{i}]"))),
                 k if crate::enumerated(k) => args.push(format!("{n}.value")),
                 "str" => {
                     arena = true;

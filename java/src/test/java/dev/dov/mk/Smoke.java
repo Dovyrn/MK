@@ -51,6 +51,7 @@ public class Smoke {
             } catch (IllegalStateException e) {
                 System.out.println("change while recording rejected");
             }
+            commands.end();
             device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
             if (!timeline.await(1, 1000)) {
                 throw new IllegalStateException("timeout");
@@ -65,7 +66,7 @@ public class Smoke {
             try {
                 device.createComputePipeline(info.code(code).codeSize(8));
                 throw new IllegalStateException("bad code was accepted");
-            } catch (RuntimeException e) {
+            } catch (ShaderException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
             device.destroyCommandPool(pool);
@@ -95,7 +96,7 @@ public class Smoke {
                 .srcStage(Stage.COLOR)
                 .dstStage(Stage.COLOR)
                 .before(TextureLayout.UNDEFINED));
-        var color = new ColorAttachment().texture(texture).r(1).g(0.5f).b(0).a(1);
+        var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
         try (var pass = commands.beginRenderPass(new RenderPassInfo()
                 .width(size)
                 .height(size)
@@ -110,6 +111,7 @@ public class Smoke {
                     .buffer(pixels));
             pass.memoryBarrier(Stage.COPY, Stage.HOST);
         }
+        commands.end();
         device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
         if (!timeline.await(1, 1000)) {
             throw new IllegalStateException("timeout");

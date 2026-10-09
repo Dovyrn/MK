@@ -16,7 +16,7 @@ public class Device implements AutoCloseable {
     void idle(String call) {
         if (recording > 0) {
             throw new IllegalStateException(call + " changes the device while " + recording
-                    + " command buffers or imported passes are recording; submit, finish or close them first");
+                    + " command buffers or imported passes are recording; submit or close them first");
         }
     }
 

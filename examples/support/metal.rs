@@ -22,12 +22,12 @@ pub fn compiler(raw: &ProtocolObject<dyn MTLDevice>) -> Retained<ProtocolObject<
     shared.0.clone()
 }
 
-pub fn device(queues: usize) -> mk::Device {
+pub fn device(queues: u32) -> mk::Device {
     let raw = MTLCreateSystemDefaultDevice().expect("no Metal device");
     let compiler = compiler(&raw);
     mk::Device::import_device(raw, compiler, queues).unwrap()
 }
 
-pub fn try_device(queues: usize) -> Option<mk::Device> {
+pub fn try_device(queues: u32) -> Option<mk::Device> {
     Some(device(queues))
 }

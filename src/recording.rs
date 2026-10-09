@@ -38,10 +38,7 @@ impl Recording<'_> {
                 texture: c.texture,
                 load: c.load,
                 store: c.store,
-                r: c.r,
-                g: c.g,
-                b: c.b,
-                a: c.a,
+                clear: c.clear,
                 resolve: c.resolve,
             })?;
         }
@@ -50,10 +47,10 @@ impl Recording<'_> {
                 texture: d.texture,
                 load: d.load,
                 store: d.store,
-                depth: d.depth,
+                clear_depth: d.clear_depth,
                 stencil_load: d.stencil_load,
                 stencil_store: d.stencil_store,
-                stencil: d.stencil,
+                clear_stencil: d.clear_stencil,
             })?;
         }
         if let Some(pool) = info.occlusion {
@@ -121,9 +118,9 @@ impl<'d> CommandBuffer<'d> {
         })
     }
 
-    pub fn finish(mut self) -> Result<(), Error> {
-        self.recording.check.finish();
-        self.recording.recorder.finish()
+    pub fn end(&mut self) -> Result<(), Error> {
+        self.recording.check.end();
+        self.recording.recorder.end()
     }
 }
 

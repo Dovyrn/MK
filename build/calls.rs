@@ -176,7 +176,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             None => format!("{target}({})", args.join(", ")),
         };
         let invoke = if call.fails {
-            format!("{invoke}.map_err(|e| e.to_string())?")
+            format!("{invoke}?")
         } else {
             invoke
         };
@@ -192,7 +192,9 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
                 format!("crate::java::u32s_out(out, &{invoke});\n        Ok(())")
             }
             "str" => {
-                format!("let r = {invoke};\n        env.new_string(r).map_err(|e| e.to_string())")
+                format!(
+                    "let r = {invoke};\n        env.new_string(r).map_err(|e| crate::Error::Driver(e.to_string()))"
+                )
             }
             "u64" => format!("Ok({invoke} as jlong)"),
             "bool" => format!("Ok({invoke} as jboolean)"),

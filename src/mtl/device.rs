@@ -212,7 +212,7 @@ impl Device {
     pub fn import_device(
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
         compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
-        queues: usize,
+        queues: u32,
     ) -> Result<Self, Error> {
         autoreleasepool(|_| {
             check!(
@@ -243,7 +243,7 @@ impl Device {
         })
     }
 
-    pub fn import_device_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, Error> {
+    pub fn import_device_raw(device: u64, compiler: u64, queues: u32) -> Result<Self, Error> {
         let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
         let compiler =
             unsafe { Retained::retain(compiler as *mut ProtocolObject<dyn MTL4Compiler>) };
@@ -258,7 +258,8 @@ impl Device {
         self.raw.name().to_string()
     }
 
-    pub fn raw_queue(&self, queue: usize) -> &ProtocolObject<dyn MTL4CommandQueue> {
+    pub fn raw_queue(&self, queue: u32) -> &ProtocolObject<dyn MTL4CommandQueue> {
+        let queue = queue as usize;
         self.check_queue(queue);
         &self.queues[queue].raw
     }
@@ -268,7 +269,8 @@ impl Device {
         check!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
-    pub fn create_command_pool(&mut self, queue: usize) -> Result<CommandPool, Error> {
+    pub fn create_command_pool(&mut self, queue: u32) -> Result<CommandPool, Error> {
+        let queue = queue as usize;
         self.check_queue(queue);
         let pool = self.pools.insert(Pool::new(&self.raw)?);
         self.res.table.pools.set(pool, (queue, Cell::new(false)));
@@ -365,12 +367,12 @@ impl Device {
             let mut submits = self.submits.borrow_mut();
             submits.clear();
             let mut queue = None;
-            for mut c in commands {
-                let recording = &mut c.recording;
-                recording.check.finish();
+            for c in commands {
+                let recording = &c.recording;
+                recording.check.assert_ended();
                 check!(
                     recording.recorder.kind() == Kind::Owned,
-                    "an imported command buffer is submitted by its owner; call finish instead"
+                    "an imported command buffer is submitted by its owner; call end() and drop it instead"
                 );
                 let q = recording.check.queue();
                 check!(
@@ -379,7 +381,7 @@ impl Device {
                     queue.unwrap_or(q)
                 );
                 queue = Some(q);
-                submits.push(recording.recorder.end()?);
+                submits.push(recording.recorder.raw().retain());
             }
             let queue = queue.expect("submit needs at least one command buffer");
             table.check_signals(queue, signals);

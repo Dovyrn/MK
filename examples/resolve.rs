@@ -67,8 +67,7 @@ pub fn main() {
                 height: n,
                 colors: &[ColorAttachment {
                     texture: dst,
-                    b: 1.0,
-                    a: 1.0,
+                    clear: [0.0, 0.0, 1.0, 1.0],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -93,8 +92,7 @@ pub fn main() {
                 height: n,
                 colors: &[ColorAttachment {
                     texture: ms,
-                    r: 1.0,
-                    a: 1.0,
+                    clear: [1.0, 0.0, 0.0, 1.0],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -150,6 +148,7 @@ pub fn main() {
         pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
         value += 1;
+        c.end().unwrap();
         device.submit([c], &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };

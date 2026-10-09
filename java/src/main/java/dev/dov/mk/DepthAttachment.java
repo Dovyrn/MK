@@ -11,10 +11,10 @@ public class DepthAttachment {
     public Texture texture = null;
     public LoadOp load = LoadOp.CLEAR;
     public StoreOp store = StoreOp.STORE;
-    public float depth = 1.0f;
+    public float clearDepth = 1.0f;
     public LoadOp stencilLoad = LoadOp.DONT_CARE;
     public StoreOp stencilStore = StoreOp.DONT_CARE;
-    public int stencil = 0;
+    public int clearStencil = 0;
 
     public static final int SIZE = 32;
 
@@ -29,13 +29,13 @@ public class DepthAttachment {
         p += 4;
         memPutInt(p, store.value);
         p += 4;
-        memPutFloat(p, depth);
+        memPutFloat(p, clearDepth);
         p += 4;
         memPutInt(p, stencilLoad.value);
         p += 4;
         memPutInt(p, stencilStore.value);
         p += 4;
-        memPutInt(p, stencil);
+        memPutInt(p, clearStencil);
         p += 4;
         return p;
     }
@@ -48,13 +48,13 @@ public class DepthAttachment {
         p += 4;
         r.store = StoreOp.of(memGetInt(p));
         p += 4;
-        r.depth = memGetFloat(p);
+        r.clearDepth = memGetFloat(p);
         p += 4;
         r.stencilLoad = LoadOp.of(memGetInt(p));
         p += 4;
         r.stencilStore = StoreOp.of(memGetInt(p));
         p += 4;
-        r.stencil = memGetInt(p);
+        r.clearStencil = memGetInt(p);
         p += 4;
         return r;
     }

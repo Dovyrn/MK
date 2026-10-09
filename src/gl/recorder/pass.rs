@@ -120,7 +120,7 @@ impl Recorder<'_> {
                     continue;
                 }
                 let slot = if default { 0 } else { c.index };
-                let clear = [c.r, c.g, c.b, c.a];
+                let clear = c.clear;
                 let f = res.textures.get(c.texture).format;
                 if f.sint() {
                     let values = clear.map(|v| v as i32);
@@ -129,7 +129,8 @@ impl Recorder<'_> {
                     let values = clear.map(|v| v as u32);
                     gl.clear_buffer_u32_slice(glow::COLOR, slot, &values);
                 } else if is_srgb(f) {
-                    let encoded = [encode(c.r), encode(c.g), encode(c.b), c.a];
+                    let [r, g, b, a] = c.clear;
+                    let encoded = [encode(r), encode(g), encode(b), a];
                     gl.clear_buffer_f32_slice(glow::COLOR, slot, &encoded);
                 } else {
                     gl.clear_buffer_f32_slice(glow::COLOR, slot, &clear);
@@ -138,10 +139,10 @@ impl Recorder<'_> {
             set_enabled(gl, glow::FRAMEBUFFER_SRGB, self.srgb());
             if let Some(d) = &self.depth {
                 if d.load == LoadOp::Clear {
-                    gl.clear_buffer_f32_slice(glow::DEPTH, 0, &[d.depth]);
+                    gl.clear_buffer_f32_slice(glow::DEPTH, 0, &[d.clear_depth]);
                 }
                 if d.stencil_load == LoadOp::Clear {
-                    gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.stencil as i32]);
+                    gl.clear_buffer_i32_slice(glow::STENCIL, 0, &[d.clear_stencil as i32]);
                 }
             }
             if let Some(p) = self.render {
