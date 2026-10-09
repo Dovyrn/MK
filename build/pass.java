@@ -1,4 +1,4 @@
-public class NAME implements AutoCloseable {
+public class NAME {
     final Device device;
     private final CommandBuffer owner;
     private long handle;
@@ -39,13 +39,6 @@ public class NAME implements AutoCloseable {
     public long raw() {
         synchronized (device) {
             return nRaw(handle());
-        }
-    }
-
-    @Override
-    public void close() {
-        if (handle != 0) {
-            end();
         }
     }
 

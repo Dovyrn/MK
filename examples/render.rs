@@ -153,8 +153,11 @@ pub fn main() {
     pass.bind_uniform_buffer(0, constants, stride, 4);
     pass.draw_indexed(3, 1, 0, 3, 0);
     pass.end();
-    c.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    c.end().unwrap();
+    let mut copy = device.begin_commands(pool).unwrap();
+    copy.use_residency_set(set);
+    copy.memory_barrier(Stage::COLOR, Stage::COPY);
+    let mut pass = copy.begin_compute_pass().unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,
@@ -164,8 +167,8 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    c.end().unwrap();
-    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
+    copy.end().unwrap();
+    device.submit([c, copy], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
@@ -175,5 +178,5 @@ pub fn main() {
     assert_eq!(at(20, 44), red, "lower left of the triangle");
     assert_eq!(at(20, 20), green, "upper left, outside the triangle");
     assert_eq!(at(0, 0), green, "corner");
-    println!("triangle depth-tested over the background");
+    println!("triangle depth-tested over the background, read back by a second command buffer");
 }

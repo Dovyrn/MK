@@ -32,7 +32,7 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexFormat,
 };
 use std::cell::{Cell, RefCell};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, OnceLock};
 
 fn mtl_compare(c: crate::CompareOp) -> MTLCompareFunction {
     match c {
@@ -194,7 +194,7 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     pools: Slots<Pool>,
-    lost: Arc<Mutex<Option<String>>>,
+    lost: Arc<OnceLock<String>>,
     caps: Caps,
     submits: RefCell<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
 }
@@ -224,7 +224,7 @@ impl Device {
                     "the device does not support Metal 4".into(),
                 ));
             }
-            let lost = Arc::new(Mutex::new(None));
+            let lost = Arc::new(OnceLock::new());
             let queues = (0..queues)
                 .map(|_| Queue::new(&raw, lost.clone()))
                 .collect::<Result<Vec<_>, _>>()?;

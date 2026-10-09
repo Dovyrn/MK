@@ -38,13 +38,13 @@ public class Smoke {
             device.commitResidency(set);
             var commands = device.beginCommands(pool);
             commands.useResidencySet(set);
-            try (var pass = commands.beginComputePass()) {
-                pass.bindComputePipeline(pipeline);
-                pass.bindStorageBuffer(0, buffer, 0, n * 4L);
-                pass.bindUniformBuffer(0, constants, 0, 8);
-                pass.dispatch(n / 64, 1, 1);
-                pass.memoryBarrier(Stage.COMPUTE, Stage.HOST);
-            }
+            var compute = commands.beginComputePass();
+            compute.bindComputePipeline(pipeline);
+            compute.bindStorageBuffer(0, buffer, 0, n * 4L);
+            compute.bindUniformBuffer(0, constants, 0, 8);
+            compute.dispatch(n / 64, 1, 1);
+            compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
+            compute.end();
             try {
                 device.createBuffer(4, Memory.UPLOAD);
                 throw new IllegalStateException("a device change was accepted while recording");
@@ -97,20 +97,20 @@ public class Smoke {
                 .dstStage(Stage.COLOR)
                 .before(TextureLayout.UNDEFINED)});
         var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
-        try (var pass = commands.beginRenderPass(new RenderPassInfo()
+        commands.beginRenderPass(new RenderPassInfo()
                 .width(size)
                 .height(size)
-                .colors(new ColorAttachment[] {color}))) {
-        }
+                .colors(new ColorAttachment[] {color}))
+                .end();
         commands.memoryBarrier(Stage.COLOR, Stage.COPY);
-        try (var pass = commands.beginComputePass()) {
-            pass.copyTextureToBuffer(new BufferTextureCopy()
-                    .texture(texture)
-                    .width(size)
-                    .height(size)
-                    .buffer(pixels));
-            pass.memoryBarrier(Stage.COPY, Stage.HOST);
-        }
+        var copy = commands.beginComputePass();
+        copy.copyTextureToBuffer(new BufferTextureCopy()
+                .texture(texture)
+                .width(size)
+                .height(size)
+                .buffer(pixels));
+        copy.memoryBarrier(Stage.COPY, Stage.HOST);
+        copy.end();
         commands.end();
         device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
         if (!timeline.await(1, 1000)) {

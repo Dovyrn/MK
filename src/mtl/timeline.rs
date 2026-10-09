@@ -2,13 +2,13 @@ use crate::Error;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::MTLSharedEvent;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, OnceLock};
 
 pub struct Timeline {
     pub(crate) id: crate::handle::TimelineId,
     pub(crate) token: Arc<()>,
     pub(crate) raw: Retained<ProtocolObject<dyn MTLSharedEvent>>,
-    pub(crate) lost: Arc<Mutex<Option<String>>>,
+    pub(crate) lost: Arc<OnceLock<String>>,
 }
 
 impl Timeline {
@@ -28,11 +28,8 @@ impl Timeline {
     }
 
     fn healthy(&self) -> Result<(), Error> {
-        if !cfg!(feature = "validation") {
-            return Ok(());
-        }
-        match self.lost.lock().unwrap().clone() {
-            Some(e) => Err(Error::DeviceLost(e)),
+        match self.lost.get() {
+            Some(e) => Err(Error::DeviceLost(e.clone())),
             None => Ok(()),
         }
     }

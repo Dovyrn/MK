@@ -4,7 +4,7 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.charset.StandardCharsets;
 
-public class ComputePass implements AutoCloseable {
+public class ComputePass {
     final Device device;
     private final CommandBuffer owner;
     private long handle;
@@ -45,13 +45,6 @@ public class ComputePass implements AutoCloseable {
     public long raw() {
         synchronized (device) {
             return nRaw(handle());
-        }
-    }
-
-    @Override
-    public void close() {
-        if (handle != 0) {
-            end();
         }
     }
 
