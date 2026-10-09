@@ -13,7 +13,7 @@ pub fn main() {
         | SubgroupOp::BALLOT
         | SubgroupOp::SHUFFLE
         | SubgroupOp::QUAD;
-    if !caps.compute || !caps.storage || caps.subgroup_ops & need != need {
+    if !caps.compute || !caps.storage_slots || caps.subgroup_ops & need != need {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
     }
@@ -54,7 +54,7 @@ pub fn main() {
         pass.dispatch(1, 1, 1);
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
-        device.submit(c, &[], &[(&timeline, value)]).unwrap();
+        device.submit([c], &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         let r = unsafe { device.map_buffer::<[u32; 11]>(buffer) };
         let count = r[0][0];

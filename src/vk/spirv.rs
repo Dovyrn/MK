@@ -66,7 +66,9 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, Error>
             && (old || used.contains(&args[0]))
     });
     if cfg!(feature = "validation") && zero && !slots {
-        return Err(Error::Unsupported("slot bindings need caps.slots".into()));
+        return Err(Error::Unsupported(
+            "slot bindings need caps.slot_binding".into(),
+        ));
     }
     Ok(words)
 }

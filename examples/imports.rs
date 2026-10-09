@@ -219,7 +219,7 @@ fn host_frame(
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
     commands.texture_barrier(&to_color(texture));
-    device.submit(commands, &[], &[]).unwrap();
+    device.submit([commands], &[], &[]).unwrap();
     let gl = &device.gl;
     let raw =
         mk::glow::NativeTexture(std::num::NonZeroU32::new(device.raw_texture(texture)).unwrap());
@@ -252,7 +252,7 @@ fn host_frame(
     }
     let mut commands = device.begin_commands(pool).unwrap();
     read_back(&mut commands, set, texture, back);
-    device.submit(commands, &[], &[(timeline, 1)]).unwrap();
+    device.submit([commands], &[], &[(timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
 }
 

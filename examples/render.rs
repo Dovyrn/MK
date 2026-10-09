@@ -165,7 +165,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * n + x) as usize];

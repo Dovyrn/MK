@@ -239,7 +239,7 @@ fails = true
 shared = true
 
 [[call]]
-name = "adopt_raw"
+name = "import_device_raw"
 backend = "vk"
 params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]
 result = "device"
@@ -302,7 +302,7 @@ result = "handle"
 shared = true
 
 [[call]]
-name = "adopt_raw"
+name = "import_device_raw"
 backend = "mtl"
 params = [["device", "u64"], ["compiler", "u64"], ["queues", "usize"]]
 result = "device"
@@ -380,7 +380,7 @@ result = "object"
 shared = true
 
 [[call]]
-name = "adopt_raw"
+name = "import_device_raw"
 backend = "gl"
 params = [["proc", "u64"]]
 result = "device"

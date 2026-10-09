@@ -79,7 +79,7 @@ impl Frame {
         });
         pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
-        device.submit(c, &[], &[(timeline, value)]).unwrap();
+        device.submit([c], &[], &[(timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(self.back) };
         assert_eq!(pixels[0], BLUE, "corner of draw {value}");

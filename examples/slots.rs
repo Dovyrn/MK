@@ -23,7 +23,7 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    if !caps.slots {
+    if !caps.slot_binding {
         println!("no slot bindings");
         return;
     }
@@ -135,7 +135,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<u8>(back) }.to_vec();
     device.unmap_buffer(back);
@@ -144,7 +144,7 @@ pub fn main() {
         assert!(p[0].abs_diff(red) <= 1, "pixel {i} red {} not {red}", p[0]);
     }
     println!("render: uniform, texture and sampler slots drew 16 pixels");
-    if !caps.storage {
+    if !caps.storage_slots {
         println!("compute: storage slots are not supported");
         return;
     }
@@ -192,7 +192,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 2)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 2)]).unwrap();
     assert!(timeline.wait(2, 1000).unwrap());
     let bytes = unsafe { device.map_buffer::<u8>(out) }.to_vec();
     device.unmap_buffer(out);

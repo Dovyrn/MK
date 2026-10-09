@@ -21,16 +21,16 @@ public class VkDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
-    public static VkDevice adoptRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
+    public static VkDevice importDeviceRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
         try (var arena = new Arena()) {
             if (queues.length % 2 != 0) {
                 throw new IllegalArgumentException("queues holds pairs");
             }
-            return new VkDevice(nAdoptRaw(proc, instance, physical, device, arena.ints(queues), queues.length / 2, features));
+            return new VkDevice(nImportDeviceRaw(proc, instance, physical, device, arena.ints(queues), queues.length / 2, features));
         }
     }
 
-    private static native long nAdoptRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
+    private static native long nImportDeviceRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
     public synchronized Buffer importBuffer(long raw, long size, long data) {
         idle("importBuffer");

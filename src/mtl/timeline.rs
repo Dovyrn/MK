@@ -28,6 +28,9 @@ impl Timeline {
     }
 
     fn healthy(&self) -> Result<(), Error> {
+        if !cfg!(feature = "validation") {
+            return Ok(());
+        }
         match self.lost.lock().unwrap().clone() {
             Some(e) => Err(Error::DeviceLost(e)),
             None => Ok(()),

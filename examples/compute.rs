@@ -42,7 +42,7 @@ pub fn main() {
     pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
     pass.end();
     c.end_debug_label();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     #[cfg(not(feature = "gl"))]
     let (waited, name) = std::thread::scope(|s| {
         let waiter = s.spawn(|| timeline.wait(1, 1000).unwrap());

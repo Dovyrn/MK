@@ -25,7 +25,7 @@ pub fn compiler(raw: &ProtocolObject<dyn MTLDevice>) -> Retained<ProtocolObject<
 pub fn device(queues: usize) -> mk::Device {
     let raw = MTLCreateSystemDefaultDevice().expect("no Metal device");
     let compiler = compiler(&raw);
-    mk::Device::adopt(raw, compiler, queues).unwrap()
+    mk::Device::import_device(raw, compiler, queues).unwrap()
 }
 
 pub fn try_device(queues: usize) -> Option<mk::Device> {

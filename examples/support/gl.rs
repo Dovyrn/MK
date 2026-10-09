@@ -235,5 +235,5 @@ pub fn device(queues: usize) -> mk::Device {
 }
 
 pub fn try_device(queues: usize) -> Option<mk::Device> {
-    (queues <= 1).then(|| mk::Device::adopt(proc()).unwrap())
+    (queues <= 1).then(|| mk::Device::import_device(proc()).unwrap())
 }

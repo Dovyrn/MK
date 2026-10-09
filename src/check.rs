@@ -926,7 +926,7 @@ impl<'a> Check<'a> {
                 offset,
                 size,
             } => {
-                self.require(c, caps.slots, "slots")?;
+                self.require(c, caps.slot_binding, "slot_binding")?;
                 assert_slot(name, i, slot::UNIFORMS);
                 assert_aligned(name, offset, caps.bind_alignment);
                 self.limited_range(c, buffer, offset, size, caps.max_uniform)?;
@@ -937,25 +937,25 @@ impl<'a> Check<'a> {
                 offset,
                 size,
             } => {
-                self.require(c, caps.slots, "slots")?;
-                self.require(c, caps.storage, "storage")?;
+                self.require(c, caps.slot_binding, "slot_binding")?;
+                self.require(c, caps.storage_slots, "storage_slots")?;
                 assert_slot(name, i, slot::STORAGES);
                 assert_aligned(name, offset, caps.bind_alignment);
                 self.limited_range(c, buffer, offset, size, caps.max_storage)?;
             }
             Command::BindTexture { slot: i, texture } => {
-                self.require(c, caps.slots, "slots")?;
+                self.require(c, caps.slot_binding, "slot_binding")?;
                 assert_slot(name, i, slot::TEXTURES);
                 self.texture_with_usage(name, texture, TextureUsage::SAMPLED, "SAMPLED");
             }
             Command::BindStorageTexture { slot: i, texture } => {
-                self.require(c, caps.slots, "slots")?;
-                self.require(c, caps.storage, "storage")?;
+                self.require(c, caps.slot_binding, "slot_binding")?;
+                self.require(c, caps.storage_slots, "storage_slots")?;
                 assert_slot(name, i, slot::IMAGES);
                 self.texture_with_usage(name, texture, TextureUsage::STORAGE, "STORAGE");
             }
             Command::BindSampler { slot: i, sampler } => {
-                self.require(c, caps.slots, "slots")?;
+                self.require(c, caps.slot_binding, "slot_binding")?;
                 assert_slot(name, i, slot::SAMPLERS);
                 self.table.samplers.get(sampler);
             }

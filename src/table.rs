@@ -394,44 +394,51 @@ impl Table {
     }
 
     pub fn drop_timeline(&mut self, timeline: &crate::Timeline) {
-        self.timeline_points(&[(timeline, 0)]);
+        self.check_timelines(&[(timeline, 0)]);
         self.timelines.get_mut().clear(timeline.id);
     }
 
-    pub fn timeline_points(&self, list: &[(&crate::Timeline, u64)]) -> Vec<(TimelineId, u64)> {
+    pub fn check_timelines(&self, list: &[(&crate::Timeline, u64)]) {
+        if !cfg!(feature = "validation") {
+            return;
+        }
         let timelines = self.timelines.borrow();
-        list.iter()
-            .map(|&(t, value)| {
-                let (_, _, owner) = timelines.get(t.id);
-                check!(
-                    Weak::ptr_eq(owner, &Arc::downgrade(&t.token)),
-                    "{} belongs to another device; use the device that created it",
-                    t.id
-                );
-                (t.id, value)
-            })
-            .collect()
+        for &(t, _) in list {
+            let (_, _, owner) = timelines.get(t.id);
+            check!(
+                Weak::ptr_eq(owner, &Arc::downgrade(&t.token)),
+                "{} belongs to another device; use the device that created it",
+                t.id
+            );
+        }
     }
 
-    pub fn check_signals(&self, queue: usize, signals: &[(TimelineId, u64)]) {
+    pub fn check_signals(&self, queue: usize, signals: &[(&crate::Timeline, u64)]) {
+        if !cfg!(feature = "validation") {
+            return;
+        }
         let timelines = self.timelines.borrow();
-        for (i, &(id, value)) in signals.iter().enumerate() {
+        for (i, &(t, value)) in signals.iter().enumerate() {
+            let id = t.id;
             let (last, from, _) = timelines.get(id);
             check!(
                 *from != queue || value > *last,
                 "submit signals {id} to {value}, but queue {queue} already signalled it to {last}; signal a value above {last}"
             );
             check!(
-                signals[..i].iter().all(|s| s.0 != id),
+                signals[..i].iter().all(|s| s.0.id != id),
                 "submit signals {id} twice; signal it once with the highest value"
             );
         }
     }
 
-    pub fn record_signals(&self, queue: usize, signals: &[(TimelineId, u64)]) {
+    pub fn record_signals(&self, queue: usize, signals: &[(&crate::Timeline, u64)]) {
+        if !cfg!(feature = "validation") {
+            return;
+        }
         let mut timelines = self.timelines.borrow_mut();
-        for &(id, value) in signals {
-            let entry = timelines.get_mut(id);
+        for &(t, value) in signals {
+            let entry = timelines.get_mut(t.id);
             entry.0 = value;
             entry.1 = queue;
         }

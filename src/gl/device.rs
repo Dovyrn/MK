@@ -18,7 +18,6 @@ use crate::gl::resources::Resources;
 use crate::gl::sampler;
 use crate::gl::state::{self, State};
 use crate::gl::texture::{TextureObject, target};
-use crate::handle::TimelineId;
 use crate::recording::{Held, Recording};
 use crate::{
     Atomic64, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory, MeshPipelineInfo,
@@ -86,11 +85,11 @@ fn has(version: u32, extensions: &[String], minimum: u32, extension: &str) -> bo
 }
 
 impl Device {
-    pub fn adopt(proc: impl Fn(&str) -> *const c_void) -> Result<Self, Error> {
+    pub fn import_device(proc: impl Fn(&str) -> *const c_void) -> Result<Self, Error> {
         Self::load(&proc)
     }
 
-    pub fn adopt_raw(proc: u64) -> Result<Self, Error> {
+    pub fn import_device_raw(proc: u64) -> Result<Self, Error> {
         if proc == 0 {
             return Err(Error::Invalid("null GL loader".into()));
         }
@@ -154,15 +153,15 @@ impl Device {
             .fold(Stage::default(), |m, (_, s)| m | s);
             let caps = Caps {
                 queues: 1,
-                tick: 1.0,
+                timestamp_period: 1.0,
                 timestamps: results,
-                precise: results,
+                precise_occlusion: results,
                 viewports: if has(99, "GL_ARB_shader_viewport_layer_array") {
                     (int(glow::MAX_VIEWPORTS) as u32).min(slot::VIEWPORTS)
                 } else {
                     1
                 },
-                graphics: 1,
+                graphics_queues: 1,
                 anisotropy: if has(46, "GL_ARB_texture_filter_anisotropic")
                     || has(99, "GL_EXT_texture_filter_anisotropic")
                 {
@@ -172,9 +171,9 @@ impl Device {
                 },
                 depth_clamp: true,
                 line_fill: true,
-                slots: true,
-                storage,
-                persistent: has(44, "GL_ARB_buffer_storage"),
+                slot_binding: true,
+                storage_slots: storage,
+                persistent_maps: has(44, "GL_ARB_buffer_storage"),
                 bind_alignment: if storage {
                     int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
                         .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
@@ -186,7 +185,7 @@ impl Device {
                 texture_views: has(43, "GL_ARB_texture_view"),
                 occlusion: results,
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
-                blends: has(40, "GL_ARB_draw_buffers_blend"),
+                independent_blend: has(40, "GL_ARB_draw_buffers_blend"),
                 indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
                 indirect_offset: false,
                 max_queries: 65536,
@@ -856,37 +855,33 @@ impl Device {
         })
     }
 
-    pub fn submit(
+    pub fn submit<'d>(
         &self,
-        mut commands: CommandBuffer<'_>,
+        commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
         self.thread();
         let table = &self.res.table;
-        let waits = &table.timeline_points(waits);
-        let signals = &table.timeline_points(signals);
-        let recording = &mut commands.recording;
-        recording.check.finish();
-        let queue = recording.check.queue();
-        table.check_signals(queue, signals);
-        recording.recorder.finish()?;
-        self.waits(waits);
-        for &(id, value) in signals {
-            self.res
-                .timelines
-                .get(id)
-                .borrow_mut()
-                .signal(&self.gl, value)?;
+        table.check_timelines(waits);
+        table.check_timelines(signals);
+        let mut queue = None;
+        for mut c in commands {
+            let recording = &mut c.recording;
+            recording.check.finish();
+            let q = recording.check.queue();
+            check!(
+                queue.is_none_or(|p| p == q),
+                "submit mixes command buffers of queues {} and {q}; submit each queue on its own",
+                queue.unwrap_or(q)
+            );
+            queue = Some(q);
+            recording.recorder.finish()?;
         }
-        table.record_signals(queue, signals);
-        unsafe { self.gl.flush() };
-        Ok(())
-    }
-
-    fn waits(&self, waits: &[(TimelineId, u64)]) {
-        for &(id, value) in waits {
-            let e = self.res.timelines.get(id).borrow();
+        let queue = queue.expect("submit needs at least one command buffer");
+        table.check_signals(queue, signals);
+        for &(t, value) in waits {
+            let e = t.fences.borrow();
             if e.value >= value {
                 continue;
             }
@@ -897,6 +892,12 @@ impl Device {
                 .expect("wait on a timeline value no submit signals");
             unsafe { self.gl.wait_sync(fence, 0, glow::TIMEOUT_IGNORED) };
         }
+        for &(t, value) in signals {
+            t.fences.borrow_mut().signal(&self.gl, value)?;
+        }
+        table.record_signals(queue, signals);
+        unsafe { self.gl.flush() };
+        Ok(())
     }
 }
 

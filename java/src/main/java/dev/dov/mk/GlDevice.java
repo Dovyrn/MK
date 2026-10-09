@@ -9,11 +9,11 @@ public class GlDevice extends Device {
         super(handle);
     }
 
-    public static GlDevice adoptRaw(long proc) {
-        return new GlDevice(nAdoptRaw(proc));
+    public static GlDevice importDeviceRaw(long proc) {
+        return new GlDevice(nImportDeviceRaw(proc));
     }
 
-    private static native long nAdoptRaw(long proc);
+    private static native long nImportDeviceRaw(long proc);
 
     public synchronized Buffer importBuffer(int raw, long size) {
         idle("importBuffer");

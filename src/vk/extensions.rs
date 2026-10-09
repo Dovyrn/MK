@@ -99,7 +99,7 @@ impl Extensions {
                 .collect();
             if !missing.is_empty() {
                 return Err(Error::Unsupported(format!(
-                    "adopt needs {}",
+                    "import_device needs {}",
                     missing.join(", ")
                 )));
             }

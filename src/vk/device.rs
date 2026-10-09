@@ -29,7 +29,7 @@ use crate::vk::resources::Resources;
 use crate::{Caps, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
 use ash::vk;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 pub struct Device {
     pub instance: ash::Instance,
@@ -48,6 +48,8 @@ pub struct Device {
     queues: Vec<Queue>,
     pools: Slots<Pool>,
     allocations: Cell<u32>,
+    submits: RefCell<Vec<vk::CommandBufferSubmitInfo<'static>>>,
+    semaphores: RefCell<Vec<vk::SemaphoreSubmitInfo<'static>>>,
 }
 
 fn vk_image_usage(usage: TextureUsage) -> vk::ImageUsageFlags {
@@ -158,7 +160,7 @@ fn whole_view(info: &TextureInfo) -> TextureViewInfo {
 }
 
 impl Device {
-    pub fn adopt(
+    pub fn import_device(
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -240,6 +242,8 @@ impl Device {
             queues: list,
             pools: Slots::default(),
             allocations: Cell::new(0),
+            submits: RefCell::default(),
+            semaphores: RefCell::default(),
         })
     }
 
@@ -311,7 +315,7 @@ impl Device {
         .map_err(Error::from)
     }
 
-    pub fn adopt_raw(
+    pub fn import_device_raw(
         proc: u64,
         instance: u64,
         physical: u64,
@@ -339,7 +343,7 @@ impl Device {
             });
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
-            Self::adopt(
+            Self::import_device(
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,
@@ -477,30 +481,57 @@ impl Device {
         })
     }
 
-    pub fn submit(
+    pub fn submit<'d>(
         &self,
-        mut commands: CommandBuffer<'_>,
+        commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
         let table = &self.res.table;
-        let waits = &table.timeline_points(waits);
-        let signals = &table.timeline_points(signals);
-        let recording = &mut commands.recording;
-        recording.check.finish();
-        check!(
-            !recording.recorder.imported,
-            "an imported command buffer is submitted by its owner; call finish instead"
-        );
-        let queue = recording.check.queue();
+        table.check_timelines(waits);
+        table.check_timelines(signals);
+        let mut submits = self.submits.borrow_mut();
+        submits.clear();
+        let mut queue = None;
+        for c in commands {
+            let recording = &c.recording;
+            recording.check.finish();
+            check!(
+                !recording.recorder.imported,
+                "an imported command buffer is submitted by its owner; call finish instead"
+            );
+            let q = recording.check.queue();
+            check!(
+                queue.is_none_or(|p| p == q),
+                "submit mixes command buffers of queues {} and {q}; submit each queue on its own",
+                queue.unwrap_or(q)
+            );
+            queue = Some(q);
+            let buffer = recording.recorder.buffer;
+            unsafe { self.raw.end_command_buffer(buffer) }.map_err(Error::from)?;
+            submits.push(vk::CommandBufferSubmitInfo::default().command_buffer(buffer));
+        }
+        let queue = queue.expect("submit needs at least one command buffer");
         table.check_signals(queue, signals);
-        self.queues[queue].submit(
-            &self.raw,
-            recording.recorder.buffer,
-            &self.res,
-            waits,
-            signals,
-        )?;
+        let info = |&(t, value): &(&Timeline, u64)| {
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(t.raw)
+                .value(value)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+        };
+        let mut semaphores = self.semaphores.borrow_mut();
+        semaphores.clear();
+        semaphores.extend(waits.iter().chain(signals).map(info));
+        let (waits_info, signals_info) = semaphores.split_at(waits.len());
+        let submit = vk::SubmitInfo2::default()
+            .wait_semaphore_infos(waits_info)
+            .command_buffer_infos(&submits)
+            .signal_semaphore_infos(signals_info);
+        unsafe {
+            self.raw
+                .queue_submit2(self.queues[queue].raw, &[submit], vk::Fence::null())
+        }
+        .map_err(Error::from)?;
         table.record_signals(queue, signals);
         Ok(())
     }

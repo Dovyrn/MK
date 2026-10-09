@@ -10,7 +10,7 @@ public class Smoke {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
             var caps = device.caps();
-            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slots + ", tiles " + caps.tiles);
+            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slotBinding + ", tiles " + caps.tiles);
             clear(device);
             if (!caps.compute) {
                 System.out.println("java: no compute");
@@ -51,7 +51,7 @@ public class Smoke {
             } catch (IllegalStateException e) {
                 System.out.println("change while recording rejected");
             }
-            device.submit(commands, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
+            device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
             if (!timeline.await(1, 1000)) {
                 throw new IllegalStateException("timeout");
             }
@@ -110,7 +110,7 @@ public class Smoke {
                     .buffer(pixels));
             pass.memoryBarrier(Stage.COPY, Stage.HOST);
         }
-        device.submit(commands, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
+        device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
         if (!timeline.await(1, 1000)) {
             throw new IllegalStateException("timeout");
         }

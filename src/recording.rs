@@ -132,14 +132,7 @@ pub struct ComputePass<'p, 'd> {
 }
 
 impl ComputePass<'_, '_> {
-    pub fn end(self) {}
-}
-
-impl Drop for ComputePass<'_, '_> {
-    fn drop(&mut self) {
-        if std::thread::panicking() {
-            return;
-        }
+    pub fn end(mut self) {
         match &mut self.recording {
             Held::Borrowed(r) => r.run(Command::EndComputePass),
             Held::Owned(r) => r.check.finish(),
@@ -152,14 +145,7 @@ pub struct RenderPass<'p, 'd> {
 }
 
 impl RenderPass<'_, '_> {
-    pub fn end(self) {}
-}
-
-impl Drop for RenderPass<'_, '_> {
-    fn drop(&mut self) {
-        if std::thread::panicking() {
-            return;
-        }
+    pub fn end(mut self) {
         match &mut self.recording {
             Held::Borrowed(r) => r.run(Command::EndRenderPass),
             Held::Owned(r) => r.check.finish(),

@@ -53,8 +53,9 @@ fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {
         "u32" | "usize" | "i32" => one("int", "jint"),
         k if word(k) => one("int", "jint"),
         k if handle(k) => one("long", "jlong"),
-        "u64" | "handle" | "object" | "objref" | "f32x12" | "pointer" | "timeline" | "taken"
-        | "commands" => one("long", "jlong"),
+        "u64" | "handle" | "object" | "objref" | "f32x12" | "pointer" | "timeline" | "taken" => {
+            one("long", "jlong")
+        }
         "f32" => one("float", "jfloat"),
         "bool" => one("boolean", "jboolean"),
         "bytes" | "mutbytes" => two("long", "jlong"),
@@ -95,7 +96,7 @@ fn rust_arg(p: &Field) -> String {
         "str" => format!("{j}::str({n}, {n}_length as i64)"),
         "bytes" => format!("{j}::bytes({n}, {n}_length)"),
         "mutbytes" => format!("{j}::bytes_mut({n}, {n}_length)"),
-        "commands" => format!("{j}::take_commands({n})"),
+        "commands" => format!("{j}::commands({n}, {n}_length as i64)"),
         "f32x12" => format!("{j}::f32x12({n})"),
         "waits" => format!("&{j}::waits({n}, {n}_length as i64)"),
         "pairs" => format!("&{j}::pairs({n}, {n}_length as i64)"),
@@ -253,7 +254,6 @@ fn direct(kind: &str) -> bool {
                 | "bool"
                 | "bytes"
                 | "mutbytes"
-                | "commands"
                 | "timeline"
                 | "taken"
         )
@@ -286,7 +286,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "handle" | "object" | "objref" | "pointer" => "long".into(),
                 "f32x12" => "float[]".into(),
                 "bytes" | "mutbytes" => "long".into(),
-                "commands" => "CommandBuffer".into(),
+                "commands" => "CommandBuffer[]".into(),
                 "pairs" => "int[]".into(),
                 "waits" => "TimelinePoint[]".into(),
                 "timeline" | "taken" => "Timeline".into(),
@@ -364,7 +364,15 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(n.clone());
                     args.push(format!("{n}Size"));
                 }
-                "commands" => args.push(format!("{n}.take()")),
+                "commands" => {
+                    writeln!(
+                        s,
+                        "            var {n}Address = arena.alloc({n}.length * 8L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 8, {n}[i].take());\n            }}"
+                    )
+                    .unwrap();
+                    args.push(format!("{n}Address"));
+                    args.push(format!("{n}.length"));
+                }
                 "pairs" => {
                     writeln!(
                         s,

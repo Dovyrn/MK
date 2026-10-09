@@ -46,7 +46,7 @@ pub fn main() {
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let values = unsafe { device.map_buffer::<u32>(back) };
     for (i, v) in values.iter().enumerate() {

@@ -19,7 +19,7 @@ pub fn main() {
     let times = caps
         .timestamps
         .then(|| device.create_query_pool(QueryKind::Timestamp, 2).unwrap());
-    let kind = if caps.precise {
+    let kind = if caps.precise_occlusion {
         QueryKind::Precise
     } else {
         QueryKind::Occlusion
@@ -165,10 +165,10 @@ pub fn main() {
     pass.resolve_occlusion(samples, 0, 1, out, 16);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let r = unsafe { device.map_buffer::<u64>(out) };
-    let ns = (r[1] - r[0]) as f32 * caps.tick;
+    let ns = (r[1] - r[0]) as f32 * caps.timestamp_period;
     println!(
         "fill of {count} u32: {:.1} us, triangle covered {} samples",
         ns / 1000.0,
@@ -189,7 +189,7 @@ pub fn main() {
     if caps.timestamps {
         assert!(r[1] >= r[0], "timestamps {} {}", r[0], r[1]);
     }
-    if caps.precise {
+    if caps.precise_occlusion {
         assert!((400..640).contains(&r[2]), "occlusion {}", r[2]);
     } else {
         assert!(r[2] > 0, "occlusion {}", r[2]);

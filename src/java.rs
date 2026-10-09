@@ -66,6 +66,11 @@ pub fn take_commands(handle: jlong) -> CommandBuffer<'static> {
     *unsafe { Box::from_raw(handle as *mut CommandBuffer<'static>) }
 }
 
+pub fn commands(address: jlong, count: i64) -> impl Iterator<Item = CommandBuffer<'static>> {
+    let mut b = bytes(address, count * 8);
+    (0..count).map(move |_| take_commands(crate::wire::u64(&mut b) as jlong))
+}
+
 #[cfg(feature = "vk")]
 fn raw_commands(raw: ash::vk::CommandBuffer) -> jlong {
     ash::vk::Handle::as_raw(raw) as jlong
@@ -150,7 +155,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nRaw(
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_dov_mk_ComputePass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
     call(&mut env, |_| {
-        drop(unsafe { Box::from_raw(pass as *mut ComputePass<'static, 'static>) });
+        unsafe { Box::from_raw(pass as *mut ComputePass<'static, 'static>) }.end();
         Ok(())
     })
 }
@@ -158,7 +163,7 @@ pub extern "system" fn Java_dev_dov_mk_ComputePass_nEnd(mut env: JNIEnv, _: JCla
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_dov_mk_RenderPass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
     call(&mut env, |_| {
-        drop(unsafe { Box::from_raw(pass as *mut RenderPass<'static, 'static>) });
+        unsafe { Box::from_raw(pass as *mut RenderPass<'static, 'static>) }.end();
         Ok(())
     })
 }

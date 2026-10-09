@@ -489,7 +489,7 @@ impl<'a> Recorder<'a> {
                         | Stage::TASK
                         | Stage::MESH
                         | Stage::COMPUTE;
-                    if !(src_stage & shaders).is_empty() && self.caps.storage {
+                    if !(src_stage & shaders).is_empty() && self.caps.storage_slots {
                         gl.memory_barrier(gl_barrier_bits(dst_stage));
                     }
                 }

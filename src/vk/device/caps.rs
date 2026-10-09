@@ -91,17 +91,17 @@ pub(super) fn probe(
         textures: bindless.textures,
         images: bindless.textures,
         addresses: true,
-        tick: limits.timestamp_period,
+        timestamp_period: limits.timestamp_period,
         timestamps: queues
             .iter()
             .all(|q| families[q.family as usize].timestamp_valid_bits > 0),
-        precise: features.occlusion_query_precise != 0,
+        precise_occlusion: features.occlusion_query_precise != 0,
         viewports: if features.multi_viewport != 0 {
             limits.max_viewports.min(slot::VIEWPORTS)
         } else {
             1
         },
-        graphics: queues
+        graphics_queues: queues
             .iter()
             .enumerate()
             .filter(|(_, q)| {
@@ -121,7 +121,7 @@ pub(super) fn probe(
         texture_views: true,
         occlusion: true,
         bias_clamp: features.depth_bias_clamp != 0,
-        blends: features.independent_blend != 0,
+        independent_blend: features.independent_blend != 0,
         indirect: true,
         indirect_offset: true,
         max_queries: 65536,
@@ -140,9 +140,9 @@ pub(super) fn probe(
         max_cube: limits.max_image_dimension_cube,
         max_volume: limits.max_image_dimension3_d,
         max_layers: limits.max_image_array_layers,
-        slots: ext.push.is_some(),
-        storage: ext.push.is_some(),
-        persistent: true,
+        slot_binding: ext.push.is_some(),
+        storage_slots: ext.push.is_some(),
+        persistent_maps: true,
         bind_alignment: limits
             .min_uniform_buffer_offset_alignment
             .max(limits.min_storage_buffer_offset_alignment) as u32,

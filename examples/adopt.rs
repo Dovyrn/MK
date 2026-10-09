@@ -18,7 +18,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
         gl.bind_texture(mk::glow::TEXTURE_2D, None);
         t.0.get()
     };
-    let mut device = Device::adopt(proc).unwrap();
+    let mut device = Device::import_device(proc).unwrap();
     println!("{}", device.device_name());
     let slot = device
         .import_texture(
@@ -54,7 +54,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
     desc.setStorageMode(MTLStorageMode::Private);
     let texture = raw.newTextureWithDescriptor(&desc).unwrap();
     let compiler = host::compiler(&raw);
-    let mut device = Device::adopt(raw, compiler, 1).unwrap();
+    let mut device = Device::import_device(raw, compiler, 1).unwrap();
     let slot = device.import_texture(texture, Format::Rgba8Unorm).unwrap();
     (device, slot, ())
 }
@@ -123,7 +123,7 @@ fn native(
     let features = vk::PhysicalDeviceFeatures2::default()
         .push_next(&mut v12)
         .push_next(&mut v13);
-    let mut device = Device::adopt(
+    let mut device = Device::import_device(
         host.instance.clone(),
         host.physical,
         host.raw.clone(),
@@ -280,7 +280,7 @@ pub fn main() {
     pass.copy_buffer(source, 0, words, 0, 16);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     assert!(
@@ -308,5 +308,5 @@ pub fn main() {
     }
     #[cfg(not(feature = "vk"))]
     let ((), ()) = (host, native);
-    println!("cleared a native texture and mapped a native buffer through an adopted device");
+    println!("cleared a native texture and mapped a native buffer through an imported device");
 }

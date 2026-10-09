@@ -31,7 +31,7 @@ use objc2_metal::{
     MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage, MTLVertexFormat,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 
 fn mtl_compare(c: crate::CompareOp) -> MTLCompareFunction {
@@ -196,6 +196,7 @@ pub struct Device {
     pools: Slots<Pool>,
     lost: Arc<Mutex<Option<String>>>,
     caps: Caps,
+    submits: RefCell<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
 }
 
 impl Drop for Device {
@@ -208,7 +209,7 @@ impl Drop for Device {
 }
 
 impl Device {
-    pub fn adopt(
+    pub fn import_device(
         raw: Retained<ProtocolObject<dyn MTLDevice>>,
         compiler: Retained<ProtocolObject<dyn MTL4Compiler>>,
         queues: usize,
@@ -237,15 +238,16 @@ impl Device {
                 pools: Slots::default(),
                 lost,
                 caps,
+                submits: RefCell::default(),
             })
         })
     }
 
-    pub fn adopt_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, Error> {
+    pub fn import_device_raw(device: u64, compiler: u64, queues: usize) -> Result<Self, Error> {
         let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
         let compiler =
             unsafe { Retained::retain(compiler as *mut ProtocolObject<dyn MTL4Compiler>) };
-        Self::adopt(
+        Self::import_device(
             raw.ok_or_else(|| Error::Invalid("null Metal device".into()))?,
             compiler.ok_or_else(|| Error::Invalid("null Metal compiler".into()))?,
             queues,
@@ -350,27 +352,40 @@ impl Device {
         })
     }
 
-    pub fn submit(
+    pub fn submit<'d>(
         &self,
-        mut commands: CommandBuffer<'_>,
+        commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
         autoreleasepool(|_| {
             let table = &self.res.table;
-            let waits = &table.timeline_points(waits);
-            let signals = &table.timeline_points(signals);
-            let recording = &mut commands.recording;
-            recording.check.finish();
-            check!(
-                recording.recorder.kind() == Kind::Owned,
-                "an imported command buffer is submitted by its owner; call finish instead"
-            );
-            let queue = recording.check.queue();
+            table.check_timelines(waits);
+            table.check_timelines(signals);
+            let mut submits = self.submits.borrow_mut();
+            submits.clear();
+            let mut queue = None;
+            for mut c in commands {
+                let recording = &mut c.recording;
+                recording.check.finish();
+                check!(
+                    recording.recorder.kind() == Kind::Owned,
+                    "an imported command buffer is submitted by its owner; call finish instead"
+                );
+                let q = recording.check.queue();
+                check!(
+                    queue.is_none_or(|p| p == q),
+                    "submit mixes command buffers of queues {} and {q}; submit each queue on its own",
+                    queue.unwrap_or(q)
+                );
+                queue = Some(q);
+                submits.push(recording.recorder.end()?);
+            }
+            let queue = queue.expect("submit needs at least one command buffer");
             table.check_signals(queue, signals);
             self.queues[queue].lost()?;
-            let buffer = recording.recorder.end()?;
-            self.queues[queue].commit(&buffer, &self.res, waits, signals);
+            self.queues[queue].commit(&submits, waits, signals);
+            submits.clear();
             table.record_signals(queue, signals);
             Ok(())
         })

@@ -254,7 +254,7 @@ impl State {
                     glow::DISPATCH_INDIRECT_BUFFER_BINDING,
                 ));
             }
-            if caps.storage {
+            if caps.storage_slots {
                 targets.push((
                     glow::SHADER_STORAGE_BUFFER,
                     glow::SHADER_STORAGE_BUFFER_BINDING,
@@ -273,7 +273,7 @@ impl State {
                 ],
                 register::UNIFORM + slot::UNIFORMS,
             )];
-            if caps.storage {
+            if caps.storage_slots {
                 points.push((
                     glow::SHADER_STORAGE_BUFFER,
                     [
@@ -361,7 +361,7 @@ impl State {
                     m
                 })
                 .collect();
-            let funcs = if caps.blends {
+            let funcs = if caps.independent_blend {
                 (0..slot::COLORS)
                     .map(|i| BLEND.map(|p| indexed(p, i)[0]))
                     .collect()

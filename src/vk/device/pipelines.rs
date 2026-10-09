@@ -33,7 +33,7 @@ impl Device {
             .map(|(_, name)| *name)
             .filter(|name| !name.is_empty())
             .collect();
-        let words = spirv::read(code, &used, self.caps.slots)?;
+        let words = spirv::read(code, &used, self.caps.slot_binding)?;
         let fragment = entries
             .iter()
             .find(|(stage, _)| *stage == vk::ShaderStageFlags::FRAGMENT)
@@ -319,7 +319,7 @@ impl Device {
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
         let (code, entry) = (info.code, info.entry);
-        let words = spirv::read(code, &[entry], self.caps.slots)?;
+        let words = spirv::read(code, &[entry], self.caps.slot_binding)?;
         self.caps
             .check_subgroups(spirv::subgroups(&words), Stage::COMPUTE)?;
         self.capabilities(&words)?;

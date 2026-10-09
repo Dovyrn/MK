@@ -63,7 +63,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 5000).unwrap());
     let seen = unsafe { device.map_buffer::<u8>(back) };
     assert_eq!(seen, pixels, "the GPU copy differs from the host write");
@@ -219,7 +219,7 @@ pub fn main() {
             });
             pass.memory_barrier(Stage::COPY, Stage::HOST);
             pass.end();
-            device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+            device.submit([c], &[], &[(&timeline, 1)]).unwrap();
             assert!(timeline.wait(1, 5000).unwrap());
             let seen = unsafe { device.map_buffer::<u8>(back) };
             assert_eq!(seen, out, "bc1 readback differs from the host read");

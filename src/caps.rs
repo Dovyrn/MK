@@ -152,7 +152,11 @@ impl Caps {
         need(name, !clamp || self.depth_clamp, "depth_clamp")?;
         need(name, fill != FillMode::Line || self.line_fill, "line_fill")?;
         need(name, !ordered || self.ordered_reads, "ordered_reads")?;
-        need(name, same_blend(colors) || self.blends, "blends")
+        need(
+            name,
+            same_blend(colors) || self.independent_blend,
+            "independent_blend",
+        )
     }
 
     pub(crate) fn check_indirect(&self, mesh: bool, draws: u32) -> Result<(), Error> {
@@ -444,7 +448,11 @@ impl Caps {
             kind != QueryKind::Timestamp || self.timestamps,
             "timestamps",
         )?;
-        need(name, kind != QueryKind::Precise || self.precise, "precise")?;
+        need(
+            name,
+            kind != QueryKind::Precise || self.precise_occlusion,
+            "precise_occlusion",
+        )?;
         need(
             name,
             kind != QueryKind::Occlusion || self.occlusion,

@@ -10,7 +10,7 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    if !caps.compute || !caps.storage {
+    if !caps.compute || !caps.storage_slots {
         println!("no compute or storage");
         return;
     }
@@ -73,7 +73,7 @@ pub fn main() {
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
         let value = value + 2;
-        device.submit(c, &[], &[(&timeline, value)]).unwrap();
+        device.submit([c], &[], &[(&timeline, value)]).unwrap();
         assert!(timeline.wait(value, 1000).unwrap());
         assert_eq!(
             unsafe { device.map_buffer::<[u64; 2]>(buffer) }[0],
@@ -159,7 +159,7 @@ fn textures(
     pass.copy_texture_to_buffer(&BufferTextureCopy { ..copy(back) });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(timeline, value)]).unwrap();
+    device.submit([c], &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
     for t in 0..16u64 {
         let (got, want) = if wide {

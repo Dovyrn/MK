@@ -122,7 +122,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COMPUTE | Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(&timeline, 1)]).unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     let sampled = unsafe { device.map_buffer::<[f32; 4]>(out) };
     let written = unsafe { device.map_buffer::<[u8; 4]>(back) };

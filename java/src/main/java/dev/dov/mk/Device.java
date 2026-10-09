@@ -411,8 +411,12 @@ public class Device implements AutoCloseable {
 
     private static native long nBeginCommands(long device, long pool);
 
-    public synchronized void submit(CommandBuffer commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+    public synchronized void submit(CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         try (var arena = new Arena()) {
+            var commandsAddress = arena.alloc(commands.length * 8L);
+            for (var i = 0; i < commands.length; i++) {
+                memPutLong(commandsAddress + i * 8, commands[i].take());
+            }
             var waitsAddress = arena.alloc(waits.length * 16L);
             for (var i = 0; i < waits.length; i++) {
                 memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
@@ -423,9 +427,9 @@ public class Device implements AutoCloseable {
                 memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
                 memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
             }
-            nSubmit(handle(), commands.take(), waitsAddress, waits.length, signalsAddress, signals.length);
+            nSubmit(handle(), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
         }
     }
 
-    private static native void nSubmit(long device, long commands, long waits, int waitsLength, long signals, int signalsLength);
+    private static native void nSubmit(long device, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
 }

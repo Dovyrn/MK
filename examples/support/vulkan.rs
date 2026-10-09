@@ -281,7 +281,8 @@ pub fn try_device(queues: usize) -> Option<Host> {
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(features);
         enabled.p_next = info.p_next as *mut _;
         let device =
-            mk::Device::adopt(instance.clone(), physical, raw.clone(), &slots, &enabled).unwrap();
+            mk::Device::import_device(instance.clone(), physical, raw.clone(), &slots, &enabled)
+                .unwrap();
         Some(Host {
             device: ManuallyDrop::new(device),
             raw,

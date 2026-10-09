@@ -1,6 +1,3 @@
-use crate::Error;
-use crate::handle::TimelineId;
-use crate::vk::resources::Resources;
 use ash::vk;
 
 pub const COMPUTE: [vk::PipelineBindPoint; 1] = [vk::PipelineBindPoint::COMPUTE];
@@ -34,36 +31,5 @@ impl Queue {
 
     pub fn bind_points(&self) -> &'static [vk::PipelineBindPoint] {
         if self.graphics { &GRAPHICS } else { &COMPUTE }
-    }
-
-    pub fn submit(
-        &self,
-        device: &ash::Device,
-        buffer: vk::CommandBuffer,
-        res: &Resources,
-        waits: &[(TimelineId, u64)],
-        signals: &[(TimelineId, u64)],
-    ) -> Result<(), Error> {
-        unsafe { device.end_command_buffer(buffer) }.map_err(Error::from)?;
-        let info = |semaphore, value| {
-            vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore)
-                .value(value)
-                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-        };
-        let waits: Vec<_> = waits
-            .iter()
-            .map(|&(t, v)| info(res.timelines.get(t).raw, v))
-            .collect();
-        let signals: Vec<_> = signals
-            .iter()
-            .map(|&(t, v)| info(res.timelines.get(t).raw, v))
-            .collect();
-        let buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(buffer)];
-        let submit = vk::SubmitInfo2::default()
-            .wait_semaphore_infos(&waits)
-            .command_buffer_infos(&buffers)
-            .signal_semaphore_infos(&signals);
-        unsafe { device.queue_submit2(self.raw, &[submit], vk::Fence::null()) }.map_err(Error::from)
     }
 }

@@ -119,7 +119,7 @@ pub fn main() {
         });
         pass.memory_barrier(Stage::COPY, Stage::HOST);
         pass.end();
-        device.submit(c, &[], &[(&timeline, round + 1)]).unwrap();
+        device.submit([c], &[], &[(&timeline, round + 1)]).unwrap();
         assert!(timeline.wait(round + 1, 1000).unwrap());
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         let at = |x: u32, y: u32| pixels[(y * n + x) as usize];
@@ -267,7 +267,7 @@ fn executed(
     });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
-    device.submit(c, &[], &[(timeline, value)]).unwrap();
+    device.submit([c], &[], &[(timeline, value)]).unwrap();
     assert!(timeline.wait(value, 1000).unwrap());
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     assert_eq!(
