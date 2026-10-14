@@ -38,7 +38,7 @@ public class Smoke {
             device.commitResidency(set);
             var commands = device.beginCommands(pool);
             commands.useResidencySet(set);
-            var compute = commands.beginComputePass();
+            var compute = commands.beginComputePass(0, 0);
             compute.bindComputePipeline(pipeline);
             compute.bindStorageBuffer(0, buffer, 0, n * 4L);
             compute.bindUniformBuffer(0, constants, 0, 8);
@@ -91,19 +91,16 @@ public class Smoke {
         device.commitResidency(set);
         var commands = device.beginCommands(pool);
         commands.useResidencySet(set);
-        commands.textureBarriers(new TextureBarrier[] {new TextureBarrier()
+        commands.discardTextures(new TextureDiscard[] {new TextureDiscard()
                 .texture(texture)
-                .srcStage(Stage.COLOR)
-                .dstStage(Stage.COLOR)
-                .before(TextureLayout.UNDEFINED)});
+                .dstStage(Stage.COLOR)});
         var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
         commands.beginRenderPass(new RenderPassInfo()
                 .width(size)
                 .height(size)
                 .colors(new ColorAttachment[] {color}))
                 .end();
-        commands.memoryBarrier(Stage.COLOR, Stage.COPY);
-        var copy = commands.beginComputePass();
+        var copy = commands.beginComputePass(Stage.COLOR, Stage.COPY);
         copy.copyTextureToBuffer(new BufferTextureCopy()
                 .texture(texture)
                 .width(size)

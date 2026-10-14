@@ -127,16 +127,18 @@ impl Device {
         autoreleasepool(|_| {
             let info = &self.res.table.resolve_view(texture, info);
             self.caps.check_view(info.dimension)?;
-            let usable = self.format_usage(info.format);
-            let counts = self.format_samples(info.format, info.usage);
-            caps::check_support(
-                "create_texture_view",
-                info.format,
-                info.usage,
-                1,
-                usable,
-                counts,
-            )?;
+            if cfg!(feature = "validation") {
+                let usable = self.format_usage(info.format);
+                let counts = self.format_samples(info.format, info.usage);
+                caps::check_support(
+                    "create_texture_view",
+                    info.format,
+                    info.usage,
+                    1,
+                    usable,
+                    counts,
+                )?;
+            }
             let parent = self.res.textures.get(texture);
             if parent.format.block() != info.format.block()
                 || parent.format != info.format

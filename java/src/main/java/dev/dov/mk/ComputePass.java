@@ -119,26 +119,26 @@ public class ComputePass {
 
     private static native void nEndDebugLabel(long target);
 
-    public void textureBarriers(TextureBarrier[] barriers) {
+    public void discardTextures(TextureDiscard[] textures) {
         synchronized (device) {
             try (var arena = new Arena()) {
-            var barriersSize = 4;
-            for (var x : barriers) {
-                barriersSize += x.encodedSize();
+            var texturesSize = 4;
+            for (var x : textures) {
+                texturesSize += x.encodedSize();
             }
-            var list = arena.alloc(barriersSize);
+            var list = arena.alloc(texturesSize);
             var at = list;
-            memPutInt(at, barriers.length);
+            memPutInt(at, textures.length);
             at += 4;
-            for (var x : barriers) {
+            for (var x : textures) {
                 at = x.encode(at);
             }
-                nTextureBarriers(handle(), list, barriersSize);
+                nDiscardTextures(handle(), list, texturesSize);
             }
         }
     }
 
-    private static native void nTextureBarriers(long target, long barriers, int barriersLength);
+    private static native void nDiscardTextures(long target, long textures, int texturesLength);
 
     public void copyBufferToTexture(BufferTextureCopy info) {
         synchronized (device) {

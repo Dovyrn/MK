@@ -1,8 +1,8 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorMask, ColorTarget, DepthAttachment, Format, LoadOp,
-    Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp, TextureBarrier,
-    TextureInfo, TextureLayout, TextureUsage, Viewport,
+    BufferTextureCopy, ColorAttachment, ColorMask, ColorTarget, DepthAttachment, DepthStateInfo,
+    Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp,
+    TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -122,6 +122,9 @@ pub fn main() {
     }
     let (count, step) = if ordered { (16, 1.0 / 32.0) } else { (1, 0.5) };
     let timeline = device.create_timeline().unwrap();
+    let none = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let (constants, stride) = host::constants(
         &mut device,
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
@@ -140,26 +143,20 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: value,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR | Stage::FRAGMENT,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: depth,
         src_stage: Stage::DEPTH,
         dst_stage: Stage::DEPTH,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -196,6 +193,7 @@ pub fn main() {
         width: n,
         height: n,
     }]);
+    host::states(&mut pass, none);
     pass.bind_render_pipeline(fill);
     pass.bind_uniform_buffer(0, constants, 0, 4);
     pass.draw(3, 1, 0, 0);
@@ -207,8 +205,7 @@ pub fn main() {
     pass.bind_render_pipeline(copy);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    c.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,

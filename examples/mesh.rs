@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, MeshPipelineInfo,
-    RenderPassInfo, Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
+    MeshPipelineInfo, RenderPassInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
     Viewport,
 };
 
@@ -52,6 +52,9 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let none = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let listed = device.caps().mesh_indirect;
     let groups = device.create_buffer(12, Memory::Upload).unwrap();
     let words = unsafe { device.map_buffer::<[u32; 3]>(groups) };
@@ -69,12 +72,10 @@ pub fn main() {
     for round in passes.into_iter().flatten() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.texture_barriers(&[TextureBarrier {
+        c.discard_textures(&[TextureDiscard {
             texture: color,
             src_stage: Stage::COLOR,
             dst_stage: Stage::COLOR,
-            before: TextureLayout::Undefined,
-            ..Default::default()
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -99,6 +100,7 @@ pub fn main() {
             width: n,
             height: n,
         }]);
+        host::states(&mut pass, none);
         pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
         pass.bind_uniform_buffer(0, half, 0, 4);
         if round == 1 {
@@ -107,8 +109,7 @@ pub fn main() {
             pass.draw_mesh_tasks(1, 1, 1);
         }
         pass.end();
-        c.memory_barrier(Stage::COLOR, Stage::COPY);
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: color,
             width: n,
@@ -198,6 +199,9 @@ fn executed(
     for word in device.indirect_shader_handle(list).0 {
         bytes.extend(word.to_le_bytes());
     }
+    let none = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let (half, _) = host::constants(device, &[&0.5f32.to_le_bytes()]);
     let (constants, _) = host::constants(device, &[&bytes]);
     let set = device.create_residency_set().unwrap();
@@ -215,18 +219,17 @@ fn executed(
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.bind_compute_pipeline(encode);
     pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
     pass.dispatch(1, 1, 1);
     pass.end();
-    c.memory_barrier(Stage::COMPUTE, Stage::INDIRECT);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -237,6 +240,8 @@ fn executed(
                 clear: [0.0, 0.0, 1.0, 1.0],
                 ..Default::default()
             }],
+            src_stage: Stage::COMPUTE,
+            dst_stage: Stage::INDIRECT,
             ..Default::default()
         })
         .unwrap();
@@ -251,12 +256,12 @@ fn executed(
         width: n,
         height: n,
     }]);
+    host::states(&mut pass, none);
     pass.bind_render_pipeline(single);
     pass.bind_uniform_buffer(0, half, 0, 4);
     pass.execute_indirect(list, 0, 1);
     pass.end();
-    c.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,

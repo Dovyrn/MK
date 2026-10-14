@@ -1,7 +1,7 @@
 use crate::Error;
-use crate::RenderPassInfo;
 use crate::check::Check;
 use crate::command::Command;
+use crate::{RenderPassInfo, Stage};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "gl")]
@@ -67,6 +67,8 @@ impl Recording<'_> {
             width: info.width,
             height: info.height,
             layers: info.layers,
+            src_stage: info.src_stage,
+            dst_stage: info.dst_stage,
         })
     }
 }
@@ -101,8 +103,15 @@ pub struct CommandBuffer<'d> {
 }
 
 impl<'d> CommandBuffer<'d> {
-    pub fn begin_compute_pass(&mut self) -> Result<ComputePass<'_, 'd>, Error> {
-        self.recording.record(Command::BeginComputePass)?;
+    pub fn begin_compute_pass(
+        &mut self,
+        src_stage: Stage,
+        dst_stage: Stage,
+    ) -> Result<ComputePass<'_, 'd>, Error> {
+        self.recording.record(Command::BeginComputePass {
+            src_stage,
+            dst_stage,
+        })?;
         Ok(ComputePass {
             recording: Held::Borrowed(&mut self.recording),
         })

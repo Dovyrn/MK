@@ -16,18 +16,24 @@ impl Device {
     }
 
     pub fn add_residency(&mut self, set: ResidencySet, resources: &[Resource]) {
-        self.res
-            .table
-            .change_residency(set, Members::from(resources), true);
+        if cfg!(feature = "validation") {
+            self.res
+                .table
+                .change_residency(set, Members::from(resources), true);
+        }
     }
 
     pub fn remove_residency(&mut self, set: ResidencySet, resources: &[Resource]) {
-        self.res
-            .table
-            .change_residency(set, Members::from(resources), false);
+        if cfg!(feature = "validation") {
+            self.res
+                .table
+                .change_residency(set, Members::from(resources), false);
+        }
     }
 
     pub fn commit_residency(&mut self, set: ResidencySet) {
-        self.res.table.residency.commit(set);
+        if cfg!(feature = "validation") {
+            self.res.table.residency.commit(set);
+        }
     }
 }

@@ -444,7 +444,6 @@ impl Device {
             stencil: vk::RenderingAttachmentInfo::default(),
             heap: self.bindless.set,
             point: vk::PipelineBindPoint::GRAPHICS,
-            defaults: false,
             imported: false,
         };
         recorder.bind_heap_set();
@@ -480,7 +479,6 @@ impl Device {
     ) -> Result<RenderPass<'_, '_>, Error> {
         let mut recording = self.recording(pool, raw, "render", info.samples);
         recording.recorder.imported = true;
-        recording.recorder.record_defaults();
         Ok(RenderPass {
             recording: Held::Owned(Box::new(recording)),
         })

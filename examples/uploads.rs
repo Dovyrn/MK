@@ -52,8 +52,9 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.memory_barrier(Stage::HOST, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         buffer: back,
         texture,
@@ -207,8 +208,9 @@ pub fn main() {
             let timeline = device.create_timeline().unwrap();
             let mut c = device.begin_commands(pool).unwrap();
             c.use_residency_set(set);
-            c.memory_barrier(Stage::HOST, Stage::COPY);
-            let mut pass = c.begin_compute_pass().unwrap();
+            let mut pass = c
+                .begin_compute_pass(Stage::default(), Stage::default())
+                .unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {
                 buffer: back,
                 texture: blocks,

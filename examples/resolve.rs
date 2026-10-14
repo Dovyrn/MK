@@ -1,6 +1,6 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, Format, LoadOp, Memory, RenderPassInfo, Scissor, Stage,
-    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Viewport,
+    TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -52,12 +52,10 @@ pub fn main() {
         device.commit_residency(set);
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.texture_barriers(&[ms, dst].map(|t| TextureBarrier {
+        c.discard_textures(&[ms, dst].map(|t| TextureDiscard {
             texture: t,
             src_stage: Stage::COLOR,
             dst_stage: Stage::COLOR,
-            before: TextureLayout::Undefined,
-            ..Default::default()
         }));
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -83,9 +81,10 @@ pub fn main() {
             height: n,
         }]);
         pass.end();
-        c.memory_barrier(Stage::COLOR, Stage::COLOR);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
+                src_stage: Stage::COLOR,
+                dst_stage: Stage::COLOR,
                 width: n,
                 height: n,
                 colors: &[ColorAttachment {
@@ -108,9 +107,10 @@ pub fn main() {
             height: n,
         }]);
         pass.end();
-        c.memory_barrier(Stage::COLOR, Stage::COLOR);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
+                src_stage: Stage::COLOR,
+                dst_stage: Stage::COLOR,
                 width: area,
                 height: area,
                 colors: &[ColorAttachment {
@@ -134,8 +134,7 @@ pub fn main() {
             height: area,
         }]);
         pass.end();
-        c.memory_barrier(Stage::COLOR, Stage::COPY);
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: dst,
             width: n,

@@ -1,6 +1,6 @@
 use mk::{
     Atomic64, BufferTextureCopy, ComputePipelineInfo, Device, Format, Memory, Stage,
-    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Timeline,
+    TextureDiscard, TextureInfo, TextureUsage, Timeline,
 };
 
 #[path = "support/host.rs"]
@@ -65,7 +65,9 @@ pub fn main() {
         data[0] = *start;
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c
+            .begin_compute_pass(Stage::default(), Stage::default())
+            .unwrap();
         pass.bind_compute_pipeline(pipeline);
         pass.bind_storage_buffer(0, buffer, 0, 16);
         pass.bind_storage_buffer(1, buffer, 0, 16);
@@ -139,24 +141,20 @@ fn textures(
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture,
         src_stage: Stage::COPY,
         dst_stage: Stage::COPY,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.copy_buffer_to_texture(&BufferTextureCopy { ..copy(zeros) });
-    pass.end();
-    c.memory_barrier(Stage::COPY, Stage::COMPUTE);
-    let mut pass = c.begin_compute_pass().unwrap();
+    pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
     pass.bind_storage_texture(0, texture);
     pass.dispatch(1, 1, 1);
-    pass.end();
-    c.memory_barrier(Stage::COMPUTE, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_texture_to_buffer(&BufferTextureCopy { ..copy(back) });
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();

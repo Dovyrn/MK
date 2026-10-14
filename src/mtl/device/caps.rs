@@ -184,6 +184,9 @@ impl Device {
     }
 
     pub(super) fn supports(&self, info: &TextureInfo) -> Result<(), Error> {
+        if !cfg!(feature = "validation") {
+            return Ok(());
+        }
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.check_texture(info, usable, counts)?;
@@ -192,7 +195,7 @@ impl Device {
             TextureDimension::D1 | TextureDimension::D1Array
         );
         let target = !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty();
-        if cfg!(feature = "validation") && line && target {
+        if line && target {
             return Err(Error::Unsupported(
                 "a 1D texture cannot be a render target on Metal".into(),
             ));

@@ -6,11 +6,10 @@ use crate::vk::bindings;
 use crate::vk::device::indirect_stride;
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
-use crate::vk::texture::{TextureObject, count};
+use crate::vk::texture::TextureObject;
 use crate::{Buffer, Texture};
 use crate::{
-    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, TextureLayout,
-    TextureUsage, slot,
+    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, TextureUsage, slot,
 };
 use ash::vk;
 use std::ffi::CString;
@@ -27,7 +26,6 @@ pub struct Recorder<'a> {
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub heap: vk::DescriptorSet,
     pub point: vk::PipelineBindPoint,
-    pub defaults: bool,
     pub imported: bool,
 }
 
@@ -141,20 +139,6 @@ fn vk_access(bits: Stage, reads: bool) -> vk::AccessFlags2 {
         }
     }
     flags
-}
-
-pub fn vk_layout(l: crate::TextureLayout) -> vk::ImageLayout {
-    match l {
-        TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
-        TextureLayout::General => vk::ImageLayout::GENERAL,
-        TextureLayout::Read => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        TextureLayout::Color => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        TextureLayout::Depth => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        TextureLayout::DepthRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
-    }
 }
 
 impl Recorder<'_> {
@@ -356,25 +340,31 @@ impl Recorder<'_> {
         unsafe { self.device.end_command_buffer(self.buffer) }.map_err(Error::from)
     }
 
-    pub fn record_defaults(&mut self) {
-        let (d, b) = (self.device, self.buffer);
-        self.defaults = true;
-        unsafe {
-            d.cmd_set_cull_mode(b, vk::CullModeFlags::NONE);
-            d.cmd_set_front_face(b, vk::FrontFace::CLOCKWISE);
-            d.cmd_set_depth_bias_enable(b, false);
-            d.cmd_set_depth_bias(b, 0.0, 0.0, 0.0);
-            d.cmd_set_blend_constants(b, &[0.0; 4]);
-            d.cmd_set_stencil_reference(b, vk::StencilFaceFlags::FRONT_AND_BACK, 0);
+    fn barrier(&self, src: Stage, dst: Stage) {
+        if src.is_empty() {
+            return;
         }
-        self.record_depth_state(&DepthStateInfo::default());
+        let barrier = vk::MemoryBarrier2::default()
+            .src_stage_mask(vk_stages(src))
+            .src_access_mask(vk_access(src, false))
+            .dst_stage_mask(vk_stages(dst))
+            .dst_access_mask(vk_access(dst, true));
+        let barriers = [barrier];
+        let info = vk::DependencyInfo::default().memory_barriers(&barriers);
+        unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
     }
 
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
         let (d, b) = (self.device, self.buffer);
         unsafe {
             match command {
-                Command::BeginComputePass => self.point = vk::PipelineBindPoint::COMPUTE,
+                Command::BeginComputePass {
+                    src_stage,
+                    dst_stage,
+                } => {
+                    self.point = vk::PipelineBindPoint::COMPUTE;
+                    self.barrier(src_stage, dst_stage);
+                }
                 Command::EndComputePass => {}
                 Command::BindComputePipeline { pipeline } => d.cmd_bind_pipeline(
                     b,
@@ -419,18 +409,9 @@ impl Recorder<'_> {
                 Command::MemoryBarrier {
                     src_stage,
                     dst_stage,
-                } => {
-                    let barrier = vk::MemoryBarrier2::default()
-                        .src_stage_mask(vk_stages(src_stage))
-                        .src_access_mask(vk_access(src_stage, false))
-                        .dst_stage_mask(vk_stages(dst_stage))
-                        .dst_access_mask(vk_access(dst_stage, true));
-                    let barriers = [barrier];
-                    let info = vk::DependencyInfo::default().memory_barriers(&barriers);
-                    d.cmd_pipeline_barrier2(b, &info)
-                }
-                Command::TextureBarriers { barriers } => {
-                    for chunk in barriers.chunks(16) {
+                } => self.barrier(src_stage, dst_stage),
+                Command::DiscardTextures { textures } => {
+                    for chunk in textures.chunks(16) {
                         let mut list = [vk::ImageMemoryBarrier2::default(); 16];
                         for (out, x) in list.iter_mut().zip(chunk) {
                             let t = self.res.textures.get(x.texture);
@@ -439,15 +420,15 @@ impl Recorder<'_> {
                                 .src_access_mask(vk_access(x.src_stage, false))
                                 .dst_stage_mask(vk_stages(x.dst_stage))
                                 .dst_access_mask(vk_access(x.dst_stage, true))
-                                .old_layout(vk_layout(x.before))
-                                .new_layout(vk_layout(x.after))
+                                .old_layout(vk::ImageLayout::UNDEFINED)
+                                .new_layout(vk::ImageLayout::GENERAL)
                                 .image(t.image)
                                 .subresource_range(vk::ImageSubresourceRange {
                                     aspect_mask: t.aspect,
-                                    base_mip_level: t.base_mip + x.base_mip,
-                                    level_count: count(x.mips, x.base_mip, t.mips),
-                                    base_array_layer: t.base_layer + x.base_layer,
-                                    layer_count: count(x.layers, x.base_layer, t.layers),
+                                    base_mip_level: t.base_mip,
+                                    level_count: t.mips,
+                                    base_array_layer: t.base_layer,
+                                    layer_count: t.layers,
                                 });
                         }
                         let list = &list[..chunk.len()];
@@ -593,8 +574,11 @@ impl Recorder<'_> {
                     width,
                     height,
                     layers,
+                    src_stage,
+                    dst_stage,
                 } => {
                     self.point = vk::PipelineBindPoint::GRAPHICS;
+                    self.barrier(src_stage, dst_stage);
                     let area = vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
                         extent: vk::Extent2D { width, height },
@@ -614,17 +598,6 @@ impl Recorder<'_> {
                     d.cmd_begin_rendering(b, &info);
                     self.colors.clear();
                     self.depth = None;
-                    if !self.defaults {
-                        self.record_defaults();
-                    }
-                    let full = vk::Viewport {
-                        width: width as f32,
-                        height: height as f32,
-                        max_depth: 1.0,
-                        ..Default::default()
-                    };
-                    d.cmd_set_viewport_with_count(b, &[full]);
-                    d.cmd_set_scissor_with_count(b, &[area]);
                 }
                 Command::EndRenderPass => d.cmd_end_rendering(b),
                 Command::InputAttachmentBarrier => {

@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorTarget, CommandPool, Device, Format, ImportedPassInfo, Memory,
-    RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture, TextureBarrier,
-    TextureInfo, TextureLayout, TextureUsage, Viewport,
+    BufferTextureCopy, ColorTarget, CommandPool, DepthState, DepthStateInfo, Device, Format,
+    ImportedPassInfo, Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage,
+    Texture, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -9,7 +9,8 @@ mod host;
 
 const N: u32 = 32;
 
-fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
+fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline, depth: DepthState) {
+    host::states(pass, depth);
     pass.set_viewport(&[Viewport {
         width: N as f32,
         height: N as f32,
@@ -24,14 +25,11 @@ fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
     pass.draw(3, 1, 0, 0);
 }
 
-fn to_color(texture: Texture) -> TextureBarrier {
-    TextureBarrier {
+fn discard(texture: Texture) -> TextureDiscard {
+    TextureDiscard {
         texture,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        after: TextureLayout::Color,
-        ..Default::default()
     }
 }
 
@@ -42,14 +40,9 @@ fn read_back(
     back: mk::Buffer,
 ) {
     commands.use_residency_set(set);
-    commands.texture_barriers(&[TextureBarrier {
-        texture,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COPY,
-        before: TextureLayout::Color,
-        ..Default::default()
-    }]);
-    let mut pass = commands.begin_compute_pass().unwrap();
+    let mut pass = commands
+        .begin_compute_pass(Stage::COLOR, Stage::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
         width: N,
@@ -62,6 +55,7 @@ fn read_back(
 }
 
 #[cfg(feature = "vk")]
+#[allow(clippy::too_many_arguments)]
 fn host_frame(
     device: &Device,
     pool: CommandPool,
@@ -70,6 +64,7 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
+    depth: DepthState,
 ) {
     use mk::ash::vk;
     let families = unsafe {
@@ -94,9 +89,38 @@ fn host_frame(
             .unwrap();
         let mut commands = device.import_commands(pool, buffer).unwrap();
         commands.use_residency_set(set);
-        commands.texture_barriers(&[to_color(texture)]);
+        commands.discard_textures(&[discard(texture)]);
         commands.end().unwrap();
-        let view = device.raw_texture(texture).1;
+        let (image, view) = device.raw_texture(texture);
+        let layout = |old, new, src, src_access, dst, dst_access| {
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                level_count: 1,
+                layer_count: 1,
+                ..Default::default()
+            };
+            let barriers = [vk::ImageMemoryBarrier2::default()
+                .src_stage_mask(src)
+                .src_access_mask(src_access)
+                .dst_stage_mask(dst)
+                .dst_access_mask(dst_access)
+                .old_layout(old)
+                .new_layout(new)
+                .image(image)
+                .subresource_range(range)];
+            let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
+            raw.cmd_pipeline_barrier2(buffer, &info);
+        };
+        let output = vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
+        let write = vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
+        layout(
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            output,
+            write,
+            output,
+            write,
+        );
         let clear = vk::ClearValue {
             color: vk::ClearColorValue {
                 float32: [0.0, 0.0, 1.0, 1.0],
@@ -126,9 +150,17 @@ fn host_frame(
             samples: 1,
         };
         let mut pass = device.import_render_pass(pool, buffer, &info).unwrap();
-        draw(&mut pass, pipeline);
+        draw(&mut pass, pipeline, depth);
         pass.end();
         raw.cmd_end_rendering(buffer);
+        layout(
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+            output,
+            write,
+            vk::PipelineStageFlags2::COPY,
+            vk::AccessFlags2::TRANSFER_READ,
+        );
         let mut commands = device.import_commands(pool, buffer).unwrap();
         read_back(&mut commands, set, texture, back);
         commands.end().unwrap();
@@ -147,6 +179,7 @@ fn host_frame(
 }
 
 #[cfg(feature = "mtl")]
+#[allow(clippy::too_many_arguments)]
 fn host_frame(
     device: &Device,
     pool: CommandPool,
@@ -155,6 +188,7 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
+    depth: DepthState,
 ) {
     use mk::objc2::runtime::ProtocolObject;
     use mk::objc2_metal::{
@@ -169,7 +203,7 @@ fn host_frame(
     buffer.beginCommandBufferWithAllocator(&allocator);
     let mut commands = device.import_commands(pool, &buffer).unwrap();
     commands.use_residency_set(set);
-    commands.texture_barriers(&[to_color(texture)]);
+    commands.discard_textures(&[discard(texture)]);
     commands.end().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
@@ -191,7 +225,7 @@ fn host_frame(
         samples: 1,
     };
     let mut pass = device.import_render_pass(pool, &encoder, &info).unwrap();
-    draw(&mut pass, pipeline);
+    draw(&mut pass, pipeline, depth);
     pass.end();
     encoder.endEncoding();
     let mut commands = device.import_commands(pool, &buffer).unwrap();
@@ -207,6 +241,7 @@ fn host_frame(
 }
 
 #[cfg(feature = "gl")]
+#[allow(clippy::too_many_arguments)]
 fn host_frame(
     device: &Device,
     pool: CommandPool,
@@ -215,10 +250,11 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
+    depth: DepthState,
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
-    commands.texture_barriers(&[to_color(texture)]);
+    commands.discard_textures(&[discard(texture)]);
     commands.end().unwrap();
     device.submit([commands], &[], &[]).unwrap();
     let gl = &device.gl;
@@ -245,7 +281,7 @@ fn host_frame(
         samples: 1,
     };
     let mut pass = device.import_render_pass(pool, &info).unwrap();
-    draw(&mut pass, pipeline);
+    draw(&mut pass, pipeline, depth);
     pass.end();
     unsafe {
         gl.bind_framebuffer(mk::glow::FRAMEBUFFER, None);
@@ -287,10 +323,15 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let depth = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);
-    host_frame(&device, pool, texture, back, pipeline, &timeline, set);
+    host_frame(
+        &device, pool, texture, back, pipeline, &timeline, set, depth,
+    );
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * N + x) as usize];
     assert_eq!(

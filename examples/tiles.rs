@@ -1,7 +1,6 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo, Scissor,
-    Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage, TileMemory, TilePipelineInfo,
-    Viewport,
+    Stage, TextureDiscard, TextureInfo, TextureUsage, TileMemory, TilePipelineInfo, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -51,12 +50,10 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -88,8 +85,9 @@ pub fn main() {
     }]);
     pass.dispatch_tile(stamp);
     pass.end();
-    c.memory_barrier(Stage::COLOR | Stage::FRAGMENT, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::COLOR | Stage::FRAGMENT, Stage::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,

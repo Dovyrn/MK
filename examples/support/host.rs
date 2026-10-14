@@ -54,3 +54,12 @@ pub fn constants(device: &mut mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64)
     device.unmap_buffer(buffer);
     (buffer, stride)
 }
+
+pub fn states(pass: &mut mk::RenderPass, depth: mk::DepthState) {
+    pass.set_cull_mode(mk::CullMode::None);
+    pass.set_front_face(mk::FrontFace::Cw);
+    pass.set_depth_state(depth);
+    pass.set_stencil_reference(0, 0);
+    pass.set_depth_bias(0.0, 0.0, 0.0);
+    pass.set_blend_color([0.0; 4]);
+}

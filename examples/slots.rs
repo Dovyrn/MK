@@ -1,7 +1,7 @@
 use mk::{
-    AddressMode, BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo, Filter,
-    Format, Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage,
-    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, Viewport,
+    AddressMode, BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo,
+    DepthStateInfo, Filter, Format, Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo,
+    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -9,13 +9,11 @@ mod host;
 
 const CODE: &[u8] = host::code!("slots");
 
-fn discard(texture: mk::Texture, stage: Stage) -> TextureBarrier {
-    TextureBarrier {
+fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
+    TextureDiscard {
         texture,
         src_stage: stage,
         dst_stage: stage,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }
 }
 
@@ -77,6 +75,9 @@ pub fn main() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
+    let none = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -85,8 +86,10 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barriers(&[discard(source, Stage::COPY)]);
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
+    pass.discard_textures(&[discard(source, Stage::COPY)]);
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
@@ -94,8 +97,7 @@ pub fn main() {
         ..Default::default()
     });
     pass.end();
-    c.memory_barrier(Stage::COPY, Stage::FRAGMENT | Stage::COMPUTE);
-    c.texture_barriers(&[discard(target, Stage::COLOR)]);
+    c.discard_textures(&[discard(target, Stage::COLOR)]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -104,6 +106,8 @@ pub fn main() {
                 texture: target,
                 ..Default::default()
             }],
+            src_stage: Stage::COPY,
+            dst_stage: Stage::FRAGMENT | Stage::COMPUTE,
             ..Default::default()
         })
         .unwrap();
@@ -118,14 +122,14 @@ pub fn main() {
         width: 4,
         height: 4,
     }]);
+    host::states(&mut pass, none);
     pass.bind_render_pipeline(draw);
     pass.bind_uniform_buffer(1, upload, at, 16);
     pass.bind_texture(0, source);
     pass.bind_sampler(0, sampler);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    c.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: target,
         width: 4,
@@ -172,8 +176,10 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barriers(&[discard(image, Stage::COMPUTE)]);
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
+    pass.discard_textures(&[discard(image, Stage::COMPUTE)]);
     pass.bind_compute_pipeline(fill);
     pass.bind_uniform_buffer(1, upload, at, 16);
     pass.bind_storage_buffer(0, data, 0, 64 * 4);

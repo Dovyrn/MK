@@ -2,6 +2,7 @@
 name = "begin_compute_pass"
 scope = "outside"
 fails = true
+fields = [["src_stage", "Stage"], ["dst_stage", "Stage"]]
 
 [[command]]
 name = "end_compute_pass"
@@ -34,7 +35,7 @@ fields = [["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"], ["value", "u
 
 [[command]]
 name = "memory_barrier"
-scope = "outside compute"
+scope = "compute"
 fields = [["src_stage", "Stage"], ["dst_stage", "Stage"]]
 
 [[command]]
@@ -47,9 +48,9 @@ name = "end_debug_label"
 scope = "outside compute render"
 
 [[command]]
-name = "texture_barriers"
+name = "discard_textures"
 scope = "outside compute"
-fields = [["barriers", "[TextureBarrier]"]]
+fields = [["textures", "[TextureDiscard]"]]
 
 [[command]]
 name = "copy_buffer_to_texture"
@@ -80,7 +81,7 @@ info = "DepthAttachment"
 name = "begin_render_pass"
 scope = "outside"
 fails = true
-fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"]]
+fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"], ["src_stage", "Stage"], ["dst_stage", "Stage"]]
 
 [[command]]
 name = "end_render_pass"

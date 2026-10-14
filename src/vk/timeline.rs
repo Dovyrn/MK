@@ -35,7 +35,9 @@ impl Timeline {
     }
 
     pub fn signal(&self, value: u64) -> Result<(), Error> {
-        crate::table::assert_rising(self.value()?, value);
+        if cfg!(feature = "validation") {
+            crate::table::assert_rising(self.value()?, value);
+        }
         let info = vk::SemaphoreSignalInfo::default()
             .semaphore(self.raw)
             .value(value);

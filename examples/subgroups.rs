@@ -48,7 +48,9 @@ pub fn main() {
             .unwrap();
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c
+            .begin_compute_pass(Stage::default(), Stage::default())
+            .unwrap();
         pass.bind_compute_pipeline(pipeline);
         pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4);
         pass.dispatch(1, 1, 1);

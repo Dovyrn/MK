@@ -60,16 +60,18 @@ impl Device {
     ) -> Result<Texture, Error> {
         let info = &self.res.table.resolve_view(texture, info);
         self.caps.check_view(info.dimension)?;
-        let usable = self.format_usage(info.format);
-        let counts = self.format_samples(info.format, info.usage);
-        check_support(
-            "create_texture_view",
-            info.format,
-            info.usage,
-            1,
-            usable,
-            counts,
-        )?;
+        if cfg!(feature = "validation") {
+            let usable = self.format_usage(info.format);
+            let counts = self.format_samples(info.format, info.usage);
+            check_support(
+                "create_texture_view",
+                info.format,
+                info.usage,
+                1,
+                usable,
+                counts,
+            )?;
+        }
         let t = self.res.textures.get(texture);
         let (image, owner, heap) = (t.image, t.owner.clone(), t.heap.clone());
         let view = TextureViewInfo {

@@ -1,6 +1,6 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, DepthAttachment, Format, LoadOp, Memory, RenderPassInfo,
-    Stage, TextureBarrier, TextureCopy, TextureDimension, TextureInfo, TextureLayout, TextureUsage,
+    Stage, TextureCopy, TextureDimension, TextureDiscard, TextureInfo, TextureUsage,
     TextureViewInfo,
 };
 
@@ -97,14 +97,14 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barriers(&[a, cast, array, depth, depth2, srgb, line].map(|texture| {
-        TextureBarrier {
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
+    pass.discard_textures(&[a, cast, array, depth, depth2, srgb, line].map(|texture| {
+        TextureDiscard {
             texture,
             src_stage: Stage::COPY,
             dst_stage: Stage::COPY | Stage::COLOR | Stage::DEPTH,
-            before: TextureLayout::Undefined,
-            ..Default::default()
         }
     }));
     pass.copy_buffer(upload, 0, back, 0, size);
@@ -173,8 +173,9 @@ pub fn main() {
     })
     .unwrap()
     .end();
-    c.memory_barrier(Stage::COLOR | Stage::DEPTH | Stage::COPY, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::COLOR | Stage::DEPTH | Stage::COPY, Stage::COPY)
+        .unwrap();
     pass.copy_texture(&TextureCopy {
         src: depth,
         dst: depth2,

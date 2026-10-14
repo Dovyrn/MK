@@ -2,7 +2,7 @@ use super::Device;
 use crate::Error;
 use crate::mtl::query::Query;
 use crate::residency::Members;
-use crate::{ResidencySet, Resource};
+use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Resource, ResourceKind, Texture};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
@@ -34,47 +34,41 @@ impl Device {
     }
 
     fn change_residency(&mut self, set: ResidencySet, resources: &[Resource], add: bool) {
-        let items = Members::from(resources);
         let res = &self.res;
-        let allocations: Vec<&ProtocolObject<dyn MTLAllocation>> = items
-            .buffers
-            .iter()
-            .map(|&b| ProtocolObject::from_ref(&*res.buffers.get(b).raw))
-            .chain(
-                items
-                    .textures
-                    .iter()
-                    .map(|&t| ProtocolObject::from_ref(&*res.textures.get(t).raw)),
-            )
-            .chain(
-                items
-                    .queries
-                    .iter()
-                    .filter_map(|&q| match res.queries.get(q) {
-                        Query::Buffer(b) => Some(ProtocolObject::from_ref(&**b)),
-                        Query::Timestamp(_) => None,
-                    }),
-            )
-            .chain(
-                items
-                    .indirects
-                    .iter()
-                    .map(|&i| ProtocolObject::from_ref(&*res.indirects.get(i).raw)),
-            )
-            .collect();
         let raw = res.sets.get(set);
-        for a in allocations {
+        for r in resources {
+            let a: &ProtocolObject<dyn MTLAllocation> = match r.kind {
+                ResourceKind::Buffer => {
+                    ProtocolObject::from_ref(&*res.buffers.get(Buffer::from_raw(r.handle)).raw)
+                }
+                ResourceKind::Texture => {
+                    ProtocolObject::from_ref(&*res.textures.get(Texture::from_raw(r.handle)).raw)
+                }
+                ResourceKind::QueryPool => match res.queries.get(QueryPool::from_raw(r.handle)) {
+                    Query::Buffer(b) => ProtocolObject::from_ref(&**b),
+                    Query::Timestamp(_) => continue,
+                },
+                ResourceKind::IndirectBuffer => ProtocolObject::from_ref(
+                    &*res.indirects.get(IndirectBuffer::from_raw(r.handle)).raw,
+                ),
+            };
             if add {
                 raw.addAllocation(a);
             } else {
                 raw.removeAllocation(a);
             }
         }
-        self.res.table.change_residency(set, items, add);
+        if cfg!(feature = "validation") {
+            self.res
+                .table
+                .change_residency(set, Members::from(resources), add);
+        }
     }
 
     pub fn commit_residency(&mut self, set: ResidencySet) {
-        self.res.table.residency.commit(set);
+        if cfg!(feature = "validation") {
+            self.res.table.residency.commit(set);
+        }
         self.res.sets.get(set).commit();
     }
 

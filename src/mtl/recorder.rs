@@ -21,7 +21,6 @@ use objc2_metal::{
     MTLRenderStages, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture,
     MTLTriangleFillMode, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
-use std::cell::RefCell;
 use std::ptr::NonNull;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -41,8 +40,6 @@ pub struct Recorder<'a> {
     pub compute: Option<Retained<ProtocolObject<dyn MTL4ComputeCommandEncoder>>>,
     pub render: Option<Retained<ProtocolObject<dyn MTL4RenderCommandEncoder>>>,
     pass: Retained<MTL4RenderPassDescriptor>,
-    last: RefCell<Option<Retained<ProtocolObject<dyn MTL4CommandEncoder>>>>,
-    pending: (MTLStages, MTLStages, MTL4VisibilityOptions),
     compute_pipeline: Option<&'a Pipeline>,
     render_pipeline: Option<&'a Render>,
     width: u32,
@@ -55,14 +52,6 @@ pub struct Recorder<'a> {
 }
 
 const COMPUTE: MTLStages = MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0);
-
-const RENDER: MTLStages = MTLStages(
-    MTLStages::Vertex.0
-        | MTLStages::Fragment.0
-        | MTLStages::Tile.0
-        | MTLStages::Object.0
-        | MTLStages::Mesh.0,
-);
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
 
@@ -84,13 +73,13 @@ fn mtl_stages(bits: Stage) -> MTLStages {
     MTLStages(s.0 as usize | tile)
 }
 
-fn order_barrier(
-    encoder: &ProtocolObject<dyn MTL4CommandEncoder>,
-    mask: MTLStages,
-    (from, to, options): (MTLStages, MTLStages, MTL4VisibilityOptions),
-) {
-    if !from.is_empty() && !(to & mask).is_empty() {
-        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(from, to & mask, options);
+fn wait(encoder: &ProtocolObject<dyn MTL4CommandEncoder>, src: Stage, dst: Stage) {
+    if !src.is_empty() {
+        encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(
+            mtl_stages(src),
+            mtl_stages(dst),
+            MTL4VisibilityOptions::Device,
+        );
     }
 }
 
@@ -170,8 +159,6 @@ impl<'a> Recorder<'a> {
             compute: None,
             render: None,
             pass: MTL4RenderPassDescriptor::new(),
-            last: RefCell::new(None),
-            pending: (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None),
             compute_pipeline: None,
             render_pipeline: None,
             width: 0,
@@ -192,18 +179,7 @@ impl<'a> Recorder<'a> {
         self.kind
     }
 
-    fn close(&self) {
-        if let Some(e) = self.last.borrow_mut().take() {
-            e.endEncoding();
-        }
-    }
-
-    fn keep(&self, encoder: Retained<ProtocolObject<dyn MTL4CommandEncoder>>) {
-        *self.last.borrow_mut() = Some(encoder);
-    }
-
     fn command_buffer(&self) -> &ProtocolObject<dyn MTL4CommandBuffer> {
-        self.close();
         self.buffer
             .as_deref()
             .expect("an imported encoder has no command buffer")
@@ -243,7 +219,6 @@ impl<'a> Recorder<'a> {
     }
 
     pub fn end(&mut self) -> Result<(), Error> {
-        self.close();
         if self.kind == Kind::Owned {
             self.ended = true;
             self.buffer.as_deref().unwrap().endCommandBuffer();
@@ -257,11 +232,6 @@ impl<'a> Recorder<'a> {
 
     fn render_encoder(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
         self.render.as_deref().expect("checked by Command::enter")
-    }
-
-    fn apply_pending(&mut self, encoder: &ProtocolObject<dyn MTL4CommandEncoder>, mask: MTLStages) {
-        order_barrier(encoder, mask, self.pending);
-        self.pending = (MTLStages(0), MTLStages(0), MTL4VisibilityOptions::None);
     }
 
     fn bind_argument_table(&self, encoder: &ProtocolObject<dyn MTL4RenderCommandEncoder>) {
@@ -305,7 +275,10 @@ impl<'a> Recorder<'a> {
 
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
         match command {
-            Command::BeginComputePass => {
+            Command::BeginComputePass {
+                src_stage,
+                dst_stage,
+            } => {
                 let encoder = self
                     .command_buffer()
                     .computeCommandEncoder()
@@ -313,14 +286,11 @@ impl<'a> Recorder<'a> {
                         Error::OutOfMemory("compute encoder allocation failed".into())
                     })?;
                 encoder.setArgumentTable(Some(self.table));
-                self.apply_pending(ProtocolObject::from_ref(&*encoder), COMPUTE);
+                wait(ProtocolObject::from_ref(&*encoder), src_stage, dst_stage);
                 self.compute_pipeline = None;
                 self.compute = Some(encoder);
             }
-            Command::EndComputePass => {
-                let encoder = self.compute.take().unwrap();
-                self.keep(unsafe { Retained::cast_unchecked(encoder) });
-            }
+            Command::EndComputePass => self.compute.take().unwrap().endEncoding(),
             Command::BindComputePipeline { pipeline } => {
                 let p = self.res.pipelines.get(pipeline);
                 self.compute_encoder().setComputePipelineState(&p.state);
@@ -384,32 +354,22 @@ impl<'a> Recorder<'a> {
                     )
                 }
             }
-            Command::MemoryBarrier { .. } | Command::TextureBarriers { .. } => {
-                let (src_stage, dst_stage) = command.barrier_stages();
-                let options = MTL4VisibilityOptions::Device;
-                let (from, to) = (mtl_stages(src_stage), mtl_stages(dst_stage));
-                let Some(encoder) = &self.compute else {
-                    match &*self.last.borrow() {
-                        Some(e) if !from.is_empty() => e
-                            .barrierAfterStages_beforeQueueStages_visibilityOptions(
-                                from, to, options,
-                            ),
-                        _ => {
-                            self.pending.0 |= from;
-                            self.pending.1 |= to;
-                            self.pending.2 |= options;
-                        }
-                    }
-                    return Ok(());
-                };
-                if !(from & COMPUTE).is_empty() && !(to & COMPUTE).is_empty() {
-                    encoder.barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
-                        from & COMPUTE,
-                        to & COMPUTE,
-                        options,
-                    );
+            Command::MemoryBarrier {
+                src_stage,
+                dst_stage,
+            } => {
+                let from = mtl_stages(src_stage) & COMPUTE;
+                let to = mtl_stages(dst_stage) & COMPUTE;
+                if !from.is_empty() && !to.is_empty() {
+                    self.compute_encoder()
+                        .barrierAfterEncoderStages_beforeEncoderStages_visibilityOptions(
+                            from,
+                            to,
+                            MTL4VisibilityOptions::Device,
+                        );
                 }
             }
+            Command::DiscardTextures { .. } => {}
             Command::CopyBufferToTexture {
                 buffer,
                 offset,
@@ -543,6 +503,8 @@ impl<'a> Recorder<'a> {
                 width,
                 height,
                 layers,
+                src_stage,
+                dst_stage,
             } => {
                 self.pass.setRenderTargetWidth(width as usize);
                 self.pass.setRenderTargetHeight(height as usize);
@@ -555,7 +517,7 @@ impl<'a> Recorder<'a> {
                     .renderCommandEncoderWithDescriptor(&self.pass)
                     .ok_or_else(|| Error::OutOfMemory("render encoder allocation failed".into()))?;
                 self.bind_argument_table(&encoder);
-                self.apply_pending(ProtocolObject::from_ref(&*encoder), RENDER);
+                wait(ProtocolObject::from_ref(&*encoder), src_stage, dst_stage);
                 self.render = Some(encoder);
                 self.raster = Some((MTLTriangleFillMode::Fill, MTLDepthClipMode::Clip));
                 self.pass = MTL4RenderPassDescriptor::new();
@@ -563,10 +525,7 @@ impl<'a> Recorder<'a> {
                 self.height = height;
                 self.render_pipeline = None;
             }
-            Command::EndRenderPass => {
-                let encoder = self.render.take().unwrap();
-                self.keep(unsafe { Retained::cast_unchecked(encoder) });
-            }
+            Command::EndRenderPass => self.render.take().unwrap().endEncoding(),
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);
                 let e = self.render_encoder();
@@ -961,7 +920,6 @@ impl<'a> Recorder<'a> {
 
 impl Drop for Recorder<'_> {
     fn drop(&mut self) {
-        self.close();
         if self.kind != Kind::Compute
             && let Some(e) = self.compute.take()
         {

@@ -1,4 +1,4 @@
-use mk::{Buffer, CommandPool, Device, Memory, ResidencySet};
+use mk::{Buffer, CommandPool, Device, Memory, ResidencySet, Stage};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[path = "support/host.rs"]
@@ -7,7 +7,9 @@ mod host;
 fn copy(device: &Device, pool: CommandPool, set: ResidencySet, a: Buffer, b: Buffer) {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.copy_buffer(a, 0, b, 0, 16);
     pass.end();
 }
@@ -35,7 +37,9 @@ pub fn main() {
     device.commit_residency(set);
     let unused = message(|| {
         let mut c = device.begin_commands(pool).unwrap();
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c
+            .begin_compute_pass(Stage::default(), Stage::default())
+            .unwrap();
         pass.copy_buffer(a, 0, b, 0, 16);
         pass.end();
     });

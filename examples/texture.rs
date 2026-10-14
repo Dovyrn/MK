@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    AddressMode, BufferTextureCopy, Filter, Format, Memory, SamplerInfo, Stage, TextureBarrier,
-    TextureInfo, TextureLayout, TextureUsage,
+    AddressMode, BufferTextureCopy, Filter, Format, Memory, SamplerInfo, Stage, TextureDiscard,
+    TextureInfo, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -91,13 +91,13 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    let mut pass = c.begin_compute_pass().unwrap();
-    pass.texture_barriers(&[src, dst].map(|texture| TextureBarrier {
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
+    pass.discard_textures(&[src, dst].map(|texture| TextureDiscard {
         texture,
         src_stage: Stage::COPY,
         dst_stage: Stage::COPY | Stage::COMPUTE,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }));
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,

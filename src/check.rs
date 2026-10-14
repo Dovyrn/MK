@@ -5,8 +5,8 @@ use crate::residency::Residency;
 use crate::table::Table;
 use crate::{
     Buffer, Caps, CommandPool, Format, IndexType, IndirectBuffer, LoadOp, Memory, QueryKind,
-    QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureLayout, TextureUsage,
-    Topology, slot,
+    QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage, Topology,
+    slot,
 };
 
 pub struct Check<'a> {
@@ -34,21 +34,20 @@ pub struct Check<'a> {
     tile: Option<(u32, u32)>,
     views: u32,
     scissors: u32,
-    carried: u32,
     fresh: u32,
-    barrier: bool,
-    passes: bool,
     resident: bool,
     ended: bool,
 }
 
-const STATES: [&str; 6] = [
-    "set_cull",
-    "set_face",
+const STATES: [&str; 8] = [
+    "set_cull_mode",
+    "set_front_face",
     "set_depth_state",
     "set_stencil_reference",
     "set_depth_bias",
     "set_blend_color",
+    "set_viewport",
+    "set_scissor",
 ];
 
 fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
@@ -152,12 +151,9 @@ impl<'a> Check<'a> {
             inputs: [Texture::default(); slot::COLORS as usize],
             reads: 0,
             tile: None,
-            views: (base == "render") as u32,
-            scissors: (base == "render") as u32,
-            carried: 0,
+            views: 0,
+            scissors: 0,
             fresh: 0,
-            barrier: false,
-            passes: false,
             resident: base != "outside",
             ended: false,
         }
@@ -178,10 +174,6 @@ impl<'a> Check<'a> {
             self.labels.is_empty(),
             "the command buffer ends with {} debug labels open; call end_debug_label for each",
             self.labels.len()
-        );
-        check!(
-            !self.barrier,
-            "a barrier with no pass before or after it in its command buffer orders nothing on Metal; record it next to the pass that writes or reads the results"
         );
     }
 
@@ -257,22 +249,16 @@ impl<'a> Check<'a> {
         Ok(())
     }
 
-    fn check_barrier(
-        &mut self,
-        name: &str,
-        src: Stage,
-        dst: Stage,
-        layouts: (TextureLayout, TextureLayout),
-    ) {
-        check!(!dst.is_empty(), "{name} needs a dst_stage");
-        check!(
-            !src.is_empty() || layouts.0 == TextureLayout::Undefined,
-            "{name} needs a src_stage; only a texture_barrier from TextureLayout::Undefined waits on nothing"
+    fn check_wait(&self, name: &str, src: Stage, dst: Stage) {
+        check_eq!(
+            src.is_empty(),
+            dst.is_empty(),
+            "{name} waits with src_stage {src:?} and dst_stage {dst:?}; give both or neither"
         );
-        let moves = layouts.0 != layouts.1;
-        if self.open == "outside" && !self.passes && !moves && !(dst & !Stage::HOST).is_empty() {
-            self.barrier = true;
-        }
+        check!(
+            !src.contains(Stage::HOST),
+            "{name} waits on Stage::HOST; host writes before submit need no wait"
+        );
     }
 
     fn texture_with_usage(
@@ -364,11 +350,11 @@ impl<'a> Check<'a> {
             self.views,
             self.scissors
         );
-        let stale = self.carried & !self.fresh;
-        if stale != 0 {
-            let state = STATES[stale.trailing_zeros() as usize];
+        let missing = !self.fresh & ((1 << STATES.len()) - 1);
+        if missing != 0 {
+            let state = STATES[missing.trailing_zeros() as usize];
             panic!(
-                "{} needs {state} again in this pass; an earlier pass set it, and state does not carry between passes",
+                "{} needs {state} earlier in this pass; a render pass starts with no state",
                 command_name(c)
             );
         }
@@ -574,7 +560,10 @@ impl<'a> Check<'a> {
                 width,
                 height,
                 layers,
+                src_stage,
+                dst_stage,
             } => {
+                self.check_wait(name, src_stage, dst_stage);
                 check!(
                     width > 0 && height > 0 && layers > 0,
                     "begin_render_pass size {width}x{height}x{layers} has a zero"
@@ -612,18 +601,17 @@ impl<'a> Check<'a> {
                     }
                 }
                 self.open = "render";
-                self.barrier = false;
-                self.passes = true;
                 self.render = false;
-                self.views = 1;
-                self.scissors = 1;
-                self.carried |= self.fresh;
+                self.views = 0;
+                self.scissors = 0;
                 self.fresh = 0;
             }
-            Command::BeginComputePass => {
+            Command::BeginComputePass {
+                src_stage,
+                dst_stage,
+            } => {
+                self.check_wait(name, src_stage, dst_stage);
                 self.open = "compute";
-                self.barrier = false;
-                self.passes = true;
                 self.compute = false;
             }
             Command::EndComputePass => {
@@ -699,27 +687,28 @@ impl<'a> Check<'a> {
                 src_stage,
                 dst_stage,
             } => {
-                let general = (TextureLayout::General, TextureLayout::General);
-                self.check_barrier(name, src_stage, dst_stage, general)
+                check!(
+                    !src_stage.is_empty() && !dst_stage.is_empty(),
+                    "{name} needs a src_stage and a dst_stage"
+                );
+                let pass = Stage::COMPUTE | Stage::COPY;
+                check!(
+                    (src_stage & !pass).is_empty()
+                        && (dst_stage & !(pass | Stage::INDIRECT | Stage::HOST)).is_empty(),
+                    "{name} {src_stage:?} -> {dst_stage:?} orders work outside this compute pass; wait on it with src_stage and dst_stage at the next pass's begin"
+                );
             }
-            Command::TextureBarriers { barriers } => {
-                check!(!barriers.is_empty(), "{name} has no barriers");
-                for b in barriers {
-                    let texture = b.texture;
-                    self.check_barrier(name, b.src_stage, b.dst_stage, (b.before, b.after));
-                    check_ne!(
-                        b.after,
-                        TextureLayout::Undefined,
-                        "{name} after is TextureLayout::Undefined; transition to a defined layout"
+            Command::DiscardTextures { textures } => {
+                check!(!textures.is_empty(), "{name} has no textures");
+                for d in textures {
+                    check!(!d.dst_stage.is_empty(), "{name} needs a dst_stage");
+                    self.table.textures.get(d.texture);
+                    check!(
+                        self.table.parents.find(d.texture).is_none(),
+                        "{name} discards the view {}; discard the texture it views",
+                        d.texture
                     );
-                    if b.before == TextureLayout::Undefined {
-                        self.table.define(texture);
-                    } else {
-                        self.table.assert_defined(name, texture);
-                    }
-                    let t = self.table.textures.get(texture);
-                    assert_span(name, "mip", b.base_mip, b.mips, t.mips, texture);
-                    assert_span(name, "layer", b.base_layer, b.layers, t.layers, texture);
+                    self.table.define(d.texture);
                 }
             }
             Command::CopyBufferToTexture { .. } | Command::CopyTextureToBuffer { .. } => {
@@ -1123,6 +1112,7 @@ impl<'a> Check<'a> {
                     assert_viewport(name, v.x, v.y, v.width, v.height, v.near, v.far);
                 }
                 self.views = viewports.len() as u32;
+                self.mark_state(6);
             }
             Command::SetScissor { scissors } => {
                 assert_rects(name, scissors.len(), caps.viewports);
@@ -1134,6 +1124,7 @@ impl<'a> Check<'a> {
                     );
                 }
                 self.scissors = scissors.len() as u32;
+                self.mark_state(7);
             }
         }
         Ok(())

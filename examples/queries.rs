@@ -1,6 +1,6 @@
 use mk::{
-    ColorAttachment, ColorTarget, Format, Memory, QueryKind, RenderPassInfo, RenderPipelineInfo,
-    Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage, VertexAttribute,
+    ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory, QueryKind, RenderPassInfo,
+    RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, VertexAttribute,
     VertexBufferLayout, Viewport,
 };
 
@@ -88,6 +88,9 @@ pub fn main() {
     let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
+    let depth = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let (constants, stride) = host::constants(&mut device, &[&push, &0.5f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
     let queries: Vec<_> = times.into_iter().chain([samples]).collect();
@@ -107,7 +110,9 @@ pub fn main() {
         c.reset_queries(times, 0, 2);
     }
     c.reset_queries(samples, 0, 1);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     if let Some(times) = times {
         pass.write_timestamp(times, 0, Stage::COMPUTE);
     }
@@ -119,12 +124,10 @@ pub fn main() {
         pass.write_timestamp(times, 1, Stage::COMPUTE);
     }
     pass.end();
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -139,6 +142,7 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
+    host::states(&mut pass, depth);
     pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,
@@ -157,11 +161,10 @@ pub fn main() {
     pass.draw(3, 1, 0, 0);
     pass.end_occlusion_query(samples, 0);
     pass.end();
-    c.memory_barrier(Stage::FRAGMENT, Stage::COPY);
     if let Some(times) = times {
         c.resolve_timestamps(times, 0, 2, out, 0);
     }
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::FRAGMENT, Stage::COPY).unwrap();
     pass.resolve_occlusion(samples, 0, 1, out, 16);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();

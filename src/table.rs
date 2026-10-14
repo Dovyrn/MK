@@ -198,7 +198,7 @@ impl Table {
         if info.memory == Memory::Transient {
             self.residency.exempt_texture(texture);
         }
-        if !info.usage.contains(TextureUsage::HOST) {
+        if cfg!(feature = "validation") && !info.usage.contains(TextureUsage::HOST) {
             self.undefined.get_mut().push(texture);
         }
     }
@@ -215,7 +215,7 @@ impl Table {
         let root = self.parents.find(texture).copied().unwrap_or(texture);
         check!(
             !undefined.contains(&root),
-            "{name} uses {texture} before its first texture_barrier; record one with before: TextureLayout::Undefined"
+            "{name} uses {texture} before discard_textures; discard it before its first use"
         );
     }
 

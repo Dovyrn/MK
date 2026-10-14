@@ -238,17 +238,11 @@ fields = [
 ]
 
 [[info]]
-name = "TextureBarrier"
+name = "TextureDiscard"
 fields = [
     ["texture", "Texture", ""],
     ["src_stage", "Stage", "0"],
     ["dst_stage", "Stage", "0"],
-    ["before", "TextureLayout", "texture_layout::GENERAL"],
-    ["after", "TextureLayout", "texture_layout::GENERAL"],
-    ["base_mip", "u32", "0"],
-    ["mips", "u32", "!0"],
-    ["base_layer", "u32", "0"],
-    ["layers", "u32", "!0"],
 ]
 
 [[info]]
@@ -366,6 +360,8 @@ fields = [
     ["depth", "DepthAttachment?", ""],
     ["occlusion", "QueryPool?", ""],
     ["tile", "TileMemory?", ""],
+    ["src_stage", "Stage", "0"],
+    ["dst_stage", "Stage", "0"],
 ]
 
 [[info]]

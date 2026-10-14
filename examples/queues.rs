@@ -39,7 +39,9 @@ pub fn main() {
     let other = device.create_command_pool(1).unwrap();
     let mut compute = device.begin_commands(other).unwrap();
     compute.use_residency_set(set);
-    let mut pass = compute.begin_compute_pass().unwrap();
+    let mut pass = compute
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.bind_compute_pipeline(pipeline);
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.dispatch(n / 64, 1, 1);
@@ -47,14 +49,18 @@ pub fn main() {
     let half = n as u64 * 2;
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);
-    let mut pass = copy.begin_compute_pass().unwrap();
+    let mut pass = copy
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.copy_buffer(data, 0, back, 0, half);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     copy.end().unwrap();
     let mut rest = device.begin_commands(pool).unwrap();
     rest.use_residency_set(set);
-    let mut pass = rest.begin_compute_pass().unwrap();
+    let mut pass = rest
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.copy_buffer(data, half, back, half, half);
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();

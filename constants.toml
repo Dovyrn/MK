@@ -10,17 +10,6 @@ HOST = 256
 COMPUTE = 134217728
 COPY = 268435456
 
-[enum.texture_layout]
-UNDEFINED = 0
-GENERAL = 1
-READ = 2
-COLOR = 3
-DEPTH = 4
-DEPTH_READ = 5
-COPY_SRC = 6
-COPY_DST = 7
-PRESENT = 8
-
 [enum.resource_kind]
 BUFFER = 0
 TEXTURE = 1

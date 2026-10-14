@@ -1,8 +1,7 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, ColorTarget, CompareOp, DepthAttachment, DepthStateInfo,
     Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp,
-    TextureBarrier, TextureInfo, TextureLayout, TextureUsage, VertexAttribute, VertexBufferLayout,
-    Viewport,
+    TextureDiscard, TextureInfo, TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -107,13 +106,11 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(
-        &[(color, Stage::COLOR), (depth, Stage::DEPTH)].map(|(texture, stage)| TextureBarrier {
+    c.discard_textures(
+        &[(color, Stage::COLOR), (depth, Stage::DEPTH)].map(|(texture, stage)| TextureDiscard {
             texture,
             src_stage: stage,
             dst_stage: stage,
-            before: TextureLayout::Undefined,
-            ..Default::default()
         }),
     );
     let mut pass = c
@@ -144,8 +141,8 @@ pub fn main() {
         width: n,
         height: n,
     }]);
+    host::states(&mut pass, less);
     pass.bind_render_pipeline(pipeline);
-    pass.set_depth_state(less);
     pass.bind_vertex_buffer(0, vbuf, 0);
     pass.bind_index_buffer(ibuf, 0, IndexType::U16);
     pass.bind_uniform_buffer(0, constants, 0, 4);
@@ -156,8 +153,7 @@ pub fn main() {
     c.end().unwrap();
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);
-    copy.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = copy.begin_compute_pass().unwrap();
+    let mut pass = copy.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,

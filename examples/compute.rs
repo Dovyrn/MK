@@ -32,7 +32,9 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     c.begin_debug_label("fill");
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c
+        .begin_compute_pass(Stage::default(), Stage::default())
+        .unwrap();
     pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff);
     pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);

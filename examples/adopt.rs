@@ -1,6 +1,6 @@
 use mk::{
     BufferTextureCopy, ColorAttachment, Device, Format, Memory, RenderPassInfo, Scissor, Stage,
-    TextureBarrier, TextureLayout, Viewport,
+    TextureDiscard, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -229,12 +229,10 @@ pub fn main() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -260,13 +258,7 @@ pub fn main() {
         height: n,
     }]);
     pass.end();
-    c.texture_barriers(&[TextureBarrier {
-        texture,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COPY,
-        ..Default::default()
-    }]);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
         width: n,

@@ -244,6 +244,9 @@ impl Device {
     }
 
     pub(super) fn texture(&self, info: &TextureInfo) -> Result<(), Error> {
+        if !cfg!(feature = "validation") {
+            return Ok(());
+        }
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.check_texture(info, usable, counts)

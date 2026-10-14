@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo,
-    RenderPipelineInfo, Scissor, Stage, TextureBarrier, TextureInfo, TextureLayout, TextureUsage,
+    BufferTextureCopy, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
+    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
     Viewport,
 };
 
@@ -69,17 +69,18 @@ pub fn main() {
         },
     ];
     let timeline = device.create_timeline().unwrap();
+    let none = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), color.into()]);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.texture_barriers(&[TextureBarrier {
+    c.discard_textures(&[TextureDiscard {
         texture: color,
         src_stage: Stage::COLOR,
         dst_stage: Stage::COLOR,
-        before: TextureLayout::Undefined,
-        ..Default::default()
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -96,10 +97,10 @@ pub fn main() {
     pass.bind_render_pipeline(pipeline);
     pass.set_viewport(&viewports);
     pass.set_scissor(&scissors);
+    host::states(&mut pass, none);
     pass.draw(3, 2, 0, 0);
     pass.end();
-    c.memory_barrier(Stage::COLOR, Stage::COPY);
-    let mut pass = c.begin_compute_pass().unwrap();
+    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: w,

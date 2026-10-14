@@ -34,9 +34,9 @@ public class CommandBuffer implements AutoCloseable {
         passing = false;
     }
 
-    public ComputePass beginComputePass() {
+    public ComputePass beginComputePass(int srcStage, int dstStage) {
         synchronized (device) {
-            var pass = nBeginComputePass(handle());
+            var pass = nBeginComputePass(handle(), srcStage, dstStage);
             passing = true;
             return new ComputePass(device, this, pass);
         }
@@ -79,7 +79,7 @@ public class CommandBuffer implements AutoCloseable {
         }
     }
 
-    private static native long nBeginComputePass(long commands);
+    private static native long nBeginComputePass(long commands, int srcStage, int dstStage);
 
     private static native long nBeginRenderPass(long commands, long info, int infoLength);
 

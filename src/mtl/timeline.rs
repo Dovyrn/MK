@@ -35,7 +35,9 @@ impl Timeline {
     }
 
     pub fn signal(&self, value: u64) -> Result<(), Error> {
-        crate::table::assert_rising(self.raw.signaledValue(), value);
+        if cfg!(feature = "validation") {
+            crate::table::assert_rising(self.raw.signaledValue(), value);
+        }
         self.raw.setSignaledValue(value);
         Ok(())
     }

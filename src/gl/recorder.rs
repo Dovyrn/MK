@@ -408,13 +408,24 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn barrier(&self, src: Stage, dst: Stage) {
+        let shaders = Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE;
+        if !(src & shaders).is_empty() && self.caps.storage_slots {
+            unsafe { self.gl.memory_barrier(gl_barrier_bits(dst)) };
+        }
+    }
+
     fn apply(&mut self, command: Command) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
         unsafe {
             match command {
-                Command::BeginComputePass
-                | Command::EndComputePass
+                Command::BeginComputePass {
+                    src_stage,
+                    dst_stage,
+                } => self.barrier(src_stage, dst_stage),
+                Command::EndComputePass
+                | Command::DiscardTextures { .. }
                 | Command::OcclusionPool { .. }
                 | Command::ResetQueries { .. } => {}
                 Command::BindComputePipeline { pipeline } => {
@@ -472,17 +483,10 @@ impl<'a> Recorder<'a> {
                         (&raw const value).cast(),
                     );
                 }
-                Command::MemoryBarrier { .. } | Command::TextureBarriers { .. } => {
-                    let (src_stage, dst_stage) = command.barrier_stages();
-                    let shaders = Stage::VERTEX
-                        | Stage::FRAGMENT
-                        | Stage::TASK
-                        | Stage::MESH
-                        | Stage::COMPUTE;
-                    if !(src_stage & shaders).is_empty() && self.caps.storage_slots {
-                        gl.memory_barrier(gl_barrier_bits(dst_stage));
-                    }
-                }
+                Command::MemoryBarrier {
+                    src_stage,
+                    dst_stage,
+                } => self.barrier(src_stage, dst_stage),
                 Command::BeginDebugLabel { text } => {
                     if !self.extra.debug {
                         return Ok(());
@@ -551,7 +555,10 @@ impl<'a> Recorder<'a> {
                     width,
                     height,
                     layers,
+                    src_stage,
+                    dst_stage,
                 } => {
+                    self.barrier(src_stage, dst_stage);
                     self.begin_render(width, height, layers)?;
                     gl.viewport(0, 0, width as i32, height as i32);
                     gl.depth_range(0.0, 1.0);

@@ -1,8 +1,8 @@
 use mk::{
-    Buffer, BufferTextureCopy, ColorAttachment, ColorTarget, CommandBuffer, CommandPool, Device,
-    Format, IndexType, IndirectBufferInfo, Memory, RenderPass, RenderPassInfo, RenderPipeline,
-    RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture, TextureBarrier, TextureInfo,
-    TextureLayout, TextureUsage, Timeline, Viewport,
+    Buffer, BufferTextureCopy, ColorAttachment, ColorTarget, CommandBuffer, CommandPool,
+    DepthState, DepthStateInfo, Device, Format, IndexType, IndirectBufferInfo, Memory, RenderPass,
+    RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture,
+    TextureDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -19,6 +19,7 @@ struct Frame {
     back: Buffer,
     pipeline: RenderPipeline,
     indices: Buffer,
+    depth: DepthState,
 }
 
 impl Frame {
@@ -33,12 +34,10 @@ impl Frame {
         let mut c = device.begin_commands(self.pool).unwrap();
         c.use_residency_set(self.set);
         before(&mut c);
-        c.texture_barriers(&[TextureBarrier {
+        c.discard_textures(&[TextureDiscard {
             texture: self.color,
             src_stage: Stage::COLOR,
             dst_stage: Stage::COLOR,
-            before: TextureLayout::Undefined,
-            ..Default::default()
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -49,9 +48,12 @@ impl Frame {
                     clear: [0.0, 0.0, 1.0, 1.0],
                     ..Default::default()
                 }],
+                src_stage: Stage::COMPUTE,
+                dst_stage: Stage::INDIRECT,
                 ..Default::default()
             })
             .unwrap();
+        host::states(&mut pass, self.depth);
         pass.set_viewport(&[Viewport {
             width: N as f32,
             height: N as f32,
@@ -67,8 +69,7 @@ impl Frame {
         pass.bind_index_buffer(self.indices, 0, IndexType::U16);
         draw(&mut pass);
         pass.end();
-        c.memory_barrier(Stage::COLOR, Stage::COPY);
-        let mut pass = c.begin_compute_pass().unwrap();
+        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: self.color,
             width: N,
@@ -129,6 +130,9 @@ pub fn main() {
     );
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
+    let depth = device
+        .create_depth_state(&DepthStateInfo::default())
+        .unwrap();
     let frame = Frame {
         pool,
         set,
@@ -136,6 +140,7 @@ pub fn main() {
         back,
         pipeline,
         indices,
+        depth,
     };
     let single = device.caps().indirect;
     if single {
@@ -217,12 +222,13 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         ran += 1;
         let at = count.unwrap_or(0) as u64 * stride;
         let encoded = |c: &mut CommandBuffer| {
-            let mut pass = c.begin_compute_pass().unwrap();
+            let mut pass = c
+                .begin_compute_pass(Stage::default(), Stage::default())
+                .unwrap();
             pass.bind_compute_pipeline(encode);
             pass.bind_uniform_buffer(0, constants, at, blocks[0].len() as u64);
             pass.dispatch(1, 1, 1);
             pass.end();
-            c.memory_barrier(Stage::COMPUTE, Stage::INDIRECT);
         };
         let draw = |pass: &mut RenderPass| match count {
             Some(_) => pass.execute_indirect_count(target, range, 0),
@@ -257,12 +263,13 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         for gpu in [false, true].into_iter().filter(|&g| !g || counted) {
             ran += 1;
             let encoded = |c: &mut CommandBuffer| {
-                let mut pass = c.begin_compute_pass().unwrap();
+                let mut pass = c
+                    .begin_compute_pass(Stage::default(), Stage::default())
+                    .unwrap();
                 pass.bind_compute_pipeline(encode);
                 pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
                 pass.dispatch(1, 1, 1);
                 pass.end();
-                c.memory_barrier(Stage::COMPUTE, Stage::INDIRECT);
             };
             let draw = |pass: &mut RenderPass| {
                 if gpu {
