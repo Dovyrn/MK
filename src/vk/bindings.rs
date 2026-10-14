@@ -11,8 +11,6 @@ const KINDS: [(vk::DescriptorType, u32); 6] = [
     (vk::DescriptorType::INPUT_ATTACHMENT, slot::COLORS),
 ];
 
-pub const SLOTS: usize = (register::ATTACHMENT + slot::COLORS) as usize;
-
 pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
     match kind {
         vk::DescriptorType::UNIFORM_BUFFER => register::UNIFORM + slot,

@@ -15,12 +15,6 @@ use crate::{
 use ash::vk;
 use std::ffi::CString;
 
-type Slot = (
-    vk::DescriptorType,
-    vk::DescriptorBufferInfo,
-    vk::DescriptorImageInfo,
-);
-
 pub struct Recorder<'a> {
     pub device: &'a ash::Device,
     pub ext: &'a Extensions,
@@ -32,8 +26,7 @@ pub struct Recorder<'a> {
     pub depth: Option<(vk::RenderingAttachmentInfo<'static>, vk::ImageAspectFlags)>,
     pub stencil: vk::RenderingAttachmentInfo<'static>,
     pub heap: vk::DescriptorSet,
-    pub slots: [Slot; bindings::SLOTS],
-    pub stale: [u64; 2],
+    pub point: vk::PipelineBindPoint,
     pub defaults: bool,
     pub imported: bool,
 }
@@ -164,60 +157,34 @@ pub fn vk_layout(l: crate::TextureLayout) -> vk::ImageLayout {
     }
 }
 
-fn descriptor_write(binding: u32, (kind, buffer, image): &Slot) -> vk::WriteDescriptorSet<'_> {
-    let write = vk::WriteDescriptorSet::default()
-        .dst_binding(binding)
-        .descriptor_type(*kind);
-    match *kind {
-        vk::DescriptorType::UNIFORM_BUFFER | vk::DescriptorType::STORAGE_BUFFER => {
-            write.buffer_info(std::slice::from_ref(buffer))
-        }
-        _ => write.image_info(std::slice::from_ref(image)),
-    }
-}
-
 impl Recorder<'_> {
-    fn store_slot(
-        &mut self,
+    fn push(
+        &self,
+        point: vk::PipelineBindPoint,
         kind: vk::DescriptorType,
         slot: u32,
         buffer: vk::DescriptorBufferInfo,
         image: vk::DescriptorImageInfo,
     ) -> Result<(), Error> {
-        let binding = bindings::binding(kind, slot);
-        self.slots[binding as usize] = (kind, buffer, image);
-        self.stale = self.stale.map(|s| s | 1 << binding);
-        Ok(())
-    }
-
-    fn push_stale_slots(&mut self, point: vk::PipelineBindPoint) -> Result<(), Error> {
-        let Some(i) = self.points.iter().position(|&p| p == point) else {
-            return Ok(());
-        };
-        let mut stale = self.stale[i];
-        if stale == 0 {
-            return Ok(());
-        }
         let push =
             self.ext.push.as_ref().ok_or_else(|| {
                 Error::Unsupported("VK_KHR_push_descriptor is not enabled".into())
             })?;
-        let mut writes = [vk::WriteDescriptorSet::default(); bindings::SLOTS];
-        let mut n = 0;
-        while stale != 0 {
-            let b = stale.trailing_zeros();
-            writes[n] = descriptor_write(b, &self.slots[b as usize]);
-            n += 1;
-            stale &= stale - 1;
-        }
-        let writes = &writes[..n];
-        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, writes) };
-        self.stale[i] = 0;
+        let write = vk::WriteDescriptorSet::default()
+            .dst_binding(bindings::binding(kind, slot))
+            .descriptor_type(kind);
+        let write = match kind {
+            vk::DescriptorType::UNIFORM_BUFFER | vk::DescriptorType::STORAGE_BUFFER => {
+                write.buffer_info(std::slice::from_ref(&buffer))
+            }
+            _ => write.image_info(std::slice::from_ref(&image)),
+        };
+        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, &[write]) };
         Ok(())
     }
 
     fn buffer_slot(
-        &mut self,
+        &self,
         kind: vk::DescriptorType,
         slot: u32,
         buffer: Buffer,
@@ -228,16 +195,28 @@ impl Recorder<'_> {
             .buffer(self.res.buffers.get(buffer).raw)
             .offset(offset)
             .range(size);
-        self.store_slot(kind, slot, info, vk::DescriptorImageInfo::default())
+        self.push(
+            self.point,
+            kind,
+            slot,
+            info,
+            vk::DescriptorImageInfo::default(),
+        )
     }
 
     fn image_slot(
-        &mut self,
+        &self,
         kind: vk::DescriptorType,
         slot: u32,
         info: vk::DescriptorImageInfo,
     ) -> Result<(), Error> {
-        self.store_slot(kind, slot, vk::DescriptorBufferInfo::default(), info)
+        self.push(
+            self.point,
+            kind,
+            slot,
+            vk::DescriptorBufferInfo::default(),
+            info,
+        )
     }
 
     fn bind_heap(&self) {
@@ -393,25 +372,10 @@ impl Recorder<'_> {
 
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
         let (d, b) = (self.device, self.buffer);
-        match command {
-            Command::Dispatch { .. } | Command::DispatchIndirect { .. } => {
-                self.push_stale_slots(vk::PipelineBindPoint::COMPUTE)?
-            }
-            Command::Draw { .. }
-            | Command::DrawIndexed { .. }
-            | Command::DrawIndirect { .. }
-            | Command::DrawIndexedIndirect { .. }
-            | Command::DrawMeshTasks { .. }
-            | Command::DrawMeshTasksIndirect { .. }
-            | Command::ExecuteIndirect { .. }
-            | Command::ExecuteIndirectCount { .. } => {
-                self.push_stale_slots(vk::PipelineBindPoint::GRAPHICS)?
-            }
-            _ => {}
-        }
         unsafe {
             match command {
-                Command::BeginComputePass | Command::EndComputePass => {}
+                Command::BeginComputePass => self.point = vk::PipelineBindPoint::COMPUTE,
+                Command::EndComputePass => {}
                 Command::BindComputePipeline { pipeline } => d.cmd_bind_pipeline(
                     b,
                     vk::PipelineBindPoint::COMPUTE,
@@ -598,14 +562,13 @@ impl Recorder<'_> {
                         let image = vk::DescriptorImageInfo::default()
                             .image_view(t.target)
                             .image_layout(vk::ImageLayout::GENERAL);
-                        self.image_slot(vk::DescriptorType::INPUT_ATTACHMENT, index, image)?;
-                        let bit =
-                            1 << bindings::binding(vk::DescriptorType::INPUT_ATTACHMENT, index);
-                        for (i, &p) in self.points.iter().enumerate() {
-                            if p == vk::PipelineBindPoint::COMPUTE {
-                                self.stale[i] &= !bit;
-                            }
-                        }
+                        self.push(
+                            vk::PipelineBindPoint::GRAPHICS,
+                            vk::DescriptorType::INPUT_ATTACHMENT,
+                            index,
+                            vk::DescriptorBufferInfo::default(),
+                            image,
+                        )?;
                     }
                 }
                 Command::DepthAttachment {
@@ -631,6 +594,7 @@ impl Recorder<'_> {
                     height,
                     layers,
                 } => {
+                    self.point = vk::PipelineBindPoint::GRAPHICS;
                     let area = vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
                         extent: vk::Extent2D { width, height },

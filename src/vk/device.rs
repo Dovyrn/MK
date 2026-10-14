@@ -443,8 +443,7 @@ impl Device {
             depth: None,
             stencil: vk::RenderingAttachmentInfo::default(),
             heap: self.bindless.set,
-            slots: [Default::default(); bindings::SLOTS],
-            stale: [0; 2],
+            point: vk::PipelineBindPoint::GRAPHICS,
             defaults: false,
             imported: false,
         };

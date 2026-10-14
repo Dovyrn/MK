@@ -133,27 +133,27 @@ fields = [["set", "ResidencySet"]]
 
 [[command]]
 name = "bind_uniform_buffer"
-scope = "outside compute render"
+scope = "compute render"
 fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "bind_storage_buffer"
-scope = "outside compute render"
+scope = "compute render"
 fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
 
 [[command]]
 name = "bind_texture"
-scope = "outside compute render"
+scope = "compute render"
 fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
 name = "bind_storage_texture"
-scope = "outside compute render"
+scope = "compute render"
 fields = [["slot", "u32"], ["texture", "Texture"]]
 
 [[command]]
 name = "bind_sampler"
-scope = "outside compute render"
+scope = "compute render"
 fields = [["slot", "u32"], ["sampler", "Sampler"]]
 
 [[command]]
