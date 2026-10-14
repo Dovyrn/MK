@@ -8,7 +8,7 @@ public class NAME {
         this.owner = owner;
         this.handle = handle;
         if (owner == null) {
-            device.recording++;
+            device.recording.incrementAndGet();
         }
     }
 
@@ -24,22 +24,18 @@ public class NAME {
     }
 
     public void end() {
-        synchronized (device) {
-            var ended = handle();
-            handle = 0;
-            if (owner != null) {
-                owner.ended();
-            } else {
-                device.recording--;
-            }
-            nEnd(ended);
+        var ended = handle();
+        handle = 0;
+        nEnd(ended);
+        if (owner != null) {
+            owner.ended();
+        } else {
+            device.recording.decrementAndGet();
         }
     }
 
     public long raw() {
-        synchronized (device) {
-            return nRaw(handle());
-        }
+        return nRaw(handle());
     }
 
     private static native void nEnd(long pass);

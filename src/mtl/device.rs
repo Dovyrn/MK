@@ -31,7 +31,8 @@ use objc2_metal::{
     MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage, MTLVertexFormat,
 };
-use std::cell::{Cell, RefCell};
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock};
 
 fn mtl_compare(c: crate::CompareOp) -> MTLCompareFunction {
@@ -196,8 +197,12 @@ pub struct Device {
     pools: Slots<Pool>,
     lost: Arc<OnceLock<String>>,
     caps: Caps,
-    submits: RefCell<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
+    residency: Mutex<()>,
 }
+
+unsafe impl Send for Device {}
+
+unsafe impl Sync for Device {}
 
 impl Drop for Device {
     fn drop(&mut self) {
@@ -238,7 +243,7 @@ impl Device {
                 pools: Slots::default(),
                 lost,
                 caps,
-                submits: RefCell::default(),
+                residency: Mutex::new(()),
             })
         })
     }
@@ -273,7 +278,10 @@ impl Device {
         let queue = queue as usize;
         self.check_queue(queue);
         let pool = self.pools.insert(Pool::new(&self.raw)?);
-        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        self.res
+            .table
+            .pools
+            .set(pool, (queue, AtomicBool::new(false)));
         Ok(pool)
     }
 
@@ -288,19 +296,22 @@ impl Device {
         self.pools.remove(pool);
     }
 
-    fn recording(
-        &self,
-        pool: CommandPool,
-        buffer: Option<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>,
-        kind: Kind,
-        samples: u32,
-    ) -> Recording<'_> {
+    fn check(&self, pool: CommandPool, kind: Kind, samples: u32) -> Check<'_> {
         let base = match kind {
             Kind::Render => "render",
             Kind::Compute => "compute",
             _ => "outside",
         };
-        let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
+        Check::new(&self.caps, &self.res.table, pool, base, samples)
+    }
+
+    fn recording<'d>(
+        &'d self,
+        check: Check<'d>,
+        pool: CommandPool,
+        buffer: Option<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>,
+        kind: Kind,
+    ) -> Recording<'d> {
         let table = &self.pools.get(pool).table;
         Recording {
             check,
@@ -309,10 +320,10 @@ impl Device {
     }
 
     pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
-        self.res.table.pools.get(pool);
+        let check = self.check(pool, Kind::Owned, 0);
         let p = self.pools.get(pool);
         let buffer = p.next(&self.raw)?;
-        let recording = self.recording(pool, Some(buffer.clone()), Kind::Owned, 0);
+        let recording = self.recording(check, pool, Some(buffer.clone()), Kind::Owned);
         buffer.beginCommandBufferWithAllocator(&p.allocator);
         Ok(CommandBuffer { recording })
     }
@@ -323,7 +334,12 @@ impl Device {
         raw: &ProtocolObject<dyn MTL4CommandBuffer>,
     ) -> Result<CommandBuffer<'_>, Error> {
         Ok(CommandBuffer {
-            recording: self.recording(pool, Some(raw.retain()), Kind::Buffer, 0),
+            recording: self.recording(
+                self.check(pool, Kind::Buffer, 0),
+                pool,
+                Some(raw.retain()),
+                Kind::Buffer,
+            ),
         })
     }
 
@@ -333,7 +349,8 @@ impl Device {
         raw: &ProtocolObject<dyn MTL4RenderCommandEncoder>,
         info: &ImportedPassInfo,
     ) -> Result<RenderPass<'_, '_>, Error> {
-        let mut recording = self.recording(pool, None, Kind::Render, info.samples);
+        let check = self.check(pool, Kind::Render, info.samples);
+        let mut recording = self.recording(check, pool, None, Kind::Render);
         recording
             .recorder
             .import_render(raw.retain(), info.width, info.height);
@@ -347,7 +364,8 @@ impl Device {
         pool: CommandPool,
         raw: &ProtocolObject<dyn MTL4ComputeCommandEncoder>,
     ) -> Result<ComputePass<'_, '_>, Error> {
-        let mut recording = self.recording(pool, None, Kind::Compute, 0);
+        let check = self.check(pool, Kind::Compute, 0);
+        let mut recording = self.recording(check, pool, None, Kind::Compute);
         recording.recorder.import_compute(raw.retain());
         Ok(ComputePass {
             recording: Held::Owned(Box::new(recording)),
@@ -364,8 +382,7 @@ impl Device {
             let table = &self.res.table;
             table.check_timelines(waits);
             table.check_timelines(signals);
-            let mut submits = self.submits.borrow_mut();
-            submits.clear();
+            let mut scratch = None;
             let mut queue = None;
             for c in commands {
                 let recording = &c.recording;
@@ -381,9 +398,15 @@ impl Device {
                     queue.unwrap_or(q)
                 );
                 queue = Some(q);
+                let submits = scratch.get_or_insert_with(|| {
+                    let mut s = self.queues[q].scratch.lock().unwrap();
+                    s.clear();
+                    s
+                });
                 submits.push(recording.recorder.raw().retain());
             }
             let queue = queue.expect("submit needs at least one command buffer");
+            let mut submits = scratch.unwrap();
             table.check_signals(queue, signals);
             self.queues[queue].lost()?;
             self.queues[queue].commit(&submits, waits, signals);

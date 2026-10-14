@@ -1,12 +1,12 @@
 use crate::Format;
 use crate::vk::Device;
 use ash::vk;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct TextureObject {
     pub image: vk::Image,
-    pub owner: Option<Rc<vk::DeviceMemory>>,
-    pub heap: Option<Rc<vk::DeviceMemory>>,
+    pub owner: Option<Arc<vk::DeviceMemory>>,
+    pub heap: Option<Arc<vk::DeviceMemory>>,
     pub view: vk::ImageView,
     pub target: vk::ImageView,
     pub aspect: vk::ImageAspectFlags,
@@ -24,11 +24,11 @@ impl TextureObject {
             d.raw.destroy_image_view(self.view, None);
             d.raw.destroy_image_view(self.target, None);
         }
-        if let Some(memory) = self.owner.and_then(Rc::into_inner) {
+        if let Some(memory) = self.owner.and_then(Arc::into_inner) {
             unsafe { d.raw.destroy_image(self.image, None) };
             d.free_memory(memory);
         }
-        if let Some(memory) = self.heap.and_then(Rc::into_inner) {
+        if let Some(memory) = self.heap.and_then(Arc::into_inner) {
             d.free_memory(memory);
         }
     }

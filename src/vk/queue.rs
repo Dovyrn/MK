@@ -1,4 +1,5 @@
 use ash::vk;
+use std::sync::Mutex;
 
 pub const COMPUTE: [vk::PipelineBindPoint; 1] = [vk::PipelineBindPoint::COMPUTE];
 
@@ -11,7 +12,15 @@ pub struct Queue {
     pub raw: vk::Queue,
     pub family: u32,
     pub graphics: bool,
+    pub scratch: Mutex<Scratch>,
 }
+
+pub type Scratch = (
+    Vec<vk::CommandBufferSubmitInfo<'static>>,
+    Vec<vk::SemaphoreSubmitInfo<'static>>,
+);
+
+unsafe impl Sync for Queue {}
 
 pub fn timeline(device: &ash::Device) -> Result<vk::Semaphore, vk::Result> {
     let mut kind =
@@ -26,6 +35,7 @@ impl Queue {
             raw: unsafe { device.get_device_queue(family, index) },
             family,
             graphics,
+            scratch: Mutex::default(),
         }
     }
 

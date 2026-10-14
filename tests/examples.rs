@@ -38,6 +38,8 @@ mod slots;
 mod subgroups;
 #[path = "../examples/texture.rs"]
 mod texture;
+#[path = "../examples/threads.rs"]
+mod threads;
 #[path = "../examples/tiles.rs"]
 mod tiles;
 #[path = "../examples/uploads.rs"]
@@ -60,6 +62,6 @@ macro_rules! examples {
 
 examples!(
     adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, queries,
-    queues, reads, render, residency, resolve, slots, subgroups, texture, tiles, uploads, view,
-    viewports
+    queues, reads, render, residency, resolve, slots, subgroups, texture, threads, tiles, uploads,
+    view, viewports
 );

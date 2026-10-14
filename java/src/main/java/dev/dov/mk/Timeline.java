@@ -1,39 +1,67 @@
 package dev.dov.mk;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class Timeline {
-    private long handle;
+    private volatile long handle;
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     Timeline(long handle) {
         this.handle = handle;
     }
 
-    synchronized long handle() {
+    long handle() {
         if (handle == 0) {
             throw new IllegalStateException("timeline used after destroy");
         }
         return handle;
     }
 
-    synchronized long take() {
-        var taken = handle();
-        handle = 0;
-        return taken;
+    long take() {
+        lock.writeLock().lock();
+        try {
+            var taken = handle();
+            handle = 0;
+            return taken;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
-    public synchronized long value() {
-        return nValue(handle());
+    public long value() {
+        lock.readLock().lock();
+        try {
+            return nValue(handle());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
-    public synchronized boolean await(long value, long ms) {
-        return nWait(handle(), value, ms);
+    public boolean await(long value, long ms) {
+        lock.readLock().lock();
+        try {
+            return nWait(handle(), value, ms);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
-    public synchronized void signal(long value) {
-        nSignal(handle(), value);
+    public void signal(long value) {
+        lock.readLock().lock();
+        try {
+            nSignal(handle(), value);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
-    public synchronized long raw() {
-        return nRaw(handle());
+    public long raw() {
+        lock.readLock().lock();
+        try {
+            return nRaw(handle());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nValue(long timeline);

@@ -3,10 +3,11 @@ use crate::Error;
 use crate::Texture;
 use crate::caps::check_support;
 use crate::handle::Handle;
+use crate::table::lock;
 use crate::vk::texture::{TextureObject, aspect, count};
 use crate::{TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use ash::vk;
-use std::rc::Rc;
+use std::sync::Arc;
 
 impl Device {
     pub fn raw_texture(&self, texture: Texture) -> (vk::Image, vk::ImageView) {
@@ -34,7 +35,7 @@ impl Device {
                 self.raw.bind_image_memory(image, m, 0)
             })
             .inspect_err(|_| destroy())?;
-        let id = self.create_views(image, Some(Rc::new(memory)), &whole_view(info))?;
+        let id = self.create_views(image, Some(Arc::new(memory)), &whole_view(info))?;
         self.res.table.add_texture(id, info);
         if info.usage.contains(TextureUsage::HOST) {
             self.to_general(id)?;
@@ -45,7 +46,7 @@ impl Device {
     pub fn import_texture(&self, image: vk::Image, info: &TextureInfo) -> Result<Texture, Error> {
         let id = self.create_views(image, None, &whole_view(info))?;
         self.res.table.textures.set(id, *info);
-        self.res.table.residency.borrow_mut().exempt_texture(id);
+        lock(&self.res.table.residency).exempt_texture(id);
         Ok(id)
     }
 
@@ -86,7 +87,7 @@ impl Device {
     pub(super) fn create_views(
         &self,
         image: vk::Image,
-        owner: Option<Rc<vk::DeviceMemory>>,
+        owner: Option<Arc<vk::DeviceMemory>>,
         info: &TextureViewInfo,
     ) -> Result<Texture, Error> {
         let kind = match info.dimension {

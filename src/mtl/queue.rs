@@ -6,12 +6,13 @@ use objc2_metal::{
     MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice, MTLEvent,
 };
 use std::ptr::NonNull;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct Queue {
     pub raw: Retained<ProtocolObject<dyn MTL4CommandQueue>>,
     options: Retained<MTL4CommitOptions>,
     lost: Arc<OnceLock<String>>,
+    pub scratch: Mutex<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
 }
 
 impl Queue {
@@ -32,7 +33,12 @@ impl Queue {
         );
         let options = MTL4CommitOptions::new();
         unsafe { options.addFeedbackHandler(RcBlock::as_ptr(&handler)) };
-        Ok(Self { raw, options, lost })
+        Ok(Self {
+            raw,
+            options,
+            lost,
+            scratch: Mutex::default(),
+        })
     }
 
     pub fn lost(&self) -> Result<(), Error> {

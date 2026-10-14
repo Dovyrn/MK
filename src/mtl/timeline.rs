@@ -11,6 +11,10 @@ pub struct Timeline {
     pub(crate) lost: Arc<OnceLock<String>>,
 }
 
+unsafe impl Send for Timeline {}
+
+unsafe impl Sync for Timeline {}
+
 impl Timeline {
     pub fn raw(&self) -> &ProtocolObject<dyn MTLSharedEvent> {
         &self.raw

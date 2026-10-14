@@ -2,6 +2,7 @@ use super::{Device, resource_options};
 use crate::Buffer;
 use crate::Error;
 use crate::mtl::buffer::BufferObject;
+use crate::table::lock;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
@@ -27,7 +28,7 @@ impl Device {
             let mappable = raw.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(BufferObject::new(raw));
             self.res.table.add_buffer(id, size, mappable);
-            self.res.table.residency.borrow_mut().exempt_buffer(id);
+            lock(&self.res.table.residency).exempt_buffer(id);
             id
         })
     }

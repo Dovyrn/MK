@@ -4,9 +4,13 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.charset.StandardCharsets;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class Device implements AutoCloseable {
     protected long handle;
-    int recording;
+    final AtomicInteger recording = new AtomicInteger();
+    final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Device(long handle) {
         this.handle = handle;
@@ -20,395 +24,621 @@ public class Device implements AutoCloseable {
     }
 
     void idle(String call) {
-        if (recording > 0) {
-            throw new IllegalStateException(call + " changes the device while " + recording
+        var count = recording.get();
+        if (count > 0) {
+            throw new IllegalStateException(call + " changes the device while " + count
                     + " command buffers or imported passes are recording; submit or close them first");
         }
     }
 
     @Override
-    public synchronized void close() {
-        idle("close");
-        var device = handle;
-        handle = 0;
-        if (device != 0) {
-            nFree(device);
+    public void close() {
+        lock.writeLock().lock();
+        try {
+            idle("close");
+            var device = handle;
+            handle = 0;
+            if (device != 0) {
+                nFree(device);
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
     private static native void nFree(long device);
 
-    public synchronized Caps caps() {
-        try (var arena = new Arena()) {
-            var out = arena.alloc(Caps.SIZE);
-            nCaps(handle(), out);
-            return Caps.decode(out);
+    public Caps caps() {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var out = arena.alloc(Caps.SIZE);
+                nCaps(handle(), out);
+                return Caps.decode(out);
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nCaps(long device, long out);
 
-    public synchronized String deviceName() {
-        return nDeviceName(handle());
+    public String deviceName() {
+        lock.readLock().lock();
+        try {
+            return nDeviceName(handle());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native String nDeviceName(long device);
 
-    public synchronized Buffer createBuffer(long size, Memory memory) {
-        return Buffer.of(nCreateBuffer(handle(), size, memory.value));
+    public Buffer createBuffer(long size, Memory memory) {
+        lock.readLock().lock();
+        try {
+            return Buffer.of(nCreateBuffer(handle(), size, memory.value));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nCreateBuffer(long device, long size, int memory);
 
-    public synchronized void destroyBuffer(Buffer buffer) {
-        idle("destroyBuffer");
-        nDestroyBuffer(handle(), Buffer.raw(buffer));
+    public void destroyBuffer(Buffer buffer) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyBuffer");
+            nDestroyBuffer(handle(), Buffer.raw(buffer));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyBuffer(long device, long buffer);
 
-    public synchronized long mapBuffer(Buffer buffer) {
-        return nMapBuffer(handle(), Buffer.raw(buffer));
+    public long mapBuffer(Buffer buffer) {
+        lock.readLock().lock();
+        try {
+            return nMapBuffer(handle(), Buffer.raw(buffer));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nMapBuffer(long device, long buffer);
 
-    public synchronized void unmapBuffer(Buffer buffer) {
-        nUnmapBuffer(handle(), Buffer.raw(buffer));
+    public void unmapBuffer(Buffer buffer) {
+        lock.readLock().lock();
+        try {
+            nUnmapBuffer(handle(), Buffer.raw(buffer));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native void nUnmapBuffer(long device, long buffer);
 
-    public synchronized long bufferAddress(Buffer buffer) {
-        return nBufferAddress(handle(), Buffer.raw(buffer));
+    public long bufferAddress(Buffer buffer) {
+        lock.readLock().lock();
+        try {
+            return nBufferAddress(handle(), Buffer.raw(buffer));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nBufferAddress(long device, long buffer);
 
-    public synchronized MemoryBudget memoryBudget() {
-        try (var arena = new Arena()) {
-            var out = arena.alloc(MemoryBudget.SIZE);
-            nMemoryBudget(handle(), out);
-            return MemoryBudget.decode(out);
+    public MemoryBudget memoryBudget() {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var out = arena.alloc(MemoryBudget.SIZE);
+                nMemoryBudget(handle(), out);
+                return MemoryBudget.decode(out);
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nMemoryBudget(long device, long out);
 
-    public synchronized ComputePipeline createComputePipeline(ComputePipelineInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return ComputePipeline.of(nCreateComputePipeline(handle(), infoAddress, info.encodedSize()));
+    public ComputePipeline createComputePipeline(ComputePipelineInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return ComputePipeline.of(nCreateComputePipeline(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateComputePipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyComputePipeline(ComputePipeline pipeline) {
-        idle("destroyComputePipeline");
-        nDestroyComputePipeline(handle(), ComputePipeline.raw(pipeline));
+    public void destroyComputePipeline(ComputePipeline pipeline) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyComputePipeline");
+            nDestroyComputePipeline(handle(), ComputePipeline.raw(pipeline));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyComputePipeline(long device, long pipeline);
 
-    public synchronized RenderPipeline createRenderPipeline(RenderPipelineInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return RenderPipeline.of(nCreateRenderPipeline(handle(), infoAddress, info.encodedSize()));
+    public RenderPipeline createRenderPipeline(RenderPipelineInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return RenderPipeline.of(nCreateRenderPipeline(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateRenderPipeline(long device, long info, int infoLength);
 
-    public synchronized RenderPipeline createMeshPipeline(MeshPipelineInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return RenderPipeline.of(nCreateMeshPipeline(handle(), infoAddress, info.encodedSize()));
+    public RenderPipeline createMeshPipeline(MeshPipelineInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return RenderPipeline.of(nCreateMeshPipeline(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateMeshPipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyRenderPipeline(RenderPipeline pipeline) {
-        idle("destroyRenderPipeline");
-        nDestroyRenderPipeline(handle(), RenderPipeline.raw(pipeline));
+    public void destroyRenderPipeline(RenderPipeline pipeline) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyRenderPipeline");
+            nDestroyRenderPipeline(handle(), RenderPipeline.raw(pipeline));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyRenderPipeline(long device, long pipeline);
 
-    public synchronized TilePipeline createTilePipeline(TilePipelineInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return TilePipeline.of(nCreateTilePipeline(handle(), infoAddress, info.encodedSize()));
+    public TilePipeline createTilePipeline(TilePipelineInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return TilePipeline.of(nCreateTilePipeline(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateTilePipeline(long device, long info, int infoLength);
 
-    public synchronized void destroyTilePipeline(TilePipeline pipeline) {
-        idle("destroyTilePipeline");
-        nDestroyTilePipeline(handle(), TilePipeline.raw(pipeline));
+    public void destroyTilePipeline(TilePipeline pipeline) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyTilePipeline");
+            nDestroyTilePipeline(handle(), TilePipeline.raw(pipeline));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyTilePipeline(long device, long pipeline);
 
-    public synchronized DepthState createDepthState(DepthStateInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize()));
+    public DepthState createDepthState(DepthStateInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateDepthState(long device, long info, int infoLength);
 
-    public synchronized void destroyDepthState(DepthState state) {
-        idle("destroyDepthState");
-        nDestroyDepthState(handle(), DepthState.raw(state));
+    public void destroyDepthState(DepthState state) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyDepthState");
+            nDestroyDepthState(handle(), DepthState.raw(state));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyDepthState(long device, long state);
 
-    public synchronized Texture createTexture(TextureInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return Texture.of(nCreateTexture(handle(), infoAddress, info.encodedSize()));
+    public Texture createTexture(TextureInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Texture.of(nCreateTexture(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateTexture(long device, long info, int infoLength);
 
-    public synchronized void writeTexture(HostTextureCopy copy, long data, long dataSize) {
-        try (var arena = new Arena()) {
-            var copyAddress = arena.alloc(copy.encodedSize());
-            copy.encode(copyAddress);
-            nWriteTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
+    public void writeTexture(HostTextureCopy copy, long data, long dataSize) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var copyAddress = arena.alloc(copy.encodedSize());
+                copy.encode(copyAddress);
+                nWriteTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nWriteTexture(long device, long copy, int copyLength, long data, long dataLength);
 
-    public synchronized void readTexture(HostTextureCopy copy, long data, long dataSize) {
-        try (var arena = new Arena()) {
-            var copyAddress = arena.alloc(copy.encodedSize());
-            copy.encode(copyAddress);
-            nReadTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
+    public void readTexture(HostTextureCopy copy, long data, long dataSize) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var copyAddress = arena.alloc(copy.encodedSize());
+                copy.encode(copyAddress);
+                nReadTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nReadTexture(long device, long copy, int copyLength, long data, long dataLength);
 
-    public synchronized int formatUsage(Format format) {
-        return nFormatUsage(handle(), format.value);
+    public int formatUsage(Format format) {
+        lock.readLock().lock();
+        try {
+            return nFormatUsage(handle(), format.value);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native int nFormatUsage(long device, int format);
 
-    public synchronized int formatSamples(Format format, int usage) {
-        return nFormatSamples(handle(), format.value, usage);
+    public int formatSamples(Format format, int usage) {
+        lock.readLock().lock();
+        try {
+            return nFormatSamples(handle(), format.value, usage);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native int nFormatSamples(long device, int format, int usage);
 
-    public synchronized Texture createTextureView(Texture texture, TextureViewInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return Texture.of(nCreateTextureView(handle(), Texture.raw(texture), infoAddress, info.encodedSize()));
+    public Texture createTextureView(Texture texture, TextureViewInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Texture.of(nCreateTextureView(handle(), Texture.raw(texture), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateTextureView(long device, long texture, long info, int infoLength);
 
-    public synchronized void destroyTexture(Texture texture) {
-        idle("destroyTexture");
-        nDestroyTexture(handle(), Texture.raw(texture));
+    public void destroyTexture(Texture texture) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyTexture");
+            nDestroyTexture(handle(), Texture.raw(texture));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyTexture(long device, long texture);
 
-    public synchronized long bindlessStorageTexture(Texture texture) {
-        return nBindlessStorageTexture(handle(), Texture.raw(texture));
+    public long bindlessStorageTexture(Texture texture) {
+        lock.readLock().lock();
+        try {
+            return nBindlessStorageTexture(handle(), Texture.raw(texture));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nBindlessStorageTexture(long device, long texture);
 
-    public synchronized Sampler createSampler(SamplerInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return Sampler.of(nCreateSampler(handle(), infoAddress, info.encodedSize()));
+    public Sampler createSampler(SamplerInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Sampler.of(nCreateSampler(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateSampler(long device, long info, int infoLength);
 
-    public synchronized void destroySampler(Sampler sampler) {
-        idle("destroySampler");
-        nDestroySampler(handle(), Sampler.raw(sampler));
+    public void destroySampler(Sampler sampler) {
+        lock.writeLock().lock();
+        try {
+            idle("destroySampler");
+            nDestroySampler(handle(), Sampler.raw(sampler));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroySampler(long device, long sampler);
 
-    public synchronized QueryPool createQueryPool(QueryKind kind, int count) {
-        return QueryPool.of(nCreateQueryPool(handle(), kind.value, count));
+    public QueryPool createQueryPool(QueryKind kind, int count) {
+        lock.readLock().lock();
+        try {
+            return QueryPool.of(nCreateQueryPool(handle(), kind.value, count));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nCreateQueryPool(long device, int kind, int count);
 
-    public synchronized void destroyQueryPool(QueryPool pool) {
-        idle("destroyQueryPool");
-        nDestroyQueryPool(handle(), QueryPool.raw(pool));
+    public void destroyQueryPool(QueryPool pool) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyQueryPool");
+            nDestroyQueryPool(handle(), QueryPool.raw(pool));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyQueryPool(long device, long pool);
 
-    public synchronized IndirectBuffer createIndirectBuffer(IndirectBufferInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return IndirectBuffer.of(nCreateIndirectBuffer(handle(), infoAddress, info.encodedSize()));
+    public IndirectBuffer createIndirectBuffer(IndirectBufferInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return IndirectBuffer.of(nCreateIndirectBuffer(handle(), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nCreateIndirectBuffer(long device, long info, int infoLength);
 
-    public synchronized void destroyIndirectBuffer(IndirectBuffer indirect) {
-        idle("destroyIndirectBuffer");
-        nDestroyIndirectBuffer(handle(), IndirectBuffer.raw(indirect));
+    public void destroyIndirectBuffer(IndirectBuffer indirect) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyIndirectBuffer");
+            nDestroyIndirectBuffer(handle(), IndirectBuffer.raw(indirect));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyIndirectBuffer(long device, long indirect);
 
-    public synchronized int[] indirectShaderHandle(IndirectBuffer indirect) {
-        idle("indirectShaderHandle");
-        try (var arena = new Arena()) {
-            var out = arena.alloc(32);
-            nIndirectShaderHandle(handle(), IndirectBuffer.raw(indirect), out);
-            return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
+    public int[] indirectShaderHandle(IndirectBuffer indirect) {
+        lock.writeLock().lock();
+        try {
+            idle("indirectShaderHandle");
+            try (var arena = new Arena()) {
+                var out = arena.alloc(32);
+                nIndirectShaderHandle(handle(), IndirectBuffer.raw(indirect), out);
+                return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
     private static native void nIndirectShaderHandle(long device, long indirect, long out);
 
-    public synchronized ResidencySet createResidencySet() {
-        return ResidencySet.of(nCreateResidencySet(handle()));
+    public ResidencySet createResidencySet() {
+        lock.readLock().lock();
+        try {
+            return ResidencySet.of(nCreateResidencySet(handle()));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nCreateResidencySet(long device);
 
-    public synchronized void destroyResidencySet(ResidencySet set) {
-        idle("destroyResidencySet");
-        nDestroyResidencySet(handle(), ResidencySet.raw(set));
+    public void destroyResidencySet(ResidencySet set) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyResidencySet");
+            nDestroyResidencySet(handle(), ResidencySet.raw(set));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyResidencySet(long device, long set);
 
-    public synchronized void addResidency(ResidencySet set, Resource[] resources) {
-        try (var arena = new Arena()) {
-            var resourcesSize = 4;
-            for (var x : resources) {
-                resourcesSize += x.encodedSize();
+    public void addResidency(ResidencySet set, Resource[] resources) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var resourcesSize = 4;
+                for (var x : resources) {
+                    resourcesSize += x.encodedSize();
+                }
+                var resourcesAddress = arena.alloc(resourcesSize);
+                var resourcesAt = resourcesAddress;
+                memPutInt(resourcesAt, resources.length);
+                resourcesAt += 4;
+                for (var x : resources) {
+                    resourcesAt = x.encode(resourcesAt);
+                }
+                nAddResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
             }
-            var resourcesAddress = arena.alloc(resourcesSize);
-            var resourcesAt = resourcesAddress;
-            memPutInt(resourcesAt, resources.length);
-            resourcesAt += 4;
-            for (var x : resources) {
-                resourcesAt = x.encode(resourcesAt);
-            }
-            nAddResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nAddResidency(long device, long set, long resources, int resourcesLength);
 
-    public synchronized void removeResidency(ResidencySet set, Resource[] resources) {
-        try (var arena = new Arena()) {
-            var resourcesSize = 4;
-            for (var x : resources) {
-                resourcesSize += x.encodedSize();
+    public void removeResidency(ResidencySet set, Resource[] resources) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var resourcesSize = 4;
+                for (var x : resources) {
+                    resourcesSize += x.encodedSize();
+                }
+                var resourcesAddress = arena.alloc(resourcesSize);
+                var resourcesAt = resourcesAddress;
+                memPutInt(resourcesAt, resources.length);
+                resourcesAt += 4;
+                for (var x : resources) {
+                    resourcesAt = x.encode(resourcesAt);
+                }
+                nRemoveResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
             }
-            var resourcesAddress = arena.alloc(resourcesSize);
-            var resourcesAt = resourcesAddress;
-            memPutInt(resourcesAt, resources.length);
-            resourcesAt += 4;
-            for (var x : resources) {
-                resourcesAt = x.encode(resourcesAt);
-            }
-            nRemoveResidency(handle(), ResidencySet.raw(set), resourcesAddress, resourcesSize);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native void nRemoveResidency(long device, long set, long resources, int resourcesLength);
 
-    public synchronized void commitResidency(ResidencySet set) {
-        nCommitResidency(handle(), ResidencySet.raw(set));
+    public void commitResidency(ResidencySet set) {
+        lock.readLock().lock();
+        try {
+            nCommitResidency(handle(), ResidencySet.raw(set));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native void nCommitResidency(long device, long set);
 
-    public synchronized Timeline createTimeline() {
-        return new Timeline(nCreateTimeline(handle()));
+    public Timeline createTimeline() {
+        lock.readLock().lock();
+        try {
+            return new Timeline(nCreateTimeline(handle()));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nCreateTimeline(long device);
 
-    public synchronized void destroyTimeline(Timeline timeline) {
-        idle("destroyTimeline");
-        nDestroyTimeline(handle(), timeline.take());
+    public void destroyTimeline(Timeline timeline) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyTimeline");
+            nDestroyTimeline(handle(), timeline.take());
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyTimeline(long device, long timeline);
 
-    public synchronized CommandPool createCommandPool(int queue) {
-        return CommandPool.of(nCreateCommandPool(handle(), queue));
+    public CommandPool createCommandPool(int queue) {
+        lock.readLock().lock();
+        try {
+            return CommandPool.of(nCreateCommandPool(handle(), queue));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nCreateCommandPool(long device, int queue);
 
-    public synchronized void resetCommandPool(CommandPool pool) {
-        idle("resetCommandPool");
-        nResetCommandPool(handle(), CommandPool.raw(pool));
+    public void resetCommandPool(CommandPool pool) {
+        lock.writeLock().lock();
+        try {
+            idle("resetCommandPool");
+            nResetCommandPool(handle(), CommandPool.raw(pool));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nResetCommandPool(long device, long pool);
 
-    public synchronized void destroyCommandPool(CommandPool pool) {
-        idle("destroyCommandPool");
-        nDestroyCommandPool(handle(), CommandPool.raw(pool));
+    public void destroyCommandPool(CommandPool pool) {
+        lock.writeLock().lock();
+        try {
+            idle("destroyCommandPool");
+            nDestroyCommandPool(handle(), CommandPool.raw(pool));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private static native void nDestroyCommandPool(long device, long pool);
 
-    public synchronized CommandBuffer beginCommands(CommandPool pool) {
-        return CommandBuffer.adopt(this, nBeginCommands(handle(), CommandPool.raw(pool)));
+    public CommandBuffer beginCommands(CommandPool pool) {
+        lock.readLock().lock();
+        try {
+            return CommandBuffer.adopt(this, nBeginCommands(handle(), CommandPool.raw(pool)));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nBeginCommands(long device, long pool);
 
-    public synchronized void submit(CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
-        try (var arena = new Arena()) {
-            var commandsAddress = arena.alloc(commands.length * 8L);
-            for (var i = 0; i < commands.length; i++) {
-                memPutLong(commandsAddress + i * 8, commands[i].take());
+    public void submit(CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var commandsAddress = arena.alloc(commands.length * 8L);
+                for (var i = 0; i < commands.length; i++) {
+                    memPutLong(commandsAddress + i * 8, commands[i].take());
+                }
+                var waitsAddress = arena.alloc(waits.length * 16L);
+                for (var i = 0; i < waits.length; i++) {
+                    memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
+                    memPutLong(waitsAddress + i * 16 + 8, waits[i].value());
+                }
+                var signalsAddress = arena.alloc(signals.length * 16L);
+                for (var i = 0; i < signals.length; i++) {
+                    memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
+                    memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
+                }
+                nSubmit(handle(), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
             }
-            var waitsAddress = arena.alloc(waits.length * 16L);
-            for (var i = 0; i < waits.length; i++) {
-                memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
-                memPutLong(waitsAddress + i * 16 + 8, waits[i].value());
-            }
-            var signalsAddress = arena.alloc(signals.length * 16L);
-            for (var i = 0; i < signals.length; i++) {
-                memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
-                memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
-            }
-            nSubmit(handle(), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 

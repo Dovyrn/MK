@@ -74,11 +74,56 @@ public class Smoke {
             } catch (ShaderException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
             }
+            threads(device, timeline);
             device.destroyCommandPool(pool);
             device.destroyTimeline(timeline);
             nmemFree(code);
             System.out.println("java: 1024 values match");
         }
+    }
+
+    static void threads(Device device, Timeline timeline) throws Exception {
+        var size = 256;
+        var buffers = new Buffer[2];
+        var commands = new CommandBuffer[2];
+        var workers = new Thread[2];
+        for (var i = 0; i < 2; i++) {
+            var at = i;
+            workers[i] = new Thread(() -> {
+                var pool = device.createCommandPool(0);
+                var buffer = device.createBuffer(size, Memory.READBACK);
+                var set = device.createResidencySet();
+                device.addResidency(set, new Resource[] {buffer.resource()});
+                device.commitResidency(set);
+                var c = device.beginCommands(pool);
+                c.useResidencySet(set);
+                var pass = c.beginComputePass(0, 0);
+                pass.fillBuffer(buffer, 0, size, at + 1);
+                pass.memoryBarrier(Stage.COPY, Stage.HOST);
+                pass.end();
+                c.end();
+                buffers[at] = buffer;
+                commands[at] = c;
+            });
+            workers[i].start();
+        }
+        for (var w : workers) {
+            w.join();
+        }
+        device.submit(commands, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 2)});
+        if (!timeline.await(2, 1000)) {
+            throw new IllegalStateException("timeout");
+        }
+        for (var i = 0; i < 2; i++) {
+            var data = memByteBuffer(device.mapBuffer(buffers[i]), size);
+            for (var j = 0; j < size; j++) {
+                if (data.get(j) != i + 1) {
+                    throw new IllegalStateException("thread " + i + " byte " + j + " is " + data.get(j));
+                }
+            }
+            device.unmapBuffer(buffers[i]);
+        }
+        System.out.println("java: 2 threads recorded and submitted together");
     }
 
     static void clear(Device device) {

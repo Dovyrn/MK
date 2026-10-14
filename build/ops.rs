@@ -339,7 +339,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
         };
         writeln!(
             s,
-            "\n    public void {}({}) {{\n        synchronized (device) {{",
+            "\n    public void {}({}) {{",
             crate::camel(&op.name),
             params.join(", ")
         )
@@ -347,6 +347,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
         let owner = if op.info.is_some() { "info." } else { "" };
         let mut args = vec!["handle()".to_string()];
         let mut arena = false;
+        let mut body = String::new();
         for f in &op.fields {
             let n = format!("{owner}{}", crate::camel(&f.name));
             match f.kind.as_str() {
@@ -357,7 +358,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
                 "str" => {
                     arena = true;
                     writeln!(
-                        s,
+                        body,
                         "            var encoded = {n}.getBytes(StandardCharsets.UTF_8);"
                     )
                     .unwrap();
@@ -366,13 +367,13 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
                 }
                 k if list(k).is_some() => {
                     arena = true;
-                    crate::infos::list_size(&mut s, k, &n, "            ");
+                    crate::infos::list_size(&mut body, k, &n, "            ");
                     writeln!(
-                        s,
+                        body,
                         "            var list = arena.alloc({n}Size);\n            var at = list;"
                     )
                     .unwrap();
-                    crate::infos::list_put(&mut s, k, &n, "at", "            ").unwrap();
+                    crate::infos::list_put(&mut body, k, &n, "at", "            ").unwrap();
                     args.push("list".into());
                     args.push(format!("{n}Size"));
                 }
@@ -381,14 +382,14 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
         }
         let call = format!("n{}({});", pascal(&op.name), args.join(", "));
         if arena {
-            let s2 = s.clone();
-            let at = s2.rfind("synchronized (device) {").unwrap() + "synchronized (device) {".len();
-            s.insert_str(at, "\n            try (var arena = new Arena()) {");
-            writeln!(s, "                {call}\n            }}").unwrap();
+            writeln!(s, "        try (var arena = new Arena()) {{").unwrap();
+            s.push_str(&body);
+            writeln!(s, "            {call}\n        }}").unwrap();
         } else {
-            writeln!(s, "            {call}").unwrap();
+            s.push_str(&body);
+            writeln!(s, "        {call}").unwrap();
         }
-        s += "        }\n    }\n";
+        s += "    }\n";
         let mut natives = vec!["long target".to_string()];
         for f in &op.fields {
             for (n, t, _) in jni_params(f) {

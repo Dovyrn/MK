@@ -51,6 +51,8 @@ pub struct Recorder<'a> {
     shared: usize,
 }
 
+unsafe impl Send for Recorder<'_> {}
+
 const COMPUTE: MTLStages = MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0);
 
 pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;

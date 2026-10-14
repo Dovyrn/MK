@@ -15,40 +15,65 @@ public class GlDevice extends Device {
 
     private static native long nImportDeviceRaw(long proc);
 
-    public synchronized Buffer importBuffer(int raw, long size) {
-        return Buffer.of(nImportBuffer(handle(), raw, size));
+    public Buffer importBuffer(int raw, long size) {
+        lock.readLock().lock();
+        try {
+            return Buffer.of(nImportBuffer(handle(), raw, size));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native long nImportBuffer(long device, int raw, long size);
 
-    public synchronized Texture importTexture(int raw, TextureInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return Texture.of(nImportTexture(handle(), raw, infoAddress, info.encodedSize()));
+    public Texture importTexture(int raw, TextureInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Texture.of(nImportTexture(handle(), raw, infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nImportTexture(long device, int raw, long info, int infoLength);
 
-    public synchronized RenderPass importRenderPass(CommandPool pool, ImportedPassInfo info) {
-        try (var arena = new Arena()) {
-            var infoAddress = arena.alloc(info.encodedSize());
-            info.encode(infoAddress);
-            return RenderPass.adopt(this, nImportRenderPass(handle(), CommandPool.raw(pool), infoAddress, info.encodedSize()));
+    public RenderPass importRenderPass(CommandPool pool, ImportedPassInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return RenderPass.adopt(this, nImportRenderPass(handle(), CommandPool.raw(pool), infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     private static native long nImportRenderPass(long device, long pool, long info, int infoLength);
 
-    public synchronized int rawBuffer(Buffer buffer) {
-        return nRawBuffer(handle(), Buffer.raw(buffer));
+    public int rawBuffer(Buffer buffer) {
+        lock.readLock().lock();
+        try {
+            return nRawBuffer(handle(), Buffer.raw(buffer));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native int nRawBuffer(long device, long buffer);
 
-    public synchronized int rawTexture(Texture texture) {
-        return nRawTexture(handle(), Texture.raw(texture));
+    public int rawTexture(Texture texture) {
+        lock.readLock().lock();
+        try {
+            return nRawTexture(handle(), Texture.raw(texture));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private static native int nRawTexture(long device, long texture);

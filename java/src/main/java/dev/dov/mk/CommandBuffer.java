@@ -12,7 +12,7 @@ public class CommandBuffer implements AutoCloseable {
     CommandBuffer(Device device, long handle) {
         this.device = device;
         this.handle = handle;
-        device.recording++;
+        device.recording.incrementAndGet();
     }
 
     static CommandBuffer adopt(Device device, long handle) {
@@ -32,7 +32,7 @@ public class CommandBuffer implements AutoCloseable {
     long take() {
         var taken = handle();
         handle = 0;
-        device.recording--;
+        device.recording.decrementAndGet();
         return taken;
     }
 
@@ -41,47 +41,37 @@ public class CommandBuffer implements AutoCloseable {
     }
 
     public ComputePass beginComputePass(int srcStage, int dstStage) {
-        synchronized (device) {
-            var pass = nBeginComputePass(handle(), srcStage, dstStage);
-            passing = true;
-            return new ComputePass(device, this, pass);
-        }
+        var pass = nBeginComputePass(handle(), srcStage, dstStage);
+        passing = true;
+        return new ComputePass(device, this, pass);
     }
 
     public RenderPass beginRenderPass(RenderPassInfo info) {
-        synchronized (device) {
-            try (var arena = new Arena()) {
-                var size = info.encodedSize();
-                var address = arena.alloc(size);
-                info.encode(address);
-                var pass = nBeginRenderPass(handle(), address, size);
-                passing = true;
-                return new RenderPass(device, this, pass);
-            }
+        try (var arena = new Arena()) {
+            var size = info.encodedSize();
+            var address = arena.alloc(size);
+            info.encode(address);
+            var pass = nBeginRenderPass(handle(), address, size);
+            passing = true;
+            return new RenderPass(device, this, pass);
         }
     }
 
     public void end() {
-        synchronized (device) {
-            nEnd(handle());
-        }
+        nEnd(handle());
     }
 
     public long raw() {
-        synchronized (device) {
-            return nRaw(handle());
-        }
+        return nRaw(handle());
     }
 
     @Override
     public void close() {
-        synchronized (device) {
-            if (handle != 0) {
-                var dropped = handle;
-                handle = 0;
-                device.recording--;
-                nDrop(dropped);
-            }
+        if (handle != 0) {
+            var dropped = handle;
+            handle = 0;
+            nDrop(dropped);
+            device.recording.decrementAndGet();
         }
     }
 
@@ -96,27 +86,22 @@ public class CommandBuffer implements AutoCloseable {
     private static native void nDrop(long commands);
 
     public void beginDebugLabel(String text) {
-        synchronized (device) {
-            try (var arena = new Arena()) {
+        try (var arena = new Arena()) {
             var encoded = text.getBytes(StandardCharsets.UTF_8);
-                nBeginDebugLabel(handle(), arena.bytes(encoded), encoded.length);
-            }
+            nBeginDebugLabel(handle(), arena.bytes(encoded), encoded.length);
         }
     }
 
     private static native void nBeginDebugLabel(long target, long text, int textLength);
 
     public void endDebugLabel() {
-        synchronized (device) {
-            nEndDebugLabel(handle());
-        }
+        nEndDebugLabel(handle());
     }
 
     private static native void nEndDebugLabel(long target);
 
     public void discardTextures(TextureDiscard[] textures) {
-        synchronized (device) {
-            try (var arena = new Arena()) {
+        try (var arena = new Arena()) {
             var texturesSize = 4;
             for (var x : textures) {
                 texturesSize += x.encodedSize();
@@ -128,41 +113,32 @@ public class CommandBuffer implements AutoCloseable {
             for (var x : textures) {
                 at = x.encode(at);
             }
-                nDiscardTextures(handle(), list, texturesSize);
-            }
+            nDiscardTextures(handle(), list, texturesSize);
         }
     }
 
     private static native void nDiscardTextures(long target, long textures, int texturesLength);
 
     public void useResidencySet(ResidencySet set) {
-        synchronized (device) {
-            nUseResidencySet(handle(), ResidencySet.raw(set));
-        }
+        nUseResidencySet(handle(), ResidencySet.raw(set));
     }
 
     private static native void nUseResidencySet(long target, long set);
 
     public void resetQueries(QueryPool pool, int first, int count) {
-        synchronized (device) {
-            nResetQueries(handle(), QueryPool.raw(pool), first, count);
-        }
+        nResetQueries(handle(), QueryPool.raw(pool), first, count);
     }
 
     private static native void nResetQueries(long target, long pool, int first, int count);
 
     public void writeTimestamp(QueryPool pool, int index, int stage) {
-        synchronized (device) {
-            nWriteTimestamp(handle(), QueryPool.raw(pool), index, stage);
-        }
+        nWriteTimestamp(handle(), QueryPool.raw(pool), index, stage);
     }
 
     private static native void nWriteTimestamp(long target, long pool, int index, int stage);
 
     public void resolveTimestamps(QueryPool pool, int first, int count, Buffer buffer, long offset) {
-        synchronized (device) {
-            nResolveTimestamps(handle(), QueryPool.raw(pool), first, count, Buffer.raw(buffer), offset);
-        }
+        nResolveTimestamps(handle(), QueryPool.raw(pool), first, count, Buffer.raw(buffer), offset);
     }
 
     private static native void nResolveTimestamps(long target, long pool, int first, int count, long buffer, long offset);

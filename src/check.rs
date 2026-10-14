@@ -3,11 +3,13 @@ use crate::caps::is_depth_format;
 use crate::command::Command;
 use crate::residency::Residency;
 use crate::table::Table;
+use crate::table::lock;
 use crate::{
     Buffer, Caps, CommandPool, Format, IndexType, IndirectBuffer, LoadOp, Memory, QueryKind,
     QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage, Topology,
     slot,
 };
+use std::sync::atomic::Ordering;
 
 pub struct Check<'a> {
     caps: &'a Caps,
@@ -123,11 +125,10 @@ impl<'a> Check<'a> {
         samples: u32,
     ) -> Self {
         let busy = &table.pools.get(pool).1;
-        check!(
-            !busy.get(),
+        assert!(
+            !busy.swap(true, Ordering::Acquire),
             "begin_commands on {pool}, which is already recording a command buffer; end or drop that one first"
         );
-        busy.set(true);
         Check {
             caps,
             table,
@@ -180,7 +181,11 @@ impl<'a> Check<'a> {
     pub fn end(&mut self) {
         self.finish();
         self.ended = true;
-        self.table.pools.get(self.pool).1.set(false);
+        self.table
+            .pools
+            .get(self.pool)
+            .1
+            .store(false, Ordering::Release);
     }
 
     pub fn assert_ended(&self) {
@@ -217,7 +222,7 @@ impl<'a> Check<'a> {
 
     fn buffer_range(&self, name: &str, buffer: Buffer, offset: u64, size: u64) -> u64 {
         let total = *self.table.buffers.get(buffer);
-        self.assert_resident(name, &buffer, self.table.residency.borrow().buffer(buffer));
+        self.assert_resident(name, &buffer, lock(&self.table.residency).buffer(buffer));
         let end = if size == !0 {
             total
         } else {
@@ -280,7 +285,7 @@ impl<'a> Check<'a> {
         );
         self.table.assert_defined(name, texture);
         let root = self.table.parents.find(texture).copied().unwrap_or(texture);
-        self.assert_resident(name, &texture, self.table.residency.borrow().texture(root));
+        self.assert_resident(name, &texture, lock(&self.table.residency).texture(root));
         t
     }
 
@@ -318,7 +323,7 @@ impl<'a> Check<'a> {
         count: u32,
     ) {
         let &(kind, total) = self.table.queries.get(pool);
-        self.assert_resident(name, &pool, self.table.residency.borrow().query(pool));
+        self.assert_resident(name, &pool, lock(&self.table.residency).query(pool));
         check!(
             kinds.is_empty() || kinds.contains(&kind),
             "{name} needs a {kinds:?} pool, but {pool} is {kind}"
@@ -393,7 +398,7 @@ impl<'a> Check<'a> {
         self.assert_resident(
             name,
             &indirect,
-            self.table.residency.borrow().indirect(indirect),
+            lock(&self.table.residency).indirect(indirect),
         );
         self.check_draw(c, e.info.indexed);
         check!(
@@ -923,7 +928,7 @@ impl<'a> Check<'a> {
                 }
             }
             Command::UseResidencySet { set } => {
-                self.table.residency.borrow().assert_set(set);
+                lock(&self.table.residency).assert_set(set);
                 self.resident = true;
             }
             Command::BindUniformBuffer {
@@ -1140,7 +1145,7 @@ impl Drop for Check<'_> {
         if !self.ended
             && let Some(pool) = self.table.pools.find(self.pool)
         {
-            pool.1.set(false);
+            pool.1.store(false, Ordering::Release);
         }
     }
 }

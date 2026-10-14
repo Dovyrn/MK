@@ -1,6 +1,7 @@
 public class Device implements AutoCloseable {
     protected long handle;
-    int recording;
+    final AtomicInteger recording = new AtomicInteger();
+    final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Device(long handle) {
         this.handle = handle;
@@ -14,19 +15,25 @@ public class Device implements AutoCloseable {
     }
 
     void idle(String call) {
-        if (recording > 0) {
-            throw new IllegalStateException(call + " changes the device while " + recording
+        var count = recording.get();
+        if (count > 0) {
+            throw new IllegalStateException(call + " changes the device while " + count
                     + " command buffers or imported passes are recording; submit or close them first");
         }
     }
 
     @Override
-    public synchronized void close() {
-        idle("close");
-        var device = handle;
-        handle = 0;
-        if (device != 0) {
-            nFree(device);
+    public void close() {
+        lock.writeLock().lock();
+        try {
+            idle("close");
+            var device = handle;
+            handle = 0;
+            if (device != 0) {
+                nFree(device);
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 

@@ -29,7 +29,7 @@ use crate::vk::resources::Resources;
 use crate::{Caps, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
 use ash::vk;
-use std::cell::{Cell, RefCell};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 pub struct Device {
     pub instance: ash::Instance,
@@ -47,9 +47,7 @@ pub struct Device {
     res: Resources,
     queues: Vec<Queue>,
     pools: Slots<Pool>,
-    allocations: Cell<u32>,
-    submits: RefCell<Vec<vk::CommandBufferSubmitInfo<'static>>>,
-    semaphores: RefCell<Vec<vk::SemaphoreSubmitInfo<'static>>>,
+    allocations: AtomicU32,
 }
 
 fn vk_image_usage(usage: TextureUsage) -> vk::ImageUsageFlags {
@@ -241,9 +239,7 @@ impl Device {
             res: Resources::default(),
             queues: list,
             pools: Slots::default(),
-            allocations: Cell::new(0),
-            submits: RefCell::default(),
-            semaphores: RefCell::default(),
+            allocations: AtomicU32::new(0),
         })
     }
 
@@ -283,22 +279,23 @@ impl Device {
     }
 
     fn allocate_memory(&self, info: &vk::MemoryAllocateInfo) -> Result<vk::DeviceMemory, Error> {
-        let count = self.allocations.get();
         let max = self.limits.max_memory_allocation_count;
-        if count >= max {
+        if self.allocations.fetch_add(1, Ordering::Relaxed) >= max {
+            self.allocations.fetch_sub(1, Ordering::Relaxed);
             return Err(Error::OutOfMemory(format!(
                 "memory allocations are at maxMemoryAllocationCount {max}"
             )));
         }
-        let memory = unsafe { self.raw.allocate_memory(info, None) }.map_err(Error::from)?;
-        self.allocations.set(count + 1);
-        Ok(memory)
+        unsafe { self.raw.allocate_memory(info, None) }.map_err(|e| {
+            self.allocations.fetch_sub(1, Ordering::Relaxed);
+            Error::from(e)
+        })
     }
 
     pub(crate) fn free_memory(&self, memory: vk::DeviceMemory) {
         if memory != vk::DeviceMemory::null() {
             unsafe { self.raw.free_memory(memory, None) };
-            self.allocations.set(self.allocations.get() - 1);
+            self.allocations.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
@@ -401,9 +398,12 @@ impl Device {
     pub fn create_command_pool(&self, queue: u32) -> Result<CommandPool, Error> {
         let queue = queue as usize;
         let family = self.raw_queue_family(queue);
-        let pool = Pool::new(&self.raw, family, queue).map_err(Error::from)?;
+        let pool = Pool::new(&self.raw, family).map_err(Error::from)?;
         let pool = self.pools.insert(pool);
-        self.res.table.pools.set(pool, (queue, Cell::new(false)));
+        self.res
+            .table
+            .pools
+            .set(pool, (queue, AtomicBool::new(false)));
         Ok(pool)
     }
 
@@ -422,15 +422,12 @@ impl Device {
         self.queues[queue].family
     }
 
-    fn recording(
-        &self,
-        pool: CommandPool,
-        buffer: vk::CommandBuffer,
-        base: &'static str,
-        samples: u32,
-    ) -> Recording<'_> {
-        let check = Check::new(&self.caps, &self.res.table, pool, base, samples);
-        let queue = &self.queues[self.pools.get(pool).queue];
+    fn check(&self, pool: CommandPool, base: &'static str, samples: u32) -> Check<'_> {
+        Check::new(&self.caps, &self.res.table, pool, base, samples)
+    }
+
+    fn recording<'d>(&'d self, check: Check<'d>, buffer: vk::CommandBuffer) -> Recording<'d> {
+        let queue = &self.queues[check.queue()];
         let points = queue.bind_points();
         let recorder = Recorder {
             device: &self.raw,
@@ -451,13 +448,13 @@ impl Device {
     }
 
     pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
-        self.res.table.pools.get(pool);
+        let check = self.check(pool, "outside", 0);
         let buffer = self.pools.get(pool).next(&self.raw).map_err(Error::from)?;
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { self.raw.begin_command_buffer(buffer, &begin) }.map_err(Error::from)?;
         Ok(CommandBuffer {
-            recording: self.recording(pool, buffer, "outside", 0),
+            recording: self.recording(check, buffer),
         })
     }
 
@@ -466,7 +463,7 @@ impl Device {
         pool: CommandPool,
         raw: vk::CommandBuffer,
     ) -> Result<CommandBuffer<'_>, Error> {
-        let mut recording = self.recording(pool, raw, "outside", 0);
+        let mut recording = self.recording(self.check(pool, "outside", 0), raw);
         recording.recorder.imported = true;
         Ok(CommandBuffer { recording })
     }
@@ -477,7 +474,8 @@ impl Device {
         raw: vk::CommandBuffer,
         info: &ImportedPassInfo,
     ) -> Result<RenderPass<'_, '_>, Error> {
-        let mut recording = self.recording(pool, raw, "render", info.samples);
+        let check = self.check(pool, "render", info.samples);
+        let mut recording = self.recording(check, raw);
         recording.recorder.imported = true;
         Ok(RenderPass {
             recording: Held::Owned(Box::new(recording)),
@@ -493,8 +491,7 @@ impl Device {
         let table = &self.res.table;
         table.check_timelines(waits);
         table.check_timelines(signals);
-        let mut submits = self.submits.borrow_mut();
-        submits.clear();
+        let mut scratch = None;
         let mut queue = None;
         for c in commands {
             let recording = &c.recording;
@@ -510,11 +507,17 @@ impl Device {
                 queue.unwrap_or(q)
             );
             queue = Some(q);
+            let (submits, _) = &mut **scratch.get_or_insert_with(|| {
+                let mut s = self.queues[q].scratch.lock().unwrap();
+                s.0.clear();
+                s
+            });
             submits.push(
                 vk::CommandBufferSubmitInfo::default().command_buffer(recording.recorder.buffer),
             );
         }
         let queue = queue.expect("submit needs at least one command buffer");
+        let (submits, semaphores) = &mut *scratch.unwrap();
         table.check_signals(queue, signals);
         let info = |&(t, value): &(&Timeline, u64)| {
             vk::SemaphoreSubmitInfo::default()
@@ -522,13 +525,12 @@ impl Device {
                 .value(value)
                 .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         };
-        let mut semaphores = self.semaphores.borrow_mut();
         semaphores.clear();
         semaphores.extend(waits.iter().chain(signals).map(info));
         let (waits_info, signals_info) = semaphores.split_at(waits.len());
         let submit = vk::SubmitInfo2::default()
             .wait_semaphore_infos(waits_info)
-            .command_buffer_infos(&submits)
+            .command_buffer_infos(submits)
             .signal_semaphore_infos(signals_info);
         unsafe {
             self.raw

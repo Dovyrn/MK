@@ -267,6 +267,8 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         String::from("package dev.dov.mk;\n\nimport static org.lwjgl.system.MemoryUtil.*;\n\n");
     s += "import java.nio.charset.StandardCharsets;\n\n";
     if backend.is_none() {
+        s += "import java.util.concurrent.atomic.AtomicInteger;\n";
+        s += "import java.util.concurrent.locks.ReentrantReadWriteLock;\n\n";
         s += include_str!("device.java");
     } else {
         writeln!(
@@ -310,11 +312,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             r if info(r) => r.into(),
             _ => java_ret.into(),
         };
-        let modifier = if statics(call) {
-            "static "
-        } else {
-            "synchronized "
-        };
+        let modifier = if statics(call) { "static " } else { "" };
         writeln!(
             s,
             "\n    public {modifier}{ret} {}({}) {{",
@@ -322,6 +320,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
             params.join(", ")
         )
         .unwrap();
+        let start = s.len();
         if !statics(call) && !call.shared {
             writeln!(s, "        idle(\"{}\");", method(call)).unwrap();
         }
@@ -446,6 +445,16 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         writeln!(s, "{indent}{line}").unwrap();
         if arena {
             s += "        }\n";
+        }
+        if !statics(call) {
+            let kind = if call.shared { "read" } else { "write" };
+            let body: String = s[start..].lines().map(|l| format!("    {l}\n")).collect();
+            s.truncate(start);
+            writeln!(
+                s,
+                "        lock.{kind}Lock().lock();\n        try {{\n{body}        }} finally {{\n            lock.{kind}Lock().unlock();\n        }}"
+            )
+            .unwrap();
         }
         s += "    }\n";
         let mut natives_params = Vec::new();

@@ -6,8 +6,8 @@ use crate::{
     IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
     Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
 };
-use std::cell::{Cell, RefCell};
-use std::sync::{Arc, Weak};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 #[derive(Clone, Copy)]
 pub struct RenderEntry {
@@ -31,11 +31,11 @@ pub struct Table {
     pub tile_pipelines: Entries<TilePipeline, u32>,
     pub states: Entries<DepthState, ()>,
     pub queries: Entries<QueryPool, (crate::QueryKind, u32)>,
-    pub timelines: RefCell<Entries<TimelineId, Signal>>,
+    pub timelines: Mutex<Entries<TimelineId, Signal>>,
     pub parents: Entries<Texture, Texture>,
-    pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
-    pub undefined: RefCell<Vec<Texture>>,
-    pub residency: RefCell<Residency>,
+    pub pools: Entries<CommandPool, (usize, AtomicBool)>,
+    pub undefined: Mutex<Vec<Texture>>,
+    pub residency: Mutex<Residency>,
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
     pub mappable: Entries<Buffer, bool>,
 }
@@ -61,6 +61,10 @@ fn rest(base: u32, count: u32, total: u32, what: &str, texture: Texture) -> u32 
     count
 }
 
+pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
     info.attributes.iter().fold(0, |m, a| m | 1 << a.buffer)
 }
@@ -68,7 +72,7 @@ pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
 impl Table {
     pub fn drop_buffer(&mut self, buffer: Buffer) {
         self.buffers.get(buffer);
-        self.residency.get_mut().free_buffer(buffer);
+        lock(&self.residency).free_buffer(buffer);
         self.buffers.clear(buffer);
         self.mappable.clear(buffer);
     }
@@ -134,7 +138,7 @@ impl Table {
 
     pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {
         self.indirects.get(indirect);
-        self.residency.get_mut().free_indirect(indirect);
+        lock(&self.residency).free_indirect(indirect);
         self.indirects.clear(indirect);
     }
 
@@ -165,7 +169,7 @@ impl Table {
 
     pub fn drop_query(&mut self, pool: QueryPool) {
         self.queries.get(pool);
-        self.residency.get_mut().free_query(pool);
+        lock(&self.residency).free_query(pool);
         self.queries.clear(pool);
     }
 
@@ -191,25 +195,25 @@ impl Table {
         for &i in &items.indirects {
             self.indirects.get(i);
         }
-        self.residency.borrow_mut().change(set, &items, add);
+        lock(&self.residency).change(set, &items, add);
     }
 
     pub fn add_texture(&self, texture: Texture, info: &TextureInfo) {
         self.textures.set(texture, *info);
         if info.memory == Memory::Transient {
-            self.residency.borrow_mut().exempt_texture(texture);
+            lock(&self.residency).exempt_texture(texture);
         }
         if cfg!(feature = "validation") && !info.usage.contains(TextureUsage::HOST) {
-            self.undefined.borrow_mut().push(texture);
+            lock(&self.undefined).push(texture);
         }
     }
 
     pub fn define(&self, texture: Texture) {
-        self.undefined.borrow_mut().retain(|&t| t != texture);
+        lock(&self.undefined).retain(|&t| t != texture);
     }
 
     pub fn assert_defined(&self, name: &str, texture: Texture) {
-        let undefined = self.undefined.borrow();
+        let undefined = lock(&self.undefined);
         if undefined.is_empty() {
             return;
         }
@@ -227,11 +231,11 @@ impl Table {
         );
         self.textures.get(texture);
         if self.parents.find(texture).is_none() {
-            self.residency.get_mut().free_texture(texture);
+            lock(&self.residency).free_texture(texture);
         }
         self.textures.clear(texture);
         self.parents.forget(texture);
-        self.undefined.get_mut().retain(|&t| t != texture);
+        lock(&self.undefined).retain(|&t| t != texture);
     }
 
     pub fn resolve_view(&self, texture: Texture, info: &TextureViewInfo) -> TextureViewInfo {
@@ -388,22 +392,20 @@ impl Table {
 
     pub fn add_timeline(&self, id: TimelineId) -> Arc<()> {
         let token = Arc::new(());
-        self.timelines
-            .borrow()
-            .set(id, (0, usize::MAX, Arc::downgrade(&token)));
+        lock(&self.timelines).set(id, (0, usize::MAX, Arc::downgrade(&token)));
         token
     }
 
     pub fn drop_timeline(&mut self, timeline: &crate::Timeline) {
         self.check_timelines(&[(timeline, 0)]);
-        self.timelines.get_mut().clear(timeline.id);
+        lock(&self.timelines).clear(timeline.id);
     }
 
     pub fn check_timelines(&self, list: &[(&crate::Timeline, u64)]) {
         if !cfg!(feature = "validation") {
             return;
         }
-        let timelines = self.timelines.borrow();
+        let timelines = lock(&self.timelines);
         for &(t, _) in list {
             let (_, _, owner) = timelines.get(t.id);
             check!(
@@ -418,7 +420,7 @@ impl Table {
         if !cfg!(feature = "validation") {
             return;
         }
-        let timelines = self.timelines.borrow();
+        let timelines = lock(&self.timelines);
         for (i, &(t, value)) in signals.iter().enumerate() {
             let id = t.id;
             let (last, from, _) = timelines.get(id);
@@ -437,7 +439,7 @@ impl Table {
         if !cfg!(feature = "validation") {
             return;
         }
-        let mut timelines = self.timelines.borrow_mut();
+        let mut timelines = lock(&self.timelines);
         for &(t, value) in signals {
             let entry = timelines.get_mut(t.id);
             entry.0 = value;
@@ -450,8 +452,7 @@ impl Drop for Table {
     fn drop(&mut self) {
         if !std::thread::panicking() {
             check!(
-                self.timelines
-                    .get_mut()
+                lock(&self.timelines)
                     .values()
                     .all(|t| t.2.strong_count() == 0),
                 "a timeline outlives its device; drop or destroy_timeline every timeline before the device"

@@ -3,6 +3,7 @@ use crate::Error;
 use crate::Texture;
 use crate::caps;
 use crate::mtl::texture::TextureObject;
+use crate::table::lock;
 use crate::{Format, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
@@ -109,7 +110,7 @@ impl Device {
                 format,
             });
             self.res.table.textures.set(id, info);
-            self.res.table.residency.borrow_mut().exempt_texture(id);
+            lock(&self.res.table.residency).exempt_texture(id);
             Ok(id)
         })
     }

@@ -29,6 +29,8 @@ pub struct Recorder<'a> {
     pub imported: bool,
 }
 
+unsafe impl Send for Recorder<'_> {}
+
 fn vk_load_op(l: crate::LoadOp) -> vk::AttachmentLoadOp {
     match l {
         LoadOp::Load => vk::AttachmentLoadOp::LOAD,

@@ -1,9 +1,10 @@
 use super::Device;
 use crate::Buffer;
 use crate::Error;
+use crate::table::lock;
 use crate::vk::buffer::BufferObject;
 use ash::vk;
-use std::rc::Rc;
+use std::sync::Arc;
 
 impl Device {
     pub fn create_buffer(&self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
@@ -34,7 +35,7 @@ impl Device {
             .push_next(&mut dedicated);
         let mut buffer = BufferObject {
             raw,
-            memory: Rc::new(
+            memory: Arc::new(
                 self.allocate_bound(index, alloc, |m| unsafe {
                     self.raw.bind_buffer_memory(raw, m, 0)
                 })
@@ -55,13 +56,13 @@ impl Device {
     pub fn import_buffer(&self, raw: vk::Buffer, size: u64, data: *mut u8) -> Buffer {
         let id = self.res.buffers.insert(BufferObject {
             raw,
-            memory: Rc::new(vk::DeviceMemory::null()),
+            memory: Arc::new(vk::DeviceMemory::null()),
             address: 0,
             data,
             own: false,
         });
         self.res.table.add_buffer(id, size, !data.is_null());
-        self.res.table.residency.borrow_mut().exempt_buffer(id);
+        lock(&self.res.table.residency).exempt_buffer(id);
         id
     }
 

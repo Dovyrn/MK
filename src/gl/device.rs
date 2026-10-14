@@ -19,6 +19,7 @@ use crate::gl::sampler;
 use crate::gl::state::{self, State};
 use crate::gl::texture::{TextureObject, target};
 use crate::recording::{Held, Recording};
+use crate::table::lock;
 use crate::{
     Atomic64, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory, MeshPipelineInfo,
     RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureDimension, TextureInfo,
@@ -32,6 +33,7 @@ use glow::HasContext;
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, c_void};
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 
 pub struct Device {
     pub gl: Rc<glow::Context>,
@@ -326,7 +328,7 @@ impl Device {
             own: false,
         });
         self.res.table.add_buffer(id, size, true);
-        self.res.table.residency.borrow_mut().exempt_buffer(id);
+        lock(&self.res.table.residency).exempt_buffer(id);
         id
     }
 
@@ -521,7 +523,7 @@ impl Device {
             image: Cell::new(0),
         });
         self.res.table.textures.set(id, *info);
-        self.res.table.residency.borrow_mut().exempt_texture(id);
+        lock(&self.res.table.residency).exempt_texture(id);
         Ok(id)
     }
 
@@ -550,7 +552,7 @@ impl Device {
                 .unwrap_or(texture);
             unsafe {
                 let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
-                if self.res.table.residency.borrow().texture(root) > 0 {
+                if lock(&self.res.table.residency).texture(root) > 0 {
                     (b.resident)(handle, glow::READ_WRITE);
                 }
                 t.image.set(handle);
@@ -763,7 +765,7 @@ impl Device {
         self.thread();
         check_eq!(queue, 0, "GL has one queue");
         let pool = self.res.pools.insert(());
-        self.res.table.pools.set(pool, (0, Cell::new(false)));
+        self.res.table.pools.set(pool, (0, AtomicBool::new(false)));
         Ok(pool)
     }
 

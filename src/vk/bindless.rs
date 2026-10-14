@@ -1,4 +1,5 @@
 use ash::vk;
+use std::sync::Mutex;
 
 pub struct Bindless {
     pub layout: vk::DescriptorSetLayout,
@@ -6,6 +7,7 @@ pub struct Bindless {
     pub set: vk::DescriptorSet,
     pub samplers: u32,
     pub textures: u32,
+    lock: Mutex<()>,
 }
 
 const SAMPLER: u32 = 0;
@@ -113,6 +115,7 @@ impl Bindless {
                 set,
                 samplers,
                 textures,
+                lock: Mutex::new(()),
             })
         }
     }
@@ -132,6 +135,7 @@ impl Bindless {
             .dst_array_element(index)
             .descriptor_type(kind)
             .image_info(&infos);
+        let _held = self.lock.lock().unwrap();
         unsafe { device.update_descriptor_sets(&[write], &[]) };
     }
 

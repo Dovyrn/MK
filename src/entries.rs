@@ -3,7 +3,7 @@ use crate::handle::Handle;
 use std::marker::PhantomData;
 
 pub struct Entries<H, T> {
-    items: Chunks<(u32, T)>,
+    items: Chunks<T>,
     kind: PhantomData<H>,
 }
 
@@ -18,7 +18,7 @@ impl<H: Handle, T> Default for Entries<H, T> {
 
 impl<H: Handle, T> Entries<H, T> {
     pub fn set(&self, h: H, item: T) {
-        self.items.put(h.index(), (h.generation(), item));
+        self.items.put(h.index(), h.generation(), item);
     }
 
     pub fn clear(&mut self, h: H) {
@@ -33,21 +33,21 @@ impl<H: Handle, T> Entries<H, T> {
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.items.iter().map(|(_, i)| &i.1)
+        self.items.iter().map(|(_, _, item)| item)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (H, &T)> {
-        self.items.iter().map(|(i, (g, t))| (H::new(i, *g), t))
+        self.items.iter().map(|(i, g, t)| (H::new(i, g), t))
     }
 
     pub fn find(&self, h: H) -> Option<&T> {
         let (generation, item) = self.items.get(h.index())?;
-        (*generation == h.generation()).then_some(item)
+        (generation == h.generation()).then_some(item)
     }
 
     pub fn get(&self, h: H) -> &T {
         if !cfg!(feature = "validation") {
-            return &self.items.get(h.index()).unwrap().1;
+            return self.items.get(h.index()).unwrap().1;
         }
         if let Some(item) = self.find(h) {
             return item;
@@ -69,6 +69,6 @@ impl<H: Handle, T> Entries<H, T> {
 
     pub fn get_mut(&mut self, h: H) -> &mut T {
         self.get(h);
-        &mut self.items.get_mut(h.index()).unwrap().1
+        self.items.get_mut(h.index()).unwrap()
     }
 }

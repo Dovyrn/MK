@@ -2,6 +2,7 @@ use super::Device;
 use crate::Error;
 use crate::mtl::query::Query;
 use crate::residency::Members;
+use crate::table::lock;
 use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Resource, ResourceKind, Texture};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
@@ -15,13 +16,13 @@ impl Device {
                 .newResidencySetWithDescriptor_error(&MTLResidencySetDescriptor::new())
                 .map_err(Error::from)?;
             let id = self.res.sets.insert(raw);
-            self.res.table.residency.borrow_mut().create(id);
+            lock(&self.res.table.residency).create(id);
             Ok(id)
         })
     }
 
     pub fn destroy_residency_set(&mut self, set: ResidencySet) {
-        self.res.table.residency.get_mut().destroy(set);
+        lock(&self.res.table.residency).destroy(set);
         self.res.sets.remove(set);
     }
 
@@ -34,6 +35,7 @@ impl Device {
     }
 
     fn change_residency(&self, set: ResidencySet, resources: &[Resource], add: bool) {
+        let _held = lock(&self.residency);
         let res = &self.res;
         let raw = res.sets.get(set);
         for r in resources {
@@ -66,14 +68,15 @@ impl Device {
     }
 
     pub fn commit_residency(&self, set: ResidencySet) {
+        let _held = lock(&self.residency);
         if cfg!(feature = "validation") {
-            self.res.table.residency.borrow_mut().commit(set);
+            lock(&self.res.table.residency).commit(set);
         }
         self.res.sets.get(set).commit();
     }
 
     pub fn raw_residency_set(&self, set: ResidencySet) -> &ProtocolObject<dyn MTLResidencySet> {
-        self.res.table.residency.borrow().assert_set(set);
+        lock(&self.res.table.residency).assert_set(set);
         self.res.sets.get(set)
     }
 }
