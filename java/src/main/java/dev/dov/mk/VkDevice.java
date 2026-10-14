@@ -33,14 +33,12 @@ public class VkDevice extends Device {
     private static native long nImportDeviceRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
     public synchronized Buffer importBuffer(long raw, long size, long data) {
-        idle("importBuffer");
         return Buffer.of(nImportBuffer(handle(), raw, size, data));
     }
 
     private static native long nImportBuffer(long device, long raw, long size, long data);
 
     public synchronized Texture importTexture(long image, TextureInfo info) {
-        idle("importTexture");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -51,7 +49,6 @@ public class VkDevice extends Device {
     private static native long nImportTexture(long device, long image, long info, int infoLength);
 
     public synchronized Timeline importTimeline(long raw) {
-        idle("importTimeline");
         return new Timeline(nImportTimeline(handle(), raw));
     }
 

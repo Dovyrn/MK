@@ -9,7 +9,7 @@ mod host;
 
 pub fn main() {
     let n = 64u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
     if !caps.occlusion || !caps.compute {
@@ -91,7 +91,7 @@ pub fn main() {
     let depth = device
         .create_depth_state(&DepthStateInfo::default())
         .unwrap();
-    let (constants, stride) = host::constants(&mut device, &[&push, &0.5f32.to_le_bytes()]);
+    let (constants, stride) = host::constants(&device, &[&push, &0.5f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
     let queries: Vec<_> = times.into_iter().chain([samples]).collect();
     let mut list: Vec<mk::Resource> = vec![

@@ -42,7 +42,6 @@ pub struct Device {
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     open: Cell<bool>,
-    units: u32,
     caps: Caps,
     samples: [i32; 4],
     thread: std::thread::ThreadId,
@@ -275,7 +274,6 @@ impl Device {
                 fbo,
                 read,
                 open: Cell::new(false),
-                units: 0,
                 thread: std::thread::current().id(),
             })
         }
@@ -303,7 +301,7 @@ impl Device {
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
     }
 
-    pub fn create_buffer(&mut self, size: u64, memory: Memory) -> Result<Buffer, Error> {
+    pub fn create_buffer(&self, size: u64, memory: Memory) -> Result<Buffer, Error> {
         self.thread();
         self.caps.check_buffer(size, memory)?;
         let id = self
@@ -316,7 +314,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn import_buffer(&mut self, raw: u32, size: u64) -> Buffer {
+    pub fn import_buffer(&self, raw: u32, size: u64) -> Buffer {
         self.thread();
         let raw = glow::NativeBuffer(std::num::NonZeroU32::new(raw).expect("buffer 0"));
         let id = self.res.buffers.insert(BufferObject {
@@ -328,7 +326,7 @@ impl Device {
             own: false,
         });
         self.res.table.add_buffer(id, size, true);
-        self.res.table.residency.exempt_buffer(id);
+        self.res.table.residency.borrow_mut().exempt_buffer(id);
         id
     }
 
@@ -392,14 +390,13 @@ impl Device {
     }
 
     pub fn create_compute_pipeline(
-        &mut self,
+        &self,
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.thread();
         self.caps.check_compute_pipeline(info)?;
         self.check_host_programs()?;
         let program = Program::new(&self.gl, info.code, &[(glow::COMPUTE_SHADER, info.entry)])?;
-        self.units = self.units.max(program.pairs.len() as u32);
         let id = self.res.pipelines.insert(program);
         self.res.table.pipelines.set(id, ());
         Ok(id)
@@ -412,7 +409,7 @@ impl Device {
     }
 
     pub fn create_render_pipeline(
-        &mut self,
+        &self,
         info: &RenderPipelineInfo,
     ) -> Result<RenderPipeline, Error> {
         self.thread();
@@ -424,10 +421,7 @@ impl Device {
         self.render(info, &stages)
     }
 
-    pub fn create_mesh_pipeline(
-        &mut self,
-        info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, Error> {
+    pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_mesh_pipeline(info)?;
         let mut stages = Vec::new();
@@ -451,13 +445,12 @@ impl Device {
     }
 
     fn render(
-        &mut self,
+        &self,
         info: &RenderPipelineInfo,
         stages: &[(u32, &str)],
     ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
         let p = Pipeline::new(&self.gl, info, stages)?;
-        self.units = self.units.max(p.program.pairs.len() as u32);
         let id = self.res.renders.insert(p);
         let mesh = stages.iter().any(|s| s.0 == MESH_SHADER);
         self.res.table.renders.set(
@@ -480,7 +473,7 @@ impl Device {
         self.res.renders.remove(pipeline).delete(&self.gl);
     }
 
-    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
+    pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         self.thread();
         crate::caps::check_tile_pipeline(info);
         Err(Error::Unsupported(
@@ -493,7 +486,7 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
+    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         self.thread();
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
@@ -506,7 +499,7 @@ impl Device {
         self.res.depths.remove(state);
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
+    pub fn create_texture(&self, info: &TextureInfo) -> Result<Texture, Error> {
         self.thread();
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
@@ -518,7 +511,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn import_texture(&mut self, raw: u32, info: &TextureInfo) -> Result<Texture, Error> {
+    pub fn import_texture(&self, raw: u32, info: &TextureInfo) -> Result<Texture, Error> {
         self.thread();
         let id = self.res.textures.insert(TextureObject {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
@@ -528,7 +521,7 @@ impl Device {
             image: Cell::new(0),
         });
         self.res.table.textures.set(id, *info);
-        self.res.table.residency.exempt_texture(id);
+        self.res.table.residency.borrow_mut().exempt_texture(id);
         Ok(id)
     }
 
@@ -557,7 +550,7 @@ impl Device {
                 .unwrap_or(texture);
             unsafe {
                 let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
-                if self.res.table.residency.texture(root) > 0 {
+                if self.res.table.residency.borrow().texture(root) > 0 {
                     (b.resident)(handle, glow::READ_WRITE);
                 }
                 t.image.set(handle);
@@ -668,7 +661,7 @@ impl Device {
     }
 
     pub fn create_texture_view(
-        &mut self,
+        &self,
         texture: Texture,
         info: &TextureViewInfo,
     ) -> Result<Texture, Error> {
@@ -702,7 +695,7 @@ impl Device {
         self.res.textures.remove(texture).delete(&self.gl);
     }
 
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, Error> {
+    pub fn create_sampler(&self, info: &SamplerInfo) -> Result<Sampler, Error> {
         self.thread();
         self.caps.check_sampler(info)?;
         let raw = sampler::create(&self.gl, info)?;
@@ -718,7 +711,7 @@ impl Device {
     }
 
     pub fn create_query_pool(
-        &mut self,
+        &self,
         kind: crate::QueryKind,
         count: u32,
     ) -> Result<QueryPool, Error> {
@@ -735,7 +728,7 @@ impl Device {
         self.res.queries.remove(heap).delete(&self.gl);
     }
 
-    pub fn create_timeline(&mut self) -> Result<Timeline, Error> {
+    pub fn create_timeline(&self) -> Result<Timeline, Error> {
         self.thread();
         let fences = Rc::new(RefCell::new(Fences {
             fences: Vec::new(),
@@ -766,7 +759,7 @@ impl Device {
         }
     }
 
-    pub fn create_command_pool(&mut self, queue: u32) -> Result<CommandPool, Error> {
+    pub fn create_command_pool(&self, queue: u32) -> Result<CommandPool, Error> {
         self.thread();
         check_eq!(queue, 0, "GL has one queue");
         let pool = self.res.pools.insert(());
@@ -813,13 +806,7 @@ impl Device {
         self.check_host_queries()?;
         self.healthy()?;
         let host = crate::gl::errors::drain(&self.gl);
-        let state = State::save(
-            &self.gl,
-            &self.extra,
-            &self.caps,
-            &|v, e| self.has(v, e),
-            self.units.max(1),
-        );
+        let state = State::save(&self.gl, &self.extra, &self.caps, &|v, e| self.has(v, e));
         crate::gl::errors::raise(&self.gl, &self.extra, &host);
         if base == "outside" {
             state.clear(&self.gl, &self.extra);

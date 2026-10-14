@@ -7,7 +7,7 @@ use mk::{
 mod host;
 
 pub fn main() {
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if !device.caps().texture_views {
         println!("no texture views");

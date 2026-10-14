@@ -8,7 +8,7 @@ use objc2_metal::{MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTL
 
 impl Device {
     pub fn create_query_pool(
-        &mut self,
+        &self,
         kind: crate::QueryKind,
         count: u32,
     ) -> Result<QueryPool, Error> {

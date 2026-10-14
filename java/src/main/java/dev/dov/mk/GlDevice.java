@@ -16,14 +16,12 @@ public class GlDevice extends Device {
     private static native long nImportDeviceRaw(long proc);
 
     public synchronized Buffer importBuffer(int raw, long size) {
-        idle("importBuffer");
         return Buffer.of(nImportBuffer(handle(), raw, size));
     }
 
     private static native long nImportBuffer(long device, int raw, long size);
 
     public synchronized Texture importTexture(int raw, TextureInfo info) {
-        idle("importTexture");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);

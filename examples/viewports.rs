@@ -9,7 +9,7 @@ mod host;
 
 pub fn main() {
     let (w, h) = (64u32, 32u32);
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if device.caps().viewports < 2 {
         println!("one viewport only");

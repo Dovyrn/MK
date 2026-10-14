@@ -8,7 +8,7 @@ mod host;
 
 pub fn main() {
     let n = 32u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     #[cfg(feature = "mtl")]
     let code = host::code!("stamp");

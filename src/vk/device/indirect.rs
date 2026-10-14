@@ -12,7 +12,7 @@ pub fn indirect_stride(mesh: bool, indexed: bool) -> u32 {
 
 impl Device {
     pub fn create_indirect_buffer(
-        &mut self,
+        &self,
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, Error> {
         let entry = self.res.table.check_indirect(info);

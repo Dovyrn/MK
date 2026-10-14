@@ -1,61 +1,53 @@
+use crate::chunks::Chunks;
 use crate::handle::Handle;
 use std::marker::PhantomData;
 
 pub struct Entries<H, T> {
-    items: Vec<Option<(u32, T)>>,
+    items: Chunks<(u32, T)>,
     kind: PhantomData<H>,
 }
 
 impl<H: Handle, T> Default for Entries<H, T> {
     fn default() -> Self {
         Self {
-            items: Vec::new(),
+            items: Chunks::default(),
             kind: PhantomData,
         }
     }
 }
 
 impl<H: Handle, T> Entries<H, T> {
-    pub fn set(&mut self, h: H, item: T) {
-        let i = h.index() as usize;
-        if self.items.len() <= i {
-            self.items.resize_with(i + 1, || None);
-        }
-        self.items[i] = Some((h.generation(), item));
+    pub fn set(&self, h: H, item: T) {
+        self.items.put(h.index(), (h.generation(), item));
     }
 
     pub fn clear(&mut self, h: H) {
         self.get(h);
-        self.items[h.index() as usize] = None;
+        self.items.take(h.index());
     }
 
     pub fn forget(&mut self, h: H) {
-        if let Some(item) = self.items.get_mut(h.index() as usize)
-            && item.as_ref().is_some_and(|i| i.0 == h.generation())
-        {
-            *item = None;
+        if self.find(h).is_some() {
+            self.items.take(h.index());
         }
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.items.iter().flatten().map(|i| &i.1)
+        self.items.iter().map(|(_, i)| &i.1)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (H, &T)> {
-        self.items
-            .iter()
-            .enumerate()
-            .filter_map(|(i, item)| item.as_ref().map(|(g, t)| (H::new(i as u32, *g), t)))
+        self.items.iter().map(|(i, (g, t))| (H::new(i, *g), t))
     }
 
     pub fn find(&self, h: H) -> Option<&T> {
-        let (generation, item) = self.items.get(h.index() as usize)?.as_ref()?;
+        let (generation, item) = self.items.get(h.index())?;
         (*generation == h.generation()).then_some(item)
     }
 
     pub fn get(&self, h: H) -> &T {
         if !cfg!(feature = "validation") {
-            return &self.items[h.index() as usize].as_ref().unwrap().1;
+            return &self.items.get(h.index()).unwrap().1;
         }
         if let Some(item) = self.find(h) {
             return item;
@@ -66,18 +58,17 @@ impl<H: Handle, T> Entries<H, T> {
             "got a null {kind}; pass one that create_{} returned",
             kind.replace(' ', "_")
         );
-        match self.items.get(h.index() as usize) {
-            Some(Some((now, _))) => panic!(
+        match self.items.get(h.index()) {
+            Some((now, _)) => panic!(
                 "{h} was destroyed, and its slot now holds a newer {kind} (generation {} is not {now})",
                 h.generation()
             ),
-            Some(None) => panic!("{h} was destroyed; create a new {kind}"),
-            None => panic!("{h} was never created on this device"),
+            None => panic!("{h} was destroyed or never created on this device"),
         }
     }
 
     pub fn get_mut(&mut self, h: H) -> &mut T {
         self.get(h);
-        &mut self.items[h.index() as usize].as_mut().unwrap().1
+        &mut self.items.get_mut(h.index()).unwrap().1
     }
 }

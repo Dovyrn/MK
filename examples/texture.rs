@@ -16,7 +16,7 @@ pub fn main() {
 pub fn main() {
     let n = 16u32;
     let texels = (n * n) as usize;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let info = |usage| TextureInfo {
         format: Format::Rgba8Unorm,
@@ -75,7 +75,7 @@ pub fn main() {
     push.extend(device.bindless_sampler(sampler).to_le_bytes());
     push.extend(device.bindless_storage_texture(dst).to_le_bytes());
     push.extend(n.to_le_bytes());
-    let (constants, _) = host::constants(&mut device, &[&push]);
+    let (constants, _) = host::constants(&device, &[&push]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,

@@ -14,10 +14,10 @@ fn pattern(x: u32, y: u32) -> [u8; 4] {
 }
 
 pub fn main() {
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    let mut make = |dimension, format, [width, height, layers]: [u32; 3], bits| {
+    let make = |dimension, format, [width, height, layers]: [u32; 3], bits| {
         device
             .create_texture(&TextureInfo {
                 dimension,

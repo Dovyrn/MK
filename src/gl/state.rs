@@ -197,6 +197,7 @@ pub struct State {
     images: Vec<[i32; 6]>,
     active: i32,
     units: Vec<(Vec<(u32, i32)>, i32)>,
+    targets: Vec<u32>,
     pixels: Vec<(u32, i32)>,
     enables: Vec<(u32, bool)>,
     blends: Vec<bool>,
@@ -219,13 +220,30 @@ pub struct State {
     clip: Option<[i32; 2]>,
 }
 
+fn unit(gl: &glow::Context, targets: &[u32], u: u32) -> (Vec<(u32, i32)>, i32) {
+    unsafe {
+        gl.active_texture(glow::TEXTURE0 + u);
+        let bound = targets
+            .iter()
+            .map(|&t| (t, gl.get_parameter_i32(binding(t))))
+            .collect();
+        (bound, gl.get_parameter_i32(glow::SAMPLER_BINDING))
+    }
+}
+
 impl State {
+    pub fn save_units(&mut self, gl: &glow::Context, count: usize) {
+        while self.units.len() < count {
+            let u = unit(gl, &self.targets, self.units.len() as u32);
+            self.units.push(u);
+        }
+    }
+
     pub fn save(
         gl: &glow::Context,
         extra: &Extra,
         caps: &Caps,
         has: &dyn Fn(u32, &str) -> bool,
-        units: u32,
     ) -> Self {
         unsafe {
             let int = |p| gl.get_parameter_i32(p);
@@ -320,14 +338,6 @@ impl State {
                     t != glow::TEXTURE_CUBE_MAP_ARRAY || has(40, "GL_ARB_texture_cube_map_array")
                 })
                 .collect();
-            let units = (0..units)
-                .map(|u| {
-                    gl.active_texture(glow::TEXTURE0 + u);
-                    let bound = targets.iter().map(|&t| (t, int(binding(t)))).collect();
-                    (bound, int(glow::SAMPLER_BINDING))
-                })
-                .collect();
-            gl.active_texture(active as u32);
             let mut pixels: Vec<u32> = PIXELS.to_vec();
             if has(42, "GL_ARB_compressed_texture_pixel_storage") {
                 pixels.extend(BLOCKS);
@@ -413,7 +423,8 @@ impl State {
                 ranges,
                 images,
                 active,
-                units,
+                units: Vec::new(),
+                targets,
                 pixels,
                 enables,
                 blends,

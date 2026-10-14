@@ -9,7 +9,7 @@ use objc2_metal::{
 };
 
 impl Device {
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, Error> {
+    pub fn create_sampler(&self, info: &SamplerInfo) -> Result<Sampler, Error> {
         autoreleasepool(|_| {
             self.caps.check_sampler(info)?;
             let filter = |f| match f {

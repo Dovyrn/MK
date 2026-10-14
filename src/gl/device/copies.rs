@@ -8,7 +8,7 @@ use glow::HasContext;
 use std::ffi::c_void;
 
 impl Device {
-    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), Error> {
+    pub fn write_texture(&self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), Error> {
         self.thread();
         self.res.table.check_host_copy(copy, data.len());
         let t = self.res.textures.get(copy.texture);
@@ -31,7 +31,7 @@ impl Device {
         })
     }
 
-    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
+    pub fn read_texture(&self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
         self.thread();
         self.res.table.check_host_copy(copy, data.len());
         if !self.caps.host_read {

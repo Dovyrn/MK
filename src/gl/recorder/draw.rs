@@ -18,6 +18,9 @@ impl Recorder<'_> {
                 gl.use_program(Some(program.raw));
                 self.used = Some(program.raw);
             }
+            if let Some(host) = &mut self.host {
+                host.save_units(gl, program.pairs.len());
+            }
             for (unit, &(t, s)) in program.pairs.iter().enumerate() {
                 let pair = (
                     self.textures[t as usize],

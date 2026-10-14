@@ -15,7 +15,7 @@ impl Device {
         (t.image, t.view)
     }
 
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
+    pub fn create_texture(&self, info: &TextureInfo) -> Result<Texture, Error> {
         self.texture(info)?;
         let mut create = self.share_image(image_create_info(info));
         self.add_host_usage(info, &mut create)?;
@@ -42,19 +42,15 @@ impl Device {
         Ok(id)
     }
 
-    pub fn import_texture(
-        &mut self,
-        image: vk::Image,
-        info: &TextureInfo,
-    ) -> Result<Texture, Error> {
+    pub fn import_texture(&self, image: vk::Image, info: &TextureInfo) -> Result<Texture, Error> {
         let id = self.create_views(image, None, &whole_view(info))?;
         self.res.table.textures.set(id, *info);
-        self.res.table.residency.exempt_texture(id);
+        self.res.table.residency.borrow_mut().exempt_texture(id);
         Ok(id)
     }
 
     pub fn create_texture_view(
-        &mut self,
+        &self,
         texture: Texture,
         info: &TextureViewInfo,
     ) -> Result<Texture, Error> {
@@ -73,7 +69,7 @@ impl Device {
             )?;
         }
         let t = self.res.textures.get(texture);
-        let (image, owner, heap) = (t.image, t.owner.clone(), t.heap.clone());
+        let (image, owner) = (t.image, t.owner.clone());
         let view = TextureViewInfo {
             base_mip: t.base_mip + info.base_mip,
             mips: count(info.mips, info.base_mip, t.mips),
@@ -83,14 +79,12 @@ impl Device {
             ..*info
         };
         let id = self.create_views(image, owner, &view)?;
-        let t = self.res.textures.get_mut(id);
-        t.heap = heap;
         self.res.table.check_view(id, texture, info);
         Ok(id)
     }
 
     pub(super) fn create_views(
-        &mut self,
+        &self,
         image: vk::Image,
         owner: Option<Rc<vk::DeviceMemory>>,
         info: &TextureViewInfo,

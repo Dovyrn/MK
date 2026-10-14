@@ -8,7 +8,7 @@ mod host;
 
 pub fn main() {
     let n = 16u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if device.caps().images == 0 || !device.caps().compute {
         println!("no image handles or no compute");
@@ -41,7 +41,7 @@ pub fn main() {
         .to_vec();
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
-    let (constants, _) = host::constants(&mut device, &[&push]);
+    let (constants, _) = host::constants(&device, &[&push]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,

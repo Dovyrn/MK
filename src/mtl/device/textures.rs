@@ -12,7 +12,7 @@ use objc2_metal::{
 };
 
 impl Device {
-    pub fn create_texture(&mut self, info: &TextureInfo) -> Result<Texture, Error> {
+    pub fn create_texture(&self, info: &TextureInfo) -> Result<Texture, Error> {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
@@ -34,7 +34,7 @@ impl Device {
     }
 
     pub fn import_texture(
-        &mut self,
+        &self,
         raw: Retained<ProtocolObject<dyn MTLTexture>>,
         format: Format,
     ) -> Result<Texture, Error> {
@@ -109,7 +109,7 @@ impl Device {
                 format,
             });
             self.res.table.textures.set(id, info);
-            self.res.table.residency.exempt_texture(id);
+            self.res.table.residency.borrow_mut().exempt_texture(id);
             Ok(id)
         })
     }
@@ -120,7 +120,7 @@ impl Device {
     }
 
     pub fn create_texture_view(
-        &mut self,
+        &self,
         texture: Texture,
         info: &TextureViewInfo,
     ) -> Result<Texture, Error> {

@@ -6,7 +6,7 @@ use ash::vk;
 use std::rc::Rc;
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
+    pub fn create_buffer(&self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
         self.caps.check_buffer(size, memory)?;
         let buffer = self.allocate(size, memory, self.buffer_usage())?;
         Ok(self.insert_buffer(buffer, size))
@@ -52,7 +52,7 @@ impl Device {
         Ok(buffer)
     }
 
-    pub fn import_buffer(&mut self, raw: vk::Buffer, size: u64, data: *mut u8) -> Buffer {
+    pub fn import_buffer(&self, raw: vk::Buffer, size: u64, data: *mut u8) -> Buffer {
         let id = self.res.buffers.insert(BufferObject {
             raw,
             memory: Rc::new(vk::DeviceMemory::null()),
@@ -61,7 +61,7 @@ impl Device {
             own: false,
         });
         self.res.table.add_buffer(id, size, !data.is_null());
-        self.res.table.residency.exempt_buffer(id);
+        self.res.table.residency.borrow_mut().exempt_buffer(id);
         id
     }
 
@@ -87,7 +87,7 @@ impl Device {
         self.res.table.buffers.get(buffer);
     }
 
-    pub(super) fn insert_buffer(&mut self, buffer: BufferObject, size: u64) -> Buffer {
+    pub(super) fn insert_buffer(&self, buffer: BufferObject, size: u64) -> Buffer {
         let mappable = !buffer.data.is_null();
         let slot = self.res.buffers.insert(buffer);
         self.res.table.add_buffer(slot, size, mappable);

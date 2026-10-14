@@ -34,6 +34,7 @@ macro_rules! check_ne {
 
 mod caps;
 mod check;
+mod chunks;
 mod command;
 mod entries;
 mod error;

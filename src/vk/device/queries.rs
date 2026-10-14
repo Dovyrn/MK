@@ -7,7 +7,7 @@ use ash::vk;
 
 impl Device {
     pub fn create_query_pool(
-        &mut self,
+        &self,
         kind: crate::QueryKind,
         count: u32,
     ) -> Result<QueryPool, Error> {

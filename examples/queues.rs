@@ -11,7 +11,7 @@ pub fn main() {
 
 #[cfg(not(feature = "gl"))]
 pub fn main() {
-    let Some(mut device) = host::try_device(2) else {
+    let Some(device) = host::try_device(2) else {
         println!("one queue only");
         return;
     };
@@ -31,7 +31,7 @@ pub fn main() {
     let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     push.extend(3u32.to_le_bytes());
-    let (constants, _) = host::constants(&mut device, &[&push]);
+    let (constants, _) = host::constants(&device, &[&push]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into(), constants.into()]);
     device.commit_residency(set);

@@ -42,7 +42,7 @@ fn fill(device: &Device, pass: &mut mk::ComputePass, buffer: mk::Buffer, size: u
 
 pub fn main() {
     let n = 4096u64;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let data = device.create_buffer(n, Memory::Device).unwrap();
     let back = device.create_buffer(n, Memory::Readback).unwrap();

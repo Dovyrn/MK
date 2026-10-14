@@ -13,6 +13,7 @@ name = "create_buffer"
 params = [["size", "u64"], ["memory", "Memory"]]
 result = "Buffer"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_buffer"
@@ -46,6 +47,7 @@ name = "create_compute_pipeline"
 params = [["info", "ComputePipelineInfo"]]
 result = "ComputePipeline"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_compute_pipeline"
@@ -56,12 +58,14 @@ name = "create_render_pipeline"
 params = [["info", "RenderPipelineInfo"]]
 result = "RenderPipeline"
 fails = true
+shared = true
 
 [[call]]
 name = "create_mesh_pipeline"
 params = [["info", "MeshPipelineInfo"]]
 result = "RenderPipeline"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_render_pipeline"
@@ -72,6 +76,7 @@ name = "create_tile_pipeline"
 params = [["info", "TilePipelineInfo"]]
 result = "TilePipeline"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_tile_pipeline"
@@ -82,6 +87,7 @@ name = "create_depth_state"
 params = [["info", "DepthStateInfo"]]
 result = "DepthState"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_depth_state"
@@ -92,16 +98,19 @@ name = "create_texture"
 params = [["info", "TextureInfo"]]
 result = "Texture"
 fails = true
+shared = true
 
 [[call]]
 name = "write_texture"
 params = [["copy", "HostTextureCopy"], ["data", "bytes"]]
 fails = true
+shared = true
 
 [[call]]
 name = "read_texture"
 params = [["copy", "HostTextureCopy"], ["data", "mutbytes"]]
 fails = true
+shared = true
 
 [[call]]
 name = "format_usage"
@@ -120,6 +129,7 @@ name = "create_texture_view"
 params = [["texture", "Texture"], ["info", "TextureViewInfo"]]
 result = "Texture"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_texture"
@@ -143,6 +153,7 @@ name = "create_sampler"
 params = [["info", "SamplerInfo"]]
 result = "Sampler"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_sampler"
@@ -160,6 +171,7 @@ name = "create_query_pool"
 params = [["kind", "QueryKind"], ["count", "u32"]]
 result = "QueryPool"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_query_pool"
@@ -170,6 +182,7 @@ name = "create_indirect_buffer"
 params = [["info", "IndirectBufferInfo"]]
 result = "IndirectBuffer"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_indirect_buffer"
@@ -184,6 +197,7 @@ result = "u32x8"
 name = "create_residency_set"
 result = "ResidencySet"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_residency_set"
@@ -192,19 +206,23 @@ params = [["set", "ResidencySet"]]
 [[call]]
 name = "add_residency"
 params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
+shared = true
 
 [[call]]
 name = "remove_residency"
 params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
+shared = true
 
 [[call]]
 name = "commit_residency"
 params = [["set", "ResidencySet"]]
+shared = true
 
 [[call]]
 name = "create_timeline"
 result = "timeline"
 fails = true
+shared = true
 
 [[call]]
 name = "destroy_timeline"
@@ -215,6 +233,7 @@ name = "create_command_pool"
 params = [["queue", "u32"]]
 result = "CommandPool"
 fails = true
+shared = true
 
 [[call]]
 name = "reset_command_pool"
@@ -250,6 +269,7 @@ name = "import_buffer"
 backend = "vk"
 params = [["raw", "handle"], ["size", "u64"], ["data", "pointer"]]
 result = "Buffer"
+shared = true
 
 [[call]]
 name = "import_texture"
@@ -257,12 +277,14 @@ backend = "vk"
 params = [["image", "handle"], ["info", "TextureInfo"]]
 result = "Texture"
 fails = true
+shared = true
 
 [[call]]
 name = "import_timeline"
 backend = "vk"
 params = [["raw", "handle"]]
 result = "timeline"
+shared = true
 
 [[call]]
 name = "import_commands"
@@ -313,6 +335,7 @@ name = "import_buffer"
 backend = "mtl"
 params = [["raw", "object"]]
 result = "Buffer"
+shared = true
 
 [[call]]
 name = "import_texture"
@@ -320,12 +343,14 @@ backend = "mtl"
 params = [["raw", "object"], ["format", "Format"]]
 result = "Texture"
 fails = true
+shared = true
 
 [[call]]
 name = "import_timeline"
 backend = "mtl"
 params = [["raw", "object"]]
 result = "timeline"
+shared = true
 
 [[call]]
 name = "import_commands"
@@ -391,6 +416,7 @@ name = "import_buffer"
 backend = "gl"
 params = [["raw", "u32"], ["size", "u64"]]
 result = "Buffer"
+shared = true
 
 [[call]]
 name = "import_texture"
@@ -398,6 +424,7 @@ backend = "gl"
 params = [["raw", "u32"], ["info", "TextureInfo"]]
 result = "Texture"
 fails = true
+shared = true
 
 [[call]]
 name = "import_render_pass"

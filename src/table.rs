@@ -35,7 +35,7 @@ pub struct Table {
     pub parents: Entries<Texture, Texture>,
     pub pools: Entries<CommandPool, (usize, Cell<bool>)>,
     pub undefined: RefCell<Vec<Texture>>,
-    pub residency: Residency,
+    pub residency: RefCell<Residency>,
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
     pub mappable: Entries<Buffer, bool>,
 }
@@ -68,8 +68,9 @@ pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
 impl Table {
     pub fn drop_buffer(&mut self, buffer: Buffer) {
         self.buffers.get(buffer);
-        self.residency.free_buffer(buffer);
+        self.residency.get_mut().free_buffer(buffer);
         self.buffers.clear(buffer);
+        self.mappable.clear(buffer);
     }
 
     pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
@@ -133,11 +134,11 @@ impl Table {
 
     pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {
         self.indirects.get(indirect);
-        self.residency.free_indirect(indirect);
+        self.residency.get_mut().free_indirect(indirect);
         self.indirects.clear(indirect);
     }
 
-    pub fn add_buffer(&mut self, buffer: Buffer, size: u64, mappable: bool) {
+    pub fn add_buffer(&self, buffer: Buffer, size: u64, mappable: bool) {
         self.buffers.set(buffer, size);
         self.mappable.set(buffer, mappable);
     }
@@ -164,11 +165,11 @@ impl Table {
 
     pub fn drop_query(&mut self, pool: QueryPool) {
         self.queries.get(pool);
-        self.residency.free_query(pool);
+        self.residency.get_mut().free_query(pool);
         self.queries.clear(pool);
     }
 
-    pub fn change_residency(&mut self, set: ResidencySet, items: Members, add: bool) {
+    pub fn change_residency(&self, set: ResidencySet, items: Members, add: bool) {
         for &b in &items.buffers {
             self.buffers.get(b);
         }
@@ -190,16 +191,16 @@ impl Table {
         for &i in &items.indirects {
             self.indirects.get(i);
         }
-        self.residency.change(set, &items, add);
+        self.residency.borrow_mut().change(set, &items, add);
     }
 
-    pub fn add_texture(&mut self, texture: Texture, info: &TextureInfo) {
+    pub fn add_texture(&self, texture: Texture, info: &TextureInfo) {
         self.textures.set(texture, *info);
         if info.memory == Memory::Transient {
-            self.residency.exempt_texture(texture);
+            self.residency.borrow_mut().exempt_texture(texture);
         }
         if cfg!(feature = "validation") && !info.usage.contains(TextureUsage::HOST) {
-            self.undefined.get_mut().push(texture);
+            self.undefined.borrow_mut().push(texture);
         }
     }
 
@@ -226,7 +227,7 @@ impl Table {
         );
         self.textures.get(texture);
         if self.parents.find(texture).is_none() {
-            self.residency.free_texture(texture);
+            self.residency.get_mut().free_texture(texture);
         }
         self.textures.clear(texture);
         self.parents.forget(texture);
@@ -297,7 +298,7 @@ impl Table {
         }
     }
 
-    pub fn check_view(&mut self, id: Texture, texture: Texture, info: &TextureViewInfo) {
+    pub fn check_view(&self, id: Texture, texture: Texture, info: &TextureViewInfo) {
         let t = *self.textures.get(texture);
         self.parents.set(id, texture);
         self.textures.set(
@@ -385,10 +386,10 @@ impl Table {
         (pitch, image)
     }
 
-    pub fn add_timeline(&mut self, id: TimelineId) -> Arc<()> {
+    pub fn add_timeline(&self, id: TimelineId) -> Arc<()> {
         let token = Arc::new(());
         self.timelines
-            .get_mut()
+            .borrow()
             .set(id, (0, usize::MAX, Arc::downgrade(&token)));
         token
     }

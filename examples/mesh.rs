@@ -9,7 +9,7 @@ mod host;
 
 pub fn main() {
     let n = 64u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let color = device
         .create_texture(&TextureInfo {
@@ -62,7 +62,7 @@ pub fn main() {
     device.unmap_buffer(groups);
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
-    let (half, _) = host::constants(&mut device, &[&0.5f32.to_le_bytes()]);
+    let (half, _) = host::constants(&device, &[&0.5f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -140,7 +140,7 @@ pub fn main() {
     #[cfg(feature = "gl")]
     let executed = false;
     #[cfg(not(feature = "gl"))]
-    let executed = listed && executed(&mut device, pool, &timeline, 4);
+    let executed = listed && executed(&device, pool, &timeline, 4);
     println!(
         "task and mesh shader triangle drawn, from an indirect buffer: {listed}, mesh shader without a task shader: true, from an indirect command buffer: {executed}"
     );
@@ -148,7 +148,7 @@ pub fn main() {
 
 #[cfg(not(feature = "gl"))]
 fn executed(
-    device: &mut mk::Device,
+    device: &mk::Device,
     pool: mk::CommandPool,
     timeline: &mk::Timeline,
     value: u64,

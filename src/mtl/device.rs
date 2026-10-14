@@ -269,7 +269,7 @@ impl Device {
         check!(queue < count, "queue {queue} is outside 0..{count}");
     }
 
-    pub fn create_command_pool(&mut self, queue: u32) -> Result<CommandPool, Error> {
+    pub fn create_command_pool(&self, queue: u32) -> Result<CommandPool, Error> {
         let queue = queue as usize;
         self.check_queue(queue);
         let pool = self.pools.insert(Pool::new(&self.raw)?);

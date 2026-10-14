@@ -12,7 +12,7 @@ fn pattern(size: usize, seed: usize) -> Vec<u8> {
 
 pub fn main() {
     let n = 64u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if !device
         .format_usage(Format::Rgba8Unorm)

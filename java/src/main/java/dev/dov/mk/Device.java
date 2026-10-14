@@ -55,7 +55,6 @@ public class Device implements AutoCloseable {
     private static native String nDeviceName(long device);
 
     public synchronized Buffer createBuffer(long size, Memory memory) {
-        idle("createBuffer");
         return Buffer.of(nCreateBuffer(handle(), size, memory.value));
     }
 
@@ -97,7 +96,6 @@ public class Device implements AutoCloseable {
     private static native void nMemoryBudget(long device, long out);
 
     public synchronized ComputePipeline createComputePipeline(ComputePipelineInfo info) {
-        idle("createComputePipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -115,7 +113,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyComputePipeline(long device, long pipeline);
 
     public synchronized RenderPipeline createRenderPipeline(RenderPipelineInfo info) {
-        idle("createRenderPipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -126,7 +123,6 @@ public class Device implements AutoCloseable {
     private static native long nCreateRenderPipeline(long device, long info, int infoLength);
 
     public synchronized RenderPipeline createMeshPipeline(MeshPipelineInfo info) {
-        idle("createMeshPipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -144,7 +140,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyRenderPipeline(long device, long pipeline);
 
     public synchronized TilePipeline createTilePipeline(TilePipelineInfo info) {
-        idle("createTilePipeline");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -162,7 +157,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyTilePipeline(long device, long pipeline);
 
     public synchronized DepthState createDepthState(DepthStateInfo info) {
-        idle("createDepthState");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -180,7 +174,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyDepthState(long device, long state);
 
     public synchronized Texture createTexture(TextureInfo info) {
-        idle("createTexture");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -191,7 +184,6 @@ public class Device implements AutoCloseable {
     private static native long nCreateTexture(long device, long info, int infoLength);
 
     public synchronized void writeTexture(HostTextureCopy copy, long data, long dataSize) {
-        idle("writeTexture");
         try (var arena = new Arena()) {
             var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
@@ -202,7 +194,6 @@ public class Device implements AutoCloseable {
     private static native void nWriteTexture(long device, long copy, int copyLength, long data, long dataLength);
 
     public synchronized void readTexture(HostTextureCopy copy, long data, long dataSize) {
-        idle("readTexture");
         try (var arena = new Arena()) {
             var copyAddress = arena.alloc(copy.encodedSize());
             copy.encode(copyAddress);
@@ -225,7 +216,6 @@ public class Device implements AutoCloseable {
     private static native int nFormatSamples(long device, int format, int usage);
 
     public synchronized Texture createTextureView(Texture texture, TextureViewInfo info) {
-        idle("createTextureView");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -249,7 +239,6 @@ public class Device implements AutoCloseable {
     private static native long nBindlessStorageTexture(long device, long texture);
 
     public synchronized Sampler createSampler(SamplerInfo info) {
-        idle("createSampler");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -267,7 +256,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroySampler(long device, long sampler);
 
     public synchronized QueryPool createQueryPool(QueryKind kind, int count) {
-        idle("createQueryPool");
         return QueryPool.of(nCreateQueryPool(handle(), kind.value, count));
     }
 
@@ -281,7 +269,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyQueryPool(long device, long pool);
 
     public synchronized IndirectBuffer createIndirectBuffer(IndirectBufferInfo info) {
-        idle("createIndirectBuffer");
         try (var arena = new Arena()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
@@ -310,7 +297,6 @@ public class Device implements AutoCloseable {
     private static native void nIndirectShaderHandle(long device, long indirect, long out);
 
     public synchronized ResidencySet createResidencySet() {
-        idle("createResidencySet");
         return ResidencySet.of(nCreateResidencySet(handle()));
     }
 
@@ -324,7 +310,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyResidencySet(long device, long set);
 
     public synchronized void addResidency(ResidencySet set, Resource[] resources) {
-        idle("addResidency");
         try (var arena = new Arena()) {
             var resourcesSize = 4;
             for (var x : resources) {
@@ -344,7 +329,6 @@ public class Device implements AutoCloseable {
     private static native void nAddResidency(long device, long set, long resources, int resourcesLength);
 
     public synchronized void removeResidency(ResidencySet set, Resource[] resources) {
-        idle("removeResidency");
         try (var arena = new Arena()) {
             var resourcesSize = 4;
             for (var x : resources) {
@@ -364,14 +348,12 @@ public class Device implements AutoCloseable {
     private static native void nRemoveResidency(long device, long set, long resources, int resourcesLength);
 
     public synchronized void commitResidency(ResidencySet set) {
-        idle("commitResidency");
         nCommitResidency(handle(), ResidencySet.raw(set));
     }
 
     private static native void nCommitResidency(long device, long set);
 
     public synchronized Timeline createTimeline() {
-        idle("createTimeline");
         return new Timeline(nCreateTimeline(handle()));
     }
 
@@ -385,7 +367,6 @@ public class Device implements AutoCloseable {
     private static native void nDestroyTimeline(long device, long timeline);
 
     public synchronized CommandPool createCommandPool(int queue) {
-        idle("createCommandPool");
         return CommandPool.of(nCreateCommandPool(handle(), queue));
     }
 

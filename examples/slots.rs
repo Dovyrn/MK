@@ -18,7 +18,7 @@ fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
 }
 
 pub fn main() {
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
     if !caps.slot_binding {
@@ -168,7 +168,7 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let (constants, _) = host::constants(&mut device, &[&64u32.to_le_bytes()]);
+    let (constants, _) = host::constants(&device, &[&64u32.to_le_bytes()]);
     device.add_residency(
         set,
         &[data.into(), out.into(), constants.into(), image.into()],

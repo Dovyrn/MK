@@ -126,7 +126,7 @@ pub fn main() {
         .create_depth_state(&DepthStateInfo::default())
         .unwrap();
     let (constants, stride) = host::constants(
-        &mut device,
+        &device,
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
     );
     let mut textures = vec![color];

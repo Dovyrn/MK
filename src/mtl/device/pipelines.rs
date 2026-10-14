@@ -200,7 +200,7 @@ impl Device {
     }
 
     pub fn create_compute_pipeline(
-        &mut self,
+        &self,
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
@@ -233,7 +233,7 @@ impl Device {
     }
 
     pub fn create_render_pipeline(
-        &mut self,
+        &self,
         info: &RenderPipelineInfo,
     ) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
@@ -317,10 +317,7 @@ impl Device {
         })
     }
 
-    pub fn create_mesh_pipeline(
-        &mut self,
-        info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, Error> {
+    pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
             self.caps.check_mesh_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
@@ -379,7 +376,7 @@ impl Device {
         drop(pipeline);
     }
 
-    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
+    pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         autoreleasepool(|_| {
             crate::caps::check_tile_pipeline(info);
             if cfg!(feature = "validation") && !self.caps.tiles {
@@ -409,7 +406,7 @@ impl Device {
         drop(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
+    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         autoreleasepool(|_| {
             let desc = MTLDepthStencilDescriptor::new();
             desc.setDepthCompareFunction(mtl_compare(info.compare));

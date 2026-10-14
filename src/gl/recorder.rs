@@ -508,6 +508,9 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::CopyBufferToTexture { .. } => {
+                    if let Some(host) = &mut self.host {
+                        host.save_units(gl, 1);
+                    }
                     self.upload(command);
                     self.units.clear();
                 }

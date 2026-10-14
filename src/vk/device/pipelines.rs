@@ -14,7 +14,7 @@ const MODEL: u32 = 5345;
 impl Device {
     #[allow(clippy::too_many_arguments)]
     fn graphics(
-        &mut self,
+        &self,
         code: &[u8],
         entries: &[(vk::ShaderStageFlags, &str)],
         vertex: Option<&RenderPipelineInfo>,
@@ -222,7 +222,7 @@ impl Device {
     }
 
     pub fn create_render_pipeline(
-        &mut self,
+        &self,
         info: &RenderPipelineInfo,
     ) -> Result<RenderPipeline, Error> {
         self.caps.check_render_pipeline(info)?;
@@ -245,10 +245,7 @@ impl Device {
         )
     }
 
-    pub fn create_mesh_pipeline(
-        &mut self,
-        info: &MeshPipelineInfo,
-    ) -> Result<RenderPipeline, Error> {
+    pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.caps.check_mesh_pipeline(info)?;
         self.graphics(
             info.code,
@@ -276,7 +273,7 @@ impl Device {
         unsafe { self.raw.destroy_pipeline(pipeline, None) };
     }
 
-    pub fn create_tile_pipeline(&mut self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
+    pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         crate::caps::check_tile_pipeline(info);
         Err(Error::Unsupported(
             "create_tile_pipeline needs caps.tiles".into(),
@@ -287,7 +284,7 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&mut self, info: &DepthStateInfo) -> Result<DepthState, Error> {
+    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
@@ -314,7 +311,7 @@ impl Device {
     }
 
     pub fn create_compute_pipeline(
-        &mut self,
+        &self,
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;

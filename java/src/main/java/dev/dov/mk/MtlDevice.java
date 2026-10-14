@@ -28,21 +28,18 @@ public class MtlDevice extends Device {
     private static native long nImportDeviceRaw(long device, long compiler, int queues);
 
     public synchronized Buffer importBuffer(long raw) {
-        idle("importBuffer");
         return Buffer.of(nImportBuffer(handle(), raw));
     }
 
     private static native long nImportBuffer(long device, long raw);
 
     public synchronized Texture importTexture(long raw, Format format) {
-        idle("importTexture");
         return Texture.of(nImportTexture(handle(), raw, format.value));
     }
 
     private static native long nImportTexture(long device, long raw, int format);
 
     public synchronized Timeline importTimeline(long raw) {
-        idle("importTimeline");
         return new Timeline(nImportTimeline(handle(), raw));
     }
 

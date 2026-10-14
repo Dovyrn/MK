@@ -17,6 +17,8 @@ public class Smoke {
                 return;
             }
             var n = 1024;
+            var pool = device.createCommandPool(0);
+            var commands = device.beginCommands(pool);
             var buffer = device.createBuffer(n * 4L, Memory.READBACK);
             var bytes = Files.readAllBytes(Path.of(args[1]));
             var code = nmemAlloc(bytes.length);
@@ -27,7 +29,6 @@ public class Smoke {
                     .entry("fill");
             var pipeline = device.createComputePipeline(info);
             var timeline = device.createTimeline();
-            var pool = device.createCommandPool(0);
             var constants = device.createBuffer(8, Memory.UPLOAD);
             var push = device.mapBuffer(constants);
             memPutInt(push, n);
@@ -36,7 +37,6 @@ public class Smoke {
             var set = device.createResidencySet();
             device.addResidency(set, new Resource[] {buffer.resource(), constants.resource()});
             device.commitResidency(set);
-            var commands = device.beginCommands(pool);
             commands.useResidencySet(set);
             var compute = commands.beginComputePass(0, 0);
             compute.bindComputePipeline(pipeline);
@@ -45,12 +45,17 @@ public class Smoke {
             compute.dispatch(n / 64, 1, 1);
             compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
             compute.end();
+            var spare = device.createBuffer(4, Memory.UPLOAD);
+            var rejected = false;
             try {
-                device.createBuffer(4, Memory.UPLOAD);
-                throw new IllegalStateException("a device change was accepted while recording");
+                device.destroyBuffer(spare);
             } catch (IllegalStateException e) {
-                System.out.println("change while recording rejected");
+                rejected = true;
             }
+            if (!rejected) {
+                throw new IllegalStateException("a destroy was accepted while recording");
+            }
+            System.out.println("created while recording, destroy while recording rejected");
             commands.end();
             device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
             if (!timeline.await(1, 1000)) {

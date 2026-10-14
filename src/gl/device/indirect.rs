@@ -4,7 +4,7 @@ use crate::{IndirectBuffer, IndirectBufferInfo};
 
 impl Device {
     pub fn create_indirect_buffer(
-        &mut self,
+        &self,
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, Error> {
         self.thread();

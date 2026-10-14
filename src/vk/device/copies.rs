@@ -5,7 +5,7 @@ use crate::{HostTextureCopy, TextureInfo, TextureUsage};
 use ash::vk;
 
 impl Device {
-    pub fn write_texture(&mut self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), Error> {
+    pub fn write_texture(&self, copy: &HostTextureCopy, data: &[u8]) -> Result<(), Error> {
         self.res.table.check_host_copy(copy, data.len());
         let (image, layers) = self.host_copy_target(copy)?;
         let region = vk::MemoryToImageCopyEXT::default()
@@ -24,7 +24,7 @@ impl Device {
         unsafe { ext.copy_memory_to_image(&info) }.map_err(Error::from)
     }
 
-    pub fn read_texture(&mut self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
+    pub fn read_texture(&self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
         self.res.table.check_host_copy(copy, data.len());
         let (image, layers) = self.host_copy_target(copy)?;
         let region = vk::ImageToMemoryCopyEXT::default()

@@ -12,7 +12,7 @@ pub fn main() {
 #[cfg(not(feature = "gl"))]
 pub fn main() {
     let n = 256u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if !device.caps().addresses {
         println!("no buffer addresses");
@@ -32,7 +32,7 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
-    let (constants, _) = host::constants(&mut device, &[&push]);
+    let (constants, _) = host::constants(&device, &[&push]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into(), constants.into()]);
     device.commit_residency(set);

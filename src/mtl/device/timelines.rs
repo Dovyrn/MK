@@ -6,7 +6,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLSharedEvent};
 
 impl Device {
-    pub fn create_timeline(&mut self) -> Result<Timeline, Error> {
+    pub fn create_timeline(&self) -> Result<Timeline, Error> {
         autoreleasepool(|_| {
             let raw = self
                 .raw
@@ -16,10 +16,7 @@ impl Device {
         })
     }
 
-    pub fn import_timeline(
-        &mut self,
-        raw: Retained<ProtocolObject<dyn MTLSharedEvent>>,
-    ) -> Timeline {
+    pub fn import_timeline(&self, raw: Retained<ProtocolObject<dyn MTLSharedEvent>>) -> Timeline {
         let id = self.res.timelines.insert(raw.clone());
         Timeline {
             id,

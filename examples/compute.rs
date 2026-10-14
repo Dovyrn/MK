@@ -4,13 +4,14 @@ use mk::{Memory, Stage};
 mod host;
 
 pub fn main() {
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     println!("{:?}", device.caps());
     if !device.caps().compute {
         println!("no compute shaders");
         return;
     }
+    let mut c = device.begin_commands(pool).unwrap();
     let n = 1024u32;
     let buffer = device
         .create_buffer(n as u64 * 4, Memory::Readback)
@@ -25,11 +26,10 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let mut push = n.to_le_bytes().to_vec();
     push.extend(100u32.to_le_bytes());
-    let (constants, _) = host::constants(&mut device, &[&push]);
+    let (constants, _) = host::constants(&device, &[&push]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into(), constants.into()]);
     device.commit_residency(set);
-    let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     c.begin_debug_label("fill");
     let mut pass = c

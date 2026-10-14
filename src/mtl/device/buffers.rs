@@ -7,7 +7,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
 
 impl Device {
-    pub fn create_buffer(&mut self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
+    pub fn create_buffer(&self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
         autoreleasepool(|_| {
             self.caps.check_buffer(size, memory)?;
             let buffer = self
@@ -21,13 +21,13 @@ impl Device {
         })
     }
 
-    pub fn import_buffer(&mut self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> Buffer {
+    pub fn import_buffer(&self, raw: Retained<ProtocolObject<dyn MTLBuffer>>) -> Buffer {
         autoreleasepool(|_| {
             let size = raw.length() as u64;
             let mappable = raw.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(BufferObject::new(raw));
             self.res.table.add_buffer(id, size, mappable);
-            self.res.table.residency.exempt_buffer(id);
+            self.res.table.residency.borrow_mut().exempt_buffer(id);
             id
         })
     }

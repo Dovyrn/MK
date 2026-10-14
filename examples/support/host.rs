@@ -41,7 +41,7 @@ macro_rules! code {
 
 pub(crate) use code;
 
-pub fn constants(device: &mut mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
+pub fn constants(device: &mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
     let stride = device.caps().bind_alignment.max(256) as u64;
     let buffer = device
         .create_buffer(stride * blocks.len() as u64, mk::Memory::Upload)

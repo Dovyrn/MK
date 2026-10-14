@@ -9,7 +9,7 @@ mod host;
 
 pub fn main() {
     let n = 64u32;
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let target = |format, usage| TextureInfo {
         format,
@@ -90,7 +90,7 @@ pub fn main() {
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let (constants, stride) =
-        host::constants(&mut device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
+        host::constants(&device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,

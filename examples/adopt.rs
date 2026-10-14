@@ -18,7 +18,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
         gl.bind_texture(mk::glow::TEXTURE_2D, None);
         t.0.get()
     };
-    let mut device = Device::import_device(proc).unwrap();
+    let device = Device::import_device(proc).unwrap();
     println!("{}", device.device_name());
     let slot = device
         .import_texture(
@@ -54,7 +54,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
     desc.setStorageMode(MTLStorageMode::Private);
     let texture = raw.newTextureWithDescriptor(&desc).unwrap();
     let compiler = host::compiler(&raw);
-    let mut device = Device::import_device(raw, compiler, 1).unwrap();
+    let device = Device::import_device(raw, compiler, 1).unwrap();
     let slot = device.import_texture(texture, Format::Rgba8Unorm).unwrap();
     (device, slot, ())
 }
@@ -123,7 +123,7 @@ fn native(
     let features = vk::PhysicalDeviceFeatures2::default()
         .push_next(&mut v12)
         .push_next(&mut v13);
-    let mut device = Device::import_device(
+    let device = Device::import_device(
         host.instance.clone(),
         host.physical,
         host.raw.clone(),

@@ -217,7 +217,7 @@ impl<'a> Check<'a> {
 
     fn buffer_range(&self, name: &str, buffer: Buffer, offset: u64, size: u64) -> u64 {
         let total = *self.table.buffers.get(buffer);
-        self.assert_resident(name, &buffer, self.table.residency.buffer(buffer));
+        self.assert_resident(name, &buffer, self.table.residency.borrow().buffer(buffer));
         let end = if size == !0 {
             total
         } else {
@@ -280,7 +280,7 @@ impl<'a> Check<'a> {
         );
         self.table.assert_defined(name, texture);
         let root = self.table.parents.find(texture).copied().unwrap_or(texture);
-        self.assert_resident(name, &texture, self.table.residency.texture(root));
+        self.assert_resident(name, &texture, self.table.residency.borrow().texture(root));
         t
     }
 
@@ -318,7 +318,7 @@ impl<'a> Check<'a> {
         count: u32,
     ) {
         let &(kind, total) = self.table.queries.get(pool);
-        self.assert_resident(name, &pool, self.table.residency.query(pool));
+        self.assert_resident(name, &pool, self.table.residency.borrow().query(pool));
         check!(
             kinds.is_empty() || kinds.contains(&kind),
             "{name} needs a {kinds:?} pool, but {pool} is {kind}"
@@ -390,7 +390,11 @@ impl<'a> Check<'a> {
     fn indirect_list(&self, c: &Command, indirect: IndirectBuffer) -> Result<u32, Error> {
         let name = &command_name(c);
         let e = *self.table.indirects.get(indirect);
-        self.assert_resident(name, &indirect, self.table.residency.indirect(indirect));
+        self.assert_resident(
+            name,
+            &indirect,
+            self.table.residency.borrow().indirect(indirect),
+        );
         self.check_draw(c, e.info.indexed);
         check!(
             self.indirect,
@@ -919,7 +923,7 @@ impl<'a> Check<'a> {
                 }
             }
             Command::UseResidencySet { set } => {
-                self.table.residency.assert_set(set);
+                self.table.residency.borrow().assert_set(set);
                 self.resident = true;
             }
             Command::BindUniformBuffer {

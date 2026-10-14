@@ -6,7 +6,7 @@ use crate::{AddressMode, BorderColor, CompareOp, Filter, SamplerInfo};
 use ash::vk;
 
 impl Device {
-    pub fn create_sampler(&mut self, info: &SamplerInfo) -> Result<Sampler, Error> {
+    pub fn create_sampler(&self, info: &SamplerInfo) -> Result<Sampler, Error> {
         self.caps.check_sampler(info)?;
         let filter = |f| match f {
             Filter::Nearest => vk::Filter::NEAREST,
