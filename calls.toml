@@ -270,6 +270,13 @@ fails = true
 shared = true
 
 [[call]]
+name = "create_device"
+backend = "vk mtl"
+params = [["queues", "u32"]]
+result = "device"
+fails = true
+
+[[call]]
 name = "import_device_raw"
 backend = "vk"
 params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]

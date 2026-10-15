@@ -2,6 +2,7 @@ mod budget;
 mod buffers;
 mod caps;
 mod copies;
+mod create;
 mod indirect;
 mod pipelines;
 mod queries;
@@ -48,6 +49,7 @@ pub struct Device {
     queues: Vec<Queue>,
     pools: Slots<Pool>,
     allocations: AtomicU32,
+    entry: Option<ash::Entry>,
 }
 
 fn vk_image_usage(usage: TextureUsage) -> vk::ImageUsageFlags {
@@ -240,6 +242,7 @@ impl Device {
             queues: list,
             pools: Slots::default(),
             allocations: AtomicU32::new(0),
+            entry: None,
         })
     }
 
@@ -573,6 +576,10 @@ impl Drop for Device {
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
             self.raw.destroy_descriptor_set_layout(self.slots, None);
+            if self.entry.is_some() {
+                self.raw.destroy_device(None);
+                self.instance.destroy_instance(None);
+            }
         }
     }
 }

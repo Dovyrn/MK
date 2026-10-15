@@ -31,6 +31,12 @@ public class MtlDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
+    public static MtlDevice createDevice(int queues) {
+        return new MtlDevice(nCreateDevice(queues));
+    }
+
+    private static native long nCreateDevice(int queues);
+
     public static MtlDevice importDeviceRaw(long device, long compiler, int queues) {
         return new MtlDevice(nImportDeviceRaw(device, compiler, queues));
     }

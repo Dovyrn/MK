@@ -1,8 +1,6 @@
 use mk::objc2::rc::Retained;
 use mk::objc2::runtime::ProtocolObject;
-use mk::objc2_metal::{
-    MTL4Compiler, MTL4CompilerDescriptor, MTLCreateSystemDefaultDevice, MTLDevice,
-};
+use mk::objc2_metal::{MTL4Compiler, MTL4CompilerDescriptor, MTLDevice};
 use std::sync::OnceLock;
 
 struct Shared(Retained<ProtocolObject<dyn MTL4Compiler>>);
@@ -23,11 +21,9 @@ pub fn compiler(raw: &ProtocolObject<dyn MTLDevice>) -> Retained<ProtocolObject<
 }
 
 pub fn device(queues: u32) -> mk::Device {
-    let raw = MTLCreateSystemDefaultDevice().expect("no Metal device");
-    let compiler = compiler(&raw);
-    mk::Device::import_device(raw, compiler, queues).unwrap()
+    mk::Device::create_device(queues).unwrap()
 }
 
 pub fn try_device(queues: u32) -> Option<mk::Device> {
-    Some(device(queues))
+    mk::Device::create_device(queues).ok()
 }

@@ -31,6 +31,12 @@ public class VkDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
+    public static VkDevice createDevice(int queues) {
+        return new VkDevice(nCreateDevice(queues));
+    }
+
+    private static native long nCreateDevice(int queues);
+
     public static VkDevice importDeviceRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
         try (var arena = new Arena()) {
             if (queues.length % 2 != 0) {
