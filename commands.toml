@@ -54,6 +54,18 @@ scope = "outside compute"
 fields = [["texture", "Texture"], ["src_stage", "Stage"]]
 
 [[command]]
+name = "acquire_shared"
+backend = "vk"
+scope = "outside compute"
+fields = [["texture", "Texture"], ["dst_stage", "Stage"]]
+
+[[command]]
+name = "release_shared"
+backend = "vk"
+scope = "outside compute"
+fields = [["texture", "Texture"], ["src_stage", "Stage"]]
+
+[[command]]
 name = "discard_textures"
 scope = "outside compute"
 fields = [["textures", "[TextureDiscard]"]]

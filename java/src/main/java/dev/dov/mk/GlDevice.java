@@ -41,6 +41,93 @@ public class GlDevice extends Device {
 
     private static native long nImportTexture(long device, int raw, long info, int infoLength);
 
+    public Texture importSharedTexture(long handle, TextureInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Texture.of(nImportSharedTexture(handle(), handle, infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nImportSharedTexture(long device, long handle, long info, int infoLength);
+
+    public Timeline importSharedTimeline(long handle) {
+        lock.readLock().lock();
+        try {
+            return new Timeline(nImportSharedTimeline(handle(), handle));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nImportSharedTimeline(long device, long handle);
+
+    public void waitShared(Timeline timeline, long value, Texture[] textures) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var texturesSize = 4;
+                for (var x : textures) {
+                    texturesSize += 8;
+                }
+                var texturesAddress = arena.alloc(texturesSize);
+                var texturesAt = texturesAddress;
+                memPutInt(texturesAt, textures.length);
+                texturesAt += 4;
+                for (var x : textures) {
+                    memPutLong(texturesAt, Texture.raw(x));
+                    texturesAt += 8;
+                }
+                nWaitShared(handle(), timeline.handle(arena), value, texturesAddress, texturesSize);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nWaitShared(long device, long timeline, long value, long textures, int texturesLength);
+
+    public void signalShared(Timeline timeline, long value, Texture[] textures) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var texturesSize = 4;
+                for (var x : textures) {
+                    texturesSize += 8;
+                }
+                var texturesAddress = arena.alloc(texturesSize);
+                var texturesAt = texturesAddress;
+                memPutInt(texturesAt, textures.length);
+                texturesAt += 4;
+                for (var x : textures) {
+                    memPutLong(texturesAt, Texture.raw(x));
+                    texturesAt += 8;
+                }
+                nSignalShared(handle(), timeline.handle(arena), value, texturesAddress, texturesSize);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nSignalShared(long device, long timeline, long value, long textures, int texturesLength);
+
+    public long deviceLuid() {
+        lock.readLock().lock();
+        try {
+            return nDeviceLuid(handle());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nDeviceLuid(long device);
+
     public RenderPass importRenderPass(CommandPool pool, ImportedPassInfo info) {
         lock.readLock().lock();
         try {

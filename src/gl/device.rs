@@ -3,6 +3,7 @@ mod copies;
 mod host;
 mod indirect;
 mod residency;
+mod shared;
 
 use crate::Error;
 use crate::caps;
@@ -537,6 +538,7 @@ impl Device {
             format: info.format,
             own: false,
             image: Cell::new(0),
+            memory: 0,
         });
         self.res.table.textures.set(id, *info);
         lock(&self.res.table.residency).exempt_texture(id);
@@ -703,7 +705,10 @@ impl Device {
     pub fn destroy_texture(&self, texture: Texture) {
         self.thread();
         self.res.table.drop_texture(texture);
-        self.res.textures.remove(texture).delete(&self.gl);
+        self.res
+            .textures
+            .remove(texture)
+            .delete(&self.gl, &self.extra);
     }
 
     pub fn create_sampler(&self, info: &SamplerInfo) -> Result<Sampler, Error> {
@@ -741,26 +746,31 @@ impl Device {
 
     pub fn create_timeline(&self) -> Result<Timeline, Error> {
         self.thread();
+        Ok(self.add_timeline(0))
+    }
+
+    fn add_timeline(&self, semaphore: u32) -> Timeline {
         let fences = Rc::new(RefCell::new(Fences {
             fences: Vec::new(),
             value: 0,
+            semaphore,
         }));
         let id = self.res.timelines.insert(fences.clone());
-        Ok(Timeline {
+        Timeline {
             id,
             token: self.res.table.add_timeline(id),
             gl: self.gl.clone(),
             fences,
             reset: self.extra.reset,
             thread: self.thread,
-        })
+        }
     }
 
     pub fn destroy_timeline(&self, timeline: Timeline) {
         self.thread();
         self.res.table.drop_timeline(&timeline);
         let fences = self.res.timelines.remove(timeline.id);
-        fences.borrow().delete(&self.gl);
+        fences.borrow().delete(&self.gl, &self.extra);
     }
 
     fn healthy(&self) -> Result<(), Error> {
@@ -862,6 +872,13 @@ impl Device {
         let table = &self.res.table;
         table.check_timelines(waits);
         table.check_timelines(signals);
+        check!(
+            waits
+                .iter()
+                .chain(signals)
+                .all(|(t, _)| t.fences.borrow().semaphore == 0),
+            "submit takes no shared timelines on GL; use wait_shared and signal_shared"
+        );
         let mut queue = None;
         for c in commands {
             let recording = &c.recording;
@@ -907,7 +924,7 @@ impl Drop for Device {
                 b.delete(gl);
             }
             for t in self.res.textures.drain() {
-                t.delete(gl);
+                t.delete(gl, &self.extra);
             }
             for s in self.res.samplers.drain() {
                 sampler::delete(gl, s);
@@ -922,7 +939,7 @@ impl Drop for Device {
                 q.delete(gl);
             }
             for t in self.res.timelines.drain() {
-                t.borrow().delete(gl);
+                t.borrow().delete(gl, &self.extra);
             }
             gl.delete_framebuffer(self.fbo);
             gl.delete_framebuffer(self.read);

@@ -109,6 +109,18 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native void nPresentBarrier(long target, long texture, int srcStage);
 
+    public void acquireShared(Texture texture, int dstStage) {
+        nAcquireShared(handle(), Texture.raw(texture), dstStage);
+    }
+
+    private static native void nAcquireShared(long target, long texture, int dstStage);
+
+    public void releaseShared(Texture texture, int srcStage) {
+        nReleaseShared(handle(), Texture.raw(texture), srcStage);
+    }
+
+    private static native void nReleaseShared(long target, long texture, int srcStage);
+
     public void discardTextures(TextureDiscard[] textures) {
         try (var arena = new Arena()) {
             var texturesSize = 4;

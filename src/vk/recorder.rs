@@ -27,6 +27,7 @@ pub struct Recorder<'a> {
     pub heap: vk::DescriptorSet,
     pub point: vk::PipelineBindPoint,
     pub imported: bool,
+    pub family: u32,
 }
 
 unsafe impl Send for Recorder<'_> {}
@@ -361,6 +362,37 @@ impl Recorder<'_> {
         bits & !gone
     }
 
+    fn share(&self, texture: crate::Texture, release: bool, stage: Stage) {
+        let t = self.res.textures.get(texture);
+        let barrier = vk::ImageMemoryBarrier2::default()
+            .old_layout(vk::ImageLayout::GENERAL)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .image(t.image)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: t.aspect,
+                base_mip_level: t.base_mip,
+                level_count: t.mips,
+                base_array_layer: t.base_layer,
+                layer_count: t.layers,
+            });
+        let barrier = if release {
+            barrier
+                .src_stage_mask(vk_stages(stage))
+                .src_access_mask(vk_access(stage, false))
+                .src_queue_family_index(self.family)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_EXTERNAL)
+        } else {
+            barrier
+                .dst_stage_mask(vk_stages(stage))
+                .dst_access_mask(vk_access(stage, true))
+                .src_queue_family_index(vk::QUEUE_FAMILY_EXTERNAL)
+                .dst_queue_family_index(self.family)
+        };
+        let barriers = [barrier];
+        let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
+        unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
+    }
+
     fn barrier(&self, src: Stage, dst: Stage) {
         if src.is_empty() {
             return;
@@ -451,6 +483,12 @@ impl Recorder<'_> {
                     let barriers = [barrier];
                     let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
                     d.cmd_pipeline_barrier2(b, &info);
+                }
+                Command::AcquireShared { texture, dst_stage } => {
+                    self.share(texture, false, self.usable(dst_stage))
+                }
+                Command::ReleaseShared { texture, src_stage } => {
+                    self.share(texture, true, self.usable(src_stage))
                 }
                 Command::DiscardTextures { textures } => {
                     for chunk in textures.chunks(16) {

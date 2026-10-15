@@ -1,7 +1,9 @@
 use crate::Atomic64;
 use crate::Error;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
-use ash::khr::{present_wait, push_descriptor, swapchain};
+use ash::khr::{
+    external_memory_win32, external_semaphore_win32, present_wait, push_descriptor, swapchain,
+};
 use ash::vk;
 
 pub struct Extensions {
@@ -20,6 +22,10 @@ pub struct Extensions {
     pub push: Option<push_descriptor::Device>,
     pub copy: Option<host_image_copy::Device>,
     pub swapchain: Option<swapchain::Device>,
+    pub win32: Option<(
+        external_memory_win32::Device,
+        external_semaphore_win32::Device,
+    )>,
     pub present_id: bool,
     pub present_wait: Option<present_wait::Device>,
     pub budget: bool,
@@ -123,6 +129,14 @@ impl Extensions {
                 .then(|| push_descriptor::Device::new(instance, raw));
             let swapchain =
                 has(c"vkCreateSwapchainKHR").then(|| swapchain::Device::new(instance, raw));
+            let win32 = (has(c"vkGetMemoryWin32HandlePropertiesKHR")
+                && has(c"vkImportSemaphoreWin32HandleKHR"))
+            .then(|| {
+                (
+                    external_memory_win32::Device::new(instance, raw),
+                    external_semaphore_win32::Device::new(instance, raw),
+                )
+            });
             let present_id = chained::<vk::PhysicalDevicePresentIdFeaturesKHR>(features)
                 .is_some_and(|f| f.present_id != 0);
             let present_wait = chained::<vk::PhysicalDevicePresentWaitFeaturesKHR>(features)
@@ -216,6 +230,7 @@ impl Extensions {
                 push,
                 copy,
                 swapchain,
+                win32,
                 present_id,
                 present_wait,
                 budget,

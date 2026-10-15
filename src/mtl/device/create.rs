@@ -73,6 +73,7 @@ fn supported(raw: &ProtocolObject<dyn MTLDevice>) -> DeviceInfo {
         slot_binding: true,
         swapchain: true,
         present_wait: true,
+        shared_handles: false,
     }
 }
 

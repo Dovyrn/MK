@@ -1,5 +1,6 @@
 use crate::Error;
 use crate::gl::bindless::Bindless;
+use crate::gl::shared::Shared;
 use std::ffi::c_void;
 
 pub type View = unsafe extern "system" fn(u32, u32, u32, u32, u32, u32, u32, u32);
@@ -113,6 +114,7 @@ pub struct Extra {
     pub storage3: Option<Samples3>,
     pub copy_image: Option<CopyImage>,
     pub bindless: Option<Bindless>,
+    pub shared: Option<Shared>,
 }
 
 pub unsafe fn cast<F>(p: *const c_void) -> F {
@@ -204,6 +206,10 @@ impl Extra {
                 storage3: multisample("glTexStorage3DMultisample").map(|p| cast(p)),
                 copy_image: get("glCopyImageSubData", 43, "GL_ARB_copy_image").map(|p| cast(p)),
                 bindless: Bindless::load(&|name| get(name, 99, "GL_ARB_bindless_texture")),
+                shared: Shared::load(&|name| {
+                    get(name, 99, "GL_EXT_memory_object_win32")
+                        .filter(|_| has(99, "GL_EXT_semaphore_win32"))
+                }),
             })
         }
     }

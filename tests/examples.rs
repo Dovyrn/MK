@@ -34,6 +34,8 @@ mod render;
 mod residency;
 #[path = "../examples/resolve.rs"]
 mod resolve;
+#[path = "../examples/shared.rs"]
+mod shared;
 #[path = "../examples/slots.rs"]
 mod slots;
 #[path = "../examples/subgroups.rs"]
@@ -64,6 +66,6 @@ macro_rules! examples {
 
 examples!(
     adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, present,
-    queries, queues, reads, render, residency, resolve, slots, subgroups, texture, threads, tiles,
-    uploads, view, viewports
+    queries, queues, reads, render, residency, resolve, shared, slots, subgroups, texture, threads,
+    tiles, uploads, view, viewports
 );

@@ -10,6 +10,7 @@ mod query;
 mod recorder;
 mod resources;
 mod sampler;
+mod shared;
 mod state;
 mod texture;
 mod timeline;

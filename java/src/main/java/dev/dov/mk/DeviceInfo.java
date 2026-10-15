@@ -53,11 +53,12 @@ public class DeviceInfo {
     public boolean slotBinding = false;
     public boolean swapchain = false;
     public boolean presentWait = false;
+    public boolean sharedHandles = false;
 
-    public static final int SIZE = 180;
+    public static final int SIZE = 184;
 
     int encodedSize() {
-        return 180;
+        return 184;
     }
 
     long encode(long p) {
@@ -150,6 +151,8 @@ public class DeviceInfo {
         memPutInt(p, swapchain ? 1 : 0);
         p += 4;
         memPutInt(p, presentWait ? 1 : 0);
+        p += 4;
+        memPutInt(p, sharedHandles ? 1 : 0);
         p += 4;
         return p;
     }
@@ -245,6 +248,8 @@ public class DeviceInfo {
         r.swapchain = memGetInt(p) != 0;
         p += 4;
         r.presentWait = memGetInt(p) != 0;
+        p += 4;
+        r.sharedHandles = memGetInt(p) != 0;
         p += 4;
         return r;
     }

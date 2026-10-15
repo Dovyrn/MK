@@ -750,6 +750,22 @@ impl<'a> Check<'a> {
                 );
                 self.table.assert_defined(name, texture);
             }
+            #[cfg(feature = "vk")]
+            Command::AcquireShared {
+                texture,
+                dst_stage: stage,
+            }
+            | Command::ReleaseShared {
+                texture,
+                src_stage: stage,
+            } => {
+                check!(!stage.is_empty(), "{name} needs a stage");
+                self.table.textures.get(texture);
+                check!(
+                    self.table.shared.find(texture).is_some(),
+                    "{name} on {texture}, which import_shared_texture did not make"
+                );
+            }
             Command::DiscardTextures { textures } => {
                 check!(!textures.is_empty(), "{name} has no textures");
                 for d in textures {

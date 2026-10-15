@@ -35,6 +35,11 @@ impl Timeline {
     }
 
     fn healthy(&self) -> Result<(), Error> {
+        if self.fences.borrow().semaphore != 0 {
+            return Err(Error::Unsupported(
+                "a shared GL timeline has no host value; use wait_shared and signal_shared".into(),
+            ));
+        }
         check_eq!(
             std::thread::current().id(),
             self.thread,

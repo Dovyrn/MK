@@ -21,7 +21,7 @@ impl Device {
         self.res.timelines.remove(id).free(&self.raw);
     }
 
-    fn add_timeline(&self, raw: vk::Semaphore, own: bool) -> Timeline {
+    pub(super) fn add_timeline(&self, raw: vk::Semaphore, own: bool) -> Timeline {
         let id = self.res.timelines.insert(Semaphore { raw, own });
         Timeline {
             id,

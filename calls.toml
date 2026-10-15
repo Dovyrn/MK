@@ -387,6 +387,28 @@ result = "timeline"
 shared = true
 
 [[call]]
+name = "import_shared_texture"
+backend = "vk"
+params = [["handle", "u64"], ["info", "TextureInfo"]]
+result = "Texture"
+fails = true
+shared = true
+
+[[call]]
+name = "import_shared_timeline"
+backend = "vk"
+params = [["handle", "u64"]]
+result = "timeline"
+fails = true
+shared = true
+
+[[call]]
+name = "device_luid"
+backend = "vk"
+result = "u64"
+shared = true
+
+[[call]]
 name = "import_commands"
 backend = "vk"
 params = [["pool", "CommandPool"], ["raw", "handle"]]
@@ -548,6 +570,40 @@ backend = "gl"
 params = [["raw", "u32"], ["info", "TextureInfo"]]
 result = "Texture"
 fails = true
+shared = true
+
+[[call]]
+name = "import_shared_texture"
+backend = "gl"
+params = [["handle", "u64"], ["info", "TextureInfo"]]
+result = "Texture"
+fails = true
+shared = true
+
+[[call]]
+name = "import_shared_timeline"
+backend = "gl"
+params = [["handle", "u64"]]
+result = "timeline"
+fails = true
+shared = true
+
+[[call]]
+name = "wait_shared"
+backend = "gl"
+params = [["timeline", "timeline"], ["value", "u64"], ["textures", "[Texture]"]]
+shared = true
+
+[[call]]
+name = "signal_shared"
+backend = "gl"
+params = [["timeline", "timeline"], ["value", "u64"], ["textures", "[Texture]"]]
+shared = true
+
+[[call]]
+name = "device_luid"
+backend = "gl"
+result = "u64"
 shared = true
 
 [[call]]

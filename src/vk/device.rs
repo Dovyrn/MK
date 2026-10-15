@@ -8,6 +8,7 @@ mod pipelines;
 mod queries;
 mod residency;
 mod samplers;
+mod shared;
 mod swapchains;
 mod textures;
 mod timelines;
@@ -461,6 +462,11 @@ impl Device {
             heap: self.bindless.set,
             point: vk::PipelineBindPoint::GRAPHICS,
             imported: false,
+            family: if self.families.len() > 1 {
+                vk::QUEUE_FAMILY_IGNORED
+            } else {
+                queue.family
+            },
         };
         recorder.bind_heap_set();
         Recording { check, recorder }

@@ -1,9 +1,11 @@
 use crate::Error;
+use crate::gl::extra::Extra;
 use glow::HasContext;
 
 pub struct Fences {
     pub fences: Vec<(u64, glow::Fence)>,
     pub value: u64,
+    pub semaphore: u32,
 }
 
 impl Fences {
@@ -60,9 +62,12 @@ impl Fences {
         Ok(())
     }
 
-    pub fn delete(&self, gl: &glow::Context) {
+    pub fn delete(&self, gl: &glow::Context, extra: &Extra) {
         for &(_, f) in &self.fences {
             unsafe { gl.delete_sync(f) };
+        }
+        if let Some(shared) = extra.shared.as_ref().filter(|_| self.semaphore != 0) {
+            unsafe { (shared.delete_semaphores)(1, &self.semaphore) };
         }
     }
 }

@@ -258,7 +258,6 @@ fn direct(kind: &str) -> bool {
                 | "bool"
                 | "bytes"
                 | "mutbytes"
-                | "timeline"
                 | "taken"
         )
 }
@@ -402,7 +401,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                     args.push(format!("{n}Address"));
                     args.push(format!("{n}.length"));
                 }
-                "timeline" => args.push(format!("{n}.handle()")),
+                "timeline" => args.push(format!("{n}.handle(arena)")),
                 "taken" => args.push(format!("{n}.take()")),
                 _ => {
                     writeln!(s, "            var {n}Address = arena.alloc({n}.encodedSize());\n            {n}.encode({n}Address);").unwrap();

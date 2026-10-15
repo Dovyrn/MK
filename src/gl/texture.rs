@@ -13,6 +13,7 @@ pub struct TextureObject {
     pub format: crate::Format,
     pub own: bool,
     pub image: Cell<u64>,
+    pub memory: u32,
 }
 
 pub fn target(dimension: crate::TextureDimension, samples: u32) -> u32 {
@@ -40,7 +41,7 @@ pub fn aspect(f: crate::Format) -> (u32, u32) {
     }
 }
 
-unsafe fn nearest(gl: &glow::Context, kind: u32, format: Format) {
+pub unsafe fn nearest(gl: &glow::Context, kind: u32, format: Format) {
     if format.uint() || format.sint() {
         unsafe {
             gl.tex_parameter_i32(kind, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
@@ -185,6 +186,7 @@ impl TextureObject {
                 format: info.format,
                 own: true,
                 image: Cell::new(0),
+                memory: 0,
             })
         }
     }
@@ -238,6 +240,7 @@ impl TextureObject {
                 format: info.format,
                 own: true,
                 image: Cell::new(0),
+                memory: 0,
             })
         }
     }
@@ -343,11 +346,14 @@ impl TextureObject {
         }
     }
 
-    pub fn delete(&self, gl: &glow::Context) {
+    pub fn delete(&self, gl: &glow::Context, extra: &Extra) {
         if self.own
             && let Some(raw) = self.raw
         {
             unsafe { gl.delete_texture(raw) };
+        }
+        if let Some(shared) = extra.shared.as_ref().filter(|_| self.memory != 0) {
+            unsafe { (shared.delete_memory)(1, &self.memory) };
         }
     }
 }

@@ -240,6 +240,43 @@ public class VkDevice extends Device {
 
     private static native long nImportTimeline(long device, long raw);
 
+    public Texture importSharedTexture(long handle, TextureInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Texture.of(nImportSharedTexture(handle(), handle, infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nImportSharedTexture(long device, long handle, long info, int infoLength);
+
+    public Timeline importSharedTimeline(long handle) {
+        lock.readLock().lock();
+        try {
+            return new Timeline(nImportSharedTimeline(handle(), handle));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nImportSharedTimeline(long device, long handle);
+
+    public long deviceLuid() {
+        lock.readLock().lock();
+        try {
+            return nDeviceLuid(handle());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nDeviceLuid(long device);
+
     public CommandBuffer importCommands(CommandPool pool, long raw) {
         lock.readLock().lock();
         try {

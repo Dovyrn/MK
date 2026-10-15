@@ -46,6 +46,7 @@ fields = [
     ["slot_binding", "bool", "false"],
     ["swapchain", "bool", "false"],
     ["present_wait", "bool", "false"],
+    ["shared_handles", "bool", "false"],
 ]
 
 [[info]]

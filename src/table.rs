@@ -40,6 +40,7 @@ pub struct Table {
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
     pub mappable: Entries<Buffer, bool>,
     pub presentable: Entries<Texture, AtomicBool>,
+    pub shared: Entries<Texture, ()>,
 }
 
 #[derive(Clone, Copy)]
@@ -279,6 +280,7 @@ impl Table {
         self.textures.clear(texture);
         self.parents.forget(texture);
         self.presentable.forget(texture);
+        self.shared.forget(texture);
         lock(&self.undefined).retain(|&t| t != texture);
     }
 
