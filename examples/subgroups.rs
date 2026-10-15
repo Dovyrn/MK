@@ -4,7 +4,7 @@ use mk::{ComputePipelineInfo, Memory, Stage, SubgroupOp};
 mod host;
 
 pub fn main() {
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
     let need = SubgroupOp::BASIC

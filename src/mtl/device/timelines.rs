@@ -26,7 +26,7 @@ impl Device {
         }
     }
 
-    pub fn destroy_timeline(&mut self, timeline: Timeline) {
+    pub fn destroy_timeline(&self, timeline: Timeline) {
         self.res.table.drop_timeline(&timeline);
         let raw = self.res.timelines.remove(timeline.id);
         drop(raw);

@@ -43,7 +43,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_query_pool(&mut self, heap: QueryPool) {
+    pub fn destroy_query_pool(&self, heap: QueryPool) {
         self.res.table.drop_query(heap);
         self.res.queries.remove(heap);
     }

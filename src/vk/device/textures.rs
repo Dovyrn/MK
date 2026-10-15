@@ -162,7 +162,7 @@ impl Device {
         Ok(self.res.textures.insert(t))
     }
 
-    pub fn destroy_texture(&mut self, texture: Texture) {
+    pub fn destroy_texture(&self, texture: Texture) {
         self.res.table.drop_texture(texture);
         let texture = self.res.textures.remove(texture);
         texture.free(self);

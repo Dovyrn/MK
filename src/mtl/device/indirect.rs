@@ -53,7 +53,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_indirect_buffer(&mut self, indirect: IndirectBuffer) {
+    pub fn destroy_indirect_buffer(&self, indirect: IndirectBuffer) {
         self.res.table.drop_indirect(indirect);
         self.res.indirects.remove(indirect);
     }

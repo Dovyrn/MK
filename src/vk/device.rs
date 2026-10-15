@@ -412,8 +412,8 @@ impl Device {
         self.pools.get(pool).reset(&self.raw).map_err(Error::from)
     }
 
-    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
-        self.res.table.pools.clear(pool);
+    pub fn destroy_command_pool(&self, pool: CommandPool) {
+        self.res.table.drop_pool(pool);
         self.pools.remove(pool).destroy(&self.raw);
     }
 

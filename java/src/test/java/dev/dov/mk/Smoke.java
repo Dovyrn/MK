@@ -46,16 +46,8 @@ public class Smoke {
             compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
             compute.end();
             var spare = device.createBuffer(4, Memory.UPLOAD);
-            var rejected = false;
-            try {
-                device.destroyBuffer(spare);
-            } catch (IllegalStateException e) {
-                rejected = true;
-            }
-            if (!rejected) {
-                throw new IllegalStateException("a destroy was accepted while recording");
-            }
-            System.out.println("created while recording, destroy while recording rejected");
+            device.destroyBuffer(spare);
+            System.out.println("created and destroyed while recording");
             commands.end();
             device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});
             if (!timeline.await(1, 1000)) {

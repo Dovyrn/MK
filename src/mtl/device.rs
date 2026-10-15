@@ -291,8 +291,8 @@ impl Device {
         Ok(())
     }
 
-    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
-        self.res.table.pools.clear(pool);
+    pub fn destroy_command_pool(&self, pool: CommandPool) {
+        self.res.table.drop_pool(pool);
         self.pools.remove(pool);
     }
 

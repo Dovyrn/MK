@@ -35,7 +35,7 @@ pub fn main() {
         device.unmap_buffer(buffer);
     }
     println!(
-        "{} command buffers recorded on {} threads, submitted together",
+        "{} command buffers recorded on {} threads, submitted together, 64 destroys each mid-recording",
         buffers.len(),
         buffers.len()
     );
@@ -54,6 +54,10 @@ fn record(device: &mk::Device, size: u64, value: u8) -> (mk::CommandBuffer<'_>, 
         .begin_compute_pass(mk::Stage::default(), mk::Stage::default())
         .unwrap();
     pass.fill_buffer(buffer, 0, size, value);
+    for _ in 0..64 {
+        let spare = device.create_buffer(size, mk::Memory::Upload).unwrap();
+        device.destroy_buffer(spare);
+    }
     pass.memory_barrier(mk::Stage::COPY, mk::Stage::HOST);
     pass.end();
     c.end().unwrap();

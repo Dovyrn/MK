@@ -6,7 +6,7 @@ use crate::{
     IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
     Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
 };
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 #[derive(Clone, Copy)]
@@ -33,6 +33,7 @@ pub struct Table {
     pub queries: Entries<QueryPool, (crate::QueryKind, u32)>,
     pub timelines: Mutex<Entries<TimelineId, Signal>>,
     pub parents: Entries<Texture, Texture>,
+    pub views: Mutex<Vec<Texture>>,
     pub pools: Entries<CommandPool, (usize, AtomicBool)>,
     pub undefined: Mutex<Vec<Texture>>,
     pub residency: Mutex<Residency>,
@@ -70,7 +71,7 @@ pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
 }
 
 impl Table {
-    pub fn drop_buffer(&mut self, buffer: Buffer) {
+    pub fn drop_buffer(&self, buffer: Buffer) {
         self.buffers.get(buffer);
         lock(&self.residency).free_buffer(buffer);
         self.buffers.clear(buffer);
@@ -136,7 +137,15 @@ impl Table {
         crate::IndirectShaderHandle(words)
     }
 
-    pub fn drop_indirect(&mut self, indirect: IndirectBuffer) {
+    pub fn drop_pool(&self, pool: CommandPool) {
+        assert!(
+            !self.pools.get(pool).1.swap(true, Ordering::Acquire),
+            "destroy_command_pool on {pool} while it records a command buffer; end or drop that one first"
+        );
+        self.pools.clear(pool);
+    }
+
+    pub fn drop_indirect(&self, indirect: IndirectBuffer) {
         self.indirects.get(indirect);
         lock(&self.residency).free_indirect(indirect);
         self.indirects.clear(indirect);
@@ -167,7 +176,7 @@ impl Table {
         unsafe { std::slice::from_raw_parts_mut(data.cast(), count) }
     }
 
-    pub fn drop_query(&mut self, pool: QueryPool) {
+    pub fn drop_query(&self, pool: QueryPool) {
         self.queries.get(pool);
         lock(&self.residency).free_query(pool);
         self.queries.clear(pool);
@@ -224,13 +233,20 @@ impl Table {
         );
     }
 
-    pub fn drop_texture(&mut self, texture: Texture) {
-        check!(
-            !self.parents.values().any(|&p| p == texture),
-            "destroy_texture on {texture} while views of it live; destroy the views first"
-        );
+    pub fn drop_texture(&self, texture: Texture) {
         self.textures.get(texture);
-        if self.parents.find(texture).is_none() {
+        let parent = self.parents.find(texture).copied();
+        if cfg!(feature = "validation") {
+            let mut views = lock(&self.views);
+            assert!(
+                !views.contains(&texture),
+                "destroy_texture on {texture} while views of it live; destroy the views first"
+            );
+            if let Some(i) = parent.and_then(|p| views.iter().position(|&v| v == p)) {
+                views.swap_remove(i);
+            }
+        }
+        if parent.is_none() {
             lock(&self.residency).free_texture(texture);
         }
         self.textures.clear(texture);
@@ -305,6 +321,9 @@ impl Table {
     pub fn check_view(&self, id: Texture, texture: Texture, info: &TextureViewInfo) {
         let t = *self.textures.get(texture);
         self.parents.set(id, texture);
+        if cfg!(feature = "validation") {
+            lock(&self.views).push(texture);
+        }
         self.textures.set(
             id,
             TextureInfo {
@@ -396,7 +415,7 @@ impl Table {
         token
     }
 
-    pub fn drop_timeline(&mut self, timeline: &crate::Timeline) {
+    pub fn drop_timeline(&self, timeline: &crate::Timeline) {
         self.check_timelines(&[(timeline, 0)]);
         lock(&self.timelines).clear(timeline.id);
     }

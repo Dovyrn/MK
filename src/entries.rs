@@ -21,12 +21,12 @@ impl<H: Handle, T> Entries<H, T> {
         self.items.put(h.index(), h.generation(), item);
     }
 
-    pub fn clear(&mut self, h: H) {
+    pub fn clear(&self, h: H) {
         self.get(h);
         self.items.take(h.index());
     }
 
-    pub fn forget(&mut self, h: H) {
+    pub fn forget(&self, h: H) {
         if self.find(h).is_some() {
             self.items.take(h.index());
         }

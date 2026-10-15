@@ -52,7 +52,7 @@ impl Device {
         Ok(slot)
     }
 
-    pub fn destroy_sampler(&mut self, sampler: Sampler) {
+    pub fn destroy_sampler(&self, sampler: Sampler) {
         self.res.table.samplers.clear(sampler);
         let sampler = self.res.samplers.remove(sampler);
         unsafe { self.raw.destroy_sampler(sampler, None) };

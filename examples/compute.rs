@@ -41,6 +41,8 @@ pub fn main() {
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4);
     pass.dispatch(n / 64, 1, 1);
+    let spare = device.create_buffer(4, Memory::Upload).unwrap();
+    device.destroy_buffer(spare);
     pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
     pass.end();
     c.end_debug_label();

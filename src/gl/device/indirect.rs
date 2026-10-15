@@ -13,7 +13,7 @@ impl Device {
         unreachable!("caps.addresses is false on GL")
     }
 
-    pub fn destroy_indirect_buffer(&mut self, indirect: IndirectBuffer) {
+    pub fn destroy_indirect_buffer(&self, indirect: IndirectBuffer) {
         self.thread();
         self.res.table.drop_indirect(indirect);
     }

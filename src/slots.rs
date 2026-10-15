@@ -36,13 +36,10 @@ impl<T> Slots<T> {
         check!(live, "{h} does not exist or was destroyed");
     }
 
-    pub fn remove<H: Handle>(&mut self, h: H) -> T {
+    pub fn remove<H: Handle>(&self, h: H) -> T {
         self.check(h);
         let (generation, item) = self.items.take(h.index()).unwrap();
-        self.free
-            .get_mut()
-            .unwrap()
-            .push((h.index(), generation + 1));
+        self.free.lock().unwrap().push((h.index(), generation + 1));
         item
     }
 

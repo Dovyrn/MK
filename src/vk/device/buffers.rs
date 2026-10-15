@@ -66,7 +66,7 @@ impl Device {
         id
     }
 
-    pub fn destroy_buffer(&mut self, buffer: Buffer) {
+    pub fn destroy_buffer(&self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
         let buffer = self.res.buffers.remove(buffer);
         buffer.free(self);

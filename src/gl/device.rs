@@ -338,7 +338,7 @@ impl Device {
         self.res.buffers.get(buffer).raw.0.get()
     }
 
-    pub fn destroy_buffer(&mut self, buffer: Buffer) {
+    pub fn destroy_buffer(&self, buffer: Buffer) {
         self.thread();
         self.res.table.drop_buffer(buffer);
         self.res.buffers.remove(buffer).delete(&self.gl);
@@ -404,7 +404,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_compute_pipeline(&mut self, pipeline: ComputePipeline) {
+    pub fn destroy_compute_pipeline(&self, pipeline: ComputePipeline) {
         self.thread();
         self.res.table.pipelines.clear(pipeline);
         self.res.pipelines.remove(pipeline).delete(&self.gl);
@@ -469,7 +469,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_render_pipeline(&mut self, pipeline: RenderPipeline) {
+    pub fn destroy_render_pipeline(&self, pipeline: RenderPipeline) {
         self.thread();
         self.res.table.renders.clear(pipeline);
         self.res.renders.remove(pipeline).delete(&self.gl);
@@ -483,7 +483,7 @@ impl Device {
         ))
     }
 
-    pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
+    pub fn destroy_tile_pipeline(&self, pipeline: TilePipeline) {
         self.thread();
         self.res.table.tile_pipelines.clear(pipeline);
     }
@@ -495,7 +495,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_depth_state(&mut self, state: DepthState) {
+    pub fn destroy_depth_state(&self, state: DepthState) {
         self.thread();
         self.res.table.states.clear(state);
         self.res.depths.remove(state);
@@ -691,7 +691,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_texture(&mut self, texture: Texture) {
+    pub fn destroy_texture(&self, texture: Texture) {
         self.thread();
         self.res.table.drop_texture(texture);
         self.res.textures.remove(texture).delete(&self.gl);
@@ -706,7 +706,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_sampler(&mut self, sampler: Sampler) {
+    pub fn destroy_sampler(&self, sampler: Sampler) {
         self.thread();
         self.res.table.samplers.clear(sampler);
         sampler::delete(&self.gl, self.res.samplers.remove(sampler));
@@ -724,7 +724,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_query_pool(&mut self, heap: QueryPool) {
+    pub fn destroy_query_pool(&self, heap: QueryPool) {
         self.thread();
         self.res.table.drop_query(heap);
         self.res.queries.remove(heap).delete(&self.gl);
@@ -747,7 +747,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_timeline(&mut self, timeline: Timeline) {
+    pub fn destroy_timeline(&self, timeline: Timeline) {
         self.thread();
         self.res.table.drop_timeline(&timeline);
         let fences = self.res.timelines.remove(timeline.id);
@@ -775,9 +775,9 @@ impl Device {
         Ok(())
     }
 
-    pub fn destroy_command_pool(&mut self, pool: CommandPool) {
+    pub fn destroy_command_pool(&self, pool: CommandPool) {
         self.thread();
-        self.res.table.pools.clear(pool);
+        self.res.table.drop_pool(pool);
         self.res.pools.remove(pool);
     }
 

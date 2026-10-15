@@ -38,7 +38,7 @@ impl Device {
         &self.res.buffers.get(buffer).raw
     }
 
-    pub fn destroy_buffer(&mut self, buffer: Buffer) {
+    pub fn destroy_buffer(&self, buffer: Buffer) {
         self.res.table.drop_buffer(buffer);
         self.res.buffers.remove(buffer);
     }

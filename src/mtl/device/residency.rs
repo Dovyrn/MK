@@ -21,7 +21,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_residency_set(&mut self, set: ResidencySet) {
+    pub fn destroy_residency_set(&self, set: ResidencySet) {
         lock(&self.res.table.residency).destroy(set);
         self.res.sets.remove(set);
     }

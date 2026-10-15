@@ -18,6 +18,7 @@ shared = true
 [[call]]
 name = "destroy_buffer"
 params = [["buffer", "Buffer"]]
+shared = true
 
 [[call]]
 name = "map_buffer"
@@ -52,6 +53,7 @@ shared = true
 [[call]]
 name = "destroy_compute_pipeline"
 params = [["pipeline", "ComputePipeline"]]
+shared = true
 
 [[call]]
 name = "create_render_pipeline"
@@ -70,6 +72,7 @@ shared = true
 [[call]]
 name = "destroy_render_pipeline"
 params = [["pipeline", "RenderPipeline"]]
+shared = true
 
 [[call]]
 name = "create_tile_pipeline"
@@ -81,6 +84,7 @@ shared = true
 [[call]]
 name = "destroy_tile_pipeline"
 params = [["pipeline", "TilePipeline"]]
+shared = true
 
 [[call]]
 name = "create_depth_state"
@@ -92,6 +96,7 @@ shared = true
 [[call]]
 name = "destroy_depth_state"
 params = [["state", "DepthState"]]
+shared = true
 
 [[call]]
 name = "create_texture"
@@ -134,6 +139,7 @@ shared = true
 [[call]]
 name = "destroy_texture"
 params = [["texture", "Texture"]]
+shared = true
 
 [[call]]
 name = "bindless_texture"
@@ -158,6 +164,7 @@ shared = true
 [[call]]
 name = "destroy_sampler"
 params = [["sampler", "Sampler"]]
+shared = true
 
 [[call]]
 name = "bindless_sampler"
@@ -176,6 +183,7 @@ shared = true
 [[call]]
 name = "destroy_query_pool"
 params = [["pool", "QueryPool"]]
+shared = true
 
 [[call]]
 name = "create_indirect_buffer"
@@ -187,6 +195,7 @@ shared = true
 [[call]]
 name = "destroy_indirect_buffer"
 params = [["indirect", "IndirectBuffer"]]
+shared = true
 
 [[call]]
 name = "indirect_shader_handle"
@@ -202,6 +211,7 @@ shared = true
 [[call]]
 name = "destroy_residency_set"
 params = [["set", "ResidencySet"]]
+shared = true
 
 [[call]]
 name = "add_residency"
@@ -227,6 +237,7 @@ shared = true
 [[call]]
 name = "destroy_timeline"
 params = [["timeline", "taken"]]
+shared = true
 
 [[call]]
 name = "create_command_pool"
@@ -243,6 +254,7 @@ fails = true
 [[call]]
 name = "destroy_command_pool"
 params = [["pool", "CommandPool"]]
+shared = true
 
 [[call]]
 name = "begin_commands"

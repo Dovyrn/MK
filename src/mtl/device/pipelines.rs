@@ -226,7 +226,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_compute_pipeline(&mut self, pipeline: ComputePipeline) {
+    pub fn destroy_compute_pipeline(&self, pipeline: ComputePipeline) {
         self.res.table.pipelines.clear(pipeline);
         let pipeline = self.res.pipelines.remove(pipeline);
         drop(pipeline);
@@ -370,7 +370,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_render_pipeline(&mut self, pipeline: RenderPipeline) {
+    pub fn destroy_render_pipeline(&self, pipeline: RenderPipeline) {
         self.res.table.renders.clear(pipeline);
         let pipeline = self.res.renders.remove(pipeline);
         drop(pipeline);
@@ -400,7 +400,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_tile_pipeline(&mut self, pipeline: TilePipeline) {
+    pub fn destroy_tile_pipeline(&self, pipeline: TilePipeline) {
         self.res.table.tile_pipelines.clear(pipeline);
         let pipeline = self.res.tiles.remove(pipeline);
         drop(pipeline);
@@ -425,7 +425,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_depth_state(&mut self, state: DepthState) {
+    pub fn destroy_depth_state(&self, state: DepthState) {
         self.res.table.states.clear(state);
         let state = self.res.depths.remove(state);
         drop(state);

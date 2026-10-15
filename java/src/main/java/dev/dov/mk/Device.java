@@ -86,12 +86,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateBuffer(long device, long size, int memory);
 
     public void destroyBuffer(Buffer buffer) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyBuffer");
             nDestroyBuffer(handle(), Buffer.raw(buffer));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -161,12 +160,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateComputePipeline(long device, long info, int infoLength);
 
     public void destroyComputePipeline(ComputePipeline pipeline) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyComputePipeline");
             nDestroyComputePipeline(handle(), ComputePipeline.raw(pipeline));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -203,12 +201,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateMeshPipeline(long device, long info, int infoLength);
 
     public void destroyRenderPipeline(RenderPipeline pipeline) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyRenderPipeline");
             nDestroyRenderPipeline(handle(), RenderPipeline.raw(pipeline));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -230,12 +227,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateTilePipeline(long device, long info, int infoLength);
 
     public void destroyTilePipeline(TilePipeline pipeline) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyTilePipeline");
             nDestroyTilePipeline(handle(), TilePipeline.raw(pipeline));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -257,12 +253,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateDepthState(long device, long info, int infoLength);
 
     public void destroyDepthState(DepthState state) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyDepthState");
             nDestroyDepthState(handle(), DepthState.raw(state));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -351,12 +346,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateTextureView(long device, long texture, long info, int infoLength);
 
     public void destroyTexture(Texture texture) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyTexture");
             nDestroyTexture(handle(), Texture.raw(texture));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -389,12 +383,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateSampler(long device, long info, int infoLength);
 
     public void destroySampler(Sampler sampler) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroySampler");
             nDestroySampler(handle(), Sampler.raw(sampler));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -412,12 +405,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateQueryPool(long device, int kind, int count);
 
     public void destroyQueryPool(QueryPool pool) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyQueryPool");
             nDestroyQueryPool(handle(), QueryPool.raw(pool));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -439,12 +431,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateIndirectBuffer(long device, long info, int infoLength);
 
     public void destroyIndirectBuffer(IndirectBuffer indirect) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyIndirectBuffer");
             nDestroyIndirectBuffer(handle(), IndirectBuffer.raw(indirect));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -478,12 +469,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateResidencySet(long device);
 
     public void destroyResidencySet(ResidencySet set) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyResidencySet");
             nDestroyResidencySet(handle(), ResidencySet.raw(set));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -560,12 +550,11 @@ public class Device implements AutoCloseable {
     private static native long nCreateTimeline(long device);
 
     public void destroyTimeline(Timeline timeline) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyTimeline");
             nDestroyTimeline(handle(), timeline.take());
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -595,12 +584,11 @@ public class Device implements AutoCloseable {
     private static native void nResetCommandPool(long device, long pool);
 
     public void destroyCommandPool(CommandPool pool) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            idle("destroyCommandPool");
             nDestroyCommandPool(handle(), CommandPool.raw(pool));
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 

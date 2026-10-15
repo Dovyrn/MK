@@ -24,7 +24,7 @@ impl Device {
         Ok(id)
     }
 
-    pub fn destroy_indirect_buffer(&mut self, indirect: IndirectBuffer) {
+    pub fn destroy_indirect_buffer(&self, indirect: IndirectBuffer) {
         self.res.table.drop_indirect(indirect);
         let buffer = self.res.indirects.remove(indirect);
         self.destroy_buffer(buffer);

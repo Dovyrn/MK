@@ -24,7 +24,7 @@ pub fn main() {
         println!("residency checks need the validation feature");
         return;
     }
-    let mut device = host::device(1);
+    let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let a = device.create_buffer(16, Memory::Upload).unwrap();
     let b = device.create_buffer(16, Memory::Readback).unwrap();

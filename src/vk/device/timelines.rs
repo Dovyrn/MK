@@ -15,7 +15,7 @@ impl Device {
         self.add_timeline(raw, false)
     }
 
-    pub fn destroy_timeline(&mut self, timeline: Timeline) {
+    pub fn destroy_timeline(&self, timeline: Timeline) {
         self.res.table.drop_timeline(&timeline);
         let id = timeline.id;
         self.res.timelines.remove(id).free(&self.raw);

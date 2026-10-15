@@ -73,11 +73,15 @@ impl<T> Chunks<T> {
         self.chunks[k].get_mut()?[j].item.get_mut().as_mut()
     }
 
-    pub fn take(&mut self, i: u32) -> Option<(u32, T)> {
+    pub fn take(&self, i: u32) -> Option<(u32, T)> {
         let (k, j) = locate(i);
-        let slot = &mut self.chunks[k].get_mut()?[j];
-        let generation = std::mem::take(slot.generation.get_mut());
-        Some((generation, slot.item.get_mut().take()?))
+        let slot = &self.chunks[k].get()?[j];
+        let generation = slot.generation.swap(0, Ordering::Acquire);
+        if generation == 0 {
+            return None;
+        }
+        let item = unsafe { (*slot.item.get()).take() }?;
+        Some((generation, item))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (u32, u32, &T)> {
