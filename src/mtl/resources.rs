@@ -24,5 +24,6 @@ pub struct Resources {
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
     pub indirects: Slots<crate::mtl::indirect::Indirect>,
     pub sets: Slots<Retained<ProtocolObject<dyn MTLResidencySet>>>,
+    pub swapchains: Slots<crate::mtl::swapchain::SwapchainObject>,
     pub table: crate::table::Table,
 }

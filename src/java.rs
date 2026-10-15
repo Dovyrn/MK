@@ -16,6 +16,7 @@ pub fn call<'local, T: Default>(
         Ok(Err(Error::Shader(m))) => ("dev/dov/mk/ShaderException", m),
         Ok(Err(Error::Invalid(m))) => ("dev/dov/mk/InvalidException", m),
         Ok(Err(Error::Driver(m))) => ("dev/dov/mk/DriverException", m),
+        Ok(Err(Error::OutOfDate(m))) => ("dev/dov/mk/OutOfDateException", m),
         Err(p) => (
             "java/lang/AssertionError",
             p.downcast_ref::<String>()

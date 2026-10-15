@@ -40,6 +40,7 @@ fields = [
     ["ordered_reads", "bool", "false"],
     ["image_atomics64", "bool", "false"],
     ["slot_binding", "bool", "false"],
+    ["swapchain", "bool", "false"],
 ]
 
 [[info]]
@@ -414,4 +415,15 @@ fields = [
     ["width", "u32", "1"],
     ["height", "u32", "1"],
     ["samples", "u32", "1"],
+]
+
+[[info]]
+name = "SwapchainInfo"
+fields = [
+    ["format", "Format", "format::BGRA8_UNORM"],
+    ["width", "u32", "1"],
+    ["height", "u32", "1"],
+    ["images", "u32", "3"],
+    ["usage", "TextureUsage", "texture_usage::COLOR"],
+    ["vsync", "bool", "true"],
 ]

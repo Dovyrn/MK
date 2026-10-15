@@ -3,7 +3,8 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice, MTLEvent,
+    MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice,
+    MTLDrawable, MTLEvent,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -53,10 +54,14 @@ impl Queue {
         buffers: &[Retained<ProtocolObject<dyn MTL4CommandBuffer>>],
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
+        present: Option<&ProtocolObject<dyn MTLDrawable>>,
     ) {
         for &(t, value) in waits {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&*t.raw);
             self.raw.waitForEvent_value(event, value);
+        }
+        if let Some(drawable) = present {
+            self.raw.waitForDrawable(drawable);
         }
         let list = NonNull::from(buffers).cast();
         unsafe {
@@ -66,6 +71,10 @@ impl Queue {
         for &(t, value) in signals {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&*t.raw);
             self.raw.signalEvent_value(event, value);
+        }
+        if let Some(drawable) = present {
+            self.raw.signalDrawable(drawable);
+            drawable.present();
         }
     }
 }

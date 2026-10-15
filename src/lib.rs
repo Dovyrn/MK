@@ -36,6 +36,7 @@ mod caps;
 mod check;
 mod chunks;
 mod command;
+#[cfg(any(feature = "vk", feature = "mtl"))]
 mod device_info;
 mod entries;
 mod error;
@@ -72,6 +73,8 @@ pub use objc2;
 pub use objc2_foundation;
 #[cfg(feature = "mtl")]
 pub use objc2_metal;
+#[cfg(feature = "mtl")]
+pub use objc2_quartz_core;
 pub use recording::{CommandBuffer, ComputePass, RenderPass};
 #[cfg(feature = "vk")]
 pub use vk::{Device, Timeline};

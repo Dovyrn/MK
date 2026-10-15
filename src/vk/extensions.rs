@@ -1,7 +1,7 @@
 use crate::Atomic64;
 use crate::Error;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
-use ash::khr::push_descriptor;
+use ash::khr::{push_descriptor, swapchain};
 use ash::vk;
 
 pub struct Extensions {
@@ -18,6 +18,7 @@ pub struct Extensions {
     pub mirror: bool,
     pub push: Option<push_descriptor::Device>,
     pub copy: Option<host_image_copy::Device>,
+    pub swapchain: Option<swapchain::Device>,
     pub budget: bool,
     pub local: bool,
     pub ordered: bool,
@@ -117,6 +118,8 @@ impl Extensions {
             let mesh = mesh.then(|| mesh_shader::Device::new(instance, raw));
             let push = has(c"vkCmdPushDescriptorSetKHR")
                 .then(|| push_descriptor::Device::new(instance, raw));
+            let swapchain =
+                has(c"vkCreateSwapchainKHR").then(|| swapchain::Device::new(instance, raw));
             let mut driver = vk::PhysicalDeviceDriverProperties::default();
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut driver);
             instance.get_physical_device_properties2(physical, &mut properties);
@@ -194,6 +197,7 @@ impl Extensions {
                 mirror: v12.is_some_and(|f| f.sampler_mirror_clamp_to_edge != 0),
                 push,
                 copy,
+                swapchain,
                 budget,
                 local,
                 ordered,

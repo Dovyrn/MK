@@ -101,6 +101,7 @@ fn main() {
         "Shader",
         "Invalid",
         "Driver",
+        "OutOfDate",
     ] {
         save(
             &dir.join(format!("{name}Exception.java")),

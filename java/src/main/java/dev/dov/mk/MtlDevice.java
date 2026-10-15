@@ -51,6 +51,70 @@ public class MtlDevice extends Device {
 
     private static native long nCreateDevice(long info, int infoLength);
 
+    public void destroySwapchain(Swapchain swapchain) {
+        lock.readLock().lock();
+        try {
+            nDestroySwapchain(handle(), Swapchain.raw(swapchain));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nDestroySwapchain(long device, long swapchain);
+
+    public Texture acquireTexture(Swapchain swapchain) {
+        lock.readLock().lock();
+        try {
+            return Texture.of(nAcquireTexture(handle(), Swapchain.raw(swapchain)));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nAcquireTexture(long device, long swapchain);
+
+    public void submitAndPresent(Swapchain swapchain, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var commandsAddress = arena.alloc(commands.length * 8L);
+                for (var i = 0; i < commands.length; i++) {
+                    memPutLong(commandsAddress + i * 8, commands[i].take());
+                }
+                var waitsAddress = arena.alloc(waits.length * 16L);
+                for (var i = 0; i < waits.length; i++) {
+                    memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
+                    memPutLong(waitsAddress + i * 16 + 8, waits[i].value());
+                }
+                var signalsAddress = arena.alloc(signals.length * 16L);
+                for (var i = 0; i < signals.length; i++) {
+                    memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
+                    memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
+                }
+                nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nSubmitAndPresent(long device, long swapchain, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+
+    public Swapchain createSwapchain(int queue, long layer, SwapchainInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                return Swapchain.of(nCreateSwapchain(handle(), queue, layer, infoAddress, info.encodedSize()));
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nCreateSwapchain(long device, int queue, long layer, long info, int infoLength);
+
     public static MtlDevice importDeviceRaw(long device, long compiler, int queues) {
         return new MtlDevice(nImportDeviceRaw(device, compiler, queues));
     }

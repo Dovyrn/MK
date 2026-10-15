@@ -371,7 +371,7 @@ impl<'a> Recorder<'a> {
                         );
                 }
             }
-            Command::DiscardTextures { .. } => {}
+            Command::DiscardTextures { .. } | Command::PresentBarrier { .. } => {}
             Command::CopyBufferToTexture {
                 buffer,
                 offset,

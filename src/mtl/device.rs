@@ -8,6 +8,7 @@ mod pipelines;
 mod queries;
 mod residency;
 mod samplers;
+mod swapchains;
 mod textures;
 mod timelines;
 
@@ -28,9 +29,9 @@ use objc2_foundation::NSString;
 use objc2_metal::{
     MTL4CommandBuffer, MTL4CommandQueue, MTL4Compiler, MTL4CompilerTaskOptions,
     MTL4ComputeCommandEncoder, MTL4FunctionDescriptor, MTL4LibraryFunctionDescriptor,
-    MTL4RenderCommandEncoder, MTLCompareFunction, MTLComputePipelineState, MTLDevice, MTLGPUFamily,
-    MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage, MTLVertexFormat,
+    MTL4RenderCommandEncoder, MTLCompareFunction, MTLComputePipelineState, MTLDevice, MTLDrawable,
+    MTLGPUFamily, MTLLibrary, MTLResourceID, MTLResourceOptions, MTLSize, MTLTextureDescriptor,
+    MTLTextureType, MTLTextureUsage, MTLVertexFormat,
 };
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -379,6 +380,16 @@ impl Device {
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
+        self.submit_with(commands, waits, signals, None)
+    }
+
+    fn submit_with<'d>(
+        &self,
+        commands: impl IntoIterator<Item = CommandBuffer<'d>>,
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
+        present: Option<(usize, &ProtocolObject<dyn MTLDrawable>)>,
+    ) -> Result<(), Error> {
         autoreleasepool(|_| {
             let table = &self.res.table;
             table.check_timelines(waits);
@@ -410,7 +421,13 @@ impl Device {
             let mut submits = scratch.unwrap();
             table.check_signals(queue, signals);
             self.queues[queue].lost()?;
-            self.queues[queue].commit(&submits, waits, signals);
+            if let Some((q, _)) = present {
+                check!(
+                    q == queue,
+                    "submit_and_present submits on queue {queue}; the swapchain presents on queue {q}"
+                );
+            }
+            self.queues[queue].commit(&submits, waits, signals, present.map(|p| p.1));
             submits.clear();
             table.record_signals(queue, signals);
             Ok(())

@@ -284,6 +284,41 @@ result = "device"
 fails = true
 
 [[call]]
+name = "destroy_swapchain"
+backend = "vk mtl"
+params = [["swapchain", "Swapchain"]]
+shared = true
+
+[[call]]
+name = "acquire_texture"
+backend = "vk mtl"
+params = [["swapchain", "Swapchain"]]
+result = "Texture"
+fails = true
+shared = true
+
+[[call]]
+name = "submit_and_present"
+backend = "vk mtl"
+params = [["swapchain", "Swapchain"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+fails = true
+shared = true
+
+[[call]]
+name = "create_swapchain"
+backend = "vk"
+params = [["queue", "u32"], ["surface", "handle"], ["info", "SwapchainInfo"]]
+result = "Swapchain"
+fails = true
+shared = true
+
+[[call]]
+name = "raw_instance"
+backend = "vk"
+result = "handle"
+shared = true
+
+[[call]]
 name = "import_device_raw"
 backend = "vk"
 params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]
@@ -347,6 +382,14 @@ name = "raw_queue"
 backend = "vk"
 params = [["queue", "u32"]]
 result = "handle"
+shared = true
+
+[[call]]
+name = "create_swapchain"
+backend = "mtl"
+params = [["queue", "u32"], ["layer", "object"], ["info", "SwapchainInfo"]]
+result = "Swapchain"
+fails = true
 shared = true
 
 [[call]]

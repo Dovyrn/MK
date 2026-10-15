@@ -1,11 +1,12 @@
 use super::Device;
 use crate::{DeviceInfo, Error};
 use ash::ext::{
-    debug_utils, host_image_copy, mesh_shader, rasterization_order_attachment_access,
-    shader_image_atomic_int64,
+    debug_utils, headless_surface, host_image_copy, mesh_shader, metal_surface,
+    rasterization_order_attachment_access, shader_image_atomic_int64,
 };
 use ash::khr::{
-    dynamic_rendering_local_read, portability_enumeration, portability_subset, push_descriptor,
+    android_surface, dynamic_rendering_local_read, portability_enumeration, portability_subset,
+    push_descriptor, surface, swapchain, wayland_surface, win32_surface, xcb_surface, xlib_surface,
 };
 use ash::vk;
 use std::ffi::{CStr, c_char};
@@ -14,9 +15,26 @@ fn has(list: &[vk::ExtensionProperties], name: &CStr) -> bool {
     list.iter().any(|e| e.extension_name_as_c_str() == Ok(name))
 }
 
-fn instance(entry: &ash::Entry) -> Result<ash::Instance, Error> {
+fn instance(entry: &ash::Entry, surfaces: bool) -> Result<ash::Instance, Error> {
     let available = unsafe { entry.enumerate_instance_extension_properties(None) }?;
     let mut names = Vec::new();
+    if surfaces {
+        let platforms = [
+            surface::NAME,
+            metal_surface::NAME,
+            win32_surface::NAME,
+            xlib_surface::NAME,
+            xcb_surface::NAME,
+            wayland_surface::NAME,
+            android_surface::NAME,
+            headless_surface::NAME,
+        ];
+        for name in platforms {
+            if has(&available, name) {
+                names.push(name.as_ptr());
+            }
+        }
+    }
     let mut flags = vk::InstanceCreateFlags::empty();
     if has(&available, debug_utils::NAME) {
         names.push(debug_utils::NAME.as_ptr());
@@ -75,7 +93,7 @@ impl Device {
     pub fn supported_features() -> Result<DeviceInfo, Error> {
         let entry = unsafe { ash::Entry::load() }
             .map_err(|e| Error::Unsupported(format!("no Vulkan loader: {e}")))?;
-        let instance = instance(&entry)?;
+        let instance = instance(&entry, false)?;
         let have = physical(&instance).and_then(|physical| {
             let available = unsafe { instance.enumerate_device_extension_properties(physical) }?;
             let queues = slots(&instance, physical, u32::MAX).len() as u32;
@@ -88,7 +106,7 @@ impl Device {
     pub fn create_device(info: &DeviceInfo) -> Result<Self, Error> {
         let entry = unsafe { ash::Entry::load() }
             .map_err(|e| Error::Unsupported(format!("no Vulkan loader: {e}")))?;
-        let instance = instance(&entry)?;
+        let instance = instance(&entry, info.swapchain)?;
         match Self::open(&instance, info) {
             Ok(mut device) => {
                 device.entry = Some(entry);
@@ -149,6 +167,7 @@ struct Features {
     order: vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT<'static>,
     image64: vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT<'static>,
     push: bool,
+    swapchain: bool,
 }
 
 impl Features {
@@ -180,6 +199,7 @@ impl Features {
         unsafe { instance.get_physical_device_features2(physical, &mut query) };
         s.core = query.features;
         s.push = has(available, push_descriptor::NAME);
+        s.swapchain = has(available, swapchain::NAME);
         s
     }
 
@@ -227,6 +247,7 @@ impl Features {
             ordered_reads: self.order.rasterization_order_color_attachment_access != 0,
             image_atomics64: self.image64.shader_image_int64_atomics != 0,
             slot_binding: self.push,
+            swapchain: self.swapchain,
         }
     }
 
@@ -275,6 +296,7 @@ impl Features {
         e.order.rasterization_order_color_attachment_access = on(info.ordered_reads);
         e.image64.shader_image_int64_atomics = on(info.image_atomics64);
         e.push = info.slot_binding;
+        e.swapchain = info.swapchain;
         e
     }
 
@@ -282,6 +304,7 @@ impl Features {
         [
             (portability_subset::NAME, true),
             (push_descriptor::NAME, self.push),
+            (swapchain::NAME, self.swapchain),
             (
                 mesh_shader::NAME,
                 self.mesh.mesh_shader != 0 || self.mesh.task_shader != 0,

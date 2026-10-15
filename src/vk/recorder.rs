@@ -412,6 +412,25 @@ impl Recorder<'_> {
                     src_stage,
                     dst_stage,
                 } => self.barrier(src_stage, dst_stage),
+                Command::PresentBarrier { texture, src_stage } => {
+                    let t = self.res.textures.get(texture);
+                    let barrier = vk::ImageMemoryBarrier2::default()
+                        .src_stage_mask(vk_stages(src_stage))
+                        .src_access_mask(vk_access(src_stage, false))
+                        .old_layout(vk::ImageLayout::GENERAL)
+                        .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                        .image(t.image)
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: t.aspect,
+                            base_mip_level: t.base_mip,
+                            level_count: t.mips,
+                            base_array_layer: t.base_layer,
+                            layer_count: t.layers,
+                        });
+                    let barriers = [barrier];
+                    let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
+                    d.cmd_pipeline_barrier2(b, &info);
+                }
                 Command::DiscardTextures { textures } => {
                     for chunk in textures.chunks(16) {
                         let mut list = [vk::ImageMemoryBarrier2::default(); 16];

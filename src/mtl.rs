@@ -8,6 +8,7 @@ mod queue;
 mod recorder;
 mod render;
 mod resources;
+mod swapchain;
 mod texture;
 mod timeline;
 

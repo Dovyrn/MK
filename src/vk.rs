@@ -10,6 +10,7 @@ mod recorder;
 mod resources;
 mod semaphore;
 mod spirv;
+mod swapchain;
 mod texture;
 mod timeline;
 

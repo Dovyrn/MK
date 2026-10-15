@@ -18,5 +18,6 @@ pub struct Resources {
     pub timelines: Slots<Semaphore>,
     pub sets: Slots<()>,
     pub indirects: Slots<crate::Buffer>,
+    pub swapchains: Slots<crate::vk::swapchain::SwapchainObject>,
     pub table: crate::table::Table,
 }

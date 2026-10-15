@@ -707,6 +707,11 @@ impl<'a> Check<'a> {
                     "{name} {src_stage:?} -> {dst_stage:?} orders work outside this compute pass; wait on it with src_stage and dst_stage at the next pass's begin"
                 );
             }
+            #[cfg(any(feature = "vk", feature = "mtl"))]
+            Command::PresentBarrier { texture, src_stage } => {
+                check!(!src_stage.is_empty(), "{name} needs a src_stage");
+                self.table.textures.get(texture);
+            }
             Command::DiscardTextures { textures } => {
                 check!(!textures.is_empty(), "{name} has no textures");
                 for d in textures {

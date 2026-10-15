@@ -6,6 +6,7 @@ pub enum Error {
     Shader(String),
     Invalid(String),
     Driver(String),
+    OutOfDate(String),
 }
 
 impl std::fmt::Display for Error {
@@ -17,6 +18,7 @@ impl std::fmt::Display for Error {
             Error::Shader(m) => write!(f, "shader: {m}"),
             Error::Invalid(m) => write!(f, "invalid: {m}"),
             Error::Driver(m) => write!(f, "driver: {m}"),
+            Error::OutOfDate(m) => write!(f, "out of date: {m}"),
         }
     }
 }
@@ -34,6 +36,7 @@ impl From<ash::vk::Result> for Error {
             | R::ERROR_FRAGMENTED_POOL
             | R::ERROR_FRAGMENTATION => Error::OutOfMemory(r.to_string()),
             R::ERROR_DEVICE_LOST => Error::DeviceLost(r.to_string()),
+            R::ERROR_OUT_OF_DATE_KHR => Error::OutOfDate(r.to_string()),
             R::ERROR_FEATURE_NOT_PRESENT
             | R::ERROR_EXTENSION_NOT_PRESENT
             | R::ERROR_LAYER_NOT_PRESENT

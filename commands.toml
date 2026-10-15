@@ -48,6 +48,12 @@ name = "end_debug_label"
 scope = "outside compute render"
 
 [[command]]
+name = "present_barrier"
+backend = "vk mtl"
+scope = "outside compute"
+fields = [["texture", "Texture"], ["src_stage", "Stage"]]
+
+[[command]]
 name = "discard_textures"
 scope = "outside compute"
 fields = [["textures", "[TextureDiscard]"]]

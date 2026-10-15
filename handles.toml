@@ -10,4 +10,5 @@ handles = [
     "ResidencySet",
     "IndirectBuffer",
     "CommandPool",
+    "Swapchain",
 ]

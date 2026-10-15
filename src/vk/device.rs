@@ -8,6 +8,7 @@ mod pipelines;
 mod queries;
 mod residency;
 mod samplers;
+mod swapchains;
 mod textures;
 mod timelines;
 
@@ -27,6 +28,7 @@ use crate::vk::pool::Pool;
 use crate::vk::queue::Queue;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
+use crate::vk::swapchain::SwapchainObject;
 use crate::{Caps, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
 use ash::vk;
@@ -491,6 +493,16 @@ impl Device {
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
+        self.submit_with(commands, waits, signals, None)
+    }
+
+    fn submit_with<'d>(
+        &self,
+        commands: impl IntoIterator<Item = CommandBuffer<'d>>,
+        waits: &[(&Timeline, u64)],
+        signals: &[(&Timeline, u64)],
+        present: Option<(&SwapchainObject, u32, usize)>,
+    ) -> Result<(), Error> {
         let table = &self.res.table;
         table.check_timelines(waits);
         table.check_timelines(signals);
@@ -528,9 +540,27 @@ impl Device {
                 .value(value)
                 .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         };
+        let binary = |semaphore| {
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(semaphore)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+        };
         semaphores.clear();
-        semaphores.extend(waits.iter().chain(signals).map(info));
-        let (waits_info, signals_info) = semaphores.split_at(waits.len());
+        semaphores.extend(waits.iter().map(info));
+        if let Some((s, _, acquire)) = present {
+            check!(
+                s.queue == queue,
+                "submit_and_present submits on queue {queue}; the swapchain presents on queue {}",
+                s.queue
+            );
+            semaphores.push(binary(s.acquires[acquire]));
+        }
+        let count = semaphores.len();
+        semaphores.extend(signals.iter().map(info));
+        if let Some((s, image, _)) = present {
+            semaphores.push(binary(s.presents[image as usize]));
+        }
+        let (waits_info, signals_info) = semaphores.split_at(count);
         let submit = vk::SubmitInfo2::default()
             .wait_semaphore_infos(waits_info)
             .command_buffer_infos(submits)
@@ -541,7 +571,10 @@ impl Device {
         }
         .map_err(Error::from)?;
         table.record_signals(queue, signals);
-        Ok(())
+        match present {
+            Some((s, image, _)) => self.present(self.queues[queue].raw, s, image),
+            None => Ok(()),
+        }
     }
 }
 
@@ -554,6 +587,12 @@ impl Drop for Device {
             let mut res = std::mem::take(&mut self.res);
             for buffer in res.buffers.drain() {
                 buffer.free(self);
+            }
+            for swapchain in res.swapchains.drain() {
+                for semaphore in swapchain.acquires.into_iter().chain(swapchain.presents) {
+                    self.raw.destroy_semaphore(semaphore, None);
+                }
+                self.loader().destroy_swapchain(swapchain.raw, None);
             }
             for texture in res.textures.drain() {
                 texture.free(self);

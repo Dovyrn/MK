@@ -100,6 +100,12 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native void nEndDebugLabel(long target);
 
+    public void presentBarrier(Texture texture, int srcStage) {
+        nPresentBarrier(handle(), Texture.raw(texture), srcStage);
+    }
+
+    private static native void nPresentBarrier(long target, long texture, int srcStage);
+
     public void discardTextures(TextureDiscard[] textures) {
         try (var arena = new Arena()) {
             var texturesSize = 4;
