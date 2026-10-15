@@ -17,6 +17,7 @@ pub struct Queue {
     pub scratch: Mutex<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
     idle: Retained<ProtocolObject<dyn MTLSharedEvent>>,
     marks: AtomicU64,
+    pub idles: AtomicU64,
 }
 
 impl Queue {
@@ -47,6 +48,7 @@ impl Queue {
             scratch: Mutex::default(),
             idle,
             marks: AtomicU64::new(0),
+            idles: AtomicU64::new(0),
         })
     }
 
@@ -66,6 +68,7 @@ impl Queue {
         while !self.idle.waitUntilSignaledValue_timeoutMS(value, 100) {
             self.lost()?;
         }
+        self.idles.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 

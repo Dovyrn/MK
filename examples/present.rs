@@ -14,49 +14,78 @@ pub fn main() {
 }
 
 #[cfg(feature = "vk")]
-fn surface(device: &mk::Device) -> (mk::ash::vk::SurfaceKHR, impl FnOnce()) {
+fn surface(device: &mk::Device) -> Option<(mk::ash::vk::SurfaceKHR, impl FnOnce())> {
     use mk::ash::ext::headless_surface;
     use mk::ash::khr::surface;
     use mk::ash::vk;
     let entry = unsafe { mk::ash::Entry::load() }.unwrap();
+    let available = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
+    if !available
+        .iter()
+        .any(|e| e.extension_name_as_c_str() == Ok(headless_surface::NAME))
+    {
+        return None;
+    }
     let headless = headless_surface::Instance::new(&entry, &device.instance);
     let raw = unsafe {
         headless.create_headless_surface(&vk::HeadlessSurfaceCreateInfoEXT::default(), None)
     }
     .unwrap();
     let loader = surface::Instance::new(&entry, &device.instance);
-    (raw, move || unsafe { loader.destroy_surface(raw, None) })
+    Some((raw, move || unsafe { loader.destroy_surface(raw, None) }))
 }
 
 #[cfg(feature = "mtl")]
 fn surface(
     _: &mk::Device,
-) -> (
+) -> Option<(
     mk::objc2::rc::Retained<mk::objc2_quartz_core::CAMetalLayer>,
     impl FnOnce(),
-) {
-    (mk::objc2_quartz_core::CAMetalLayer::new(), || {})
+)> {
+    Some((mk::objc2_quartz_core::CAMetalLayer::new(), || {}))
+}
+
+#[cfg(feature = "vk")]
+fn caps(device: &mk::Device, raw: &mk::ash::vk::SurfaceKHR) -> mk::SurfaceCaps {
+    device.surface_caps(*raw).unwrap()
+}
+
+#[cfg(feature = "mtl")]
+fn caps(
+    device: &mk::Device,
+    raw: &mk::objc2::rc::Retained<mk::objc2_quartz_core::CAMetalLayer>,
+) -> mk::SurfaceCaps {
+    device.surface_caps(raw).unwrap()
+}
+
+#[cfg(not(feature = "gl"))]
+fn info(n: u32) -> SwapchainInfo {
+    SwapchainInfo {
+        format: Format::Bgra8Unorm,
+        width: n,
+        height: n,
+        usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+        ..Default::default()
+    }
 }
 
 #[cfg(not(feature = "gl"))]
 pub fn main() {
-    let n = 64u32;
+    let have = mk::Device::supported_features().unwrap();
+    if !have.swapchain {
+        println!("no swapchains");
+        return;
+    }
+    let paced = have.present_wait;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let (raw, release) = surface(&device);
-    let swapchain = device
-        .create_swapchain(
-            0,
-            raw,
-            &SwapchainInfo {
-                format: Format::Bgra8Unorm,
-                width: n,
-                height: n,
-                usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    let Some((raw, release)) = surface(&device) else {
+        println!("no headless surface");
+        return;
+    };
+    let caps = caps(&device, &raw);
+    assert!((caps.min_images..=caps.max_images).contains(&3), "{caps:?}");
+    let swapchain = device.create_swapchain(0, raw, &info(64)).unwrap();
     let colors = [
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
@@ -67,11 +96,7 @@ pub fn main() {
         [1.0, 1.0, 1.0],
         [0.0, 0.0, 0.0],
     ];
-    let backs = colors.map(|_| {
-        device
-            .create_buffer((n * n * 4) as u64, Memory::Readback)
-            .unwrap()
-    });
+    let backs = colors.map(|_| device.create_buffer(64 * 64 * 4, Memory::Readback).unwrap());
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &backs.map(Into::into));
     device.commit_residency(set);
@@ -79,8 +104,17 @@ pub fn main() {
     let mut textures = Vec::new();
     for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
         let frame = i as u64 + 1;
+        let n = if i < 4 { 64 } else { 32 };
         if frame > 2 {
             assert!(timeline.wait(frame - 2, 1000).unwrap());
+        }
+        if paced && frame > 2 {
+            assert!(device.wait_presented(swapchain, frame - 2, 1000).unwrap());
+        }
+        if i == 4 {
+            device.wait_idle(0).unwrap();
+            device.recreate_swapchain(swapchain, &info(n)).unwrap();
+            textures.clear();
         }
         let texture = device.acquire_texture(swapchain).unwrap();
         if !textures.contains(&texture) {
@@ -125,6 +159,7 @@ pub fn main() {
     let last = colors.len() as u64;
     assert!(timeline.wait(last, 1000).unwrap());
     for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
+        let n = if i < 4 { 64 } else { 32 };
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         let bgra = [rgb[2], rgb[1], rgb[0], 1.0].map(|c| (c * 255.0) as u8);
         assert_eq!(
@@ -140,8 +175,7 @@ pub fn main() {
     device.destroy_swapchain(swapchain);
     release();
     println!(
-        "{} frames presented through {} texture handles",
-        colors.len(),
-        textures.len()
+        "{} frames presented at 64 then 32 pixels, paced: {paced}",
+        colors.len()
     );
 }

@@ -308,6 +308,22 @@ shared = true
 name = "submit_and_present"
 backend = "vk mtl"
 params = [["swapchain", "Swapchain"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+result = "bool"
+fails = true
+shared = true
+
+[[call]]
+name = "recreate_swapchain"
+backend = "vk mtl"
+params = [["swapchain", "Swapchain"], ["info", "SwapchainInfo"]]
+fails = true
+shared = true
+
+[[call]]
+name = "wait_presented"
+backend = "vk mtl"
+params = [["swapchain", "Swapchain"], ["present", "u64"], ["ms", "u64"]]
+result = "bool"
 fails = true
 shared = true
 
@@ -316,6 +332,22 @@ name = "create_swapchain"
 backend = "vk"
 params = [["queue", "u32"], ["surface", "handle"], ["info", "SwapchainInfo"]]
 result = "Swapchain"
+fails = true
+shared = true
+
+[[call]]
+name = "surface_caps"
+backend = "vk"
+params = [["surface", "handle"]]
+result = "SurfaceCaps"
+fails = true
+shared = true
+
+[[call]]
+name = "surface_format"
+backend = "vk"
+params = [["surface", "handle"], ["format", "Format"], ["space", "ColorSpace"]]
+result = "bool"
 fails = true
 shared = true
 
@@ -389,6 +421,22 @@ name = "raw_queue"
 backend = "vk"
 params = [["queue", "u32"]]
 result = "handle"
+shared = true
+
+[[call]]
+name = "surface_caps"
+backend = "mtl"
+params = [["layer", "objref"]]
+result = "SurfaceCaps"
+fails = true
+shared = true
+
+[[call]]
+name = "surface_format"
+backend = "mtl"
+params = [["layer", "objref"], ["format", "Format"], ["space", "ColorSpace"]]
+result = "bool"
+fails = true
 shared = true
 
 [[call]]

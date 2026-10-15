@@ -39,6 +39,7 @@ pub struct Table {
     pub residency: Mutex<Residency>,
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
     pub mappable: Entries<Buffer, bool>,
+    pub presentable: Entries<Texture, AtomicBool>,
 }
 
 #[derive(Clone, Copy)]
@@ -221,12 +222,30 @@ impl Table {
         lock(&self.undefined).retain(|&t| t != texture);
     }
 
+    #[cfg(any(feature = "vk", feature = "mtl"))]
+    pub fn acquire(&self, texture: Texture, acquired: bool) {
+        if cfg!(feature = "validation") {
+            self.presentable
+                .get(texture)
+                .store(acquired, Ordering::Relaxed);
+            if acquired {
+                lock(&self.undefined).push(texture);
+            }
+        }
+    }
+
     pub fn assert_defined(&self, name: &str, texture: Texture) {
+        let root = self.parents.find(texture).copied().unwrap_or(texture);
+        if let Some(acquired) = self.presentable.find(root) {
+            check!(
+                acquired.load(Ordering::Relaxed),
+                "{name} uses the swapchain texture {texture} outside acquire_texture and submit_and_present"
+            );
+        }
         let undefined = lock(&self.undefined);
         if undefined.is_empty() {
             return;
         }
-        let root = self.parents.find(texture).copied().unwrap_or(texture);
         check!(
             !undefined.contains(&root),
             "{name} uses {texture} before discard_textures; discard it before its first use"
@@ -251,6 +270,7 @@ impl Table {
         }
         self.textures.clear(texture);
         self.parents.forget(texture);
+        self.presentable.forget(texture);
         lock(&self.undefined).retain(|&t| t != texture);
     }
 

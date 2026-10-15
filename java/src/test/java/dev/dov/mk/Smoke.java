@@ -4,6 +4,9 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
+import org.lwjgl.vulkan.KHRSurface;
 
 public class Smoke {
     public static void main(String[] args) throws Exception {
@@ -72,6 +75,93 @@ public class Smoke {
             nmemFree(code);
             System.out.println("java: 1024 values match");
         }
+        present(args[0]);
+    }
+
+    static SwapchainInfo swapchainInfo(int size) {
+        return new SwapchainInfo()
+                .width(size)
+                .height(size)
+                .usage(TextureUsage.COLOR | TextureUsage.COPY_SRC);
+    }
+
+    static void present(String library) {
+        var size = 16;
+        if (library.contains("mk_vk") && !(VkDevice.supportedFeatures().swapchain && VulkanHost.headless())) {
+            System.out.println("java: no headless surface");
+        } else if (library.contains("mk_vk")) {
+            try (var device = VkDevice.createDevice(VkDevice.supportedFeatures().swapchain(true))) {
+                var instance = VulkanHost.wrap(device.rawInstance());
+                var surface = VulkanHost.headless(instance);
+                var swapchain = device.createSwapchain(0, surface, swapchainInfo(size));
+                frames(device, size, () -> device.acquireTexture(swapchain), (c, signal) -> device.submitAndPresent(
+                        swapchain, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
+                device.waitIdle(0);
+                device.destroySwapchain(swapchain);
+                KHRSurface.vkDestroySurfaceKHR(instance, surface, null);
+            }
+        } else if (!library.contains("mk_gl")) {
+            try (var device = MtlDevice.createDevice(MtlDevice.supportedFeatures().swapchain(true))) {
+                var layer = MetalHost.layer();
+                var swapchain = device.createSwapchain(0, layer, swapchainInfo(size));
+                frames(device, size, () -> device.acquireTexture(swapchain), (c, signal) -> device.submitAndPresent(
+                        swapchain, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
+                device.waitIdle(0);
+                device.destroySwapchain(swapchain);
+                MetalHost.release(layer);
+            }
+        }
+    }
+
+    static void frames(Device device, int size, Supplier<Texture> acquire, BiConsumer<CommandBuffer, TimelinePoint> present) {
+        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK);
+        var timeline = device.createTimeline();
+        var pool = device.createCommandPool(0);
+        var set = device.createResidencySet();
+        device.addResidency(set, new Resource[] {pixels.resource()});
+        device.commitResidency(set);
+        var colors = new float[][] {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+        for (var frame = 1; frame <= colors.length; frame++) {
+            var rgb = colors[frame - 1];
+            var texture = acquire.get();
+            var commands = device.beginCommands(pool);
+            commands.useResidencySet(set);
+            commands.discardTextures(new TextureDiscard[] {new TextureDiscard()
+                    .texture(texture)
+                    .srcStage(Stage.COLOR)
+                    .dstStage(Stage.COLOR)});
+            var color = new ColorAttachment().texture(texture).clear(new float[] {rgb[0], rgb[1], rgb[2], 1});
+            commands.beginRenderPass(new RenderPassInfo()
+                    .width(size)
+                    .height(size)
+                    .colors(new ColorAttachment[] {color}))
+                    .end();
+            var copy = commands.beginComputePass(Stage.COLOR, Stage.COPY);
+            copy.copyTextureToBuffer(new BufferTextureCopy()
+                    .texture(texture)
+                    .width(size)
+                    .height(size)
+                    .buffer(pixels));
+            copy.memoryBarrier(Stage.COPY, Stage.HOST);
+            copy.end();
+            commands.presentBarrier(texture, Stage.COPY);
+            commands.end();
+            present.accept(commands, new TimelinePoint(timeline, frame));
+            if (!timeline.await(frame, 1000)) {
+                throw new IllegalStateException("timeout");
+            }
+            var data = memByteBuffer(device.mapBuffer(pixels), 4);
+            var bgra = new int[] {(int) (rgb[2] * 255), (int) (rgb[1] * 255), (int) (rgb[0] * 255)};
+            for (var i = 0; i < 3; i++) {
+                if ((data.get(i) & 0xff) != bgra[i]) {
+                    throw new IllegalStateException("frame " + frame + " channel " + i + " is " + (data.get(i) & 0xff));
+                }
+            }
+            device.unmapBuffer(pixels);
+        }
+        device.destroyCommandPool(pool);
+        device.destroyTimeline(timeline);
+        System.out.println("java: 3 frames presented and read back");
     }
 
     static void threads(Device device, Timeline timeline) throws Exception {

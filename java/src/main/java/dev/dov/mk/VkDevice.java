@@ -84,7 +84,7 @@ public class VkDevice extends Device {
 
     private static native long nAcquireTexture(long device, long swapchain);
 
-    public void submitAndPresent(Swapchain swapchain, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+    public boolean submitAndPresent(Swapchain swapchain, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
@@ -102,14 +102,40 @@ public class VkDevice extends Device {
                     memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
                     memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
                 }
-                nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
+                return nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native void nSubmitAndPresent(long device, long swapchain, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+    private static native boolean nSubmitAndPresent(long device, long swapchain, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+
+    public void recreateSwapchain(Swapchain swapchain, SwapchainInfo info) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var infoAddress = arena.alloc(info.encodedSize());
+                info.encode(infoAddress);
+                nRecreateSwapchain(handle(), Swapchain.raw(swapchain), infoAddress, info.encodedSize());
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nRecreateSwapchain(long device, long swapchain, long info, int infoLength);
+
+    public boolean waitPresented(Swapchain swapchain, long present, long ms) {
+        lock.readLock().lock();
+        try {
+            return nWaitPresented(handle(), Swapchain.raw(swapchain), present, ms);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native boolean nWaitPresented(long device, long swapchain, long present, long ms);
 
     public Swapchain createSwapchain(int queue, long surface, SwapchainInfo info) {
         lock.readLock().lock();
@@ -125,6 +151,32 @@ public class VkDevice extends Device {
     }
 
     private static native long nCreateSwapchain(long device, int queue, long surface, long info, int infoLength);
+
+    public SurfaceCaps surfaceCaps(long surface) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var out = arena.alloc(SurfaceCaps.SIZE);
+                nSurfaceCaps(handle(), surface, out);
+                return SurfaceCaps.decode(out);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nSurfaceCaps(long device, long surface, long out);
+
+    public boolean surfaceFormat(long surface, Format format, ColorSpace space) {
+        lock.readLock().lock();
+        try {
+            return nSurfaceFormat(handle(), surface, format.value, space.value);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native boolean nSurfaceFormat(long device, long surface, int format, int space);
 
     public long rawInstance() {
         lock.readLock().lock();

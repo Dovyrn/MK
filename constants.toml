@@ -10,6 +10,17 @@ HOST = 256
 COMPUTE = 134217728
 COPY = 268435456
 
+[enum.present_mode]
+FIFO = 0
+MAILBOX = 1
+IMMEDIATE = 2
+
+[enum.color_space]
+SRGB = 0
+DISPLAY_P3 = 1
+EXTENDED_SRGB = 2
+HDR10 = 3
+
 [enum.resource_kind]
 BUFFER = 0
 TEXTURE = 1

@@ -48,11 +48,12 @@ public class DeviceInfo {
     public boolean imageAtomics64 = false;
     public boolean slotBinding = false;
     public boolean swapchain = false;
+    public boolean presentWait = false;
 
-    public static final int SIZE = 160;
+    public static final int SIZE = 164;
 
     int encodedSize() {
-        return 160;
+        return 164;
     }
 
     long encode(long p) {
@@ -135,6 +136,8 @@ public class DeviceInfo {
         memPutInt(p, slotBinding ? 1 : 0);
         p += 4;
         memPutInt(p, swapchain ? 1 : 0);
+        p += 4;
+        memPutInt(p, presentWait ? 1 : 0);
         p += 4;
         return p;
     }
@@ -220,6 +223,8 @@ public class DeviceInfo {
         r.slotBinding = memGetInt(p) != 0;
         p += 4;
         r.swapchain = memGetInt(p) != 0;
+        p += 4;
+        r.presentWait = memGetInt(p) != 0;
         p += 4;
         return r;
     }

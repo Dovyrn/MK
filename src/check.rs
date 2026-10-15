@@ -710,12 +710,28 @@ impl<'a> Check<'a> {
             #[cfg(any(feature = "vk", feature = "mtl"))]
             Command::PresentBarrier { texture, src_stage } => {
                 check!(!src_stage.is_empty(), "{name} needs a src_stage");
-                self.table.textures.get(texture);
+                check!(
+                    self.table.presentable.find(texture).is_some(),
+                    "{name} on {texture}, which is not a swapchain texture"
+                );
+                self.table.assert_defined(name, texture);
             }
             Command::DiscardTextures { textures } => {
                 check!(!textures.is_empty(), "{name} has no textures");
                 for d in textures {
                     check!(!d.dst_stage.is_empty(), "{name} needs a dst_stage");
+                    if let Some(acquired) = self.table.presentable.find(d.texture) {
+                        check!(
+                            acquired.load(Ordering::Relaxed),
+                            "{name} on the swapchain texture {} outside acquire_texture and submit_and_present",
+                            d.texture
+                        );
+                        check!(
+                            !d.src_stage.is_empty(),
+                            "{name} on the swapchain texture {} needs a src_stage, or its layout change can run before the acquire",
+                            d.texture
+                        );
+                    }
                     self.table.textures.get(d.texture);
                     check!(
                         self.table.parents.find(d.texture).is_none(),

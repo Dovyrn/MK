@@ -28,7 +28,7 @@ use crate::vk::pool::Pool;
 use crate::vk::queue::Queue;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
-use crate::vk::swapchain::SwapchainObject;
+use crate::vk::swapchain::Present;
 use crate::{Caps, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
 use ash::vk;
@@ -36,6 +36,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 pub struct Device {
     pub instance: ash::Instance,
+    surface: ash::khr::surface::Instance,
     pub physical: vk::PhysicalDevice,
     pub raw: ash::Device,
     ext: Extensions,
@@ -163,6 +164,7 @@ fn whole_view(info: &TextureInfo) -> TextureViewInfo {
 
 impl Device {
     pub fn import_device(
+        entry: &ash::Entry,
         instance: ash::Instance,
         physical: vk::PhysicalDevice,
         raw: ash::Device,
@@ -226,6 +228,7 @@ impl Device {
         caps.transient_reads =
             caps.transients && caps.attachment_reads && supports_lazy_memory(&raw, &memory);
         Ok(Self {
+            surface: ash::khr::surface::Instance::new(entry, &instance),
             caps,
             name: basic
                 .device_name_as_c_str()
@@ -346,6 +349,7 @@ impl Device {
             let instance = ash::Instance::load(entry.static_fn(), vk::Handle::from_raw(instance));
             let raw = ash::Device::load(instance.fp_v1_0(), vk::Handle::from_raw(device));
             Self::import_device(
+                &entry,
                 instance,
                 vk::Handle::from_raw(physical),
                 raw,
@@ -398,8 +402,11 @@ impl Device {
     pub fn wait_idle(&self, queue: u32) -> Result<(), Error> {
         let queue = queue as usize;
         self.check_queue(queue);
-        let _held = self.queues[queue].scratch.lock().unwrap();
-        unsafe { self.raw.queue_wait_idle(self.queues[queue].raw) }.map_err(Error::from)
+        let q = &self.queues[queue];
+        let _held = q.scratch.lock().unwrap();
+        unsafe { self.raw.queue_wait_idle(q.raw) }.map_err(Error::from)?;
+        q.idles.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 
     fn check_queue(&self, queue: usize) {
@@ -500,7 +507,7 @@ impl Device {
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
-        self.submit_with(commands, waits, signals, None)
+        self.submit_with(commands, waits, signals, None).map(|_| ())
     }
 
     fn submit_with<'d>(
@@ -508,8 +515,8 @@ impl Device {
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-        present: Option<(&SwapchainObject, u32, vk::Semaphore)>,
-    ) -> Result<(), Error> {
+        present: Option<(usize, Present)>,
+    ) -> Result<bool, Error> {
         let table = &self.res.table;
         table.check_timelines(waits);
         table.check_timelines(signals);
@@ -554,18 +561,17 @@ impl Device {
         };
         semaphores.clear();
         semaphores.extend(waits.iter().map(info));
-        if let Some((s, _, acquire)) = present {
+        if let Some((q, p)) = &present {
             check!(
-                s.queue == queue,
-                "submit_and_present submits on queue {queue}; the swapchain presents on queue {}",
-                s.queue
+                *q == queue,
+                "submit_and_present submits on queue {queue}; the swapchain presents on queue {q}"
             );
-            semaphores.push(binary(acquire));
+            semaphores.push(binary(p.acquire));
         }
         let count = semaphores.len();
         semaphores.extend(signals.iter().map(info));
-        if let Some((s, image, _)) = present {
-            semaphores.push(binary(s.presents[image as usize]));
+        if let Some((_, p)) = &present {
+            semaphores.push(binary(p.signal));
         }
         let (waits_info, signals_info) = semaphores.split_at(count);
         let submit = vk::SubmitInfo2::default()
@@ -579,8 +585,8 @@ impl Device {
         .map_err(Error::from)?;
         table.record_signals(queue, signals);
         match present {
-            Some((s, image, _)) => self.present(self.queues[queue].raw, s, image),
-            None => Ok(()),
+            Some((_, p)) => self.present(self.queues[queue].raw, &p),
+            None => Ok(false),
         }
     }
 }
@@ -596,11 +602,11 @@ impl Drop for Device {
                 buffer.free(self);
             }
             for swapchain in res.swapchains.drain() {
-                let acquires = swapchain.acquires.into_inner().unwrap();
-                for semaphore in acquires.all().chain(swapchain.presents) {
+                let state = swapchain.state.into_inner().unwrap();
+                for semaphore in state.semaphores() {
                     self.raw.destroy_semaphore(semaphore, None);
                 }
-                self.loader().destroy_swapchain(swapchain.raw, None);
+                self.loader().destroy_swapchain(state.raw, None);
             }
             for texture in res.textures.drain() {
                 texture.free(self);

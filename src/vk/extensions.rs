@@ -1,7 +1,7 @@
 use crate::Atomic64;
 use crate::Error;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
-use ash::khr::{push_descriptor, swapchain};
+use ash::khr::{present_wait, push_descriptor, swapchain};
 use ash::vk;
 
 pub struct Extensions {
@@ -19,6 +19,8 @@ pub struct Extensions {
     pub push: Option<push_descriptor::Device>,
     pub copy: Option<host_image_copy::Device>,
     pub swapchain: Option<swapchain::Device>,
+    pub present_id: bool,
+    pub present_wait: Option<present_wait::Device>,
     pub budget: bool,
     pub local: bool,
     pub ordered: bool,
@@ -120,6 +122,12 @@ impl Extensions {
                 .then(|| push_descriptor::Device::new(instance, raw));
             let swapchain =
                 has(c"vkCreateSwapchainKHR").then(|| swapchain::Device::new(instance, raw));
+            let present_id = chained::<vk::PhysicalDevicePresentIdFeaturesKHR>(features)
+                .is_some_and(|f| f.present_id != 0);
+            let present_wait = chained::<vk::PhysicalDevicePresentWaitFeaturesKHR>(features)
+                .is_some_and(|f| f.present_wait != 0)
+                && has(c"vkWaitForPresentKHR");
+            let present_wait = present_wait.then(|| present_wait::Device::new(instance, raw));
             let mut driver = vk::PhysicalDeviceDriverProperties::default();
             let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut driver);
             instance.get_physical_device_properties2(physical, &mut properties);
@@ -198,6 +206,8 @@ impl Extensions {
                 push,
                 copy,
                 swapchain,
+                present_id,
+                present_wait,
                 budget,
                 local,
                 ordered,

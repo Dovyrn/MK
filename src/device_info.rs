@@ -9,7 +9,7 @@ fn report(what: &str, names: Vec<&str>) {
 }
 
 impl DeviceInfo {
-    fn flags(&self) -> [(&'static str, bool); 39] {
+    fn flags(&self) -> [(&'static str, bool); 40] {
         [
             ("addresses", self.addresses),
             ("timelines", self.timelines),
@@ -50,6 +50,7 @@ impl DeviceInfo {
             ("image_atomics64", self.image_atomics64),
             ("slot_binding", self.slot_binding),
             ("swapchain", self.swapchain),
+            ("present_wait", self.present_wait),
         ]
     }
 

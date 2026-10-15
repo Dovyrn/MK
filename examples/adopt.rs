@@ -123,7 +123,9 @@ fn native(
     let features = vk::PhysicalDeviceFeatures2::default()
         .push_next(&mut v12)
         .push_next(&mut v13);
+    let entry = unsafe { mk::ash::Entry::load() }.unwrap();
     let device = Device::import_device(
+        &entry,
         host.instance.clone(),
         host.physical,
         host.raw.clone(),

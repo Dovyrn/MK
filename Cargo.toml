@@ -18,6 +18,7 @@ mtl = [
     "dep:objc2-core-foundation",
     "dep:objc2-metal",
     "dep:objc2-quartz-core",
+    "dep:objc2-core-graphics",
     "dep:dispatch2",
 ]
 gl = ["dep:glow"]
@@ -30,7 +31,14 @@ objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true }
 objc2-core-foundation = { version = "0.3", optional = true }
 objc2-metal = { version = "0.3", optional = true }
-objc2-quartz-core = { version = "0.3", optional = true, features = ["CALayer", "CAMetalLayer", "objc2-core-foundation", "objc2-metal"] }
+objc2-quartz-core = { version = "0.3", optional = true, features = [
+    "CALayer",
+    "CAMetalLayer",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "objc2-metal",
+] }
+objc2-core-graphics = { version = "0.3", optional = true, features = ["CGColorSpace"] }
 dispatch2 = { version = "0.3", optional = true }
 glow = { version = "0.17", optional = true }
 jni = { version = "0.21", optional = true }

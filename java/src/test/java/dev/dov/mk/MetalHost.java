@@ -20,4 +20,15 @@ public class MetalHost {
         }
         return device;
     }
+
+    public long layer() {
+        Library.loadNative(MetalHost.class, "org.lwjgl", "/System/Library/Frameworks/QuartzCore.framework/QuartzCore");
+        var send = ObjCRuntime.getLibrary().getFunctionAddress("objc_msgSend");
+        return JNI.invokePPP(ObjCRuntime.objc_getClass("CAMetalLayer"), ObjCRuntime.sel_getUid("new"), send);
+    }
+
+    public void release(long object) {
+        var send = ObjCRuntime.getLibrary().getFunctionAddress("objc_msgSend");
+        JNI.invokePPV(object, ObjCRuntime.sel_getUid("release"), send);
+    }
 }

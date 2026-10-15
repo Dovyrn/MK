@@ -41,6 +41,7 @@ fields = [
     ["image_atomics64", "bool", "false"],
     ["slot_binding", "bool", "false"],
     ["swapchain", "bool", "false"],
+    ["present_wait", "bool", "false"],
 ]
 
 [[info]]
@@ -425,5 +426,17 @@ fields = [
     ["height", "u32", "1"],
     ["images", "u32", "3"],
     ["usage", "TextureUsage", "texture_usage::COLOR"],
-    ["vsync", "bool", "true"],
+    ["mode", "PresentMode", "present_mode::FIFO"],
+    ["color_space", "ColorSpace", "color_space::SRGB"],
+]
+
+[[info]]
+name = "SurfaceCaps"
+fields = [
+    ["min_images", "u32", "0"],
+    ["max_images", "u32", "0"],
+    ["width", "u32", "0"],
+    ["height", "u32", "0"],
+    ["mailbox", "bool", "false"],
+    ["immediate", "bool", "false"],
 ]

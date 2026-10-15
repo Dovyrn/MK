@@ -13,12 +13,13 @@ public class SwapchainInfo {
     public int height = 1;
     public int images = 3;
     public int usage = TextureUsage.COLOR;
-    public boolean vsync = true;
+    public PresentMode mode = PresentMode.FIFO;
+    public ColorSpace colorSpace = ColorSpace.SRGB;
 
-    public static final int SIZE = 24;
+    public static final int SIZE = 28;
 
     int encodedSize() {
-        return 24;
+        return 28;
     }
 
     long encode(long p) {
@@ -32,7 +33,9 @@ public class SwapchainInfo {
         p += 4;
         memPutInt(p, usage);
         p += 4;
-        memPutInt(p, vsync ? 1 : 0);
+        memPutInt(p, mode.value);
+        p += 4;
+        memPutInt(p, colorSpace.value);
         p += 4;
         return p;
     }
@@ -49,7 +52,9 @@ public class SwapchainInfo {
         p += 4;
         r.usage = memGetInt(p);
         p += 4;
-        r.vsync = memGetInt(p) != 0;
+        r.mode = PresentMode.of(memGetInt(p));
+        p += 4;
+        r.colorSpace = ColorSpace.of(memGetInt(p));
         p += 4;
         return r;
     }

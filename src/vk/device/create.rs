@@ -2,11 +2,12 @@ use super::Device;
 use crate::{DeviceInfo, Error};
 use ash::ext::{
     debug_utils, headless_surface, host_image_copy, mesh_shader, metal_surface,
-    rasterization_order_attachment_access, shader_image_atomic_int64,
+    rasterization_order_attachment_access, shader_image_atomic_int64, swapchain_colorspace,
 };
 use ash::khr::{
     android_surface, dynamic_rendering_local_read, portability_enumeration, portability_subset,
-    push_descriptor, surface, swapchain, wayland_surface, win32_surface, xcb_surface, xlib_surface,
+    present_id, present_wait, push_descriptor, surface, swapchain, wayland_surface, win32_surface,
+    xcb_surface, xlib_surface,
 };
 use ash::vk;
 use std::ffi::{CStr, c_char};
@@ -28,6 +29,7 @@ fn instance(entry: &ash::Entry, surfaces: bool) -> Result<ash::Instance, Error> 
             wayland_surface::NAME,
             android_surface::NAME,
             headless_surface::NAME,
+            swapchain_colorspace::NAME,
         ];
         for name in platforms {
             if has(&available, name) {
@@ -107,7 +109,7 @@ impl Device {
         let entry = unsafe { ash::Entry::load() }
             .map_err(|e| Error::Unsupported(format!("no Vulkan loader: {e}")))?;
         let instance = instance(&entry, info.swapchain)?;
-        match Self::open(&instance, info) {
+        match Self::open(&entry, &instance, info) {
             Ok(mut device) => {
                 device.entry = Some(entry);
                 Ok(device)
@@ -119,7 +121,11 @@ impl Device {
         }
     }
 
-    fn open(instance: &ash::Instance, wanted: &DeviceInfo) -> Result<Self, Error> {
+    fn open(
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+        wanted: &DeviceInfo,
+    ) -> Result<Self, Error> {
         let queues = wanted.queues;
         let physical = physical(instance)?;
         let slots = slots(instance, physical, queues);
@@ -150,8 +156,15 @@ impl Device {
         let next = info.p_next.cast_mut();
         let mut enabled = vk::PhysicalDeviceFeatures2::default().features(f.core);
         enabled.p_next = next;
-        Self::import_device(instance.clone(), physical, raw.clone(), &slots, &enabled)
-            .inspect_err(|_| unsafe { raw.destroy_device(None) })
+        Self::import_device(
+            entry,
+            instance.clone(),
+            physical,
+            raw.clone(),
+            &slots,
+            &enabled,
+        )
+        .inspect_err(|_| unsafe { raw.destroy_device(None) })
     }
 }
 
@@ -166,6 +179,8 @@ struct Features {
     local: vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR<'static>,
     order: vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT<'static>,
     image64: vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT<'static>,
+    id: vk::PhysicalDevicePresentIdFeaturesKHR<'static>,
+    wait: vk::PhysicalDevicePresentWaitFeaturesKHR<'static>,
     push: bool,
     swapchain: bool,
 }
@@ -195,6 +210,12 @@ impl Features {
         }
         if has(available, shader_image_atomic_int64::NAME) {
             query = query.push_next(&mut s.image64);
+        }
+        if has(available, present_id::NAME) {
+            query = query.push_next(&mut s.id);
+        }
+        if has(available, present_wait::NAME) {
+            query = query.push_next(&mut s.wait);
         }
         unsafe { instance.get_physical_device_features2(physical, &mut query) };
         s.core = query.features;
@@ -248,6 +269,7 @@ impl Features {
             image_atomics64: self.image64.shader_image_int64_atomics != 0,
             slot_binding: self.push,
             swapchain: self.swapchain,
+            present_wait: self.id.present_id != 0 && self.wait.present_wait != 0,
         }
     }
 
@@ -297,6 +319,8 @@ impl Features {
         e.image64.shader_image_int64_atomics = on(info.image_atomics64);
         e.push = info.slot_binding;
         e.swapchain = info.swapchain;
+        e.id.present_id = on(info.present_wait);
+        e.wait.present_wait = on(info.present_wait);
         e
     }
 
@@ -305,6 +329,8 @@ impl Features {
             (portability_subset::NAME, true),
             (push_descriptor::NAME, self.push),
             (swapchain::NAME, self.swapchain),
+            (present_id::NAME, self.id.present_id != 0),
+            (present_wait::NAME, self.wait.present_wait != 0),
             (
                 mesh_shader::NAME,
                 self.mesh.mesh_shader != 0 || self.mesh.task_shader != 0,
@@ -355,6 +381,9 @@ impl Features {
         }
         if self.image64.shader_image_int64_atomics != 0 {
             info = info.push_next(&mut self.image64);
+        }
+        if self.wait.present_wait != 0 {
+            info = info.push_next(&mut self.id).push_next(&mut self.wait);
         }
         info
     }

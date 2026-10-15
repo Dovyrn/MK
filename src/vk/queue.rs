@@ -1,5 +1,6 @@
 use ash::vk;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 
 pub const COMPUTE: [vk::PipelineBindPoint; 1] = [vk::PipelineBindPoint::COMPUTE];
 
@@ -13,6 +14,7 @@ pub struct Queue {
     pub family: u32,
     pub graphics: bool,
     pub scratch: Mutex<Scratch>,
+    pub idles: AtomicU64,
 }
 
 pub type Scratch = (
@@ -36,6 +38,7 @@ impl Queue {
             family,
             graphics,
             scratch: Mutex::default(),
+            idles: AtomicU64::new(0),
         }
     }
 

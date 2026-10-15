@@ -1,6 +1,8 @@
 package dev.dov.mk;
 
+import static org.lwjgl.vulkan.EXTHeadlessSurface.*;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.*;
+import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRPushDescriptor.*;
 import static org.lwjgl.vulkan.VK13.*;
 
@@ -13,6 +15,7 @@ import org.lwjgl.vulkan.VkApplicationInfo;
 import org.lwjgl.vulkan.VkDeviceCreateInfo;
 import org.lwjgl.vulkan.VkDeviceQueueCreateInfo;
 import org.lwjgl.vulkan.VkExtensionProperties;
+import org.lwjgl.vulkan.VkHeadlessSurfaceCreateInfoEXT;
 import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkInstanceCreateInfo;
 import org.lwjgl.vulkan.VkPhysicalDevice;
@@ -98,6 +101,33 @@ public class VulkanHost {
             var proc = VK.getFunctionProvider().getFunctionAddress("vkGetInstanceProcAddr");
             return VkDevice.importDeviceRaw(
                     proc, instance.address(), physical.address(), p.get(0), new int[] {family, 0}, features.address());
+        }
+    }
+
+    public boolean headless() {
+        try (var stack = MemoryStack.stackPush()) {
+            var count = stack.mallocInt(1);
+            vkEnumerateInstanceExtensionProperties((String) null, count, null);
+            var list = VkExtensionProperties.malloc(count.get(0), stack);
+            vkEnumerateInstanceExtensionProperties((String) null, count, list);
+            return has(list, VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
+        }
+    }
+
+    public VkInstance wrap(long raw) {
+        try (var stack = MemoryStack.stackPush()) {
+            var app = VkApplicationInfo.calloc(stack).sType$Default().apiVersion(VK_API_VERSION_1_3);
+            var names = stack.pointers(stack.UTF8(VK_KHR_SURFACE_EXTENSION_NAME), stack.UTF8(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME));
+            var info = VkInstanceCreateInfo.calloc(stack).sType$Default().pApplicationInfo(app).ppEnabledExtensionNames(names);
+            return new VkInstance(raw, info);
+        }
+    }
+
+    public long headless(VkInstance instance) {
+        try (var stack = MemoryStack.stackPush()) {
+            var surface = stack.mallocLong(1);
+            check(vkCreateHeadlessSurfaceEXT(instance, VkHeadlessSurfaceCreateInfoEXT.calloc(stack).sType$Default(), null, surface));
+            return surface.get(0);
         }
     }
 }
