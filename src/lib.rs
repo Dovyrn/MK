@@ -36,6 +36,7 @@ mod caps;
 mod check;
 mod chunks;
 mod command;
+mod device_info;
 mod entries;
 mod error;
 #[cfg(feature = "gl")]

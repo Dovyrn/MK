@@ -31,11 +31,25 @@ public class VkDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
-    public static VkDevice createDevice(int queues) {
-        return new VkDevice(nCreateDevice(queues));
+    public static DeviceInfo supportedFeatures() {
+        try (var arena = new Arena()) {
+            var out = arena.alloc(DeviceInfo.SIZE);
+            nSupportedFeatures(out);
+            return DeviceInfo.decode(out);
+        }
     }
 
-    private static native long nCreateDevice(int queues);
+    private static native void nSupportedFeatures(long out);
+
+    public static VkDevice createDevice(DeviceInfo info) {
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
+            info.encode(infoAddress);
+            return new VkDevice(nCreateDevice(infoAddress, info.encodedSize()));
+        }
+    }
+
+    private static native long nCreateDevice(long info, int infoLength);
 
     public static VkDevice importDeviceRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
         try (var arena = new Arena()) {

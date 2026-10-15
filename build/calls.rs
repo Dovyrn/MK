@@ -16,6 +16,8 @@ pub struct Call {
     fails: bool,
     #[serde(default)]
     shared: bool,
+    #[serde(default, rename = "static")]
+    fixed: bool,
 }
 
 const RECORDINGS: [&str; 3] = ["CommandBuffer", "RenderPass", "ComputePass"];
@@ -36,7 +38,7 @@ fn native(call: &Call) -> String {
 }
 
 fn statics(call: &Call) -> bool {
-    call.result == "device"
+    call.result == "device" || call.fixed
 }
 
 fn natives(p: &Field) -> Vec<(String, String, &'static str, &'static str)> {

@@ -1,4 +1,48 @@
 [[info]]
+name = "DeviceInfo"
+fields = [
+    ["queues", "u32", "1"],
+    ["addresses", "bool", "true"],
+    ["timelines", "bool", "true"],
+    ["partially_bound", "bool", "true"],
+    ["update_after_bind", "bool", "true"],
+    ["standard_layout", "bool", "true"],
+    ["synchronization", "bool", "true"],
+    ["dynamic_rendering", "bool", "true"],
+    ["anisotropy", "bool", "false"],
+    ["cube_arrays", "bool", "false"],
+    ["multi_viewport", "bool", "false"],
+    ["depth_clamp", "bool", "false"],
+    ["precise_occlusion", "bool", "false"],
+    ["line_fill", "bool", "false"],
+    ["multi_draw", "bool", "false"],
+    ["bias_clamp", "bool", "false"],
+    ["independent_blend", "bool", "false"],
+    ["dual_blend", "bool", "false"],
+    ["int64", "bool", "false"],
+    ["unformatted_reads", "bool", "false"],
+    ["unformatted_writes", "bool", "false"],
+    ["draw_parameters", "bool", "false"],
+    ["runtime_arrays", "bool", "false"],
+    ["nonuniform", "bool", "false"],
+    ["indirect_count", "bool", "false"],
+    ["buffer_atomics64", "bool", "false"],
+    ["shared_atomics64", "bool", "false"],
+    ["memory_model", "bool", "false"],
+    ["mirror_clamp", "bool", "false"],
+    ["viewport_index", "bool", "false"],
+    ["subgroup_sizes", "bool", "false"],
+    ["full_subgroups", "bool", "false"],
+    ["mesh", "bool", "false"],
+    ["task", "bool", "false"],
+    ["host_read", "bool", "false"],
+    ["attachment_reads", "bool", "false"],
+    ["ordered_reads", "bool", "false"],
+    ["image_atomics64", "bool", "false"],
+    ["slot_binding", "bool", "false"],
+]
+
+[[info]]
 name = "TextureInfo"
 fields = [
     ["dimension", "TextureDimension", "texture_dimension::D2"],

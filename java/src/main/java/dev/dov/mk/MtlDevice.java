@@ -31,11 +31,25 @@ public class MtlDevice extends Device {
 
     private static native long nBindlessSampler(long device, long sampler);
 
-    public static MtlDevice createDevice(int queues) {
-        return new MtlDevice(nCreateDevice(queues));
+    public static DeviceInfo supportedFeatures() {
+        try (var arena = new Arena()) {
+            var out = arena.alloc(DeviceInfo.SIZE);
+            nSupportedFeatures(out);
+            return DeviceInfo.decode(out);
+        }
     }
 
-    private static native long nCreateDevice(int queues);
+    private static native void nSupportedFeatures(long out);
+
+    public static MtlDevice createDevice(DeviceInfo info) {
+        try (var arena = new Arena()) {
+            var infoAddress = arena.alloc(info.encodedSize());
+            info.encode(infoAddress);
+            return new MtlDevice(nCreateDevice(infoAddress, info.encodedSize()));
+        }
+    }
+
+    private static native long nCreateDevice(long info, int infoLength);
 
     public static MtlDevice importDeviceRaw(long device, long compiler, int queues) {
         return new MtlDevice(nImportDeviceRaw(device, compiler, queues));

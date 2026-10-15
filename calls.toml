@@ -270,9 +270,16 @@ fails = true
 shared = true
 
 [[call]]
+name = "supported_features"
+backend = "vk mtl"
+result = "DeviceInfo"
+fails = true
+static = true
+
+[[call]]
 name = "create_device"
 backend = "vk mtl"
-params = [["queues", "u32"]]
+params = [["info", "DeviceInfo"]]
 result = "device"
 fails = true
 
