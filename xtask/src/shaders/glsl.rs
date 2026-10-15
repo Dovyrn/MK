@@ -52,7 +52,27 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
             }
         }
         let mut source = None;
-        if meshy || heaps || groups {
+        let vulkan = meshy
+            || (heaps || groups) && {
+                let output = Command::new("spirv-cross")
+                    .arg(&spv)
+                    .args([
+                        "--entry",
+                        entry,
+                        "--version",
+                        "450",
+                        "--no-es",
+                        "--vulkan-semantics",
+                        "--remove-unused-variables",
+                    ])
+                    .output()
+                    .unwrap();
+                let text = String::from_utf8_lossy(&output.stdout);
+                !output.status.success()
+                    || text.contains("set = 1")
+                    || text.contains("GL_KHR_shader_subgroup")
+            };
+        if vulkan {
             let output = Command::new("spirv-cross")
                 .arg(&spv)
                 .args([
@@ -148,7 +168,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
         );
         let plain = plain.replace(
             &block("BaseInstance"),
-            "uniform int SPIRV_Cross_BaseInstance;\n",
+            "uniform int mk_BaseInstance;\n#ifdef GL_ARB_shader_draw_parameters\n#define SPIRV_Cross_BaseInstance (mk_BaseInstance + gl_BaseInstanceARB)\n#else\n#define SPIRV_Cross_BaseInstance mk_BaseInstance\n#endif\n",
         );
         let plain = plain.replace("GL_EXT_shader_atomic_int64", "GL_NV_shader_atomic_int64");
         container += &format!("//@ entry {entry}\n{}", unbind(&plain));
@@ -159,11 +179,16 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
                 continue;
             };
             let words: Vec<&str> = line.split_whitespace().collect();
+            let typed = |p: &str| {
+                words.iter().any(|w| {
+                    w.starts_with(p) || w.strip_prefix(['u', 'i']).is_some_and(|w| w.starts_with(p))
+                })
+            };
             let kind = if words.contains(&"buffer") {
                 "storage"
-            } else if words.iter().any(|w| w.starts_with("image")) {
+            } else if typed("image") {
                 "image"
-            } else if words.iter().any(|w| w.starts_with("sampler")) {
+            } else if typed("sampler") {
                 "texture"
             } else {
                 "uniform"

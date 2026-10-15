@@ -144,6 +144,11 @@ fn vk_access(bits: Stage, reads: bool) -> vk::AccessFlags2 {
 }
 
 impl Recorder<'_> {
+    pub fn clear_pass(&mut self) {
+        self.colors.clear();
+        self.depth = None;
+    }
+
     fn push(
         &self,
         point: vk::PipelineBindPoint,
@@ -226,7 +231,10 @@ impl Recorder<'_> {
         let (flag, valid) = match bit {
             Stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
             Stage::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
-            Stage::TASK => (vk::PipelineStageFlags2::TASK_SHADER_EXT, mesh),
+            Stage::TASK => (
+                vk::PipelineStageFlags2::TASK_SHADER_EXT,
+                graphics && self.ext.task,
+            ),
             Stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
             Stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
             Stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
@@ -342,10 +350,22 @@ impl Recorder<'_> {
         unsafe { self.device.end_command_buffer(self.buffer) }.map_err(Error::from)
     }
 
+    fn usable(&self, bits: Stage) -> Stage {
+        let mut gone = Stage::default();
+        if self.ext.mesh.is_none() {
+            gone |= Stage::MESH;
+        }
+        if !self.ext.task {
+            gone |= Stage::TASK;
+        }
+        bits & !gone
+    }
+
     fn barrier(&self, src: Stage, dst: Stage) {
         if src.is_empty() {
             return;
         }
+        let (src, dst) = (self.usable(src), self.usable(dst));
         let barrier = vk::MemoryBarrier2::default()
             .src_stage_mask(vk_stages(src))
             .src_access_mask(vk_access(src, false))
@@ -413,6 +433,7 @@ impl Recorder<'_> {
                     dst_stage,
                 } => self.barrier(src_stage, dst_stage),
                 Command::PresentBarrier { texture, src_stage } => {
+                    let src_stage = self.usable(src_stage);
                     let t = self.res.textures.get(texture);
                     let barrier = vk::ImageMemoryBarrier2::default()
                         .src_stage_mask(vk_stages(src_stage))
@@ -436,11 +457,12 @@ impl Recorder<'_> {
                         let mut list = [vk::ImageMemoryBarrier2::default(); 16];
                         for (out, x) in list.iter_mut().zip(chunk) {
                             let t = self.res.textures.get(x.texture);
+                            let (src, dst) = (self.usable(x.src_stage), self.usable(x.dst_stage));
                             *out = vk::ImageMemoryBarrier2::default()
-                                .src_stage_mask(vk_stages(x.src_stage))
-                                .src_access_mask(vk_access(x.src_stage, false))
-                                .dst_stage_mask(vk_stages(x.dst_stage))
-                                .dst_access_mask(vk_access(x.dst_stage, true))
+                                .src_stage_mask(vk_stages(src))
+                                .src_access_mask(vk_access(src, false))
+                                .dst_stage_mask(vk_stages(dst))
+                                .dst_access_mask(vk_access(dst, true))
                                 .old_layout(vk::ImageLayout::UNDEFINED)
                                 .new_layout(vk::ImageLayout::GENERAL)
                                 .image(t.image)
@@ -617,8 +639,7 @@ impl Recorder<'_> {
                         }
                     }
                     d.cmd_begin_rendering(b, &info);
-                    self.colors.clear();
-                    self.depth = None;
+                    self.clear_pass();
                 }
                 Command::EndRenderPass => d.cmd_end_rendering(b),
                 Command::InputAttachmentBarrier => {

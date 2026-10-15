@@ -124,6 +124,10 @@ impl Caps {
         }
         let name = "create_render_pipeline";
         check_targets(name, info.colors, info.depth, info.stencil, info.samples);
+        check!(
+            info.buffers.iter().all(|b| b.stride > 0),
+            "{name} vertex buffer stride 0 means a different thing on each API; give a stride"
+        );
         self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
     }
 
@@ -354,7 +358,13 @@ impl Caps {
                 h == 1 && d == 1 && info.mips == 1,
                 "{name} 1D texture needs height 1, depth 1 and one mip"
             ),
-            TextureDimension::D3 => check_eq!(l, 1, "{name} 3D texture needs one layer"),
+            TextureDimension::D3 => {
+                check_eq!(l, 1, "{name} 3D texture needs one layer");
+                check!(
+                    (info.usage & (TextureUsage::COLOR | TextureUsage::INPUT)).is_empty(),
+                    "{name} 3D texture cannot be an attachment"
+                );
+            }
             TextureDimension::Cube | TextureDimension::CubeArray => check!(
                 w == h && d == 1 && l.is_multiple_of(6),
                 "{name} cube texture needs square faces, depth 1 and a multiple of 6 layers"

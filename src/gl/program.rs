@@ -123,7 +123,7 @@ impl Program {
             Ok(Self {
                 raw,
                 pairs,
-                instance: gl.get_uniform_location(raw, "SPIRV_Cross_BaseInstance"),
+                instance: gl.get_uniform_location(raw, "mk_BaseInstance"),
             })
         }
     }

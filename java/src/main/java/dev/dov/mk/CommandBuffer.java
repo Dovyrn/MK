@@ -67,6 +67,9 @@ public class CommandBuffer implements AutoCloseable {
 
     @Override
     public void close() {
+        if (passing) {
+            throw new IllegalStateException("command buffer closed while one of its passes is open; end the pass first");
+        }
         if (handle != 0) {
             var dropped = handle;
             handle = 0;

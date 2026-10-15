@@ -370,7 +370,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "commands" => {
                     writeln!(
                         s,
-                        "            var {n}Address = arena.alloc({n}.length * 8L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 8, {n}[i].take());\n            }}"
+                        "            for (var c : {n}) {{\n                c.handle();\n            }}\n            var {n}Address = arena.alloc({n}.length * 8L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 8, {n}[i].take());\n            }}"
                     )
                     .unwrap();
                     args.push(format!("{n}Address"));
@@ -396,7 +396,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
                 "waits" => {
                     writeln!(
                         s,
-                        "            var {n}Address = arena.alloc({n}.length * 16L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 16, {n}[i].timeline().handle());\n                memPutLong({n}Address + i * 16 + 8, {n}[i].value());\n            }}"
+                        "            var {n}Address = arena.alloc({n}.length * 16L);\n            for (var i = 0; i < {n}.length; i++) {{\n                memPutLong({n}Address + i * 16, {n}[i].timeline().handle(arena));\n                memPutLong({n}Address + i * 16 + 8, {n}[i].value());\n            }}"
                     )
                     .unwrap();
                     args.push(format!("{n}Address"));

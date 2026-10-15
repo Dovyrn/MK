@@ -17,6 +17,13 @@ public class Timeline {
         return handle;
     }
 
+    long handle(Arena arena) {
+        var read = lock.readLock();
+        read.lock();
+        arena.unlockOnClose(read);
+        return handle();
+    }
+
     long take() {
         lock.writeLock().lock();
         try {

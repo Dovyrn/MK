@@ -22,8 +22,8 @@ use crate::recording::{Held, Recording};
 use crate::table::lock;
 use crate::{
     Atomic64, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory, MeshPipelineInfo,
-    RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureDimension, TextureInfo,
-    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, Topology, slot,
+    RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureInfo, TextureUsage, TextureViewInfo,
+    TilePipelineInfo, Timeline, Topology, slot,
 };
 use crate::{
     Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
@@ -187,7 +187,9 @@ impl Device {
                 occlusion: results,
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
                 independent_blend: has(40, "GL_ARB_draw_buffers_blend"),
-                indirect: has(42, "GL_ARB_draw_indirect") && has(42, "GL_ARB_base_instance"),
+                indirect: has(42, "GL_ARB_draw_indirect")
+                    && has(42, "GL_ARB_base_instance")
+                    && extra.parameters,
                 indirect_offset: false,
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
@@ -363,6 +365,10 @@ impl Device {
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, Some(b.raw));
             let data = (self.extra.map)(glow::COPY_WRITE_BUFFER, 0, b.size as isize, access);
             self.gl.bind_buffer(glow::COPY_WRITE_BUFFER, old);
+            assert!(
+                !data.is_null(),
+                "glMapBufferRange returned NULL for {buffer}; the host may have it mapped already"
+            );
             b.data.set(data.cast());
         }
         unsafe { self.res.table.mapping(buffer, b.data.get()) }
@@ -416,6 +422,16 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_render_pipeline(info)?;
+        for a in info.attributes {
+            let packed = a.format == Format::Rg11b10Float
+                && !self.has(44, "GL_ARB_vertex_type_10f_11f_11f_rev");
+            if a.format == Format::Rgb9e5Float || packed {
+                return Err(Error::Unsupported(format!(
+                    "format {} is not a vertex format here",
+                    a.format
+                )));
+            }
+        }
         let stages = [
             (glow::VERTEX_SHADER, info.vertex),
             (glow::FRAGMENT_SHADER, info.fragment),
@@ -535,21 +551,15 @@ impl Device {
 
     pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
         self.thread();
-        let info = self.res.table.textures.get(texture);
+        self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
         let t = self.res.textures.get(texture);
         if t.image.get() == 0 {
             let b = self.extra.bindless.as_ref().unwrap();
             let raw = t.raw.map_or(0, |r| r.0.get());
-            let layered = info.layers > 1 || info.dimension == TextureDimension::D3;
+            let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
             let internal = t.format.gl()[0];
-            let root = self
-                .res
-                .table
-                .parents
-                .find(texture)
-                .copied()
-                .unwrap_or(texture);
+            let root = self.res.table.root(texture);
             unsafe {
                 let handle = (b.handle)(raw, 0, layered as u8, 0, internal);
                 if lock(&self.res.table.residency).texture(root) > 0 {
@@ -599,9 +609,8 @@ impl Device {
             0 if readable => base | copies | TextureUsage::HOST,
             0 => base | TextureUsage::COPY_DST | TextureUsage::HOST,
             glow::DEPTH_STENCIL if format == Format::D24UnormS8 => base | TextureUsage::DEPTH,
-            glow::DEPTH_COMPONENT | glow::DEPTH_STENCIL | glow::STENCIL_INDEX => {
-                base | TextureUsage::DEPTH | copies
-            }
+            glow::DEPTH_STENCIL => base | TextureUsage::DEPTH | TextureUsage::COPY_SRC,
+            glow::DEPTH_COMPONENT | glow::STENCIL_INDEX => base | TextureUsage::DEPTH | copies,
             _ => {
                 let unrenderable = matches!(
                     format,
@@ -807,9 +816,8 @@ impl Device {
         self.check_host_programs()?;
         self.check_host_queries()?;
         self.healthy()?;
-        let host = crate::gl::errors::drain(&self.gl);
+        let errors = crate::gl::errors::drain(&self.gl);
         let state = State::save(&self.gl, &self.extra, &self.caps, &|v, e| self.has(v, e));
-        crate::gl::errors::raise(&self.gl, &self.extra, &host);
         if base == "outside" {
             state.clear(&self.gl, &self.extra);
         }
@@ -819,7 +827,7 @@ impl Device {
             &self.res,
             &self.caps,
             (self.fbo, self.read),
-            state,
+            (state, errors),
             &self.open,
         );
         self.open.set(true);

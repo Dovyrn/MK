@@ -71,6 +71,19 @@ impl Device {
                     "vertex input {location} has no attribute"
                 )));
             }
+            for a in v.attributes {
+                let features = unsafe {
+                    self.instance
+                        .get_physical_device_format_properties(self.physical, a.format.vk())
+                }
+                .buffer_features;
+                if !features.contains(vk::FormatFeatureFlags::VERTEX_BUFFER) {
+                    return Err(Error::Unsupported(format!(
+                        "format {} is not a vertex format here",
+                        a.format
+                    )));
+                }
+            }
         }
         let module = self.module(&words)?;
         let names: Vec<_> = entries

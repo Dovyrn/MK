@@ -1,5 +1,5 @@
 format = [
-    ["A8_UNORM", "A8_UNORM_KHR", "A8Unorm", 1, 1, 1, "-"],
+    ["A8_UNORM", "-", "A8Unorm", 1, 1, 1, "-"],
     ["R8_UNORM", "R8_UNORM", "R8Unorm", 1, 1, 1, "R8 RED UNSIGNED_BYTE"],
     ["R8_SRGB", "R8_SRGB", "R8Unorm_sRGB", 1, 1, 1, "-"],
     ["R8_SNORM", "R8_SNORM", "R8Snorm", 1, 1, 1, "R8_SNORM RED BYTE"],

@@ -164,6 +164,10 @@ impl<'a> Check<'a> {
         self.table.pools.get(self.pool).0
     }
 
+    fn graphics(&self) -> bool {
+        self.caps.graphics_queues >> self.queue() & 1 != 0
+    }
+
     pub fn finish(&self) {
         check_eq!(
             self.open,
@@ -284,7 +288,7 @@ impl<'a> Check<'a> {
             "{name} needs {texture} created with TextureUsage::{what}"
         );
         self.table.assert_defined(name, texture);
-        let root = self.table.parents.find(texture).copied().unwrap_or(texture);
+        let root = self.table.root(texture);
         self.assert_resident(name, &texture, lock(&self.table.residency).texture(root));
         t
     }
@@ -347,6 +351,22 @@ impl<'a> Check<'a> {
             "{} needs bind_render_pipeline earlier in this pass",
             command_name(c)
         );
+        if !matches!(
+            c,
+            Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. }
+        ) {
+            let mesh = matches!(
+                c,
+                Command::DrawMeshTasks { .. } | Command::DrawMeshTasksIndirect { .. }
+            );
+            check_eq!(
+                self.mesh,
+                mesh,
+                "{} needs a {} pipeline bound",
+                command_name(c),
+                if mesh { "mesh" } else { "vertex" }
+            );
+        }
         check_eq!(
             self.views,
             self.scissors,
@@ -494,6 +514,11 @@ impl<'a> Check<'a> {
         let name = command_name(c);
         let t = self.texture_with_usage(&name, texture, needs, what);
         check!(
+            self.graphics() || !is_depth_format(t.format),
+            "{name} on depth format {} needs a graphics queue",
+            t.format
+        );
+        check!(
             w > 0 && h > 0 && d > 0,
             "{} region {w}x{h}x{d} has a zero",
             command_name(c)
@@ -548,6 +573,15 @@ impl<'a> Check<'a> {
         self.buffer_range(&name, buffer, offset, total);
     }
 
+    pub fn clear_pass(&mut self) {
+        self.open = "outside";
+        self.targets.clear();
+        self.resolves.clear();
+        self.heap = None;
+        self.inputs = [Texture::default(); slot::COLORS as usize];
+        self.tile = None;
+    }
+
     pub fn step(&mut self, c: &Command) -> Result<(), Error> {
         if !cfg!(feature = "validation") {
             return Ok(());
@@ -573,6 +607,7 @@ impl<'a> Check<'a> {
                 dst_stage,
             } => {
                 self.check_wait(name, src_stage, dst_stage);
+                check!(self.graphics(), "begin_render_pass needs a graphics queue");
                 check!(
                     width > 0 && height > 0 && layers > 0,
                     "begin_render_pass size {width}x{height}x{layers} has a zero"
@@ -637,12 +672,7 @@ impl<'a> Check<'a> {
                     Some(&"render"),
                     "the render pass ends with a debug label open; call end_debug_label first"
                 );
-                self.open = "outside";
-                self.targets.clear();
-                self.resolves.clear();
-                self.heap = None;
-                self.inputs = [Texture::default(); slot::COLORS as usize];
-                self.tile = None;
+                self.clear_pass();
             }
             Command::BindComputePipeline { pipeline } => {
                 self.require(c, caps.compute, "compute")?;
@@ -676,8 +706,12 @@ impl<'a> Check<'a> {
                 size,
             } => {
                 check!(size > 0, "copy_buffer size is 0");
-                self.buffer_range(name, src, src_offset, size);
+                let len = self.buffer_range(name, src, src_offset, size);
                 self.buffer_range(name, dst, dst_offset, size);
+                check!(
+                    src != dst || src_offset + len <= dst_offset || dst_offset + len <= src_offset,
+                    "copy_buffer source and destination overlap in {src}"
+                );
             }
             Command::FillBuffer {
                 buffer,
@@ -773,6 +807,10 @@ impl<'a> Check<'a> {
                 let s = self.texture_region(name, src, from, [src_x, src_y, src_z], size);
                 let to = (dst_mip, dst_layer, layers);
                 let t = self.texture_region(name, dst, to, [dst_x, dst_y, dst_z], size);
+                check!(
+                    self.graphics() || !is_depth_format(s.format) && !is_depth_format(t.format),
+                    "copy_texture on depth formats needs a graphics queue"
+                );
                 check_eq!(
                     s.format.block(),
                     t.format.block(),

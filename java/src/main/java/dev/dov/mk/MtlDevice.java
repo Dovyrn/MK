@@ -88,18 +88,21 @@ public class MtlDevice extends Device {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
+                for (var c : commands) {
+                    c.handle();
+                }
                 var commandsAddress = arena.alloc(commands.length * 8L);
                 for (var i = 0; i < commands.length; i++) {
                     memPutLong(commandsAddress + i * 8, commands[i].take());
                 }
                 var waitsAddress = arena.alloc(waits.length * 16L);
                 for (var i = 0; i < waits.length; i++) {
-                    memPutLong(waitsAddress + i * 16, waits[i].timeline().handle());
+                    memPutLong(waitsAddress + i * 16, waits[i].timeline().handle(arena));
                     memPutLong(waitsAddress + i * 16 + 8, waits[i].value());
                 }
                 var signalsAddress = arena.alloc(signals.length * 16L);
                 for (var i = 0; i < signals.length; i++) {
-                    memPutLong(signalsAddress + i * 16, signals[i].timeline().handle());
+                    memPutLong(signalsAddress + i * 16, signals[i].timeline().handle(arena));
                     memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
                 }
                 return nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);

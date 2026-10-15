@@ -2,7 +2,7 @@ use super::{Device, vk_image_usage};
 use crate::vk::swapchain::{Present, State, SwapchainObject};
 use crate::{
     ColorSpace, CommandBuffer, Error, PresentMode, SurfaceCaps, Swapchain, SwapchainInfo, Texture,
-    TextureInfo, Timeline,
+    TextureInfo, TextureUsage, Timeline,
 };
 use ash::khr::swapchain;
 use ash::vk;
@@ -184,7 +184,7 @@ impl Device {
             format: info.format,
             width: info.width,
             height: info.height,
-            usage: info.usage,
+            usage: info.usage & !TextureUsage::VIEW,
             ..Default::default()
         };
         let semaphore = || unsafe {

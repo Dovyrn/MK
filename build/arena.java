@@ -3,9 +3,15 @@ package dev.dov.mk;
 import static org.lwjgl.system.MemoryUtil.*;
 
 import java.util.ArrayList;
+import java.util.concurrent.locks.Lock;
 
 class Arena implements AutoCloseable {
     private final ArrayList<Long> blocks = new ArrayList<>();
+    private final ArrayList<Lock> locks = new ArrayList<>();
+
+    void unlockOnClose(Lock lock) {
+        locks.add(lock);
+    }
 
     long alloc(long size) {
         if (size == 0) {
@@ -47,6 +53,9 @@ class Arena implements AutoCloseable {
     public void close() {
         for (var address : blocks) {
             nmemFree(address);
+        }
+        for (var lock : locks) {
+            lock.unlock();
         }
     }
 }

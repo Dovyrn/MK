@@ -27,11 +27,7 @@ pub(super) fn probe(
     unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
     let features = &ext.features;
     let families = unsafe { instance.get_physical_device_queue_family_properties(physical) };
-    let sizes = if ext.sizes
-        && buffer
-            .required_subgroup_size_stages
-            .contains(vk::ShaderStageFlags::COMPUTE)
-    {
+    let sizes = if ext.sizes {
         (0..32)
             .map(|i| 1u32 << i)
             .filter(|n| (buffer.min_subgroup_size..=buffer.max_subgroup_size).contains(n))
@@ -65,7 +61,12 @@ pub(super) fn probe(
         tiles: false,
         subgroup: groups.subgroup_size,
         subgroup_sizes: sizes,
-        subgroup_ops: SubgroupOp(groups.subgroup_supported_operations.as_raw() & SubgroupOp::BITS),
+        subgroup_ops: SubgroupOp(groups.subgroup_supported_operations.as_raw() & SubgroupOp::BITS)
+            & if ext.rotate {
+                !SubgroupOp::default()
+            } else {
+                !SubgroupOp::ROTATE
+            },
         subgroup_stages: stages,
         full_subgroups: ext.full,
         max_threads: limits.max_compute_work_group_invocations,

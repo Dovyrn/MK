@@ -85,6 +85,7 @@ pub struct Recorder<'a> {
     query: Option<u32>,
     labels: u32,
     host: Option<State>,
+    errors: Vec<u32>,
     open: &'a Cell<bool>,
     pub imported: bool,
     used: Option<glow::Program>,
@@ -189,13 +190,18 @@ fn gl_barrier_bits(stages: Stage) -> u32 {
 }
 
 impl<'a> Recorder<'a> {
+    pub fn clear_pass(&mut self) {
+        self.colors.clear();
+        self.depth = None;
+    }
+
     pub fn new(
         gl: &'a glow::Context,
         extra: &'a Extra,
         res: &'a Resources,
         caps: &'a Caps,
         (fbo, read): (glow::Framebuffer, glow::Framebuffer),
-        host: State,
+        (host, errors): (State, Vec<u32>),
         open: &'a Cell<bool>,
     ) -> Self {
         Self {
@@ -224,6 +230,7 @@ impl<'a> Recorder<'a> {
             query: None,
             labels: 0,
             host: Some(host),
+            errors,
             open,
             imported: false,
             used: None,
@@ -281,7 +288,9 @@ impl<'a> Recorder<'a> {
         }
         self.labels = 0;
         let mine = crate::gl::errors::drain(gl);
-        host.restore(gl, self.extra)?;
+        let restored = host.restore(gl, self.extra);
+        crate::gl::errors::raise(gl, self.extra, &self.errors);
+        restored?;
         if mine.is_empty() {
             Ok(())
         } else {

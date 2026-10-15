@@ -9,6 +9,7 @@ pub struct Extensions {
     pub mesh: Option<mesh_shader::Device>,
     pub task: bool,
     pub sizes: bool,
+    pub rotate: bool,
     pub count: bool,
     pub full: bool,
     pub atomics: Atomic64,
@@ -26,12 +27,12 @@ pub struct Extensions {
     pub ordered: bool,
 }
 
-unsafe fn v14(features: &vk::PhysicalDeviceFeatures2) -> bool {
+unsafe fn v14(features: &vk::PhysicalDeviceFeatures2, index: usize) -> bool {
     let mut next = features.p_next as *const vk::BaseInStructure;
     while let Some(s) = unsafe { next.as_ref() } {
         if s.s_type.as_raw() == 55 {
             let flags = unsafe { next.cast::<u8>().add(16).cast::<vk::Bool32>() };
-            return unsafe { *flags.add(14) } != 0;
+            return unsafe { *flags.add(index) } != 0;
         }
         next = s.p_next;
     }
@@ -129,7 +130,10 @@ impl Extensions {
                 && has(c"vkWaitForPresentKHR");
             let present_wait = present_wait.then(|| present_wait::Device::new(instance, raw));
             let mut driver = vk::PhysicalDeviceDriverProperties::default();
-            let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut driver);
+            let mut sizes = vk::PhysicalDeviceVulkan13Properties::default();
+            let mut properties = vk::PhysicalDeviceProperties2::default()
+                .push_next(&mut driver)
+                .push_next(&mut sizes);
             instance.get_physical_device_properties2(physical, &mut properties);
             let moltenvk = driver.driver_id == vk::DriverId::MOLTENVK;
             let copy = chained::<vk::PhysicalDeviceHostImageCopyFeaturesEXT>(features)
@@ -159,7 +163,7 @@ impl Extensions {
                 .then(|| host_image_copy::Device::new(instance, raw));
             let local = chained::<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>(features)
                 .is_some_and(|f| f.dynamic_rendering_local_read != 0)
-                || v14(features);
+                || v14(features, 14);
             let ordered =
                 chained::<vk::PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT>(
                     features,
@@ -175,7 +179,13 @@ impl Extensions {
                 debug,
                 mesh,
                 task,
-                sizes: v13.is_some_and(|f| f.subgroup_size_control != 0),
+                sizes: v13.is_some_and(|f| f.subgroup_size_control != 0)
+                    && sizes
+                        .required_subgroup_size_stages
+                        .contains(vk::ShaderStageFlags::COMPUTE),
+                rotate: chained::<vk::PhysicalDeviceShaderSubgroupRotateFeaturesKHR>(features)
+                    .is_some_and(|f| f.shader_subgroup_rotate != 0)
+                    || v14(features, 1),
                 count: v12.is_some_and(|f| f.draw_indirect_count != 0),
                 full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
                 atomics: v12.map_or(Atomic64::default(), |f| {

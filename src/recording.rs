@@ -29,6 +29,15 @@ impl Recording<'_> {
     }
 
     fn begin_render(&mut self, info: &RenderPassInfo) -> Result<(), Error> {
+        let result = self.attach(info);
+        if result.is_err() {
+            self.check.clear_pass();
+            self.recorder.clear_pass();
+        }
+        result
+    }
+
+    fn attach(&mut self, info: &RenderPassInfo) -> Result<(), Error> {
         for (i, c) in info.colors.iter().enumerate() {
             if c.texture.is_null() {
                 continue;
@@ -128,8 +137,9 @@ impl<'d> CommandBuffer<'d> {
     }
 
     pub fn end(&mut self) -> Result<(), Error> {
+        let result = self.recording.recorder.end();
         self.recording.check.end();
-        self.recording.recorder.end()
+        result
     }
 }
 

@@ -166,18 +166,29 @@ impl Recorder<'_> {
         let gl = self.gl;
         unsafe {
             let target = glow::DRAW_FRAMEBUFFER;
+            let default = self.default();
             let mut discard: Vec<u32> = self
                 .colors
                 .iter()
                 .filter(|c| c.store == StoreOp::DontCare)
-                .map(|c| glow::COLOR_ATTACHMENT0 + c.index)
+                .map(|c| {
+                    if default {
+                        glow::COLOR
+                    } else {
+                        glow::COLOR_ATTACHMENT0 + c.index
+                    }
+                })
                 .collect();
             if self
                 .depth
                 .as_ref()
                 .is_some_and(|d| d.store == StoreOp::DontCare)
             {
-                discard.push(glow::DEPTH_ATTACHMENT);
+                discard.push(if default {
+                    glow::DEPTH
+                } else {
+                    glow::DEPTH_ATTACHMENT
+                });
             }
             let (w, h) = self.extent;
             for c in &self.colors {
@@ -218,8 +229,7 @@ impl Recorder<'_> {
                 invalidate(target, discard.len() as i32, discard.as_ptr());
             }
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-            self.colors.clear();
-            self.depth = None;
+            self.clear_pass();
             self.rendering = false;
         }
         Ok(())

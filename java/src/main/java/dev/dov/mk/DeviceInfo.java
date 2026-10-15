@@ -40,6 +40,10 @@ public class DeviceInfo {
     public boolean viewportIndex = false;
     public boolean subgroupSizes = false;
     public boolean fullSubgroups = false;
+    public boolean subgroupRotate = false;
+    public boolean dynamicIndexing = false;
+    public boolean fragmentStores = false;
+    public boolean vertexStores = false;
     public boolean mesh = false;
     public boolean task = false;
     public boolean hostRead = false;
@@ -50,10 +54,10 @@ public class DeviceInfo {
     public boolean swapchain = false;
     public boolean presentWait = false;
 
-    public static final int SIZE = 164;
+    public static final int SIZE = 180;
 
     int encodedSize() {
-        return 164;
+        return 180;
     }
 
     long encode(long p) {
@@ -120,6 +124,14 @@ public class DeviceInfo {
         memPutInt(p, subgroupSizes ? 1 : 0);
         p += 4;
         memPutInt(p, fullSubgroups ? 1 : 0);
+        p += 4;
+        memPutInt(p, subgroupRotate ? 1 : 0);
+        p += 4;
+        memPutInt(p, dynamicIndexing ? 1 : 0);
+        p += 4;
+        memPutInt(p, fragmentStores ? 1 : 0);
+        p += 4;
+        memPutInt(p, vertexStores ? 1 : 0);
         p += 4;
         memPutInt(p, mesh ? 1 : 0);
         p += 4;
@@ -207,6 +219,14 @@ public class DeviceInfo {
         r.subgroupSizes = memGetInt(p) != 0;
         p += 4;
         r.fullSubgroups = memGetInt(p) != 0;
+        p += 4;
+        r.subgroupRotate = memGetInt(p) != 0;
+        p += 4;
+        r.dynamicIndexing = memGetInt(p) != 0;
+        p += 4;
+        r.fragmentStores = memGetInt(p) != 0;
+        p += 4;
+        r.vertexStores = memGetInt(p) != 0;
         p += 4;
         r.mesh = memGetInt(p) != 0;
         p += 4;

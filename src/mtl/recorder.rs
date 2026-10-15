@@ -146,6 +146,10 @@ fn mtl_store_action(s: StoreOp, resolve: bool) -> MTLStoreAction {
 }
 
 impl<'a> Recorder<'a> {
+    pub fn clear_pass(&mut self) {
+        self.pass = MTL4RenderPassDescriptor::new();
+    }
+
     pub fn new(
         table: &'a ProtocolObject<dyn MTL4ArgumentTable>,
         res: &'a Resources,
@@ -258,7 +262,7 @@ impl<'a> Recorder<'a> {
         };
         (
             b.address + offset,
-            b.length.saturating_sub(offset as usize),
+            b.length.saturating_sub(offset as usize) / size as usize * size as usize,
             kind,
             size,
         )
@@ -484,12 +488,14 @@ impl<'a> Recorder<'a> {
                 ..
             } => {
                 let t = self.res.textures.get(texture);
-                let attachment = self.pass.depthAttachment();
-                attachment.setTexture(Some(&t.raw));
                 unsafe { self.pass.setDefaultRasterSampleCount(t.raw.sampleCount()) };
-                attachment.setLoadAction(mtl_load_action(l));
-                attachment.setStoreAction(mtl_store_action(s, false));
-                attachment.setClearDepth(depth as f64);
+                if t.format != Format::S8Uint {
+                    let attachment = self.pass.depthAttachment();
+                    attachment.setTexture(Some(&t.raw));
+                    attachment.setLoadAction(mtl_load_action(l));
+                    attachment.setStoreAction(mtl_store_action(s, false));
+                    attachment.setClearDepth(depth as f64);
+                }
                 if matches!(
                     t.format,
                     Format::D24UnormS8 | Format::D32FloatS8 | Format::S8Uint
@@ -522,7 +528,7 @@ impl<'a> Recorder<'a> {
                 wait(ProtocolObject::from_ref(&*encoder), src_stage, dst_stage);
                 self.render = Some(encoder);
                 self.raster = Some((MTLTriangleFillMode::Fill, MTLDepthClipMode::Clip));
-                self.pass = MTL4RenderPassDescriptor::new();
+                self.clear_pass();
                 self.width = width;
                 self.height = height;
                 self.render_pipeline = None;

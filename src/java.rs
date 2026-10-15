@@ -72,9 +72,11 @@ pub fn take_commands(handle: jlong) -> CommandBuffer<'static> {
     *unsafe { Box::from_raw(handle as *mut CommandBuffer<'static>) }
 }
 
-pub fn commands(address: jlong, count: i64) -> impl Iterator<Item = CommandBuffer<'static>> {
+pub fn commands(address: jlong, count: i64) -> Vec<CommandBuffer<'static>> {
     let mut b = bytes(address, count * 8);
-    (0..count).map(move |_| take_commands(crate::wire::u64(&mut b) as jlong))
+    (0..count)
+        .map(|_| take_commands(crate::wire::u64(&mut b) as jlong))
+        .collect()
 }
 
 #[cfg(feature = "vk")]

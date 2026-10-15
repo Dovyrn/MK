@@ -40,6 +40,15 @@ pub fn aspect(f: crate::Format) -> (u32, u32) {
     }
 }
 
+unsafe fn nearest(gl: &glow::Context, kind: u32, format: Format) {
+    if format.uint() || format.sint() {
+        unsafe {
+            gl.tex_parameter_i32(kind, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+            gl.tex_parameter_i32(kind, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+        }
+    }
+}
+
 impl TextureObject {
     pub fn new(
         gl: &glow::Context,
@@ -154,6 +163,9 @@ impl TextureObject {
                     _ => gl.tex_storage_3d(kind, mips, internal, w, h, layers),
                 }
             }
+            if !multisample {
+                nearest(gl, kind, info.format);
+            }
             gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, unpack);
             gl.bind_texture(
                 kind,
@@ -210,6 +222,15 @@ impl TextureObject {
             raise(gl, extra, &host);
             if error != glow::NO_ERROR {
                 return Err(Error::Driver(format!("texture view failed ({error:#x})")));
+            }
+            if !multisample {
+                let old = gl.get_parameter_i32(binding(kind)) as u32;
+                gl.bind_texture(kind, Some(raw));
+                nearest(gl, kind, info.format);
+                gl.bind_texture(
+                    kind,
+                    std::num::NonZeroU32::new(old).map(glow::NativeTexture),
+                );
             }
             Ok(Self {
                 raw: Some(raw),

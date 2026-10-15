@@ -234,8 +234,16 @@ impl Table {
         }
     }
 
+    pub fn root(&self, texture: Texture) -> Texture {
+        let mut root = texture;
+        while let Some(&parent) = self.parents.find(root) {
+            root = parent;
+        }
+        root
+    }
+
     pub fn assert_defined(&self, name: &str, texture: Texture) {
-        let root = self.parents.find(texture).copied().unwrap_or(texture);
+        let root = self.root(texture);
         if let Some(acquired) = self.presentable.find(root) {
             check!(
                 acquired.load(Ordering::Relaxed),
@@ -294,6 +302,19 @@ impl Table {
             "format {} has a different block than format {}",
             info.format,
             t.format
+        );
+        let linear = |f: Format| format!("{f:?}").replace("Srgb", "Unorm");
+        check!(
+            if crate::caps::is_depth_format(t.format) {
+                info.format == t.format
+            } else if t.format.block()[1] > 1 {
+                linear(info.format) == linear(t.format)
+            } else {
+                !crate::caps::is_depth_format(info.format)
+            },
+            "a view of {texture} cannot reinterpret {} as {}",
+            t.format,
+            info.format
         );
         let mips = rest(info.base_mip, info.mips, t.mips, "mip", texture);
         let layers = rest(info.base_layer, info.layers, t.layers, "layer", texture);

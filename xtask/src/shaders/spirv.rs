@@ -1,7 +1,7 @@
 use super::run;
 use rspirv::binary::Assemble;
 use rspirv::dr::Operand;
-use rspirv::spirv::{Decoration, Op, StorageClass};
+use rspirv::spirv::{Capability, Decoration, Op, StorageClass};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -50,7 +50,7 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         .chunks(4)
         .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
         .collect();
-    let words = shift(payloads(words), &json, textures);
+    let words = indexing(shift(payloads(words), &json, textures));
     fs::remove_file(&json).unwrap();
     fs::write(&spv, queries(&words)).unwrap();
 }
@@ -98,6 +98,52 @@ fn shift(words: Vec<u32>, json: &Path, by: u32) -> Vec<u32> {
             && let Some(m) = ids.iter().find(|m| m.0 == *id)
         {
             *b = b.wrapping_add(m.1);
+        }
+    }
+    module.assemble()
+}
+
+fn indexing(words: Vec<u32>) -> Vec<u32> {
+    let mut module = rspirv::dr::load_words(words).unwrap();
+    let kind = |id: u32| {
+        let i = module
+            .types_global_values
+            .iter()
+            .find(|i| i.result_id == Some(id))?;
+        match i.class.opcode {
+            Op::TypeSampler | Op::TypeSampledImage => {
+                Some(Capability::SampledImageArrayDynamicIndexing)
+            }
+            Op::TypeImage => match i.operands[5] {
+                Operand::LiteralBit32(1) => Some(Capability::SampledImageArrayDynamicIndexing),
+                Operand::LiteralBit32(2) => Some(Capability::StorageImageArrayDynamicIndexing),
+                _ => None,
+            },
+            _ => None,
+        }
+    };
+    let mut needed: Vec<Capability> = module
+        .types_global_values
+        .iter()
+        .filter(|i| matches!(i.class.opcode, Op::TypeArray | Op::TypeRuntimeArray))
+        .filter_map(|i| match i.operands[0] {
+            Operand::IdRef(id) => kind(id),
+            _ => None,
+        })
+        .collect();
+    needed.dedup();
+    for c in needed {
+        let has = module
+            .capabilities
+            .iter()
+            .any(|i| i.operands[0] == Operand::Capability(c));
+        if !has {
+            module.capabilities.push(rspirv::dr::Instruction::new(
+                Op::Capability,
+                None,
+                None,
+                vec![Operand::Capability(c)],
+            ));
         }
     }
     module.assemble()

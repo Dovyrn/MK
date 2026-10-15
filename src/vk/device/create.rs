@@ -136,7 +136,8 @@ impl Device {
             )));
         }
         let available = unsafe { instance.enumerate_device_extension_properties(physical) }?;
-        wanted.assert_usable(&Features::query(instance, physical, &available).supported(count));
+        let have = Features::query(instance, physical, &available);
+        wanted.assert_usable(&have.supported(count));
         let mut families: Vec<u32> = slots.iter().map(|s| s.0).collect();
         families.dedup();
         let priorities = vec![1.0; slots.len()];
@@ -150,6 +151,11 @@ impl Device {
             })
             .collect();
         let mut f = Features::enable(wanted);
+        f.portable = has(&available, portability_subset::NAME);
+        f.portability = vk::PhysicalDevicePortabilitySubsetFeaturesKHR {
+            p_next: std::ptr::null_mut(),
+            ..have.portability
+        };
         let names = f.names(&available);
         let info = f.chain(&infos, &names);
         let raw = unsafe { instance.create_device(physical, &info, None) }?;
@@ -181,6 +187,9 @@ struct Features {
     image64: vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT<'static>,
     id: vk::PhysicalDevicePresentIdFeaturesKHR<'static>,
     wait: vk::PhysicalDevicePresentWaitFeaturesKHR<'static>,
+    rotate: vk::PhysicalDeviceShaderSubgroupRotateFeaturesKHR<'static>,
+    portability: vk::PhysicalDevicePortabilitySubsetFeaturesKHR<'static>,
+    portable: bool,
     push: bool,
     swapchain: bool,
 }
@@ -216,6 +225,12 @@ impl Features {
         }
         if has(available, present_wait::NAME) {
             query = query.push_next(&mut s.wait);
+        }
+        if has(available, vk::KHR_SHADER_SUBGROUP_ROTATE_NAME) {
+            query = query.push_next(&mut s.rotate);
+        }
+        if has(available, portability_subset::NAME) {
+            query = query.push_next(&mut s.portability);
         }
         unsafe { instance.get_physical_device_features2(physical, &mut query) };
         s.core = query.features;
@@ -261,6 +276,11 @@ impl Features {
             viewport_index: v12.shader_output_viewport_index != 0,
             subgroup_sizes: v13.subgroup_size_control != 0,
             full_subgroups: v13.compute_full_subgroups != 0,
+            subgroup_rotate: self.rotate.shader_subgroup_rotate != 0,
+            dynamic_indexing: c.shader_sampled_image_array_dynamic_indexing != 0
+                && c.shader_storage_image_array_dynamic_indexing != 0,
+            fragment_stores: c.fragment_stores_and_atomics != 0,
+            vertex_stores: c.vertex_pipeline_stores_and_atomics != 0,
             mesh: self.mesh.mesh_shader != 0,
             task: self.mesh.task_shader != 0,
             host_read: self.copy.host_image_copy != 0,
@@ -289,6 +309,10 @@ impl Features {
         e.core.shader_int64 = on(info.int64);
         e.core.shader_storage_image_read_without_format = on(info.unformatted_reads);
         e.core.shader_storage_image_write_without_format = on(info.unformatted_writes);
+        e.core.shader_sampled_image_array_dynamic_indexing = on(info.dynamic_indexing);
+        e.core.shader_storage_image_array_dynamic_indexing = on(info.dynamic_indexing);
+        e.core.fragment_stores_and_atomics = on(info.fragment_stores);
+        e.core.vertex_pipeline_stores_and_atomics = on(info.vertex_stores);
         e.v11.shader_draw_parameters = on(info.draw_parameters);
         let v12 = &mut e.v12;
         v12.buffer_device_address = on(info.addresses);
@@ -311,6 +335,7 @@ impl Features {
         e.v13.dynamic_rendering = on(info.dynamic_rendering);
         e.v13.subgroup_size_control = on(info.subgroup_sizes);
         e.v13.compute_full_subgroups = on(info.full_subgroups);
+        e.rotate.shader_subgroup_rotate = on(info.subgroup_rotate);
         e.mesh.mesh_shader = on(info.mesh);
         e.mesh.task_shader = on(info.task);
         e.copy.host_image_copy = on(info.host_read);
@@ -336,6 +361,10 @@ impl Features {
                 self.mesh.mesh_shader != 0 || self.mesh.task_shader != 0,
             ),
             (host_image_copy::NAME, self.copy.host_image_copy != 0),
+            (
+                vk::KHR_SHADER_SUBGROUP_ROTATE_NAME,
+                self.rotate.shader_subgroup_rotate != 0,
+            ),
             (
                 dynamic_rendering_local_read::NAME,
                 self.local.dynamic_rendering_local_read != 0,
@@ -384,6 +413,12 @@ impl Features {
         }
         if self.wait.present_wait != 0 {
             info = info.push_next(&mut self.id).push_next(&mut self.wait);
+        }
+        if self.rotate.shader_subgroup_rotate != 0 {
+            info = info.push_next(&mut self.rotate);
+        }
+        if self.portable {
+            info = info.push_next(&mut self.portability);
         }
         info
     }

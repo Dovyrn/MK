@@ -113,7 +113,8 @@ impl Recorder<'_> {
         let native = self.extra.elements_base.is_some();
         unsafe {
             if let Some(l) = &p.program.instance {
-                gl.uniform_1_i32(Some(l), instance as i32);
+                let given = native && self.extra.parameters;
+                gl.uniform_1_i32(Some(l), if given { 0 } else { instance as i32 });
             }
             if instance != 0 && !native {
                 self.bind_attributes(p, instance);
@@ -159,6 +160,9 @@ impl Recorder<'_> {
         let raw = self.res.buffers.get(buffer).raw;
         let pointer = offset as usize as *const std::ffi::c_void;
         unsafe {
+            if let Some(l) = self.render.and_then(|p| p.program.instance.as_ref()) {
+                self.gl.uniform_1_i32(Some(l), 0);
+            }
             self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
             if indexed {
                 self.extra.indexed_indirect.unwrap()(self.mode, kind, pointer);

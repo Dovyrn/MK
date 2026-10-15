@@ -9,7 +9,7 @@ fn report(what: &str, names: Vec<&str>) {
 }
 
 impl DeviceInfo {
-    fn flags(&self) -> [(&'static str, bool); 40] {
+    fn flags(&self) -> [(&'static str, bool); 44] {
         [
             ("addresses", self.addresses),
             ("timelines", self.timelines),
@@ -42,6 +42,10 @@ impl DeviceInfo {
             ("viewport_index", self.viewport_index),
             ("subgroup_sizes", self.subgroup_sizes),
             ("full_subgroups", self.full_subgroups),
+            ("subgroup_rotate", self.subgroup_rotate),
+            ("dynamic_indexing", self.dynamic_indexing),
+            ("fragment_stores", self.fragment_stores),
+            ("vertex_stores", self.vertex_stores),
             ("mesh", self.mesh),
             ("task", self.task),
             ("host_read", self.host_read),
