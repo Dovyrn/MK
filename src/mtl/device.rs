@@ -271,6 +271,12 @@ impl Device {
         &self.queues[queue].raw
     }
 
+    pub fn wait_idle(&self, queue: u32) -> Result<(), Error> {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        self.queues[queue].wait_idle()
+    }
+
     fn check_queue(&self, queue: usize) {
         let count = self.queues.len();
         check!(queue < count, "queue {queue} is outside 0..{count}");

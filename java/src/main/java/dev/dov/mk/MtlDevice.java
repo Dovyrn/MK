@@ -51,6 +51,17 @@ public class MtlDevice extends Device {
 
     private static native long nCreateDevice(long info, int infoLength);
 
+    public void waitIdle(int queue) {
+        lock.readLock().lock();
+        try {
+            nWaitIdle(handle(), queue);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nWaitIdle(long device, int queue);
+
     public void destroySwapchain(Swapchain swapchain) {
         lock.readLock().lock();
         try {

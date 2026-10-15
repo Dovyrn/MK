@@ -38,12 +38,13 @@ impl Device {
             queue,
             format: info.format,
             current: Default::default(),
+            textures: Default::default(),
         }))
     }
 
     pub fn destroy_swapchain(&self, swapchain: Swapchain) {
         let s = self.res.swapchains.remove(swapchain);
-        if let Some((_, texture)) = s.current.into_inner().unwrap() {
+        for (_, texture) in s.textures.into_inner().unwrap() {
             self.destroy_texture(texture);
         }
         self.queues[s.queue]
@@ -63,7 +64,19 @@ impl Device {
                 .layer
                 .nextDrawable()
                 .ok_or_else(|| Error::Driver("nextDrawable timed out".into()))?;
-            let texture = self.import_texture(drawable.texture(), s.format)?;
+            let raw = drawable.texture();
+            let mut textures = s.textures.lock().unwrap();
+            let known = textures
+                .iter()
+                .find(|(t, _)| Retained::as_ptr(t) == Retained::as_ptr(&raw));
+            let texture = match known {
+                Some(&(_, texture)) => texture,
+                None => {
+                    let texture = self.import_texture(raw.clone(), s.format)?;
+                    textures.push((raw, texture));
+                    texture
+                }
+            };
             *current = Some((drawable, texture));
             Ok(texture)
         })
@@ -78,12 +91,10 @@ impl Device {
     ) -> Result<(), Error> {
         let s = self.res.swapchains.get(swapchain);
         let current = s.current.lock().unwrap().take();
-        let Some((drawable, texture)) = current else {
+        let Some((drawable, _)) = current else {
             panic!("submit_and_present on {swapchain} without acquire_texture");
         };
         let drawable = ProtocolObject::<dyn MTLDrawable>::from_ref(&*drawable);
-        let result = self.submit_with(commands, waits, signals, Some((s.queue, drawable)));
-        self.destroy_texture(texture);
-        result
+        self.submit_with(commands, waits, signals, Some((s.queue, drawable)))
     }
 }

@@ -57,22 +57,35 @@ pub fn main() {
             },
         )
         .unwrap();
-    let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
-        .unwrap();
-    let set = device.create_residency_set().unwrap();
-    device.add_residency(set, &[back.into()]);
-    device.commit_residency(set);
-    let timeline = device.create_timeline().unwrap();
     let colors = [
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
         [0.0, 0.0, 1.0],
         [1.0, 1.0, 0.0],
+        [0.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 0.0, 0.0],
     ];
-    for (i, rgb) in colors.iter().enumerate() {
+    let backs = colors.map(|_| {
+        device
+            .create_buffer((n * n * 4) as u64, Memory::Readback)
+            .unwrap()
+    });
+    let set = device.create_residency_set().unwrap();
+    device.add_residency(set, &backs.map(Into::into));
+    device.commit_residency(set);
+    let timeline = device.create_timeline().unwrap();
+    let mut textures = Vec::new();
+    for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
         let frame = i as u64 + 1;
+        if frame > 2 {
+            assert!(timeline.wait(frame - 2, 1000).unwrap());
+        }
         let texture = device.acquire_texture(swapchain).unwrap();
+        if !textures.contains(&texture) {
+            textures.push(texture);
+        }
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
         c.discard_textures(&[TextureDiscard {
@@ -108,15 +121,27 @@ pub fn main() {
         device
             .submit_and_present(swapchain, [c], &[], &[(&timeline, frame)])
             .unwrap();
-        assert!(timeline.wait(frame, 1000).unwrap());
+    }
+    let last = colors.len() as u64;
+    assert!(timeline.wait(last, 1000).unwrap());
+    for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         let bgra = [rgb[2], rgb[1], rgb[0], 1.0].map(|c| (c * 255.0) as u8);
-        assert_eq!(pixels[(n * n / 2 + n / 2) as usize], bgra, "frame {frame}");
+        assert_eq!(
+            pixels[(n * n / 2 + n / 2) as usize],
+            bgra,
+            "frame {}",
+            i + 1
+        );
         device.unmap_buffer(back);
     }
-    #[cfg(feature = "vk")]
-    unsafe { device.raw.queue_wait_idle(device.raw_queue(0)) }.unwrap();
+    assert!(textures.len() <= 3, "{} texture handles", textures.len());
+    device.wait_idle(0).unwrap();
     device.destroy_swapchain(swapchain);
     release();
-    println!("{} frames cleared, read back and presented", colors.len());
+    println!(
+        "{} frames presented through {} texture handles",
+        colors.len(),
+        textures.len()
+    );
 }

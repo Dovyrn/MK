@@ -395,6 +395,13 @@ impl Device {
         self.queues[queue].raw
     }
 
+    pub fn wait_idle(&self, queue: u32) -> Result<(), Error> {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        let _held = self.queues[queue].scratch.lock().unwrap();
+        unsafe { self.raw.queue_wait_idle(self.queues[queue].raw) }.map_err(Error::from)
+    }
+
     fn check_queue(&self, queue: usize) {
         let count = self.queues.len();
         check!(queue < count, "queue {queue} is outside 0..{count}");
@@ -501,7 +508,7 @@ impl Device {
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-        present: Option<(&SwapchainObject, u32, usize)>,
+        present: Option<(&SwapchainObject, u32, vk::Semaphore)>,
     ) -> Result<(), Error> {
         let table = &self.res.table;
         table.check_timelines(waits);
@@ -553,7 +560,7 @@ impl Device {
                 "submit_and_present submits on queue {queue}; the swapchain presents on queue {}",
                 s.queue
             );
-            semaphores.push(binary(s.acquires[acquire]));
+            semaphores.push(binary(acquire));
         }
         let count = semaphores.len();
         semaphores.extend(signals.iter().map(info));
@@ -589,7 +596,8 @@ impl Drop for Device {
                 buffer.free(self);
             }
             for swapchain in res.swapchains.drain() {
-                for semaphore in swapchain.acquires.into_iter().chain(swapchain.presents) {
+                let acquires = swapchain.acquires.into_inner().unwrap();
+                for semaphore in acquires.all().chain(swapchain.presents) {
                     self.raw.destroy_semaphore(semaphore, None);
                 }
                 self.loader().destroy_swapchain(swapchain.raw, None);

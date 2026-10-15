@@ -1,8 +1,9 @@
 use super::{Device, vk_image_usage};
-use crate::vk::swapchain::SwapchainObject;
+use crate::vk::swapchain::{Acquires, SwapchainObject};
 use crate::{CommandBuffer, Error, Swapchain, SwapchainInfo, Texture, TextureInfo, Timeline};
 use ash::khr::swapchain;
 use ash::vk;
+use std::sync::Mutex;
 
 impl Device {
     pub(super) fn loader(&self) -> &swapchain::Device {
@@ -63,19 +64,28 @@ impl Device {
             raw,
             queue,
             textures: Vec::new(),
-            acquires: Vec::new(),
             presents: Vec::new(),
-            state: Default::default(),
+            acquires: Mutex::new(Acquires {
+                spare: vk::Semaphore::null(),
+                owned: Vec::new(),
+                current: None,
+            }),
         };
-        let made = images.iter().try_for_each(|&image| {
-            s.textures.push(self.import_texture(image, &texture)?);
-            let semaphore = vk::SemaphoreCreateInfo::default();
-            s.acquires
-                .push(unsafe { self.raw.create_semaphore(&semaphore, None) }?);
-            s.presents
-                .push(unsafe { self.raw.create_semaphore(&semaphore, None) }?);
+        let semaphore = || unsafe {
+            self.raw
+                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+        };
+        let acquires = s.acquires.get_mut().unwrap();
+        let mut made = || -> Result<(), Error> {
+            acquires.spare = semaphore()?;
+            for &image in &images {
+                acquires.owned.push(semaphore()?);
+                s.presents.push(semaphore()?);
+                s.textures.push(self.import_texture(image, &texture)?);
+            }
             Ok(())
-        });
+        };
+        let made = made();
         match made {
             Ok(()) => Ok(self.res.swapchains.insert(s)),
             Err(e) => {
@@ -94,7 +104,8 @@ impl Device {
         for texture in s.textures {
             self.destroy_texture(texture);
         }
-        for semaphore in s.acquires.into_iter().chain(s.presents) {
+        let acquires = s.acquires.into_inner().unwrap();
+        for semaphore in acquires.all().chain(s.presents) {
             unsafe { self.raw.destroy_semaphore(semaphore, None) };
         }
         unsafe { self.loader().destroy_swapchain(s.raw, None) };
@@ -102,19 +113,18 @@ impl Device {
 
     pub fn acquire_texture(&self, swapchain: Swapchain) -> Result<Texture, Error> {
         let s = self.res.swapchains.get(swapchain);
-        let mut state = s.state.lock().unwrap();
-        let (next, current) = &mut *state;
+        let mut acquires = s.acquires.lock().unwrap();
         check!(
-            current.is_none(),
+            acquires.current.is_none(),
             "acquire_texture on {swapchain} before submit_and_present presented the last one"
         );
-        let semaphore = s.acquires[*next];
+        let semaphore = acquires.spare;
         let (image, _) = unsafe {
             self.loader()
                 .acquire_next_image(s.raw, u64::MAX, semaphore, vk::Fence::null())
         }?;
-        *current = Some((image, *next));
-        *next = (*next + 1) % s.acquires.len();
+        acquires.spare = std::mem::replace(&mut acquires.owned[image as usize], semaphore);
+        acquires.current = Some((image, semaphore));
         Ok(s.textures[image as usize])
     }
 
@@ -126,7 +136,7 @@ impl Device {
         signals: &[(&Timeline, u64)],
     ) -> Result<(), Error> {
         let s = self.res.swapchains.get(swapchain);
-        let current = s.state.lock().unwrap().1.take();
+        let current = s.acquires.lock().unwrap().current.take();
         let Some((image, acquire)) = current else {
             panic!("submit_and_present on {swapchain} without acquire_texture");
         };

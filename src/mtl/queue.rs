@@ -4,9 +4,10 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTL4CommandBuffer, MTL4CommandQueue, MTL4CommitFeedback, MTL4CommitOptions, MTLDevice,
-    MTLDrawable, MTLEvent,
+    MTLDrawable, MTLEvent, MTLSharedEvent,
 };
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct Queue {
@@ -14,6 +15,8 @@ pub struct Queue {
     options: Retained<MTL4CommitOptions>,
     lost: Arc<OnceLock<String>>,
     pub scratch: Mutex<Vec<Retained<ProtocolObject<dyn MTL4CommandBuffer>>>>,
+    idle: Retained<ProtocolObject<dyn MTLSharedEvent>>,
+    marks: AtomicU64,
 }
 
 impl Queue {
@@ -32,6 +35,9 @@ impl Queue {
                 }
             },
         );
+        let idle = device
+            .newSharedEvent()
+            .ok_or_else(|| Error::OutOfMemory("shared event allocation failed".into()))?;
         let options = MTL4CommitOptions::new();
         unsafe { options.addFeedbackHandler(RcBlock::as_ptr(&handler)) };
         Ok(Self {
@@ -39,6 +45,8 @@ impl Queue {
             options,
             lost,
             scratch: Mutex::default(),
+            idle,
+            marks: AtomicU64::new(0),
         })
     }
 
@@ -47,6 +55,18 @@ impl Queue {
             Some(e) => Err(Error::DeviceLost(e.clone())),
             None => Ok(()),
         }
+    }
+
+    pub fn wait_idle(&self) -> Result<(), Error> {
+        let held = self.scratch.lock().unwrap();
+        let value = self.marks.fetch_add(1, Ordering::Relaxed) + 1;
+        let event = ProtocolObject::<dyn MTLEvent>::from_ref(&*self.idle);
+        self.raw.signalEvent_value(event, value);
+        drop(held);
+        while !self.idle.waitUntilSignaledValue_timeoutMS(value, 100) {
+            self.lost()?;
+        }
+        Ok(())
     }
 
     pub fn commit(

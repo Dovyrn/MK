@@ -284,6 +284,13 @@ result = "device"
 fails = true
 
 [[call]]
+name = "wait_idle"
+backend = "vk mtl"
+params = [["queue", "u32"]]
+fails = true
+shared = true
+
+[[call]]
 name = "destroy_swapchain"
 backend = "vk mtl"
 params = [["swapchain", "Swapchain"]]
