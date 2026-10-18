@@ -14,13 +14,14 @@ public class TilePipelineInfo {
     public String entry = "";
     public ColorTarget[] colors = new ColorTarget[0];
     public int samples = 1;
+    public String label = "";
 
     int encodedSize() {
         var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 24 + entry.getBytes(StandardCharsets.UTF_8).length + colorsSize;
+        return 28 + entry.getBytes(StandardCharsets.UTF_8).length + colorsSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -38,6 +39,10 @@ public class TilePipelineInfo {
         }
         memPutInt(p, samples);
         p += 4;
+        var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, labelBytes.length);
+        memByteBuffer(p + 4, labelBytes.length).put(labelBytes);
+        p += 4 + labelBytes.length;
         return p;
     }
 }

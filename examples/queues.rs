@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{Memory, Stage};
+use mk::{BufferUsage, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -16,9 +16,16 @@ pub fn main() {
         return;
     };
     let n = 1u32 << 16;
-    let data = device.create_buffer(n as u64 * 4, Memory::Device).unwrap();
+    let data = device
+        .create_buffer(
+            n as u64 * 4,
+            Memory::Device,
+            BufferUsage::COPY_SRC | BufferUsage::ADDRESS,
+            "",
+        )
+        .unwrap();
     let back = device
-        .create_buffer(n as u64 * 4, Memory::Readback)
+        .create_buffer(n as u64 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {

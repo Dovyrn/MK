@@ -20,6 +20,10 @@ pub fn f32x4(b: &mut &[u8]) -> [f32; 4] {
     [f32(b), f32(b), f32(b), f32(b)]
 }
 
+pub fn u32x3(b: &mut &[u8]) -> [u32; 3] {
+    [u32(b), u32(b), u32(b)]
+}
+
 pub fn bool(b: &mut &[u8]) -> bool {
     u32(b) != 0
 }

@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.nio.charset.StandardCharsets;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
@@ -14,11 +15,10 @@ public class IndirectBufferInfo {
     public Buffer indices = null;
     public long offset = 0;
     public IndexType kind = IndexType.U16;
-
-    public static final int SIZE = 36;
+    public String label = "";
 
     int encodedSize() {
-        return 36;
+        return 40 + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -34,23 +34,10 @@ public class IndirectBufferInfo {
         p += 8;
         memPutInt(p, kind.value);
         p += 4;
+        var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, labelBytes.length);
+        memByteBuffer(p + 4, labelBytes.length).put(labelBytes);
+        p += 4 + labelBytes.length;
         return p;
-    }
-
-    static IndirectBufferInfo decode(long p) {
-        var r = new IndirectBufferInfo();
-        r.draws = memGetInt(p);
-        p += 4;
-        r.pipeline = RenderPipeline.of(memGetLong(p));
-        p += 8;
-        r.indexed = memGetInt(p) != 0;
-        p += 4;
-        r.indices = Buffer.of(memGetLong(p));
-        p += 8;
-        r.offset = memGetLong(p);
-        p += 8;
-        r.kind = IndexType.of(memGetInt(p));
-        p += 4;
-        return r;
     }
 }

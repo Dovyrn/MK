@@ -84,10 +84,22 @@ public class VkDevice extends Device {
 
     private static native long nAcquireTexture(long device, long swapchain);
 
-    public boolean submitAndPresent(Swapchain swapchain, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+    public boolean submitAndPresent(Swapchain[] swapchains, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
+                var swapchainsSize = 4;
+                for (var x : swapchains) {
+                    swapchainsSize += 8;
+                }
+                var swapchainsAddress = arena.alloc(swapchainsSize);
+                var swapchainsAt = swapchainsAddress;
+                memPutInt(swapchainsAt, swapchains.length);
+                swapchainsAt += 4;
+                for (var x : swapchains) {
+                    memPutLong(swapchainsAt, Swapchain.raw(x));
+                    swapchainsAt += 8;
+                }
                 for (var c : commands) {
                     c.handle();
                 }
@@ -105,14 +117,14 @@ public class VkDevice extends Device {
                     memPutLong(signalsAddress + i * 16, signals[i].timeline().handle(arena));
                     memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
                 }
-                return nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
+                return nSubmitAndPresent(handle(), swapchainsAddress, swapchainsSize, commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native boolean nSubmitAndPresent(long device, long swapchain, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+    private static native boolean nSubmitAndPresent(long device, long swapchains, int swapchainsLength, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
 
     public void recreateSwapchain(Swapchain swapchain, SwapchainInfo info) {
         lock.readLock().lock();
@@ -203,16 +215,16 @@ public class VkDevice extends Device {
 
     private static native long nImportDeviceRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
-    public Buffer importBuffer(long raw, long size, long data) {
+    public Buffer importBuffer(long raw, long size, int usage, long data) {
         lock.readLock().lock();
         try {
-            return Buffer.of(nImportBuffer(handle(), raw, size, data));
+            return Buffer.of(nImportBuffer(handle(), raw, size, usage, data));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nImportBuffer(long device, long raw, long size, long data);
+    private static native long nImportBuffer(long device, long raw, long size, int usage, long data);
 
     public Texture importTexture(long image, TextureInfo info) {
         lock.readLock().lock();

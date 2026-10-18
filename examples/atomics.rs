@@ -1,5 +1,5 @@
 use mk::{
-    Atomic64, BufferTextureCopy, ComputePipelineInfo, Device, Format, Memory, Stage,
+    Atomic64, BufferTextureCopy, BufferUsage, ComputePipelineInfo, Device, Format, Memory, Stage,
     TextureDiscard, TextureInfo, TextureUsage, Timeline,
 };
 
@@ -41,7 +41,9 @@ pub fn main() {
         device.destroy_timeline(timeline);
         return;
     }
-    let buffer = device.create_buffer(16, Memory::Readback).unwrap();
+    let buffer = device
+        .create_buffer(16, Memory::Readback, BufferUsage::STORAGE, "")
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
@@ -113,10 +115,14 @@ fn textures(
         })
         .unwrap();
     let size = 16 * texel;
-    let zeros = device.create_buffer(size, Memory::Upload).unwrap();
+    let zeros = device
+        .create_buffer(size, Memory::Upload, BufferUsage::COPY_SRC, "")
+        .unwrap();
     unsafe { device.map_buffer::<u8>(zeros) }.fill(0);
     device.unmap_buffer(zeros);
-    let back = device.create_buffer(size, Memory::Readback).unwrap();
+    let back = device
+        .create_buffer(size, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let (code, entry): (&[u8], &str) = if wide {
         (host::code!("wide"), "wide")
     } else {

@@ -2,9 +2,9 @@ use crate::entries::Entries;
 use crate::handle::TimelineId;
 use crate::residency::{Members, Residency};
 use crate::{
-    Buffer, CommandPool, ComputePipeline, DepthState, Format, HostTextureCopy, IndexType,
-    IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
-    Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
+    Buffer, BufferUsage, CommandPool, ComputePipeline, DepthState, Format, HostTextureCopy,
+    IndexType, IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet,
+    Sampler, Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
@@ -24,7 +24,7 @@ pub type Signal = (u64, usize, Weak<()>);
 #[derive(Default)]
 pub struct Table {
     pub buffers: Entries<Buffer, u64>,
-    pub textures: Entries<Texture, TextureInfo>,
+    pub textures: Entries<Texture, TextureInfo<'static>>,
     pub samplers: Entries<Sampler, ()>,
     pub pipelines: Entries<ComputePipeline, ()>,
     pub renders: Entries<RenderPipeline, RenderEntry>,
@@ -39,13 +39,14 @@ pub struct Table {
     pub residency: Mutex<Residency>,
     pub indirects: Entries<IndirectBuffer, IndirectEntry>,
     pub mappable: Entries<Buffer, bool>,
+    pub usages: Entries<Buffer, BufferUsage>,
     pub presentable: Entries<Texture, AtomicBool>,
     pub shared: Entries<Texture, ()>,
 }
 
 #[derive(Clone, Copy)]
 pub struct IndirectEntry {
-    pub info: IndirectBufferInfo,
+    pub info: IndirectBufferInfo<'static>,
     pub topology: crate::Topology,
     pub mesh: bool,
 }
@@ -78,6 +79,7 @@ impl Table {
         lock(&self.residency).free_buffer(buffer);
         self.buffers.clear(buffer);
         self.mappable.clear(buffer);
+        self.usages.clear(buffer);
     }
 
     pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
@@ -98,6 +100,7 @@ impl Table {
                 "{name} index offset {} is not a multiple of {size}",
                 info.offset
             );
+            self.assert_usage(name, info.indices, BufferUsage::INDEX, "INDEX");
             let total = *self.buffers.get(info.indices);
             check!(
                 info.offset < total,
@@ -107,7 +110,7 @@ impl Table {
             );
         }
         IndirectEntry {
-            info: *info,
+            info: IndirectBufferInfo { label: "", ..*info },
             topology: entry.topology,
             mesh: entry.mesh,
         }
@@ -153,9 +156,17 @@ impl Table {
         self.indirects.clear(indirect);
     }
 
-    pub fn add_buffer(&self, buffer: Buffer, size: u64, mappable: bool) {
+    pub fn add_buffer(&self, buffer: Buffer, size: u64, mappable: bool, usage: BufferUsage) {
         self.buffers.set(buffer, size);
         self.mappable.set(buffer, mappable);
+        self.usages.set(buffer, usage);
+    }
+
+    pub fn assert_usage(&self, name: &str, buffer: Buffer, needs: BufferUsage, what: &str) {
+        check!(
+            self.usages.get(buffer).contains(needs),
+            "{name} needs {buffer} created with BufferUsage::{what}"
+        );
     }
 
     pub fn assert_mappable(&self, buffer: Buffer) {
@@ -210,7 +221,8 @@ impl Table {
     }
 
     pub fn add_texture(&self, texture: Texture, info: &TextureInfo) {
-        self.textures.set(texture, *info);
+        self.textures
+            .set(texture, TextureInfo { label: "", ..*info });
         if info.memory == Memory::Transient {
             lock(&self.residency).exempt_texture(texture);
         }

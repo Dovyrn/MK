@@ -1,23 +1,32 @@
-use super::{Device, resource_options};
-use crate::Buffer;
+use super::{Device, labels, resource_options};
 use crate::Error;
 use crate::mtl::buffer::BufferObject;
 use crate::table::lock;
+use crate::{Buffer, BufferUsage};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLBuffer, MTLDevice, MTLResource, MTLStorageMode};
 
 impl Device {
-    pub fn create_buffer(&self, size: u64, memory: crate::Memory) -> Result<Buffer, Error> {
+    pub fn create_buffer(
+        &self,
+        size: u64,
+        memory: crate::Memory,
+        usage: BufferUsage,
+        label: &str,
+    ) -> Result<Buffer, Error> {
         autoreleasepool(|_| {
-            self.caps.check_buffer(size, memory)?;
+            self.caps.check_buffer(size, memory, usage)?;
             let buffer = self
                 .raw
                 .newBufferWithLength_options(size as usize, resource_options(memory))
                 .ok_or_else(|| Error::OutOfMemory("buffer allocation failed".into()))?;
+            if let Some(text) = labels::label(label) {
+                buffer.setLabel(Some(&text));
+            }
             let mappable = buffer.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(BufferObject::new(buffer));
-            self.res.table.add_buffer(id, size, mappable);
+            self.res.table.add_buffer(id, size, mappable, usage);
             Ok(id)
         })
     }
@@ -27,7 +36,9 @@ impl Device {
             let size = raw.length() as u64;
             let mappable = raw.storageMode() != MTLStorageMode::Private;
             let id = self.res.buffers.insert(BufferObject::new(raw));
-            self.res.table.add_buffer(id, size, mappable);
+            self.res
+                .table
+                .add_buffer(id, size, mappable, BufferUsage(BufferUsage::BITS));
             lock(&self.res.table.residency).exempt_buffer(id);
             id
         })
@@ -59,7 +70,10 @@ impl Device {
     }
 
     pub fn buffer_address(&self, buffer: Buffer) -> u64 {
-        self.res.table.buffers.get(buffer);
+        let name = "buffer_address";
+        self.res
+            .table
+            .assert_usage(name, buffer, BufferUsage::ADDRESS, "ADDRESS");
         self.caps.assert_addresses();
         self.res.buffers.get(buffer).address
     }

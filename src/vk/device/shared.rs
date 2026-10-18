@@ -102,7 +102,10 @@ impl Device {
             })
             .inspect_err(|_| destroy())?;
         let id = self.create_views(image, Some(Arc::new(bound)), &whole_view(info))?;
-        self.res.table.textures.set(id, *info);
+        self.res
+            .table
+            .textures
+            .set(id, TextureInfo { label: "", ..*info });
         self.res.table.shared.set(id, ());
         lock(&self.res.table.residency).exempt_texture(id);
         Ok(id)

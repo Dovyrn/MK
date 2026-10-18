@@ -1,4 +1,4 @@
-use mk::{Memory, Stage};
+use mk::{BufferUsage, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -14,7 +14,12 @@ pub fn main() {
     let mut c = device.begin_commands(pool).unwrap();
     let n = 1024u32;
     let buffer = device
-        .create_buffer(n as u64 * 4, Memory::Readback)
+        .create_buffer(
+            n as u64 * 4,
+            Memory::Readback,
+            BufferUsage::STORAGE | BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
@@ -41,7 +46,9 @@ pub fn main() {
     pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
     pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4);
     pass.dispatch(n / 64, 1, 1);
-    let spare = device.create_buffer(4, Memory::Upload).unwrap();
+    let spare = device
+        .create_buffer(4, Memory::Upload, BufferUsage::COPY_DST, "")
+        .unwrap();
     device.destroy_buffer(spare);
     pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
     pass.end();

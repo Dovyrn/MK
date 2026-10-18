@@ -4,6 +4,7 @@ mod caps;
 mod copies;
 mod create;
 mod indirect;
+mod labels;
 mod pipelines;
 mod queries;
 mod residency;
@@ -383,17 +384,6 @@ impl Device {
         }
     }
 
-    fn buffer_usage(&self) -> vk::BufferUsageFlags {
-        vk::BufferUsageFlags::TRANSFER_SRC
-            | vk::BufferUsageFlags::TRANSFER_DST
-            | vk::BufferUsageFlags::UNIFORM_BUFFER
-            | vk::BufferUsageFlags::STORAGE_BUFFER
-            | vk::BufferUsageFlags::INDEX_BUFFER
-            | vk::BufferUsageFlags::VERTEX_BUFFER
-            | vk::BufferUsageFlags::INDIRECT_BUFFER
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-    }
-
     pub fn raw_queue(&self, queue: u32) -> vk::Queue {
         let queue = queue as usize;
         self.check_queue(queue);
@@ -521,7 +511,7 @@ impl Device {
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-        present: Option<(usize, Present)>,
+        present: Option<(usize, &[Present])>,
     ) -> Result<bool, Error> {
         let table = &self.res.table;
         table.check_timelines(waits);
@@ -567,18 +557,17 @@ impl Device {
         };
         semaphores.clear();
         semaphores.extend(waits.iter().map(info));
-        if let Some((q, p)) = &present {
+        let presents = present.map_or(&[][..], |(q, list)| {
             check!(
-                *q == queue,
-                "submit_and_present submits on queue {queue}; the swapchain presents on queue {q}"
+                q == queue,
+                "submit_and_present submits on queue {queue}; the swapchains present on queue {q}"
             );
-            semaphores.push(binary(p.acquire));
-        }
+            list
+        });
+        semaphores.extend(presents.iter().map(|p| binary(p.acquire)));
         let count = semaphores.len();
         semaphores.extend(signals.iter().map(info));
-        if let Some((_, p)) = &present {
-            semaphores.push(binary(p.signal));
-        }
+        semaphores.extend(presents.iter().map(|p| binary(p.signal)));
         let (waits_info, signals_info) = semaphores.split_at(count);
         let submit = vk::SubmitInfo2::default()
             .wait_semaphore_infos(waits_info)
@@ -591,7 +580,7 @@ impl Device {
         .map_err(Error::from)?;
         table.record_signals(queue, signals);
         match present {
-            Some((_, p)) => self.present(self.queues[queue].raw, &p),
+            Some(_) => self.present(self.queues[queue].raw, presents),
             None => Ok(false),
         }
     }

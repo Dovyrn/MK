@@ -1,4 +1,4 @@
-use super::{Device, function_descriptor, mtl_compare, size, vertex_format};
+use super::{Device, function_descriptor, labels, mtl_compare, size, vertex_format};
 use crate::Error;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::VERTICES;
@@ -11,10 +11,10 @@ use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSError, NSString};
 use objc2_metal::{
     MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
-    MTL4IndirectCommandBufferSupportState, MTL4MeshRenderPipelineDescriptor,
+    MTL4IndirectCommandBufferSupportState, MTL4LibraryDescriptor, MTL4MeshRenderPipelineDescriptor,
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
     MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
     MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
@@ -80,16 +80,21 @@ fn split(mut code: &[u8]) -> Option<(Groups, &[u8])> {
     Some((groups, code))
 }
 
-fn group(groups: &Groups, entry: &str) -> Result<[u32; 3], Error> {
-    groups
+fn group(groups: &Groups, entry: &str, given: [u32; 3]) -> Result<[u32; 3], Error> {
+    let known = groups
         .iter()
         .find(|(name, ..)| name == entry)
-        .map(|&(_, size, _)| size)
-        .ok_or_else(|| {
-            Error::Shader(format!(
-                "entry {entry} has no thread group size in its code"
-            ))
-        })
+        .map(|&(_, size, _)| size);
+    match known {
+        Some(size) if given == [0; 3] || given == size => Ok(size),
+        Some(size) => Err(Error::Invalid(format!(
+            "group {given:?} for {entry} differs from the code's {size:?}"
+        ))),
+        None if given.iter().all(|&n| n > 0) => Ok(given),
+        None => Err(Error::Shader(format!(
+            "entry {entry} has no thread group size in its code; set one in the pipeline info"
+        ))),
+    }
 }
 
 fn attachment_reads(groups: &Groups, entry: &str) -> u32 {
@@ -164,6 +169,12 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
 
 static COMPILE: Mutex<()> = Mutex::new(());
 
+fn label(desc: &MTL4PipelineDescriptor, text: &str) {
+    if let Some(text) = labels::label(text) {
+        desc.setLabel(Some(&text));
+    }
+}
+
 fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
     if on {
         MTL4IndirectCommandBufferSupportState::Enabled
@@ -190,12 +201,29 @@ impl Device {
         &self,
         code: &[u8],
     ) -> Result<(Retained<ProtocolObject<dyn MTLLibrary>>, Groups), Error> {
-        let (groups, lib) = split(code)
-            .ok_or_else(|| Error::Shader("code was not built by the MK compiler".into()))?;
+        let shader = |e: Retained<NSError>| Error::Shader(e.localizedDescription().to_string());
+        if !code.contains(&0) {
+            let source = std::str::from_utf8(code).map_err(|e| Error::Shader(e.to_string()))?;
+            let desc = MTL4LibraryDescriptor::new();
+            desc.setSource(Some(&NSString::from_str(source)));
+            let _held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
+            let library = self
+                .compiler
+                .newLibraryWithDescriptor_error(&desc)
+                .map_err(shader)?;
+            return Ok((library, Groups::new()));
+        }
+        let (groups, lib) = if code.starts_with(b"MTLB") {
+            (Groups::new(), code)
+        } else {
+            split(code).ok_or_else(|| {
+                Error::Shader("code is no metallib, MSL source or MK compiler output".into())
+            })?
+        };
         let library = self
             .raw
             .newLibraryWithData_error(&DispatchData::from_bytes(lib))
-            .map_err(|e| Error::Shader(e.localizedDescription().to_string()))?;
+            .map_err(shader)?;
         Ok((library, groups))
     }
 
@@ -206,9 +234,15 @@ impl Device {
         self.caps.check_compute_pipeline(info)?;
         autoreleasepool(|_| {
             let (library, groups) = self.library(info.code)?;
-            let shape = group(&groups, info.entry)?;
+            let shape = group(&groups, info.entry, info.group)?;
             let desc = MTL4ComputePipelineDescriptor::new();
             desc.setComputeFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
+            if info.full {
+                self.caps
+                    .assert_full_subgroups(shape[0], self.caps.subgroup);
+                desc.setThreadGroupSizeIsMultipleOfThreadExecutionWidth(true);
+            }
+            label(&desc, info.label);
             let held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
             let state = self
                 .compiler
@@ -240,6 +274,7 @@ impl Device {
             self.caps.check_render_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
+            label(&desc, info.label);
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
             desc.setVertexFunctionDescriptor(Some(&*function_descriptor(&library, info.vertex)?));
             let inputs = library
@@ -321,13 +356,14 @@ impl Device {
         autoreleasepool(|_| {
             self.caps.check_mesh_pipeline(info)?;
             let (library, groups) = self.library(info.code)?;
-            let mesh = group(&groups, info.mesh)?;
+            let mesh = group(&groups, info.mesh, info.mesh_group)?;
             let task = if info.task.is_empty() {
                 [1, 1, 1]
             } else {
-                group(&groups, info.task)?
+                group(&groups, info.task, info.task_group)?
             };
             let desc = MTL4MeshRenderPipelineDescriptor::new();
+            label(&desc, info.label);
             desc.setSupportIndirectCommandBuffers(support(info.indirect));
             if !info.task.is_empty() {
                 desc.setObjectFunctionDescriptor(Some(&*function_descriptor(&library, info.task)?));
@@ -386,6 +422,7 @@ impl Device {
             }
             let (library, _) = self.library(info.code)?;
             let desc = MTL4TileRenderPipelineDescriptor::new();
+            label(&desc, info.label);
             desc.setTileFunctionDescriptor(Some(&*function_descriptor(&library, info.entry)?));
             for (i, c) in info.colors.iter().enumerate() {
                 let a = unsafe { desc.colorAttachments().objectAtIndexedSubscript(i) };
@@ -411,6 +448,9 @@ impl Device {
             let desc = MTLDepthStencilDescriptor::new();
             desc.setDepthCompareFunction(mtl_compare(info.compare));
             desc.setDepthWriteEnabled(info.write);
+            if let Some(text) = labels::label(info.label) {
+                desc.setLabel(Some(&text));
+            }
             if info.stencil {
                 desc.setFrontFaceStencil(Some(&stencil(&info.front)));
                 desc.setBackFaceStencil(Some(&stencil(&info.back)));

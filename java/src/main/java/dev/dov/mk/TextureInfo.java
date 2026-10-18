@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.nio.charset.StandardCharsets;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
@@ -18,11 +19,10 @@ public class TextureInfo {
     public int samples = 1;
     public int usage = 0;
     public Memory memory = Memory.DEVICE;
-
-    public static final int SIZE = 40;
+    public String label = "";
 
     int encodedSize() {
-        return 40;
+        return 44 + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -46,31 +46,10 @@ public class TextureInfo {
         p += 4;
         memPutInt(p, memory.value);
         p += 4;
+        var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, labelBytes.length);
+        memByteBuffer(p + 4, labelBytes.length).put(labelBytes);
+        p += 4 + labelBytes.length;
         return p;
-    }
-
-    static TextureInfo decode(long p) {
-        var r = new TextureInfo();
-        r.dimension = TextureDimension.of(memGetInt(p));
-        p += 4;
-        r.format = Format.of(memGetInt(p));
-        p += 4;
-        r.width = memGetInt(p);
-        p += 4;
-        r.height = memGetInt(p);
-        p += 4;
-        r.depth = memGetInt(p);
-        p += 4;
-        r.layers = memGetInt(p);
-        p += 4;
-        r.mips = memGetInt(p);
-        p += 4;
-        r.samples = memGetInt(p);
-        p += 4;
-        r.usage = memGetInt(p);
-        p += 4;
-        r.memory = Memory.of(memGetInt(p));
-        p += 4;
-        return r;
     }
 }

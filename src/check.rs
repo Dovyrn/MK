@@ -5,9 +5,9 @@ use crate::residency::Residency;
 use crate::table::Table;
 use crate::table::lock;
 use crate::{
-    Buffer, Caps, CommandPool, Format, IndexType, IndirectBuffer, LoadOp, Memory, QueryKind,
-    QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage, Topology,
-    slot,
+    Buffer, BufferUsage, Caps, CommandPool, Format, IndexType, IndirectBuffer, LoadOp, Memory,
+    QueryKind, QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage,
+    Topology, slot,
 };
 use std::sync::atomic::Ordering;
 
@@ -276,7 +276,7 @@ impl<'a> Check<'a> {
         texture: Texture,
         needs: TextureUsage,
         what: &str,
-    ) -> &TextureInfo {
+    ) -> &TextureInfo<'static> {
         let t = self.table.textures.get(texture);
         let copies = if t.usage.contains(TextureUsage::HOST) {
             TextureUsage::COPY_SRC | TextureUsage::COPY_DST
@@ -300,7 +300,7 @@ impl<'a> Check<'a> {
         (mip, layer, layers): (u32, u32, u32),
         at: [u32; 3],
         size: [u32; 3],
-    ) -> &TextureInfo {
+    ) -> &TextureInfo<'static> {
         let t = self.table.textures.get(texture);
         assert_span(name, "mip", mip, 1, t.mips, texture);
         assert_span(name, "layer", layer, layers, t.layers, texture);
@@ -468,6 +468,8 @@ impl<'a> Check<'a> {
             offset.is_multiple_of(4),
             "{name} offset {offset} is not a multiple of 4"
         );
+        self.table
+            .assert_usage(name, buffer, BufferUsage::INDIRECT, "INDIRECT");
         self.buffer_range(name, buffer, offset, size);
     }
 
@@ -513,6 +515,12 @@ impl<'a> Check<'a> {
         };
         let name = command_name(c);
         let t = self.texture_with_usage(&name, texture, needs, what);
+        let (needs, what) = if upload {
+            (BufferUsage::COPY_SRC, "COPY_SRC")
+        } else {
+            (BufferUsage::COPY_DST, "COPY_DST")
+        };
+        self.table.assert_usage(&name, buffer, needs, what);
         check!(
             self.graphics() || !is_depth_format(t.format),
             "{name} on depth format {} needs a graphics queue",
@@ -696,6 +704,8 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(4),
                     "dispatch_indirect offset {offset} is not a multiple of 4"
                 );
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::INDIRECT, "INDIRECT");
                 self.buffer_range(name, buffer, offset, 12);
             }
             Command::CopyBuffer {
@@ -706,6 +716,10 @@ impl<'a> Check<'a> {
                 size,
             } => {
                 check!(size > 0, "copy_buffer size is 0");
+                self.table
+                    .assert_usage(name, src, BufferUsage::COPY_SRC, "COPY_SRC");
+                self.table
+                    .assert_usage(name, dst, BufferUsage::COPY_DST, "COPY_DST");
                 let len = self.buffer_range(name, src, src_offset, size);
                 self.buffer_range(name, dst, dst_offset, size);
                 check!(
@@ -724,6 +738,8 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(4) && (size == !0 || size.is_multiple_of(4)),
                     "fill_buffer offset {offset} and size {size} must be multiples of 4"
                 );
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::COPY_DST, "COPY_DST");
                 self.limited_range(c, buffer, offset, size, !0)?;
             }
             Command::MemoryBarrier {
@@ -1015,6 +1031,8 @@ impl<'a> Check<'a> {
                 self.require(c, caps.slot_binding, "slot_binding")?;
                 assert_slot(name, i, slot::UNIFORMS);
                 assert_aligned(name, offset, caps.bind_alignment);
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::UNIFORM, "UNIFORM");
                 self.limited_range(c, buffer, offset, size, caps.max_uniform)?;
             }
             Command::BindStorageBuffer {
@@ -1027,6 +1045,8 @@ impl<'a> Check<'a> {
                 self.require(c, caps.storage_slots, "storage_slots")?;
                 assert_slot(name, i, slot::STORAGES);
                 assert_aligned(name, offset, caps.bind_alignment);
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::STORAGE, "STORAGE");
                 self.limited_range(c, buffer, offset, size, caps.max_storage)?;
             }
             Command::BindTexture { slot: i, texture } => {
@@ -1051,6 +1071,8 @@ impl<'a> Check<'a> {
                 offset,
             } => {
                 assert_slot(name, i, slot::VERTICES);
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::VERTEX, "VERTEX");
                 self.buffer_range(name, buffer, offset, 0);
                 self.vertices |= 1 << i;
             }
@@ -1064,6 +1086,8 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(size),
                     "bind_index_buffer offset {offset} is not a multiple of {size}"
                 );
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::INDEX, "INDEX");
                 self.buffer_range(name, buffer, offset, 0);
                 self.index = Some((buffer, offset, kind));
             }
@@ -1107,6 +1131,8 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(4),
                     "execute_indirect_count offset {offset} is not a multiple of 4"
                 );
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::INDIRECT, "INDIRECT");
                 self.buffer_range(name, buffer, offset, 8);
                 self.require(c, caps.indirect_count, "indirect_count")?;
             }
@@ -1178,6 +1204,8 @@ impl<'a> Check<'a> {
                     offset.is_multiple_of(8),
                     "{name} offset {offset} is not a multiple of 8"
                 );
+                self.table
+                    .assert_usage(name, buffer, BufferUsage::COPY_DST, "COPY_DST");
                 self.buffer_range(name, buffer, offset, count as u64 * 8);
             }
             Command::BeginDebugLabel { .. } => {

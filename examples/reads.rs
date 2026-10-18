@@ -1,8 +1,8 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorMask, ColorTarget, DepthAttachment, DepthStateInfo,
-    Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp,
-    TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorMask, ColorTarget, DepthAttachment,
+    DepthStateInfo, Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage,
+    StoreOp, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -64,7 +64,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let pipeline = |device: &mut mk::Device, fragment, value_mask, color_mask, ordered| {
         let colors = [

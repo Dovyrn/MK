@@ -14,6 +14,8 @@ public class MeshPipelineInfo {
     public String task = "";
     public String mesh = "";
     public String fragment = "";
+    public int[] taskGroup = new int[] {0, 0, 0};
+    public int[] meshGroup = new int[] {0, 0, 0};
     public ColorTarget[] colors = new ColorTarget[0];
     public Format depth = null;
     public Format stencil = null;
@@ -23,13 +25,14 @@ public class MeshPipelineInfo {
     public boolean clamp = false;
     public boolean ordered = false;
     public boolean indirect = false;
+    public String label = "";
 
     int encodedSize() {
         var colorsSize = 4;
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 60 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4);
+        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -48,6 +51,20 @@ public class MeshPipelineInfo {
         memPutInt(p, fragmentBytes.length);
         memByteBuffer(p + 4, fragmentBytes.length).put(fragmentBytes);
         p += 4 + fragmentBytes.length;
+        if (taskGroup.length != 3) {
+            throw new IllegalArgumentException("taskGroup has 3 values");
+        }
+        for (var x : taskGroup) {
+            memPutInt(p, x);
+            p += 4;
+        }
+        if (meshGroup.length != 3) {
+            throw new IllegalArgumentException("meshGroup has 3 values");
+        }
+        for (var x : meshGroup) {
+            memPutInt(p, x);
+            p += 4;
+        }
         memPutInt(p, colors.length);
         p += 4;
         for (var x : colors) {
@@ -77,6 +94,10 @@ public class MeshPipelineInfo {
         p += 4;
         memPutInt(p, indirect ? 1 : 0);
         p += 4;
+        var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, labelBytes.length);
+        memByteBuffer(p + 4, labelBytes.length).put(labelBytes);
+        p += 4 + labelBytes.length;
         return p;
     }
 }

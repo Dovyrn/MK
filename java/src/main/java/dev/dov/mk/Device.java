@@ -74,16 +74,19 @@ public class Device implements AutoCloseable {
 
     private static native String nDeviceName(long device);
 
-    public Buffer createBuffer(long size, Memory memory) {
+    public Buffer createBuffer(long size, Memory memory, int usage, String label) {
         lock.readLock().lock();
         try {
-            return Buffer.of(nCreateBuffer(handle(), size, memory.value));
+            try (var arena = new Arena()) {
+                var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+                return Buffer.of(nCreateBuffer(handle(), size, memory.value, usage, arena.bytes(labelBytes), labelBytes.length));
+            }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nCreateBuffer(long device, long size, int memory);
+    private static native long nCreateBuffer(long device, long size, int memory, int usage, long label, int labelLength);
 
     public void destroyBuffer(Buffer buffer) {
         lock.readLock().lock();
@@ -393,16 +396,19 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroySampler(long device, long sampler);
 
-    public QueryPool createQueryPool(QueryKind kind, int count) {
+    public QueryPool createQueryPool(QueryKind kind, int count, String label) {
         lock.readLock().lock();
         try {
-            return QueryPool.of(nCreateQueryPool(handle(), kind.value, count));
+            try (var arena = new Arena()) {
+                var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+                return QueryPool.of(nCreateQueryPool(handle(), kind.value, count, arena.bytes(labelBytes), labelBytes.length));
+            }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nCreateQueryPool(long device, int kind, int count);
+    private static native long nCreateQueryPool(long device, int kind, int count, long label, int labelLength);
 
     public void destroyQueryPool(QueryPool pool) {
         lock.readLock().lock();

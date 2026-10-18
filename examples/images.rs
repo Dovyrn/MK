@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ComputePipelineInfo, Format, Memory, Stage, TextureDiscard, TextureInfo,
-    TextureUsage,
+    BufferTextureCopy, BufferUsage, ComputePipelineInfo, Format, Memory, Stage, TextureDiscard,
+    TextureInfo, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -24,10 +24,14 @@ pub fn main() {
         })
         .unwrap();
     let size = (n * n * 4) as u64;
-    let upload = device.create_buffer(size, Memory::Upload).unwrap();
+    let upload = device
+        .create_buffer(size, Memory::Upload, BufferUsage::COPY_SRC, "")
+        .unwrap();
     unsafe { device.map_buffer::<[u8; 4]>(upload) }.fill([0, 0, 64, 255]);
     device.unmap_buffer(upload);
-    let back = device.create_buffer(size, Memory::Readback).unwrap();
+    let back = device
+        .create_buffer(size, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("images"),

@@ -36,6 +36,12 @@ impl Device {
             })
             .inspect_err(|_| destroy())?;
         let id = self.create_views(image, Some(Arc::new(memory)), &whole_view(info))?;
+        let t = self.res.textures.get(id);
+        self.name(image, info.label);
+        self.name(t.view, info.label);
+        if t.target != t.view {
+            self.name(t.target, info.label);
+        }
         self.res.table.add_texture(id, info);
         if info.usage.contains(TextureUsage::HOST) {
             self.to_general(id)?;
@@ -45,7 +51,10 @@ impl Device {
 
     pub fn import_texture(&self, image: vk::Image, info: &TextureInfo) -> Result<Texture, Error> {
         let id = self.create_views(image, None, &whole_view(info))?;
-        self.res.table.textures.set(id, *info);
+        self.res
+            .table
+            .textures
+            .set(id, TextureInfo { label: "", ..*info });
         lock(&self.res.table.residency).exempt_texture(id);
         Ok(id)
     }

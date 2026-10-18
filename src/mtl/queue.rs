@@ -77,13 +77,13 @@ impl Queue {
         buffers: &[Retained<ProtocolObject<dyn MTL4CommandBuffer>>],
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-        present: Option<&ProtocolObject<dyn MTLDrawable>>,
+        present: &[&ProtocolObject<dyn MTLDrawable>],
     ) {
         for &(t, value) in waits {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&*t.raw);
             self.raw.waitForEvent_value(event, value);
         }
-        if let Some(drawable) = present {
+        for drawable in present {
             self.raw.waitForDrawable(drawable);
         }
         let list = NonNull::from(buffers).cast();
@@ -95,7 +95,7 @@ impl Queue {
             let event = ProtocolObject::<dyn MTLEvent>::from_ref(&*t.raw);
             self.raw.signalEvent_value(event, value);
         }
-        if let Some(drawable) = present {
+        for drawable in present {
             self.raw.signalDrawable(drawable);
             drawable.present();
         }

@@ -84,10 +84,22 @@ public class MtlDevice extends Device {
 
     private static native long nAcquireTexture(long device, long swapchain);
 
-    public boolean submitAndPresent(Swapchain swapchain, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
+    public boolean submitAndPresent(Swapchain[] swapchains, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
+                var swapchainsSize = 4;
+                for (var x : swapchains) {
+                    swapchainsSize += 8;
+                }
+                var swapchainsAddress = arena.alloc(swapchainsSize);
+                var swapchainsAt = swapchainsAddress;
+                memPutInt(swapchainsAt, swapchains.length);
+                swapchainsAt += 4;
+                for (var x : swapchains) {
+                    memPutLong(swapchainsAt, Swapchain.raw(x));
+                    swapchainsAt += 8;
+                }
                 for (var c : commands) {
                     c.handle();
                 }
@@ -105,14 +117,14 @@ public class MtlDevice extends Device {
                     memPutLong(signalsAddress + i * 16, signals[i].timeline().handle(arena));
                     memPutLong(signalsAddress + i * 16 + 8, signals[i].value());
                 }
-                return nSubmitAndPresent(handle(), Swapchain.raw(swapchain), commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
+                return nSubmitAndPresent(handle(), swapchainsAddress, swapchainsSize, commandsAddress, commands.length, waitsAddress, waits.length, signalsAddress, signals.length);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native boolean nSubmitAndPresent(long device, long swapchain, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
+    private static native boolean nSubmitAndPresent(long device, long swapchains, int swapchainsLength, long commands, int commandsLength, long waits, int waitsLength, long signals, int signalsLength);
 
     public void recreateSwapchain(Swapchain swapchain, SwapchainInfo info) {
         lock.readLock().lock();
@@ -208,6 +220,17 @@ public class MtlDevice extends Device {
     }
 
     private static native long nImportTexture(long device, long raw, int format);
+
+    public Sampler importSampler(long raw) {
+        lock.readLock().lock();
+        try {
+            return Sampler.of(nImportSampler(handle(), raw));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nImportSampler(long device, long raw);
 
     public Timeline importTimeline(long raw) {
         lock.readLock().lock();

@@ -44,7 +44,9 @@ pub fn main() {
 #[cfg(not(feature = "gl"))]
 fn record(device: &mk::Device, size: u64, value: u8) -> (mk::CommandBuffer<'_>, mk::Buffer) {
     let pool = device.create_command_pool(0).unwrap();
-    let buffer = device.create_buffer(size, mk::Memory::Readback).unwrap();
+    let buffer = device
+        .create_buffer(size, mk::Memory::Readback, mk::BufferUsage::COPY_DST, "")
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
@@ -55,7 +57,9 @@ fn record(device: &mk::Device, size: u64, value: u8) -> (mk::CommandBuffer<'_>, 
         .unwrap();
     pass.fill_buffer(buffer, 0, size, value);
     for _ in 0..64 {
-        let spare = device.create_buffer(size, mk::Memory::Upload).unwrap();
+        let spare = device
+            .create_buffer(size, mk::Memory::Upload, mk::BufferUsage::COPY_DST, "")
+            .unwrap();
         device.destroy_buffer(spare);
     }
     pass.memory_barrier(mk::Stage::COPY, mk::Stage::HOST);

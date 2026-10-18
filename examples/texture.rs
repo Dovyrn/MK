@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    AddressMode, BufferTextureCopy, Filter, Format, Memory, SamplerInfo, Stage, TextureDiscard,
-    TextureInfo, TextureUsage,
+    AddressMode, BufferTextureCopy, BufferUsage, Filter, Format, Memory, SamplerInfo, Stage,
+    TextureDiscard, TextureInfo, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -32,13 +32,23 @@ pub fn main() {
         .create_texture(&info(TextureUsage::STORAGE | TextureUsage::COPY_SRC))
         .unwrap();
     let upload = device
-        .create_buffer(texels as u64 * 4, Memory::Upload)
+        .create_buffer(texels as u64 * 4, Memory::Upload, BufferUsage::COPY_SRC, "")
         .unwrap();
     let out = device
-        .create_buffer(texels as u64 * 16, Memory::Readback)
+        .create_buffer(
+            texels as u64 * 16,
+            Memory::Readback,
+            BufferUsage::ADDRESS,
+            "",
+        )
         .unwrap();
     let back = device
-        .create_buffer(texels as u64 * 4, Memory::Readback)
+        .create_buffer(
+            texels as u64 * 4,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let sampler = device
         .create_sampler(&SamplerInfo {

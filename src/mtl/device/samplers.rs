@@ -1,8 +1,10 @@
-use super::{Device, id, mtl_compare};
+use super::{Device, id, labels, mtl_compare};
 use crate::Error;
 use crate::Sampler;
 use crate::{AddressMode, BorderColor, CompareOp, Filter, SamplerInfo};
-use objc2::rc::autoreleasepool;
+use objc2::rc::{Retained, autoreleasepool};
+use objc2::runtime::ProtocolObject;
+
 use objc2_metal::{
     MTLDevice, MTLSamplerAddressMode, MTLSamplerBorderColor, MTLSamplerDescriptor,
     MTLSamplerMinMagFilter, MTLSamplerMipFilter, MTLSamplerState,
@@ -45,6 +47,9 @@ impl Device {
                 BorderColor::TransparentBlack => MTLSamplerBorderColor::TransparentBlack,
             });
             desc.setSupportArgumentBuffers(true);
+            if let Some(text) = labels::label(info.label) {
+                desc.setLabel(Some(&text));
+            }
             let sampler = self
                 .raw
                 .newSamplerStateWithDescriptor(&desc)
@@ -54,6 +59,13 @@ impl Device {
             self.res.table.samplers.set(id, ());
             Ok(id)
         })
+    }
+
+    pub fn import_sampler(&self, raw: Retained<ProtocolObject<dyn MTLSamplerState>>) -> Sampler {
+        let id = raw.gpuResourceID();
+        let id = self.res.samplers.insert((raw, id));
+        self.res.table.samplers.set(id, ());
+        id
     }
 
     pub fn destroy_sampler(&self, sampler: Sampler) {

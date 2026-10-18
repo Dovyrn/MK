@@ -11,6 +11,15 @@ use std::ffi::CString;
 
 const MODEL: u32 = 5345;
 
+fn check_group(words: &[u32], entry: &str, given: [u32; 3]) -> Result<(), Error> {
+    match spirv::size(words, entry) {
+        Some(size) if given != [0; 3] && given != size => Err(Error::Invalid(format!(
+            "group {given:?} for {entry} differs from the code's {size:?}"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 impl Device {
     #[allow(clippy::too_many_arguments)]
     fn graphics(
@@ -27,6 +36,7 @@ impl Device {
         clamp: bool,
         ordered: bool,
         indirect: bool,
+        label: &str,
     ) -> Result<RenderPipeline, Error> {
         let used: Vec<_> = entries
             .iter()
@@ -217,6 +227,9 @@ impl Device {
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
+        if !label.is_empty() {
+            self.name(pipeline, label);
+        }
         let topology = vertex.map(|v| vk::PrimitiveTopology::from_raw(v.topology as i32));
         let id = self.res.renders.insert((pipeline, topology));
         let shape = vertex.map_or(Topology::Triangle, |v| v.topology);
@@ -255,11 +268,17 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            info.label,
         )
     }
 
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.caps.check_mesh_pipeline(info)?;
+        let words = spirv::read(info.code, &[info.mesh], self.caps.slot_binding)?;
+        check_group(&words, info.mesh, info.mesh_group)?;
+        if !info.task.is_empty() {
+            check_group(&words, info.task, info.task_group)?;
+        }
         self.graphics(
             info.code,
             &[
@@ -277,6 +296,7 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            info.label,
         )
     }
 
@@ -298,7 +318,10 @@ impl Device {
     }
 
     pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
-        let id = self.res.depths.insert(*info);
+        let id = self
+            .res
+            .depths
+            .insert(DepthStateInfo { label: "", ..*info });
         self.res.table.states.set(id, ());
         Ok(id)
     }
@@ -328,19 +351,20 @@ impl Device {
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
-        let (code, entry) = (info.code, info.entry);
+        let (code, entry, label) = (info.code, info.entry, info.label);
         let words = spirv::read(code, &[entry], self.caps.slot_binding)?;
         self.caps
             .check_subgroups(spirv::subgroups(&words), Stage::COMPUTE)?;
         self.capabilities(&words)?;
+        check_group(&words, entry, info.group)?;
         if info.full {
             let size = if info.subgroup == 0 {
                 1 << (31 - self.caps.subgroup_sizes.leading_zeros())
             } else {
                 info.subgroup
             };
-            self.caps
-                .assert_full_subgroups(spirv::width(&words, entry), size);
+            let width = spirv::size(&words, entry).map_or(0, |s| s[0]);
+            self.caps.assert_full_subgroups(width, size);
         }
         let module = self.module(&words)?;
         let name = CString::new(entry).unwrap();
@@ -368,6 +392,9 @@ impl Device {
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
+        if !label.is_empty() {
+            self.name(pipeline, label);
+        }
         let id = self.res.pipelines.insert(pipeline);
         self.res.table.pipelines.set(id, ());
         Ok(id)

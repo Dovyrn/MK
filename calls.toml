@@ -10,7 +10,7 @@ shared = true
 
 [[call]]
 name = "create_buffer"
-params = [["size", "u64"], ["memory", "Memory"]]
+params = [["size", "u64"], ["memory", "Memory"], ["usage", "BufferUsage"], ["label", "str"]]
 result = "Buffer"
 fails = true
 shared = true
@@ -175,7 +175,7 @@ shared = true
 
 [[call]]
 name = "create_query_pool"
-params = [["kind", "QueryKind"], ["count", "u32"]]
+params = [["kind", "QueryKind"], ["count", "u32"], ["label", "str"]]
 result = "QueryPool"
 fails = true
 shared = true
@@ -307,7 +307,7 @@ shared = true
 [[call]]
 name = "submit_and_present"
 backend = "vk mtl"
-params = [["swapchain", "Swapchain"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
+params = [["swapchains", "[Swapchain]"], ["commands", "commands"], ["waits", "waits"], ["signals", "waits"]]
 result = "bool"
 fails = true
 shared = true
@@ -367,7 +367,7 @@ fails = true
 [[call]]
 name = "import_buffer"
 backend = "vk"
-params = [["raw", "handle"], ["size", "u64"], ["data", "pointer"]]
+params = [["raw", "handle"], ["size", "u64"], ["usage", "BufferUsage"], ["data", "pointer"]]
 result = "Buffer"
 shared = true
 
@@ -489,6 +489,13 @@ backend = "mtl"
 params = [["raw", "object"], ["format", "Format"]]
 result = "Texture"
 fails = true
+shared = true
+
+[[call]]
+name = "import_sampler"
+backend = "mtl"
+params = [["raw", "object"]]
+result = "Sampler"
 shared = true
 
 [[call]]

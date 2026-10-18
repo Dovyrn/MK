@@ -2,6 +2,7 @@ mod budget;
 mod copies;
 mod host;
 mod indirect;
+mod labels;
 mod residency;
 mod shared;
 
@@ -12,7 +13,7 @@ use crate::gl::buffer::BufferObject;
 use crate::gl::extra::Extra;
 use crate::gl::fences::Fences;
 use crate::gl::pipeline::Pipeline;
-use crate::gl::program::Program;
+use crate::gl::program::{self, Program};
 use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
@@ -22,9 +23,9 @@ use crate::gl::texture::{TextureObject, target};
 use crate::recording::{Held, Recording};
 use crate::table::lock;
 use crate::{
-    Atomic64, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory, MeshPipelineInfo,
-    RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureInfo, TextureUsage, TextureViewInfo,
-    TilePipelineInfo, Timeline, Topology, slot,
+    Atomic64, BufferUsage, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory,
+    MeshPipelineInfo, RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureInfo,
+    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, Topology, slot,
 };
 use crate::{
     Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
@@ -306,16 +307,21 @@ impl Device {
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
     }
 
-    pub fn create_buffer(&self, size: u64, memory: Memory) -> Result<Buffer, Error> {
+    pub fn create_buffer(
+        &self,
+        size: u64,
+        memory: Memory,
+        usage: BufferUsage,
+        label: &str,
+    ) -> Result<Buffer, Error> {
         self.thread();
-        self.caps.check_buffer(size, memory)?;
-        let id = self
-            .res
-            .buffers
-            .insert(BufferObject::new(&self.gl, &self.extra, size, memory)?);
+        self.caps.check_buffer(size, memory, usage)?;
+        let buffer = BufferObject::new(&self.gl, &self.extra, size, memory)?;
+        self.name(glow::BUFFER, buffer.raw.0.get(), label);
+        let id = self.res.buffers.insert(buffer);
         self.res
             .table
-            .add_buffer(id, size, memory != Memory::Device);
+            .add_buffer(id, size, memory != Memory::Device, usage);
         Ok(id)
     }
 
@@ -330,7 +336,9 @@ impl Device {
             persistent: false,
             own: false,
         });
-        self.res.table.add_buffer(id, size, true);
+        self.res
+            .table
+            .add_buffer(id, size, true, BufferUsage(BufferUsage::BITS));
         lock(&self.res.table.residency).exempt_buffer(id);
         id
     }
@@ -393,7 +401,10 @@ impl Device {
 
     pub fn buffer_address(&self, buffer: Buffer) -> u64 {
         self.thread();
-        self.res.table.buffers.get(buffer);
+        let name = "buffer_address";
+        self.res
+            .table
+            .assert_usage(name, buffer, BufferUsage::ADDRESS, "ADDRESS");
         self.caps.assert_addresses();
         unreachable!("caps.addresses is false on GL")
     }
@@ -405,7 +416,11 @@ impl Device {
         self.thread();
         self.caps.check_compute_pipeline(info)?;
         self.check_host_programs()?;
+        program::check_group(info.code, info.entry, info.group)?;
         let program = Program::new(&self.gl, info.code, &[(glow::COMPUTE_SHADER, info.entry)])?;
+        if !info.label.is_empty() {
+            self.name(glow::PROGRAM, program.raw.0.get(), info.label);
+        }
         let id = self.res.pipelines.insert(program);
         self.res.table.pipelines.set(id, ());
         Ok(id)
@@ -443,6 +458,10 @@ impl Device {
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_mesh_pipeline(info)?;
+        program::check_group(info.code, info.mesh, info.mesh_group)?;
+        if !info.task.is_empty() {
+            program::check_group(info.code, info.task, info.task_group)?;
+        }
         let mut stages = Vec::new();
         if !info.task.is_empty() {
             stages.push((TASK_SHADER, info.task));
@@ -458,6 +477,7 @@ impl Device {
             clamp: info.clamp,
             ordered: info.ordered,
             indirect: info.indirect,
+            label: info.label,
             ..Default::default()
         };
         self.render(&render, &stages)
@@ -470,6 +490,9 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
         let p = Pipeline::new(&self.gl, info, stages)?;
+        if !info.label.is_empty() {
+            self.name(glow::PROGRAM, p.program.raw.0.get(), info.label);
+        }
         let id = self.res.renders.insert(p);
         let mesh = stages.iter().any(|s| s.0 == MESH_SHADER);
         self.res.table.renders.set(
@@ -507,7 +530,10 @@ impl Device {
 
     pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
         self.thread();
-        let id = self.res.depths.insert(*info);
+        let id = self
+            .res
+            .depths
+            .insert(DepthStateInfo { label: "", ..*info });
         self.res.table.states.set(id, ());
         Ok(id)
     }
@@ -525,6 +551,9 @@ impl Device {
         self.caps.check_texture(info, usable, counts)?;
         let storage = self.has(42, "GL_ARB_texture_storage");
         let texture = TextureObject::new(&self.gl, &self.extra, info, storage)?;
+        if let Some(raw) = texture.raw {
+            self.name(glow::TEXTURE, raw.0.get(), info.label);
+        }
         let id = self.res.textures.insert(texture);
         self.res.table.add_texture(id, info);
         Ok(id)
@@ -540,7 +569,10 @@ impl Device {
             image: Cell::new(0),
             memory: 0,
         });
-        self.res.table.textures.set(id, *info);
+        self.res
+            .table
+            .textures
+            .set(id, TextureInfo { label: "", ..*info });
         lock(&self.res.table.residency).exempt_texture(id);
         Ok(id)
     }
@@ -715,6 +747,9 @@ impl Device {
         self.thread();
         self.caps.check_sampler(info)?;
         let raw = sampler::create(&self.gl, info)?;
+        if !info.label.is_empty() {
+            self.name(glow::SAMPLER, raw.0.get(), info.label);
+        }
         let id = self.res.samplers.insert(raw);
         self.res.table.samplers.set(id, ());
         Ok(id)
@@ -730,10 +765,17 @@ impl Device {
         &self,
         kind: crate::QueryKind,
         count: u32,
+        label: &str,
     ) -> Result<QueryPool, Error> {
         self.thread();
         self.caps.check_query_pool(kind, count)?;
-        let id = self.res.queries.insert(Query::new(&self.gl, kind, count)?);
+        let query = Query::new(&self.gl, self.extra.queries, kind, count)?;
+        if self.extra.queries.is_some() {
+            for id in &query.ids {
+                self.name(glow::QUERY, id.0.get(), label);
+            }
+        }
+        let id = self.res.queries.insert(query);
         self.res.table.queries.set(id, (kind, count));
         Ok(id)
     }

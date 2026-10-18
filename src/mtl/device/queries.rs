@@ -1,16 +1,20 @@
-use super::Device;
+use super::{Device, labels};
 use crate::Error;
 use crate::QueryKind;
 use crate::QueryPool;
 use crate::mtl::query::Query;
 use objc2::rc::autoreleasepool;
-use objc2_metal::{MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTLResourceOptions};
+use objc2_metal::{
+    MTL4CounterHeap, MTL4CounterHeapDescriptor, MTL4CounterHeapType, MTLDevice, MTLResource,
+    MTLResourceOptions,
+};
 
 impl Device {
     pub fn create_query_pool(
         &self,
         kind: crate::QueryKind,
         count: u32,
+        label: &str,
     ) -> Result<QueryPool, Error> {
         autoreleasepool(|_| {
             self.caps.check_query_pool(kind, count)?;
@@ -23,6 +27,9 @@ impl Device {
                         .raw
                         .newCounterHeapWithDescriptor_error(&desc)
                         .map_err(Error::from)?;
+                    if let Some(text) = labels::label(label) {
+                        heap.setLabel(Some(&text));
+                    }
                     Query::Timestamp(heap)
                 }
                 QueryKind::Occlusion | QueryKind::Precise => {
@@ -34,6 +41,9 @@ impl Device {
                         .ok_or_else(|| {
                             Error::OutOfMemory("visibility buffer allocation failed".into())
                         })?;
+                    if let Some(text) = labels::label(label) {
+                        buffer.setLabel(Some(&text));
+                    }
                     Query::Buffer(buffer)
                 }
             };

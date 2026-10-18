@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, Format, HostTextureCopy, Memory, Stage, TextureDimension, TextureInfo,
-    TextureUsage,
+    BufferTextureCopy, BufferUsage, Format, HostTextureCopy, Memory, Stage, TextureDimension,
+    TextureInfo, TextureUsage,
 };
 
 #[path = "support/host.rs"]
@@ -44,7 +44,12 @@ pub fn main() {
     };
     device.write_texture(&whole, &pixels).unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
@@ -202,7 +207,9 @@ pub fn main() {
             );
         }
         if readable {
-            let back = device.create_buffer(2 * 2 * 8, Memory::Readback).unwrap();
+            let back = device
+                .create_buffer(2 * 2 * 8, Memory::Readback, BufferUsage::COPY_DST, "")
+                .unwrap();
             device.add_residency(set, &[back.into(), blocks.into()]);
             device.commit_residency(set);
             let timeline = device.create_timeline().unwrap();

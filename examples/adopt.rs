@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, Device, Format, Memory, RenderPassInfo, Scissor, Stage,
-    TextureDiscard, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Device, Format, Memory, RenderPassInfo,
+    Scissor, Stage, TextureDiscard, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -207,7 +207,10 @@ fn imported(
             .raw
             .map_memory(memory, 0, 16, vk::MemoryMapFlags::empty())
             .unwrap();
-        (device.import_buffer(raw, 16, data.cast()), (raw, memory))
+        (
+            device.import_buffer(raw, 16, BufferUsage::COPY_SRC, data.cast()),
+            (raw, memory),
+        )
     }
 }
 
@@ -215,10 +218,17 @@ pub fn main() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let (source, native) = imported(&mut device, &host);
-    let words = device.create_buffer(16, Memory::Readback).unwrap();
+    let words = device
+        .create_buffer(16, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     unsafe { device.map_buffer::<u32>(source) }.copy_from_slice(&[7, 8, 9, 10]);
     device.unmap_buffer(source);
     let timeline = device.create_timeline().unwrap();

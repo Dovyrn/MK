@@ -1,6 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo, Scissor,
-    Stage, TextureDiscard, TextureInfo, TextureUsage, TileMemory, TilePipelineInfo, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo,
+    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, TileMemory, TilePipelineInfo,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -42,7 +43,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();

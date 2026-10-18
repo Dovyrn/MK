@@ -1,4 +1,4 @@
-use mk::{Buffer, CommandPool, Device, Memory, ResidencySet, Stage};
+use mk::{Buffer, BufferUsage, CommandPool, Device, Memory, ResidencySet, Stage};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[path = "support/host.rs"]
@@ -26,8 +26,12 @@ pub fn main() {
     }
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let a = device.create_buffer(16, Memory::Upload).unwrap();
-    let b = device.create_buffer(16, Memory::Readback).unwrap();
+    let a = device
+        .create_buffer(16, Memory::Upload, BufferUsage::COPY_SRC, "")
+        .unwrap();
+    let b = device
+        .create_buffer(16, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));

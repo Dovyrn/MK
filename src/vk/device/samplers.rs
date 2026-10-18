@@ -47,6 +47,9 @@ impl Device {
                 .create_sampler(&sampler_info, None)
                 .map_err(Error::from)?
         };
+        if !info.label.is_empty() {
+            self.name(sampler, info.label);
+        }
         let slot = self.res.samplers.insert(sampler);
         self.res.table.samplers.set(slot, ());
         Ok(slot)

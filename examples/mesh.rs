@@ -1,5 +1,5 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
     MeshPipelineInfo, RenderPassInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
     Viewport,
 };
@@ -21,7 +21,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let colors = [ColorTarget {
         format: Format::Rgba8Unorm,
@@ -56,7 +61,9 @@ pub fn main() {
         .create_depth_state(&DepthStateInfo::default())
         .unwrap();
     let listed = device.caps().mesh_indirect;
-    let groups = device.create_buffer(12, Memory::Upload).unwrap();
+    let groups = device
+        .create_buffer(12, Memory::Upload, BufferUsage::INDIRECT, "")
+        .unwrap();
     let words = unsafe { device.map_buffer::<[u32; 3]>(groups) };
     words[0] = [1, 1, 1];
     device.unmap_buffer(groups);
@@ -164,9 +171,16 @@ fn executed(
         })
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
-    let range = device.create_buffer(8, Memory::Device).unwrap();
+    let range = device
+        .create_buffer(8, Memory::Device, BufferUsage::ADDRESS, "")
+        .unwrap();
     let colors = [ColorTarget {
         format: Format::Rgba8Unorm,
         ..Default::default()

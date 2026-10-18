@@ -22,7 +22,7 @@ public class Smoke {
             var n = 1024;
             var pool = device.createCommandPool(0);
             var commands = device.beginCommands(pool);
-            var buffer = device.createBuffer(n * 4L, Memory.READBACK);
+            var buffer = device.createBuffer(n * 4L, Memory.READBACK, BufferUsage.STORAGE, "smoke");
             var bytes = Files.readAllBytes(Path.of(args[1]));
             var code = nmemAlloc(bytes.length);
             memByteBuffer(code, bytes.length).put(bytes);
@@ -32,7 +32,7 @@ public class Smoke {
                     .entry("fill");
             var pipeline = device.createComputePipeline(info);
             var timeline = device.createTimeline();
-            var constants = device.createBuffer(8, Memory.UPLOAD);
+            var constants = device.createBuffer(8, Memory.UPLOAD, BufferUsage.UNIFORM, "");
             var push = device.mapBuffer(constants);
             memPutInt(push, n);
             memPutInt(push + 4, 100);
@@ -48,7 +48,7 @@ public class Smoke {
             compute.dispatch(n / 64, 1, 1);
             compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
             compute.end();
-            var spare = device.createBuffer(4, Memory.UPLOAD);
+            var spare = device.createBuffer(4, Memory.UPLOAD, BufferUsage.COPY_DST, "");
             device.destroyBuffer(spare);
             System.out.println("created and destroyed while recording");
             commands.end();
@@ -95,7 +95,7 @@ public class Smoke {
                 var surface = VulkanHost.headless(instance);
                 var swapchain = device.createSwapchain(0, surface, swapchainInfo(size));
                 frames(device, size, () -> device.acquireTexture(swapchain), (c, signal) -> device.submitAndPresent(
-                        swapchain, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
+                        new Swapchain[] {swapchain}, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
                 device.waitIdle(0);
                 device.destroySwapchain(swapchain);
                 KHRSurface.vkDestroySurfaceKHR(instance, surface, null);
@@ -105,7 +105,7 @@ public class Smoke {
                 var layer = MetalHost.layer();
                 var swapchain = device.createSwapchain(0, layer, swapchainInfo(size));
                 frames(device, size, () -> device.acquireTexture(swapchain), (c, signal) -> device.submitAndPresent(
-                        swapchain, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
+                        new Swapchain[] {swapchain}, new CommandBuffer[] {c}, new TimelinePoint[0], new TimelinePoint[] {signal}));
                 device.waitIdle(0);
                 device.destroySwapchain(swapchain);
                 MetalHost.release(layer);
@@ -114,7 +114,7 @@ public class Smoke {
     }
 
     static void frames(Device device, int size, Supplier<Texture> acquire, BiConsumer<CommandBuffer, TimelinePoint> present) {
-        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK);
+        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK, BufferUsage.COPY_DST, "");
         var timeline = device.createTimeline();
         var pool = device.createCommandPool(0);
         var set = device.createResidencySet();
@@ -173,7 +173,7 @@ public class Smoke {
             var at = i;
             workers[i] = new Thread(() -> {
                 var pool = device.createCommandPool(0);
-                var buffer = device.createBuffer(size, Memory.READBACK);
+                var buffer = device.createBuffer(size, Memory.READBACK, BufferUsage.COPY_DST, "");
                 var set = device.createResidencySet();
                 device.addResidency(set, new Resource[] {buffer.resource()});
                 device.commitResidency(set);
@@ -215,7 +215,7 @@ public class Smoke {
                 .width(size)
                 .height(size)
                 .usage(TextureUsage.COLOR | TextureUsage.COPY_SRC));
-        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK);
+        var pixels = device.createBuffer(size * size * 4L, Memory.READBACK, BufferUsage.COPY_DST, "");
         var timeline = device.createTimeline();
         var pool = device.createCommandPool(0);
         var set = device.createResidencySet();

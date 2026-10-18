@@ -2,6 +2,7 @@ package dev.dov.mk;
 
 import static org.lwjgl.system.MemoryUtil.*;
 
+import java.nio.charset.StandardCharsets;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
@@ -19,11 +20,10 @@ public class SamplerInfo {
     public float minLod = 0.0f;
     public float maxLod = 1000.0f;
     public BorderColor border = BorderColor.TRANSPARENT_BLACK;
-
-    public static final int SIZE = 44;
+    public String label = "";
 
     int encodedSize() {
-        return 44;
+        return 48 + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -49,33 +49,10 @@ public class SamplerInfo {
         p += 4;
         memPutInt(p, border.value);
         p += 4;
+        var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, labelBytes.length);
+        memByteBuffer(p + 4, labelBytes.length).put(labelBytes);
+        p += 4 + labelBytes.length;
         return p;
-    }
-
-    static SamplerInfo decode(long p) {
-        var r = new SamplerInfo();
-        r.min = Filter.of(memGetInt(p));
-        p += 4;
-        r.mag = Filter.of(memGetInt(p));
-        p += 4;
-        r.mip = Filter.of(memGetInt(p));
-        p += 4;
-        r.u = AddressMode.of(memGetInt(p));
-        p += 4;
-        r.v = AddressMode.of(memGetInt(p));
-        p += 4;
-        r.w = AddressMode.of(memGetInt(p));
-        p += 4;
-        r.anisotropy = memGetInt(p);
-        p += 4;
-        r.compare = CompareOp.of(memGetInt(p));
-        p += 4;
-        r.minLod = memGetFloat(p);
-        p += 4;
-        r.maxLod = memGetFloat(p);
-        p += 4;
-        r.border = BorderColor.of(memGetInt(p));
-        p += 4;
-        return r;
     }
 }

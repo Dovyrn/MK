@@ -75,7 +75,7 @@ pub struct Recorder<'a> {
     vertices: [Option<(Buffer, u64)>; slot::VERTICES as usize],
     index: Option<(Buffer, u64, u32)>,
     mode: u32,
-    state: Option<DepthStateInfo>,
+    state: Option<DepthStateInfo<'static>>,
     references: (u32, u32),
     extent: (i32, i32),
     views: Vec<[f32; 4]>,

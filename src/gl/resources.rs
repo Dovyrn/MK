@@ -16,7 +16,7 @@ pub struct Resources {
     pub samplers: Slots<glow::Sampler>,
     pub pipelines: Slots<Program>,
     pub renders: Slots<Pipeline>,
-    pub depths: Slots<DepthStateInfo>,
+    pub depths: Slots<DepthStateInfo<'static>>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Rc<RefCell<Fences>>>,
     pub pools: Slots<()>,

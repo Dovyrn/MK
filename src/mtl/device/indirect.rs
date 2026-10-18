@@ -1,11 +1,11 @@
-use super::{Device, id};
+use super::{Device, id, labels};
 use crate::Error;
 use crate::mtl::indirect::Indirect;
 use crate::{IndirectBuffer, IndirectBufferInfo};
 use objc2::rc::autoreleasepool;
 use objc2_metal::{
     MTLDevice, MTLIndirectCommandBuffer, MTLIndirectCommandBufferDescriptor,
-    MTLIndirectCommandType, MTLResourceOptions,
+    MTLIndirectCommandType, MTLResource, MTLResourceOptions,
 };
 
 impl Device {
@@ -47,6 +47,9 @@ impl Device {
                         Error::OutOfMemory("indirect command buffer allocation failed".into())
                     })?
             };
+            if let Some(text) = labels::label(info.label) {
+                raw.setLabel(Some(&text));
+            }
             let id = self.res.indirects.insert(Indirect { raw, groups });
             self.res.table.indirects.set(id, entry);
             Ok(id)

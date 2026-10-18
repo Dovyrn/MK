@@ -18,6 +18,14 @@ fn vk_space(space: ColorSpace) -> vk::ColorSpaceKHR {
     }
 }
 
+fn vk_alpha(premultiplied: bool) -> vk::CompositeAlphaFlagsKHR {
+    if premultiplied {
+        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED
+    } else {
+        vk::CompositeAlphaFlagsKHR::OPAQUE
+    }
+}
+
 fn vk_mode(mode: PresentMode) -> vk::PresentModeKHR {
     match mode {
         PresentMode::Fifo => vk::PresentModeKHR::FIFO,
@@ -58,6 +66,9 @@ impl Device {
             height: if fixed { caps.current_extent.height } else { 0 },
             mailbox: modes.contains(&vk::PresentModeKHR::MAILBOX),
             immediate: modes.contains(&vk::PresentModeKHR::IMMEDIATE),
+            premultiplied: caps
+                .supported_composite_alpha
+                .contains(vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED),
         })
     }
 
@@ -127,10 +138,10 @@ impl Device {
                 .contains(vk::SurfaceTransformFlagsKHR::IDENTITY),
             "the surface has no identity transform"
         );
+        let alpha = vk_alpha(info.premultiplied);
         check!(
-            caps.supported_composite_alpha
-                .contains(vk::CompositeAlphaFlagsKHR::OPAQUE),
-            "the surface has no opaque composite alpha"
+            caps.supported_composite_alpha.contains(alpha),
+            "the surface has no {alpha:?} composite alpha"
         );
         let modes = unsafe {
             self.surface
@@ -167,7 +178,7 @@ impl Device {
             .image_array_layers(1)
             .image_usage(vk_image_usage(info.usage))
             .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .composite_alpha(vk_alpha(info.premultiplied))
             .present_mode(vk_mode(info.mode))
             .clipped(true)
             .old_swapchain(old);
@@ -294,39 +305,51 @@ impl Device {
 
     pub fn submit_and_present<'d>(
         &self,
-        swapchain: Swapchain,
+        swapchains: &[Swapchain],
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<bool, Error> {
-        let s = self.res.swapchains.get(swapchain);
-        let mut state = s.state.lock().unwrap();
-        let Some((image, acquire)) = state.current.take() else {
-            panic!("submit_and_present on {swapchain} without acquire_texture");
-        };
-        state.count += 1;
-        state.mark = Some(self.queues[s.queue].idles.load(Ordering::Relaxed));
-        let suboptimal = std::mem::take(&mut state.suboptimal);
-        let present = Present {
-            raw: state.raw,
-            image,
-            acquire,
-            signal: state.presents[image as usize],
-            id: state.count,
-        };
-        self.res
-            .table
-            .acquire(state.textures[image as usize], false);
-        drop(state);
-        let late = self.submit_with(commands, waits, signals, Some((s.queue, present)))?;
+        let mut presents = Vec::with_capacity(swapchains.len());
+        let mut queue = None;
+        let mut suboptimal = false;
+        for &swapchain in swapchains {
+            let s = self.res.swapchains.get(swapchain);
+            check!(
+                queue.is_none_or(|q| q == s.queue),
+                "submit_and_present presents {swapchain} on queue {}, the others on queue {}",
+                s.queue,
+                queue.unwrap_or(s.queue)
+            );
+            queue = Some(s.queue);
+            let mut state = s.state.lock().unwrap();
+            let Some((image, acquire)) = state.current.take() else {
+                panic!("submit_and_present on {swapchain} without acquire_texture");
+            };
+            state.count += 1;
+            state.mark = Some(self.queues[s.queue].idles.load(Ordering::Relaxed));
+            suboptimal |= std::mem::take(&mut state.suboptimal);
+            presents.push(Present {
+                raw: state.raw,
+                image,
+                acquire,
+                signal: state.presents[image as usize],
+                id: state.count,
+            });
+            self.res
+                .table
+                .acquire(state.textures[image as usize], false);
+        }
+        let queue = queue.expect("submit_and_present needs at least one swapchain");
+        let late = self.submit_with(commands, waits, signals, Some((queue, &presents)))?;
         Ok(suboptimal || late)
     }
 
-    pub(super) fn present(&self, queue: vk::Queue, p: &Present) -> Result<bool, Error> {
-        let waits = [p.signal];
-        let swapchains = [p.raw];
-        let images = [p.image];
-        let ids = [p.id];
+    pub(super) fn present(&self, queue: vk::Queue, presents: &[Present]) -> Result<bool, Error> {
+        let waits: Vec<_> = presents.iter().map(|p| p.signal).collect();
+        let swapchains: Vec<_> = presents.iter().map(|p| p.raw).collect();
+        let images: Vec<_> = presents.iter().map(|p| p.image).collect();
+        let ids: Vec<_> = presents.iter().map(|p| p.id).collect();
         let mut id = vk::PresentIdKHR::default().present_ids(&ids);
         let mut info = vk::PresentInfoKHR::default()
             .wait_semaphores(&waits)

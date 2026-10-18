@@ -1,7 +1,7 @@
 use crate::Error;
 use crate::{
-    AddressMode, Caps, ColorTarget, FillMode, Format, Memory, MeshPipelineInfo, QueryKind,
-    RenderPipelineInfo, SamplerInfo, TextureDimension, TextureInfo, TextureUsage,
+    AddressMode, BufferUsage, Caps, ColorTarget, FillMode, Format, Memory, MeshPipelineInfo,
+    QueryKind, RenderPipelineInfo, SamplerInfo, TextureDimension, TextureInfo, TextureUsage,
 };
 
 fn need(name: &str, has: bool, cap: &str) -> Result<(), Error> {
@@ -238,7 +238,7 @@ impl Caps {
         Ok(())
     }
 
-    #[cfg(feature = "vk")]
+    #[cfg(any(feature = "vk", feature = "mtl"))]
     pub(crate) fn assert_full_subgroups(&self, width: u32, size: u32) {
         if !cfg!(feature = "validation") {
             return;
@@ -249,14 +249,22 @@ impl Caps {
         );
     }
 
-    pub(crate) fn check_buffer(&self, size: u64, memory: Memory) -> Result<(), Error> {
+    pub(crate) fn check_buffer(
+        &self,
+        size: u64,
+        memory: Memory,
+        usage: BufferUsage,
+    ) -> Result<(), Error> {
         if !cfg!(feature = "validation") {
             return Ok(());
         }
         let name = "create_buffer";
         assert_not_transient(memory);
         check!(size > 0, "{name} size is 0");
-        need(name, size <= self.max_buffer, "max_buffer")
+        check!(!usage.is_empty(), "{name} usage is empty");
+        need(name, size <= self.max_buffer, "max_buffer")?;
+        let address = usage.contains(BufferUsage::ADDRESS);
+        need(name, !address || self.addresses, "addresses")
     }
 
     pub(crate) fn assert_addresses(&self) {

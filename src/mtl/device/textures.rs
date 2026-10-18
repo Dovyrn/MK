@@ -1,4 +1,4 @@
-use super::{Device, id, texture_desc, texture_type};
+use super::{Device, id, labels, texture_desc, texture_type};
 use crate::Error;
 use crate::Texture;
 use crate::caps;
@@ -24,6 +24,9 @@ impl Device {
                 .raw
                 .newTextureWithDescriptor(&desc)
                 .ok_or_else(|| Error::OutOfMemory("texture allocation failed".into()))?;
+            if let Some(text) = labels::label(info.label) {
+                raw.setLabel(Some(&text));
+            }
             let id = self.res.textures.insert(TextureObject {
                 id: raw.gpuResourceID(),
                 raw,
@@ -103,6 +106,7 @@ impl Device {
                 } else {
                     Memory::Device
                 },
+                label: "",
             };
             let id = self.res.textures.insert(TextureObject {
                 id: raw.gpuResourceID(),

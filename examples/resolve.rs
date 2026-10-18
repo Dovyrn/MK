@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, Format, LoadOp, Memory, RenderPassInfo, Scissor, Stage,
-    TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, LoadOp, Memory, RenderPassInfo,
+    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -11,7 +11,12 @@ pub fn main() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();

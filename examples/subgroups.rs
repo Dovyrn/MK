@@ -1,4 +1,4 @@
-use mk::{ComputePipelineInfo, Memory, Stage, SubgroupOp};
+use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage, SubgroupOp};
 
 #[path = "support/host.rs"]
 mod host;
@@ -21,7 +21,9 @@ pub fn main() {
         println!("no subgroup ops in compute shaders");
         return;
     }
-    let buffer = device.create_buffer(64 * 11 * 4, Memory::Readback).unwrap();
+    let buffer = device
+        .create_buffer(64 * 11 * 4, Memory::Readback, BufferUsage::STORAGE, "")
+        .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
@@ -44,6 +46,7 @@ pub fn main() {
                 entry: "lanes",
                 subgroup: size,
                 full,
+                ..Default::default()
             })
             .unwrap();
         let mut c = device.begin_commands(pool).unwrap();

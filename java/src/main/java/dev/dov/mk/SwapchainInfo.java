@@ -15,11 +15,12 @@ public class SwapchainInfo {
     public int usage = TextureUsage.COLOR;
     public PresentMode mode = PresentMode.FIFO;
     public ColorSpace colorSpace = ColorSpace.SRGB;
+    public boolean premultiplied = false;
 
-    public static final int SIZE = 28;
+    public static final int SIZE = 32;
 
     int encodedSize() {
-        return 28;
+        return 32;
     }
 
     long encode(long p) {
@@ -36,6 +37,8 @@ public class SwapchainInfo {
         memPutInt(p, mode.value);
         p += 4;
         memPutInt(p, colorSpace.value);
+        p += 4;
+        memPutInt(p, premultiplied ? 1 : 0);
         p += 4;
         return p;
     }
@@ -55,6 +58,8 @@ public class SwapchainInfo {
         r.mode = PresentMode.of(memGetInt(p));
         p += 4;
         r.colorSpace = ColorSpace.of(memGetInt(p));
+        p += 4;
+        r.premultiplied = memGetInt(p) != 0;
         p += 4;
         return r;
     }

@@ -1,7 +1,7 @@
 use mk::{
-    ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory, QueryKind, RenderPassInfo,
-    RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, VertexAttribute,
-    VertexBufferLayout, Viewport,
+    BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory, QueryKind,
+    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
+    VertexAttribute, VertexBufferLayout, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -16,17 +16,23 @@ pub fn main() {
         println!("no occlusion queries or no compute");
         return;
     }
-    let times = caps
-        .timestamps
-        .then(|| device.create_query_pool(QueryKind::Timestamp, 2).unwrap());
+    let times = caps.timestamps.then(|| {
+        device
+            .create_query_pool(QueryKind::Timestamp, 2, "times")
+            .unwrap()
+    });
     let kind = if caps.precise_occlusion {
         QueryKind::Precise
     } else {
         QueryKind::Occlusion
     };
-    let samples = device.create_query_pool(kind, 1).unwrap();
-    let out = device.create_buffer(24, Memory::Readback).unwrap();
-    let data = device.create_buffer(1 << 20, Memory::Device).unwrap();
+    let samples = device.create_query_pool(kind, 1, "samples").unwrap();
+    let out = device
+        .create_buffer(24, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
+    let data = device
+        .create_buffer(1 << 20, Memory::Device, BufferUsage::STORAGE, "")
+        .unwrap();
     let fill = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("count"),
@@ -80,7 +86,12 @@ pub fn main() {
         [0.0, 0.5, 1.0, 0.0, 0.0],
     ];
     let vbuf = device
-        .create_buffer(size_of_val(&vertices) as u64, Memory::Upload)
+        .create_buffer(
+            size_of_val(&vertices) as u64,
+            Memory::Upload,
+            BufferUsage::VERTEX,
+            "",
+        )
         .unwrap();
     unsafe { device.map_buffer::<[f32; 5]>(vbuf) }.copy_from_slice(&vertices);
     device.unmap_buffer(vbuf);

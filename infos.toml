@@ -62,6 +62,7 @@ fields = [
     ["samples", "u32", "1"],
     ["usage", "TextureUsage", "0"],
     ["memory", "Memory", "memory::DEVICE"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -78,6 +79,7 @@ fields = [
     ["min_lod", "f32", "0.0"],
     ["max_lod", "f32", "1000.0"],
     ["border", "BorderColor", "border_color::TRANSPARENT_BLACK"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -140,6 +142,7 @@ fields = [
     ["indirect", "bool", "false"],
     ["buffers", "[VertexBufferLayout]", ""],
     ["attributes", "[VertexAttribute]", ""],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -149,6 +152,8 @@ fields = [
     ["task", "str", ""],
     ["mesh", "str", ""],
     ["fragment", "str", ""],
+    ["task_group", "u32x3", "[0, 0, 0]"],
+    ["mesh_group", "u32x3", "[0, 0, 0]"],
     ["colors", "[ColorTarget]", ""],
     ["depth", "Format?", ""],
     ["stencil", "Format?", ""],
@@ -158,6 +163,7 @@ fields = [
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
     ["indirect", "bool", "false"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -167,6 +173,7 @@ fields = [
     ["entry", "str", ""],
     ["colors", "[ColorTarget]", ""],
     ["samples", "u32", "1"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -188,6 +195,7 @@ fields = [
     ["stencil", "bool", "false"],
     ["front", "StencilFace", ""],
     ["back", "StencilFace", ""],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -266,8 +274,10 @@ name = "ComputePipelineInfo"
 fields = [
     ["code", "bytes", ""],
     ["entry", "str", ""],
+    ["group", "u32x3", "[0, 0, 0]"],
     ["subgroup", "u32", "0"],
     ["full", "bool", "false"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -286,6 +296,7 @@ fields = [
     ["indices", "Buffer", ""],
     ["offset", "u64", "0"],
     ["kind", "IndexType", "index_type::U16"],
+    ["label", "str", ""],
 ]
 
 [[info]]
@@ -433,6 +444,7 @@ fields = [
     ["usage", "TextureUsage", "texture_usage::COLOR"],
     ["mode", "PresentMode", "present_mode::FIFO"],
     ["color_space", "ColorSpace", "color_space::SRGB"],
+    ["premultiplied", "bool", "false"],
 ]
 
 [[info]]
@@ -444,4 +456,5 @@ fields = [
     ["height", "u32", "0"],
     ["mailbox", "bool", "false"],
     ["immediate", "bool", "false"],
+    ["premultiplied", "bool", "false"],
 ]

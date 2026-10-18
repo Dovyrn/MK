@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, DepthAttachment, Format, LoadOp, Memory, RenderPassInfo,
-    Stage, TextureCopy, TextureDimension, TextureDiscard, TextureInfo, TextureUsage,
-    TextureViewInfo,
+    BufferTextureCopy, BufferUsage, ColorAttachment, DepthAttachment, Format, LoadOp, Memory,
+    RenderPassInfo, Stage, TextureCopy, TextureDimension, TextureDiscard, TextureInfo,
+    TextureUsage, TextureViewInfo,
 };
 
 #[path = "support/host.rs"]
@@ -55,7 +55,9 @@ pub fn main() {
     );
     let texels = (N * N) as usize;
     let size = texels as u64 * 4;
-    let upload = device.create_buffer(size, Memory::Upload).unwrap();
+    let upload = device
+        .create_buffer(size, Memory::Upload, BufferUsage::COPY_SRC, "")
+        .unwrap();
     let pixels: Vec<[u8; 4]> = (0..texels as u32).map(|i| pattern(i % N, i / N)).collect();
     unsafe { device.map_buffer::<[u8; 4]>(upload) }.copy_from_slice(&pixels);
     device.unmap_buffer(upload);
@@ -75,7 +77,9 @@ pub fn main() {
         offsets.push(total);
         total += (s.2 * s.3 * 4) as u64;
     }
-    let back = device.create_buffer(total, Memory::Readback).unwrap();
+    let back = device
+        .create_buffer(total, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let words = caps.texture_views.then(|| {
         device
             .create_texture_view(

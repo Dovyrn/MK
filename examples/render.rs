@@ -1,7 +1,8 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, CompareOp, DepthAttachment, DepthStateInfo,
-    Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, StoreOp,
-    TextureDiscard, TextureInfo, TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CompareOp, DepthAttachment,
+    DepthStateInfo, Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage,
+    StoreOp, TextureDiscard, TextureInfo, TextureUsage, VertexAttribute, VertexBufferLayout,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -37,13 +38,28 @@ pub fn main() {
     ];
     let indices: [u16; 3] = [0, 1, 2];
     let vbuf = device
-        .create_buffer(size_of_val(&vertices) as u64, Memory::Upload)
+        .create_buffer(
+            size_of_val(&vertices) as u64,
+            Memory::Upload,
+            BufferUsage::VERTEX,
+            "",
+        )
         .unwrap();
     let ibuf = device
-        .create_buffer(size_of_val(&indices) as u64, Memory::Upload)
+        .create_buffer(
+            size_of_val(&indices) as u64,
+            Memory::Upload,
+            BufferUsage::INDEX,
+            "",
+        )
         .unwrap();
     let back = device
-        .create_buffer((n * n * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (n * n * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     unsafe { device.map_buffer::<[f32; 5]>(vbuf) }.copy_from_slice(&vertices);
     unsafe { device.map_buffer::<u16>(ibuf) }.copy_from_slice(&indices);

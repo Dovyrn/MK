@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, ColorTarget, CommandPool, DepthState, DepthStateInfo, Device, Format,
-    ImportedPassInfo, Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage,
-    Texture, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    BufferTextureCopy, BufferUsage, ColorTarget, CommandPool, DepthState, DepthStateInfo, Device,
+    Format, ImportedPassInfo, Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor,
+    Stage, Texture, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -307,7 +307,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((N * N * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (N * N * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let colors = [ColorTarget {
         format: Format::Rgba8Unorm,

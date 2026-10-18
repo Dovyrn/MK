@@ -44,7 +44,12 @@ pub(crate) use code;
 pub fn constants(device: &mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
     let stride = device.caps().bind_alignment.max(256) as u64;
     let buffer = device
-        .create_buffer(stride * blocks.len() as u64, mk::Memory::Upload)
+        .create_buffer(
+            stride * blocks.len() as u64,
+            mk::Memory::Upload,
+            mk::BufferUsage::UNIFORM,
+            "",
+        )
         .unwrap();
     let p = unsafe { device.map_buffer::<u8>(buffer) };
     for (i, b) in blocks.iter().enumerate() {

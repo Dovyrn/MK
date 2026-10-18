@@ -29,6 +29,7 @@ impl Device {
             height: size.height as u32,
             mailbox: false,
             immediate: cfg!(target_os = "macos"),
+            premultiplied: true,
         })
     }
 
@@ -89,6 +90,7 @@ impl Device {
         layer.setMaximumDrawableCount(info.images as usize);
         layer.setFramebufferOnly(info.usage == TextureUsage::COLOR);
         layer.setAllowsNextDrawableTimeout(false);
+        layer.setOpaque(!info.premultiplied);
         #[cfg(target_os = "macos")]
         layer.setDisplaySyncEnabled(info.mode == PresentMode::Fifo);
         Ok(())
@@ -196,30 +198,46 @@ impl Device {
 
     pub fn submit_and_present<'d>(
         &self,
-        swapchain: Swapchain,
+        swapchains: &[Swapchain],
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
     ) -> Result<bool, Error> {
-        let s = self.res.swapchains.get(swapchain);
-        let mut state = s.state.lock().unwrap();
-        let Some((drawable, texture)) = state.current.take() else {
-            panic!("submit_and_present on {swapchain} without acquire_texture");
-        };
-        state.count += 1;
-        state.mark = Some(self.queues[s.queue].idles.load(Ordering::Relaxed));
-        let id = state.count;
-        drop(state);
-        self.res.table.acquire(texture, false);
-        let presented = s.presented.clone();
-        let handler = RcBlock::new(move |_: NonNull<ProtocolObject<dyn MTLDrawable>>| {
-            let mut count = presented.count.lock().unwrap();
-            *count = (*count).max(id);
-            presented.changed.notify_all();
-        });
-        unsafe { drawable.addPresentedHandler(RcBlock::as_ptr(&handler)) };
-        let drawable = ProtocolObject::<dyn MTLDrawable>::from_ref(&*drawable);
-        self.submit_with(commands, waits, signals, Some((s.queue, drawable)))?;
+        let mut drawables = Vec::with_capacity(swapchains.len());
+        let mut queue = None;
+        for &swapchain in swapchains {
+            let s = self.res.swapchains.get(swapchain);
+            check!(
+                queue.is_none_or(|q| q == s.queue),
+                "submit_and_present presents {swapchain} on queue {}, the others on queue {}",
+                s.queue,
+                queue.unwrap_or(s.queue)
+            );
+            queue = Some(s.queue);
+            let mut state = s.state.lock().unwrap();
+            let Some((drawable, texture)) = state.current.take() else {
+                panic!("submit_and_present on {swapchain} without acquire_texture");
+            };
+            state.count += 1;
+            state.mark = Some(self.queues[s.queue].idles.load(Ordering::Relaxed));
+            let id = state.count;
+            drop(state);
+            self.res.table.acquire(texture, false);
+            let presented = s.presented.clone();
+            let handler = RcBlock::new(move |_: NonNull<ProtocolObject<dyn MTLDrawable>>| {
+                let mut count = presented.count.lock().unwrap();
+                *count = (*count).max(id);
+                presented.changed.notify_all();
+            });
+            unsafe { drawable.addPresentedHandler(RcBlock::as_ptr(&handler)) };
+            drawables.push(drawable);
+        }
+        let queue = queue.expect("submit_and_present needs at least one swapchain");
+        let list: Vec<_> = drawables
+            .iter()
+            .map(|d| ProtocolObject::<dyn MTLDrawable>::from_ref(&**d))
+            .collect();
+        self.submit_with(commands, waits, signals, Some((queue, &list)))?;
         Ok(false)
     }
 

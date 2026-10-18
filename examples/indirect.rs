@@ -1,8 +1,8 @@
 use mk::{
-    Buffer, BufferTextureCopy, ColorAttachment, ColorTarget, CommandBuffer, CommandPool,
-    DepthState, DepthStateInfo, Device, Format, IndexType, IndirectBufferInfo, Memory, RenderPass,
-    RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture,
-    TextureDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
+    Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandBuffer,
+    CommandPool, DepthState, DepthStateInfo, Device, Format, IndexType, IndirectBufferInfo, Memory,
+    RenderPass, RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage,
+    Texture, TextureDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -101,7 +101,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((N * N * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (N * N * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let colors = [ColorTarget {
         format: Format::Rgba8Unorm,
@@ -117,8 +122,12 @@ pub fn main() {
             ..Default::default()
         })
         .unwrap();
-    let indices = device.create_buffer(8, Memory::Upload).unwrap();
-    let args = device.create_buffer(36, Memory::Upload).unwrap();
+    let indices = device
+        .create_buffer(8, Memory::Upload, BufferUsage::INDEX, "")
+        .unwrap();
+    let args = device
+        .create_buffer(36, Memory::Upload, BufferUsage::INDIRECT, "")
+        .unwrap();
     unsafe { device.map_buffer::<u16>(indices) }.copy_from_slice(&[7, 0, 1, 2]);
     unsafe { device.map_buffer::<u32>(args) }.copy_from_slice(&[3, 1, 0, 0, 3, 1, 1, 0, 0]);
     device.unmap_buffer(indices);
@@ -174,7 +183,14 @@ fn run(_: &mut Device, _: &Frame, _: mk::IndirectBuffer) -> String {
 
 #[cfg(not(feature = "gl"))]
 fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
-    let range = device.create_buffer(8, Memory::Device).unwrap();
+    let range = device
+        .create_buffer(
+            8,
+            Memory::Device,
+            BufferUsage::INDIRECT | BufferUsage::ADDRESS,
+            "",
+        )
+        .unwrap();
     let indexed = device
         .create_indirect_buffer(&IndirectBufferInfo {
             draws: 1,

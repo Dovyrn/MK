@@ -23,7 +23,7 @@ impl Device {
             subgroup_sizes: width,
             subgroup_ops: !SubgroupOp::CLUSTERED,
             subgroup_stages: Stage::COMPUTE | Stage::FRAGMENT,
-            full_subgroups: false,
+            full_subgroups: true,
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
             transients: true,

@@ -1,5 +1,5 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
     RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
     Viewport,
 };
@@ -25,7 +25,12 @@ pub fn main() {
         })
         .unwrap();
     let back = device
-        .create_buffer((w * h * 4) as u64, Memory::Readback)
+        .create_buffer(
+            (w * h * 4) as u64,
+            Memory::Readback,
+            BufferUsage::COPY_DST,
+            "",
+        )
         .unwrap();
     let colors = [ColorTarget {
         format: Format::Rgba8Unorm,

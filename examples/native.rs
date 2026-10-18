@@ -1,4 +1,4 @@
-use mk::{Device, Memory, Stage};
+use mk::{BufferUsage, Device, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -44,8 +44,17 @@ pub fn main() {
     let n = 4096u64;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let data = device.create_buffer(n, Memory::Device).unwrap();
-    let back = device.create_buffer(n, Memory::Readback).unwrap();
+    let data = device
+        .create_buffer(
+            n,
+            Memory::Device,
+            BufferUsage::COPY_SRC | BufferUsage::COPY_DST,
+            "",
+        )
+        .unwrap();
+    let back = device
+        .create_buffer(n, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let timeline = device.create_timeline().unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into()]);

@@ -79,7 +79,10 @@ impl Device {
                 image: Cell::new(0),
                 memory,
             });
-            self.res.table.textures.set(id, *info);
+            self.res
+                .table
+                .textures
+                .set(id, TextureInfo { label: "", ..*info });
             self.res.table.shared.set(id, ());
             lock(&self.res.table.residency).exempt_texture(id);
             Ok(id)

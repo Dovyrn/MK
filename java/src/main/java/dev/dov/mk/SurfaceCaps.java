@@ -14,11 +14,12 @@ public class SurfaceCaps {
     public int height = 0;
     public boolean mailbox = false;
     public boolean immediate = false;
+    public boolean premultiplied = false;
 
-    public static final int SIZE = 24;
+    public static final int SIZE = 28;
 
     int encodedSize() {
-        return 24;
+        return 28;
     }
 
     long encode(long p) {
@@ -33,6 +34,8 @@ public class SurfaceCaps {
         memPutInt(p, mailbox ? 1 : 0);
         p += 4;
         memPutInt(p, immediate ? 1 : 0);
+        p += 4;
+        memPutInt(p, premultiplied ? 1 : 0);
         p += 4;
         return p;
     }
@@ -50,6 +53,8 @@ public class SurfaceCaps {
         r.mailbox = memGetInt(p) != 0;
         p += 4;
         r.immediate = memGetInt(p) != 0;
+        p += 4;
+        r.premultiplied = memGetInt(p) != 0;
         p += 4;
         return r;
     }

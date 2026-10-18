@@ -1,5 +1,5 @@
 use mk::{
-    AddressMode, BufferTextureCopy, ColorAttachment, ColorTarget, ComputePipelineInfo,
+    AddressMode, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, ComputePipelineInfo,
     DepthStateInfo, Filter, Format, Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo,
     Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
@@ -53,8 +53,17 @@ pub fn main() {
         })
         .unwrap();
     let at = caps.bind_alignment.max(16) as u64;
-    let upload = device.create_buffer(at + 16, Memory::Upload).unwrap();
-    let back = device.create_buffer(64, Memory::Readback).unwrap();
+    let upload = device
+        .create_buffer(
+            at + 16,
+            Memory::Upload,
+            BufferUsage::UNIFORM | BufferUsage::COPY_SRC,
+            "",
+        )
+        .unwrap();
+    let back = device
+        .create_buffer(64, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let p = unsafe { device.map_buffer::<u8>(upload) };
     let texels: [u8; 16] = [0, 0, 0, 255, 60, 0, 0, 255, 120, 0, 0, 255, 180, 0, 0, 255];
     p[..16].copy_from_slice(&texels);
@@ -159,8 +168,17 @@ pub fn main() {
             ..texel(TextureUsage::STORAGE | TextureUsage::COPY_SRC)
         })
         .unwrap();
-    let data = device.create_buffer(64 * 4, Memory::Device).unwrap();
-    let out = device.create_buffer(64 * 4 + 64, Memory::Readback).unwrap();
+    let data = device
+        .create_buffer(
+            64 * 4,
+            Memory::Device,
+            BufferUsage::STORAGE | BufferUsage::COPY_SRC,
+            "",
+        )
+        .unwrap();
+    let out = device
+        .create_buffer(64 * 4 + 64, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: CODE,

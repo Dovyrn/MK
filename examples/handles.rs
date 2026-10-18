@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{ComputePipelineInfo, Memory, Stage};
+use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -18,9 +18,16 @@ pub fn main() {
         println!("no buffer addresses");
         return;
     }
-    let data = device.create_buffer(n as u64 * 4, Memory::Device).unwrap();
+    let data = device
+        .create_buffer(
+            n as u64 * 4,
+            Memory::Device,
+            BufferUsage::COPY_SRC | BufferUsage::ADDRESS,
+            "",
+        )
+        .unwrap();
     let back = device
-        .create_buffer(n as u64 * 4, Memory::Readback)
+        .create_buffer(n as u64 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {

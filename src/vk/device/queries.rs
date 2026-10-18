@@ -10,6 +10,7 @@ impl Device {
         &self,
         kind: crate::QueryKind,
         count: u32,
+        label: &str,
     ) -> Result<QueryPool, Error> {
         self.caps.check_query_pool(kind, count)?;
         let none = vk::QueryControlFlags::empty();
@@ -27,6 +28,7 @@ impl Device {
                 .create_query_pool(&info, None)
                 .map_err(Error::from)?
         };
+        self.name(pool, label);
         let id = self.res.queries.insert(Query { pool, flags });
         self.res.table.queries.set(id, (wanted, count));
         Ok(id)

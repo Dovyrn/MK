@@ -64,6 +64,7 @@ type CopyImage = unsafe extern "system" fn(
 );
 type Samples2 = unsafe extern "system" fn(u32, i32, u32, i32, i32, u8);
 type Samples3 = unsafe extern "system" fn(u32, i32, u32, i32, i32, i32, u8);
+pub type Queries = unsafe extern "system" fn(u32, i32, *mut u32);
 
 pub struct Extra {
     pub view: Option<View>,
@@ -100,6 +101,7 @@ pub struct Extra {
     pub invalidate: Option<Invalidate>,
     pub integers: Integers,
     pub query: Integers,
+    pub queries: Option<Queries>,
     pub booleans: Booleans,
     pub floats: Option<Floats>,
     pub doubles: Option<Doubles>,
@@ -191,6 +193,7 @@ impl Extra {
                     .map(|p| cast(p)),
                 integers: cast(need("glGetIntegeri_v")?),
                 query: cast(need("glGetQueryiv")?),
+                queries: get("glCreateQueries", 45, "GL_ARB_direct_state_access").map(|p| cast(p)),
                 booleans: cast(need("glGetBooleani_v")?),
                 floats: get("glGetFloati_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),
                 doubles: get("glGetDoublei_v", 41, "GL_ARB_viewport_array").map(|p| cast(p)),

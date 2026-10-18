@@ -27,6 +27,31 @@ fn entry_section<'a>(text: &'a str, entry: &str) -> Result<&'a str, Error> {
     Ok(&text[start..end])
 }
 
+pub fn check_group(code: &[u8], entry: &str, given: [u32; 3]) -> Result<(), Error> {
+    let text = std::str::from_utf8(code).map_err(|e| Error::Shader(e.to_string()))?;
+    let section = entry_section(text, entry)?;
+    let size = ["x", "y", "z"].map(|axis| {
+        let key = format!("local_size_{axis} = ");
+        let at = section.find(&key).map(|i| i + key.len());
+        at.and_then(|i| {
+            let digits = section[i..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .count();
+            section[i..i + digits].parse::<u32>().ok()
+        })
+    });
+    match size {
+        [Some(x), Some(y), Some(z)] if given != [0; 3] && given != [x, y, z] => {
+            Err(Error::Invalid(format!(
+                "group {given:?} for {entry} differs from the code's {:?}",
+                [x, y, z]
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
 pub unsafe fn link(
     gl: &glow::Context,
     raw: glow::Program,

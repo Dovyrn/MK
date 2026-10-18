@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, ColorAttachment, Format, Memory, RenderPassInfo, Scissor, Stage,
-    TextureDiscard, TextureInfo, TextureUsage, TextureViewInfo, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, RenderPassInfo, Scissor,
+    Stage, TextureDiscard, TextureInfo, TextureUsage, TextureViewInfo, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -34,7 +34,9 @@ pub fn main() {
             },
         )
         .unwrap();
-    let back = device.create_buffer(16 * 4, Memory::Readback).unwrap();
+    let back = device
+        .create_buffer(16 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
+        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);

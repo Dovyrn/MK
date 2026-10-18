@@ -13,7 +13,7 @@ pub struct Resources {
     pub samplers: Slots<vk::Sampler>,
     pub pipelines: Slots<vk::Pipeline>,
     pub renders: Slots<(vk::Pipeline, Option<vk::PrimitiveTopology>)>,
-    pub depths: Slots<DepthStateInfo>,
+    pub depths: Slots<DepthStateInfo<'static>>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
     pub sets: Slots<()>,

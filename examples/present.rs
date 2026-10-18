@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, ColorAttachment, Format, Memory, RenderPassInfo, Stage, SwapchainInfo,
-    TextureDiscard, TextureUsage,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, RenderPassInfo, Stage,
+    SwapchainInfo, TextureDiscard, TextureUsage,
 };
 
 #[cfg(not(feature = "gl"))]
@@ -86,6 +86,13 @@ pub fn main() {
     let caps = caps(&device, &raw);
     assert!((caps.min_images..=caps.max_images).contains(&3), "{caps:?}");
     let swapchain = device.create_swapchain(0, raw, &info(64)).unwrap();
+    let (other, done) = surface(&device).unwrap();
+    let premultiplied = self::caps(&device, &other).premultiplied;
+    let side = SwapchainInfo {
+        premultiplied,
+        ..info(16)
+    };
+    let second = device.create_swapchain(0, other, &side).unwrap();
     let colors = [
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
@@ -96,13 +103,23 @@ pub fn main() {
         [1.0, 1.0, 1.0],
         [0.0, 0.0, 0.0],
     ];
-    let backs = colors.map(|_| device.create_buffer(64 * 64 * 4, Memory::Readback).unwrap());
+    let backs = colors.map(|_| {
+        device
+            .create_buffer(64 * 64 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
+            .unwrap()
+    });
+    let sides = colors.map(|_| {
+        device
+            .create_buffer(16 * 16 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
+            .unwrap()
+    });
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &backs.map(Into::into));
+    device.add_residency(set, &sides.map(Into::into));
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
     let mut textures = Vec::new();
-    for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
+    for (i, ((rgb, back), side)) in colors.iter().zip(backs).zip(sides).enumerate() {
         let frame = i as u64 + 1;
         let n = if i < 4 { 64 } else { 32 };
         if frame > 2 {
@@ -120,45 +137,57 @@ pub fn main() {
         if !textures.contains(&texture) {
             textures.push(texture);
         }
+        let corner = device.acquire_texture(second).unwrap();
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.discard_textures(&[TextureDiscard {
-            texture,
-            src_stage: Stage::COLOR,
-            dst_stage: Stage::COLOR,
-        }]);
-        let pass = c
-            .begin_render_pass(&RenderPassInfo {
+        let targets = [
+            (texture, n, back, [rgb[0], rgb[1], rgb[2], 1.0]),
+            (
+                corner,
+                16,
+                side,
+                [rgb[0] * 0.5, rgb[1] * 0.5, rgb[2] * 0.5, 0.5],
+            ),
+        ];
+        for (texture, n, buffer, clear) in targets {
+            c.discard_textures(&[TextureDiscard {
+                texture,
+                src_stage: Stage::COLOR,
+                dst_stage: Stage::COLOR,
+            }]);
+            let pass = c
+                .begin_render_pass(&RenderPassInfo {
+                    width: n,
+                    height: n,
+                    colors: &[ColorAttachment {
+                        texture,
+                        clear,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                })
+                .unwrap();
+            pass.end();
+            let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+            pass.copy_texture_to_buffer(&BufferTextureCopy {
+                texture,
                 width: n,
                 height: n,
-                colors: &[ColorAttachment {
-                    texture,
-                    clear: [rgb[0], rgb[1], rgb[2], 1.0],
-                    ..Default::default()
-                }],
+                buffer,
                 ..Default::default()
-            })
-            .unwrap();
-        pass.end();
-        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
-        pass.copy_texture_to_buffer(&BufferTextureCopy {
-            texture,
-            width: n,
-            height: n,
-            buffer: back,
-            ..Default::default()
-        });
-        pass.memory_barrier(Stage::COPY, Stage::HOST);
-        pass.end();
-        c.present_barrier(texture, Stage::COPY);
+            });
+            pass.memory_barrier(Stage::COPY, Stage::HOST);
+            pass.end();
+            c.present_barrier(texture, Stage::COPY);
+        }
         c.end().unwrap();
         device
-            .submit_and_present(swapchain, [c], &[], &[(&timeline, frame)])
+            .submit_and_present(&[swapchain, second], [c], &[], &[(&timeline, frame)])
             .unwrap();
     }
     let last = colors.len() as u64;
     assert!(timeline.wait(last, 1000).unwrap());
-    for (i, (rgb, back)) in colors.iter().zip(backs).enumerate() {
+    for (i, ((rgb, back), side)) in colors.iter().zip(backs).zip(sides).enumerate() {
         let n = if i < 4 { 64 } else { 32 };
         let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
         let bgra = [rgb[2], rgb[1], rgb[0], 1.0].map(|c| (c * 255.0) as u8);
@@ -169,13 +198,26 @@ pub fn main() {
             i + 1
         );
         device.unmap_buffer(back);
+        let pixels = unsafe { device.map_buffer::<[u8; 4]>(side) };
+        let half = [rgb[2], rgb[1], rgb[0], 1.0].map(|c| (c * 127.5).round() as u8);
+        for (got, want) in pixels[136].iter().zip(half) {
+            assert!(
+                got.abs_diff(want) <= 1,
+                "side frame {}: {:?}",
+                i + 1,
+                pixels[136]
+            );
+        }
+        device.unmap_buffer(side);
     }
     assert!(textures.len() <= 3, "{} texture handles", textures.len());
     device.wait_idle(0).unwrap();
     device.destroy_swapchain(swapchain);
+    device.destroy_swapchain(second);
     release();
+    done();
     println!(
-        "{} frames presented at 64 then 32 pixels, paced: {paced}",
+        "{} frames presented at 64 then 32 pixels with a second swapchain in the same present, paced: {paced}, premultiplied: {premultiplied}",
         colors.len()
     );
 }

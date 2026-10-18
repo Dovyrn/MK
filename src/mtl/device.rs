@@ -4,6 +4,7 @@ mod caps;
 mod copies;
 mod create;
 mod indirect;
+mod labels;
 mod pipelines;
 mod queries;
 mod residency;
@@ -394,7 +395,7 @@ impl Device {
         commands: impl IntoIterator<Item = CommandBuffer<'d>>,
         waits: &[(&Timeline, u64)],
         signals: &[(&Timeline, u64)],
-        present: Option<(usize, &ProtocolObject<dyn MTLDrawable>)>,
+        present: Option<(usize, &[&ProtocolObject<dyn MTLDrawable>])>,
     ) -> Result<(), Error> {
         autoreleasepool(|_| {
             let table = &self.res.table;
@@ -433,7 +434,7 @@ impl Device {
                     "submit_and_present submits on queue {queue}; the swapchain presents on queue {q}"
                 );
             }
-            self.queues[queue].commit(&submits, waits, signals, present.map(|p| p.1));
+            self.queues[queue].commit(&submits, waits, signals, present.map_or(&[], |p| p.1));
             submits.clear();
             table.record_signals(queue, signals);
             Ok(())

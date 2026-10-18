@@ -109,13 +109,11 @@ pub fn declares(words: &[u32], capability: u32) -> bool {
     instructions(words).any(|(op, args)| op == CAPABILITY && args[0] == capability)
 }
 
-pub fn width(words: &[u32], entry: &str) -> u32 {
-    let Some((_, function, _, _)) = entries(words).find(|(_, _, name, _)| name == entry) else {
-        return 0;
-    };
+pub fn size(words: &[u32], entry: &str) -> Option<[u32; 3]> {
+    let (_, function, _, _) = entries(words).find(|(_, _, name, _)| name == entry)?;
     instructions(words)
         .find(|(op, args)| *op == MODE && args[0] == function && args[1] == LOCAL_SIZE)
-        .map_or(0, |(_, args)| args[2])
+        .map(|(_, args)| [args[2], args[3], args[4]])
 }
 
 pub fn reads(words: &[u32], entry: &str) -> u32 {
