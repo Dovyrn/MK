@@ -11,7 +11,6 @@ const DECORATE: u32 = 71;
 const VERTEX: u32 = 0;
 const INPUT: u32 = 1;
 const LOCATION: u32 = 30;
-const SET: u32 = 34;
 const ATTACHMENT: u32 = 43;
 const FRAGMENT: u32 = 4;
 
@@ -38,7 +37,7 @@ fn entries(words: &[u32]) -> impl Iterator<Item = (u32, u32, String, &[u32])> {
         })
 }
 
-pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, Error> {
+pub fn read(code: &[u8], names: &[&str]) -> Result<Vec<u32>, Error> {
     let words =
         ash::util::read_spv(&mut Cursor::new(code)).map_err(|e| Error::Shader(e.to_string()))?;
     let mut list: Vec<String> = Vec::new();
@@ -52,23 +51,6 @@ pub fn read(code: &[u8], names: &[&str], slots: bool) -> Result<Vec<u32>, Error>
             "no entry {name} in the code; it has {}",
             list.join(", ")
         )));
-    }
-    let old = words.get(1).is_some_and(|&v| v < 0x10400);
-    let used: Vec<u32> = entries(&words)
-        .filter(|(_, _, name, _)| names.contains(&name.as_str()))
-        .flat_map(|(_, _, _, interface)| interface.to_vec())
-        .collect();
-    let zero = instructions(&words).any(|(op, args)| {
-        op == DECORATE
-            && args.len() > 2
-            && args[1] == SET
-            && args[2] == 0
-            && (old || used.contains(&args[0]))
-    });
-    if cfg!(feature = "validation") && zero && !slots {
-        return Err(Error::Unsupported(
-            "slot bindings need caps.slot_binding".into(),
-        ));
     }
     Ok(words)
 }

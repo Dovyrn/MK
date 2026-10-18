@@ -1,5 +1,6 @@
 mod budget;
 mod copies;
+mod descriptors;
 mod host;
 mod indirect;
 mod labels;
@@ -49,6 +50,7 @@ pub struct Device {
     caps: Caps,
     samples: [i32; 4],
     thread: std::thread::ThreadId,
+    bounds: Cell<[u32; 3]>,
 }
 
 const TASK_SHADER: u32 = 0x955A;
@@ -174,8 +176,21 @@ impl Device {
                 },
                 depth_clamp: true,
                 line_fill: true,
-                slot_binding: true,
-                storage_slots: storage,
+                storage_sets: storage,
+                set_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
+                set_storages: if storage {
+                    int(glow::MAX_SHADER_STORAGE_BUFFER_BINDINGS) as u32
+                } else {
+                    0
+                },
+                set_textures: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
+                set_images: if storage {
+                    int(glow::MAX_IMAGE_UNITS) as u32
+                } else {
+                    0
+                },
+                set_samplers: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
+                set_inputs: 0,
                 persistent_maps: has(44, "GL_ARB_buffer_storage"),
                 bind_alignment: if storage {
                     int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
@@ -281,6 +296,7 @@ impl Device {
                 read,
                 open: Cell::new(false),
                 thread: std::thread::current().id(),
+                bounds: Cell::new([0; 3]),
             })
         }
     }
@@ -416,13 +432,14 @@ impl Device {
         self.thread();
         self.caps.check_compute_pipeline(info)?;
         self.check_host_programs()?;
+        let layouts = self.res.table.layout_ids(info.sets);
         program::check_group(info.code, info.entry, info.group)?;
         let program = Program::new(&self.gl, info.code, &[(glow::COMPUTE_SHADER, info.entry)])?;
         if !info.label.is_empty() {
             self.name(glow::PROGRAM, program.raw.0.get(), info.label);
         }
         let id = self.res.pipelines.insert(program);
-        self.res.table.pipelines.set(id, ());
+        self.res.table.pipelines.set(id, layouts);
         Ok(id)
     }
 
@@ -477,6 +494,7 @@ impl Device {
             clamp: info.clamp,
             ordered: info.ordered,
             indirect: info.indirect,
+            sets: info.sets,
             label: info.label,
             ..Default::default()
         };
@@ -489,6 +507,7 @@ impl Device {
         stages: &[(u32, &str)],
     ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
+        let layouts = self.res.table.layout_ids(info.sets);
         let p = Pipeline::new(&self.gl, info, stages)?;
         if !info.label.is_empty() {
             self.name(glow::PROGRAM, p.program.raw.0.get(), info.label);
@@ -504,6 +523,7 @@ impl Device {
                 indirect: info.indirect,
                 vertices: crate::table::vertex_buffer_mask(info),
                 reads: 0,
+                layouts,
             },
         );
         Ok(id)
@@ -869,7 +889,13 @@ impl Device {
         self.check_host_queries()?;
         self.healthy()?;
         let errors = crate::gl::errors::drain(&self.gl);
-        let state = State::save(&self.gl, &self.extra, &self.caps, &|v, e| self.has(v, e));
+        let state = State::save(
+            &self.gl,
+            &self.extra,
+            &self.caps,
+            self.bounds.get(),
+            &|v, e| self.has(v, e),
+        );
         if base == "outside" {
             state.clear(&self.gl, &self.extra);
         }

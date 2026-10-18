@@ -1,9 +1,10 @@
 use super::Device;
 use crate::Error;
+use crate::descriptors::set_of;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, ComputePipelineInfo, DepthStateInfo, FillMode, Format, MeshPipelineInfo,
-    RenderPipelineInfo, Stage, TilePipelineInfo, Topology,
+    ColorTarget, ComputePipelineInfo, DepthStateInfo, DescriptorLayout, FillMode, Format,
+    MeshPipelineInfo, RenderPipelineInfo, Stage, TilePipelineInfo, Topology,
 };
 use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use ash::vk;
@@ -21,6 +22,20 @@ fn check_group(words: &[u32], entry: &str, given: [u32; 3]) -> Result<(), Error>
 }
 
 impl Device {
+    fn pipeline_layout(&self, sets: &[DescriptorLayout]) -> Result<vk::PipelineLayout, Error> {
+        let mut list = vec![self.bindless.layout];
+        for &layout in sets {
+            let (raw, bindings) = self.res.layouts.get(layout);
+            let i = set_of(bindings[0].kind) as usize;
+            if list.len() <= i {
+                list.resize(i + 1, self.empty);
+            }
+            list[i] = *raw;
+        }
+        let info = vk::PipelineLayoutCreateInfo::default().set_layouts(&list);
+        unsafe { self.raw.create_pipeline_layout(&info, None) }.map_err(Error::from)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn graphics(
         &self,
@@ -36,14 +51,16 @@ impl Device {
         clamp: bool,
         ordered: bool,
         indirect: bool,
+        sets: &[DescriptorLayout],
         label: &str,
     ) -> Result<RenderPipeline, Error> {
+        let layouts = self.res.table.layout_ids(sets);
         let used: Vec<_> = entries
             .iter()
             .map(|(_, name)| *name)
             .filter(|name| !name.is_empty())
             .collect();
-        let words = spirv::read(code, &used, self.caps.slot_binding)?;
+        let words = spirv::read(code, &used)?;
         let fragment = entries
             .iter()
             .find(|(stage, _)| *stage == vk::ShaderStageFlags::FRAGMENT)
@@ -96,6 +113,13 @@ impl Device {
             }
         }
         let module = self.module(&words)?;
+        let layout = match self.pipeline_layout(sets) {
+            Ok(layout) => layout,
+            Err(e) => {
+                unsafe { self.raw.destroy_shader_module(module, None) };
+                return Err(e);
+            }
+        };
         let names: Vec<_> = entries
             .iter()
             .map(|(_, name)| CString::new(*name).unwrap())
@@ -214,7 +238,7 @@ impl Device {
             .depth_stencil_state(&depth_state)
             .color_blend_state(&blend)
             .dynamic_state(&dynamic)
-            .layout(self.layout)
+            .layout(layout)
             .push_next(&mut rendering);
         if vertex.is_some() {
             pipeline_info = pipeline_info
@@ -226,12 +250,15 @@ impl Device {
                 .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
-        let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
+        let pipeline = result.map_err(|(_, e)| {
+            unsafe { self.raw.destroy_pipeline_layout(layout, None) };
+            Error::from(e)
+        })?[0];
         if !label.is_empty() {
             self.name(pipeline, label);
         }
         let topology = vertex.map(|v| vk::PrimitiveTopology::from_raw(v.topology as i32));
-        let id = self.res.renders.insert((pipeline, topology));
+        let id = self.res.renders.insert((pipeline, topology, layout));
         let shape = vertex.map_or(Topology::Triangle, |v| v.topology);
         self.res.table.renders.set(
             id,
@@ -242,6 +269,7 @@ impl Device {
                 indirect,
                 vertices: vertex.map_or(0, crate::table::vertex_buffer_mask),
                 reads,
+                layouts,
             },
         );
         Ok(id)
@@ -268,13 +296,14 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            info.sets,
             info.label,
         )
     }
 
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.caps.check_mesh_pipeline(info)?;
-        let words = spirv::read(info.code, &[info.mesh], self.caps.slot_binding)?;
+        let words = spirv::read(info.code, &[info.mesh])?;
         check_group(&words, info.mesh, info.mesh_group)?;
         if !info.task.is_empty() {
             check_group(&words, info.task, info.task_group)?;
@@ -296,14 +325,18 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            info.sets,
             info.label,
         )
     }
 
     pub fn destroy_render_pipeline(&self, pipeline: RenderPipeline) {
         self.res.table.renders.clear(pipeline);
-        let (pipeline, _) = self.res.renders.remove(pipeline);
-        unsafe { self.raw.destroy_pipeline(pipeline, None) };
+        let (pipeline, _, layout) = self.res.renders.remove(pipeline);
+        unsafe {
+            self.raw.destroy_pipeline(pipeline, None);
+            self.raw.destroy_pipeline_layout(layout, None);
+        }
     }
 
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
@@ -351,8 +384,10 @@ impl Device {
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
+        let layouts = self.res.table.layout_ids(info.sets);
         let (code, entry, label) = (info.code, info.entry, info.label);
-        let words = spirv::read(code, &[entry], self.caps.slot_binding)?;
+        let sets = info.sets;
+        let words = spirv::read(code, &[entry])?;
         self.caps
             .check_subgroups(spirv::subgroups(&words), Stage::COMPUTE)?;
         self.capabilities(&words)?;
@@ -383,26 +418,39 @@ impl Device {
         if info.subgroup != 0 && self.ext.sizes {
             stage = stage.push_next(&mut required);
         }
+        let layout = match self.pipeline_layout(sets) {
+            Ok(layout) => layout,
+            Err(e) => {
+                unsafe { self.raw.destroy_shader_module(module, None) };
+                return Err(e);
+            }
+        };
         let info = vk::ComputePipelineCreateInfo::default()
             .stage(stage)
-            .layout(self.layout);
+            .layout(layout);
         let result = unsafe {
             self.raw
                 .create_compute_pipelines(vk::PipelineCache::null(), &[info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
-        let pipeline = result.map_err(|(_, e)| Error::from(e))?[0];
+        let pipeline = result.map_err(|(_, e)| {
+            unsafe { self.raw.destroy_pipeline_layout(layout, None) };
+            Error::from(e)
+        })?[0];
         if !label.is_empty() {
             self.name(pipeline, label);
         }
-        let id = self.res.pipelines.insert(pipeline);
-        self.res.table.pipelines.set(id, ());
+        let id = self.res.pipelines.insert((pipeline, layout));
+        self.res.table.pipelines.set(id, layouts);
         Ok(id)
     }
 
     pub fn destroy_compute_pipeline(&self, pipeline: ComputePipeline) {
         self.res.table.pipelines.clear(pipeline);
-        let pipeline = self.res.pipelines.remove(pipeline);
-        unsafe { self.raw.destroy_pipeline(pipeline, None) };
+        let (pipeline, layout) = self.res.pipelines.remove(pipeline);
+        unsafe {
+            self.raw.destroy_pipeline(pipeline, None);
+            self.raw.destroy_pipeline_layout(layout, None);
+        }
     }
 }

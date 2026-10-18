@@ -5,9 +5,9 @@ use crate::residency::Residency;
 use crate::table::Table;
 use crate::table::lock;
 use crate::{
-    Buffer, BufferUsage, Caps, CommandPool, Format, IndexType, IndirectBuffer, LoadOp, Memory,
-    QueryKind, QueryPool, Stage, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage,
-    Topology, slot,
+    Buffer, BufferUsage, Caps, CommandPool, DescriptorSet, Format, IndexType, IndirectBuffer,
+    LoadOp, Memory, QueryKind, QueryPool, ResourceKind, Stage, StoreOp, Texture, TextureDimension,
+    TextureInfo, TextureUsage, Topology, sets, slot,
 };
 use std::sync::atomic::Ordering;
 
@@ -39,6 +39,9 @@ pub struct Check<'a> {
     fresh: u32,
     resident: bool,
     ended: bool,
+    layouts: [u32; 3],
+    sets: [Option<(DescriptorSet, [u32; 3])>; 3],
+    held: Vec<DescriptorSet>,
 }
 
 const STATES: [&str; 8] = [
@@ -78,13 +81,6 @@ fn assert_rects(name: &str, count: usize, max: u32) {
     check!(
         count <= max as usize,
         "{name} got {count}, over caps.viewports {max}"
-    );
-}
-
-fn assert_aligned(name: &str, offset: u64, alignment: u32) {
-    check!(
-        offset.is_multiple_of(alignment.max(1) as u64),
-        "{name} offset {offset} is not a multiple of caps.bind_alignment {alignment}"
     );
 }
 
@@ -157,6 +153,9 @@ impl<'a> Check<'a> {
             fresh: 0,
             resident: base != "outside",
             ended: false,
+            layouts: [0; 3],
+            sets: [None; 3],
+            held: Vec::new(),
         }
     }
 
@@ -345,12 +344,33 @@ impl<'a> Check<'a> {
         self.fresh |= 1 << state;
     }
 
+    fn switch(&mut self, ids: [u32; 3]) {
+        for k in 0..3 {
+            if self.sets[k].is_some_and(|(_, at)| at[..=k] != ids[..=k]) {
+                self.sets[k] = None;
+            }
+        }
+        self.layouts = ids;
+    }
+
+    fn check_sets(&self, name: &str, ids: [u32; 3]) {
+        for (k, &id) in ids.iter().enumerate().filter(|&(_, &id)| id != 0) {
+            let bound = self.sets[k].map(|(set, _)| self.table.sets.get(set).layout);
+            check!(
+                bound.is_some_and(|l| self.table.layouts.get(l).id == id),
+                "{name} needs bind_descriptor_set for set {} of the pipeline; binding a pipeline whose lower sets differ unbinds the higher ones",
+                k as u32 + sets::BUFFERS
+            );
+        }
+    }
+
     fn check_draw(&self, c: &Command, indexed: bool) {
         check!(
             self.render,
             "{} needs bind_render_pipeline earlier in this pass",
             command_name(c)
         );
+        self.check_sets(&command_name(c), self.layouts);
         if !matches!(
             c,
             Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. }
@@ -654,6 +674,8 @@ impl<'a> Check<'a> {
                 }
                 self.open = "render";
                 self.render = false;
+                self.layouts = [0; 3];
+                self.sets = [None; 3];
                 self.views = 0;
                 self.scissors = 0;
                 self.fresh = 0;
@@ -665,6 +687,8 @@ impl<'a> Check<'a> {
                 self.check_wait(name, src_stage, dst_stage);
                 self.open = "compute";
                 self.compute = false;
+                self.layouts = [0; 3];
+                self.sets = [None; 3];
             }
             Command::EndComputePass => {
                 check_ne!(
@@ -684,7 +708,8 @@ impl<'a> Check<'a> {
             }
             Command::BindComputePipeline { pipeline } => {
                 self.require(c, caps.compute, "compute")?;
-                self.table.pipelines.get(pipeline);
+                let ids = *self.table.pipelines.get(pipeline);
+                self.switch(ids);
                 self.compute = true;
             }
             Command::Dispatch { .. } => {
@@ -693,6 +718,7 @@ impl<'a> Check<'a> {
                     self.compute,
                     "dispatch needs bind_compute_pipeline earlier in this pass"
                 );
+                self.check_sets(name, self.layouts);
             }
             Command::DispatchIndirect { buffer, offset } => {
                 self.require(c, caps.compute, "compute")?;
@@ -700,6 +726,7 @@ impl<'a> Check<'a> {
                     self.compute,
                     "dispatch_indirect needs bind_compute_pipeline earlier in this pass"
                 );
+                self.check_sets(name, self.layouts);
                 check!(
                     offset.is_multiple_of(4),
                     "dispatch_indirect offset {offset} is not a multiple of 4"
@@ -954,6 +981,7 @@ impl<'a> Check<'a> {
                     "bind_render_pipeline {pipeline} has {samples} samples but the pass has {}",
                     self.samples
                 );
+                self.switch(entry.layouts);
                 self.render = true;
                 self.bound = samples;
                 self.needs = entry.vertices;
@@ -989,7 +1017,8 @@ impl<'a> Check<'a> {
             }
             Command::DispatchTile { pipeline } => {
                 self.require(c, caps.tiles, "tiles")?;
-                let samples = *self.table.tile_pipelines.get(pipeline);
+                let (samples, ids) = *self.table.tile_pipelines.get(pipeline);
+                self.check_sets(name, ids);
                 check!(
                     self.tile.is_some(),
                     "dispatch_tile needs RenderPassInfo.tile set in begin_render_pass"
@@ -1022,48 +1051,44 @@ impl<'a> Check<'a> {
                 lock(&self.table.residency).assert_set(set);
                 self.resident = true;
             }
-            Command::BindUniformBuffer {
-                slot: i,
-                buffer,
-                offset,
-                size,
-            } => {
-                self.require(c, caps.slot_binding, "slot_binding")?;
-                assert_slot(name, i, slot::UNIFORMS);
-                assert_aligned(name, offset, caps.bind_alignment);
-                self.table
-                    .assert_usage(name, buffer, BufferUsage::UNIFORM, "UNIFORM");
-                self.limited_range(c, buffer, offset, size, caps.max_uniform)?;
-            }
-            Command::BindStorageBuffer {
-                slot: i,
-                buffer,
-                offset,
-                size,
-            } => {
-                self.require(c, caps.slot_binding, "slot_binding")?;
-                self.require(c, caps.storage_slots, "storage_slots")?;
-                assert_slot(name, i, slot::STORAGES);
-                assert_aligned(name, offset, caps.bind_alignment);
-                self.table
-                    .assert_usage(name, buffer, BufferUsage::STORAGE, "STORAGE");
-                self.limited_range(c, buffer, offset, size, caps.max_storage)?;
-            }
-            Command::BindTexture { slot: i, texture } => {
-                self.require(c, caps.slot_binding, "slot_binding")?;
-                assert_slot(name, i, slot::TEXTURES);
-                self.texture_with_usage(name, texture, TextureUsage::SAMPLED, "SAMPLED");
-            }
-            Command::BindStorageTexture { slot: i, texture } => {
-                self.require(c, caps.slot_binding, "slot_binding")?;
-                self.require(c, caps.storage_slots, "storage_slots")?;
-                assert_slot(name, i, slot::IMAGES);
-                self.texture_with_usage(name, texture, TextureUsage::STORAGE, "STORAGE");
-            }
-            Command::BindSampler { slot: i, sampler } => {
-                self.require(c, caps.slot_binding, "slot_binding")?;
-                assert_slot(name, i, slot::SAMPLERS);
-                self.table.samplers.get(sampler);
+            Command::BindDescriptorSet { set } => {
+                check!(
+                    self.compute || self.render || self.tile.is_some(),
+                    "bind_descriptor_set needs a pipeline bound earlier in this pass"
+                );
+                let e = self.table.sets.get(set);
+                let layout = self.table.layouts.get(e.layout);
+                let k = (layout.set - sets::BUFFERS) as usize;
+                if self.compute || self.render {
+                    check_eq!(
+                        self.layouts[k],
+                        layout.id,
+                        "bind_descriptor_set {set} has a different layout than set {} of the bound pipeline",
+                        layout.set
+                    );
+                }
+                for &(_, _, r) in lock(&e.resources).iter() {
+                    match r.kind {
+                        ResourceKind::Buffer => {
+                            let b = Buffer::from_raw(r.handle);
+                            self.assert_resident(name, &b, lock(&self.table.residency).buffer(b));
+                        }
+                        _ => {
+                            let t = Texture::from_raw(r.handle);
+                            let root = self.table.root(t);
+                            self.assert_resident(
+                                name,
+                                &t,
+                                lock(&self.table.residency).texture(root),
+                            );
+                        }
+                    }
+                }
+                self.sets[k] = Some((set, self.layouts));
+                if !self.held.contains(&set) {
+                    e.bound.fetch_add(1, Ordering::Relaxed);
+                    self.held.push(set);
+                }
             }
             Command::BindVertexBuffer {
                 slot: i,
@@ -1245,6 +1270,11 @@ impl<'a> Check<'a> {
 
 impl Drop for Check<'_> {
     fn drop(&mut self) {
+        for &set in &self.held {
+            if let Some(e) = self.table.sets.find(set) {
+                e.bound.fetch_sub(1, Ordering::Relaxed);
+            }
+        }
         if !self.ended
             && let Some(pool) = self.table.pools.find(self.pool)
         {

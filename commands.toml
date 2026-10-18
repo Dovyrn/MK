@@ -151,29 +151,9 @@ scope = "outside"
 fields = [["set", "ResidencySet"]]
 
 [[command]]
-name = "bind_uniform_buffer"
+name = "bind_descriptor_set"
 scope = "compute render"
-fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
-
-[[command]]
-name = "bind_storage_buffer"
-scope = "compute render"
-fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"]]
-
-[[command]]
-name = "bind_texture"
-scope = "compute render"
-fields = [["slot", "u32"], ["texture", "Texture"]]
-
-[[command]]
-name = "bind_storage_texture"
-scope = "compute render"
-fields = [["slot", "u32"], ["texture", "Texture"]]
-
-[[command]]
-name = "bind_sampler"
-scope = "compute render"
-fields = [["slot", "u32"], ["sampler", "Sampler"]]
+fields = [["set", "DescriptorSet"]]
 
 [[command]]
 name = "bind_vertex_buffer"

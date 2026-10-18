@@ -40,7 +40,7 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
             eprintln!("{name}.metallib skips entry {entry}: {first}");
             continue;
         }
-        pin(&msl, &json);
+        pin(&msl, &out.join(format!("{name}.json")));
         bases(&msl, &json);
         local(&msl);
         indices(&msl);
@@ -218,32 +218,21 @@ fn local(msl: &Path) {
     fs::write(msl, lines.join("\n")).unwrap();
 }
 
-fn pin(msl: &Path, json: &Path) {
-    let reflection: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
+fn pin(msl: &Path, layout: &Path) {
+    let reflection: Value = serde_json::from_str(&fs::read_to_string(layout).unwrap()).unwrap();
     let mut text = fs::read_to_string(msl).unwrap();
     for p in reflection["parameters"].as_array().unwrap() {
-        let image = p["type"]["kind"] == "resource"
-            && p["type"]["access"] == "readWrite"
-            && p["type"]["baseShape"]
-                .as_str()
-                .is_some_and(|s| s.starts_with("texture"));
-        if !image {
+        let b = &p["binding"];
+        let (Some(space), Some(index)) = (b["space"].as_u64(), b["index"].as_u64()) else {
             continue;
-        }
-        let bindings = p["bindings"].as_array().unwrap();
-        let index = |kind: &str| {
-            bindings
-                .iter()
-                .find(|b| b["kind"] == kind)
-                .map(|b| b["index"].as_u64().unwrap())
         };
-        let (Some(actual), Some(slot)) = (index("shaderResource"), index("descriptorTableSlot"))
-        else {
-            continue;
+        let kind = match space {
+            1 => "buffer",
+            2 => "texture",
+            3 => "sampler",
+            _ => continue,
         };
         let name = format!(" {}_", p["name"].as_str().unwrap());
-        let from = format!(" [[texture({actual})]]");
-        let to = format!(" [[texture({slot})]]");
         let mut at = 0;
         while let Some(i) = text[at..].find(&name) {
             let start = at + i + name.len();
@@ -252,10 +241,20 @@ fn pin(msl: &Path, json: &Path) {
                 .take_while(char::is_ascii_digit)
                 .count();
             let rest = start + digits;
-            if digits > 0 && text[rest..].starts_with(&from) {
-                text.replace_range(rest..rest + from.len(), &to);
-            }
             at = rest;
+            let line = text[..rest].rfind('\n').map_or(0, |n| n + 1);
+            let entry = text[line..].starts_with("[[");
+            if digits == 0 || !entry {
+                continue;
+            }
+            let tag = format!(" [[{kind}(");
+            let pinned = format!(" [[{kind}({index})]]");
+            if text[rest..].starts_with(&tag) {
+                let end = rest + text[rest..].find(")]]").unwrap() + 3;
+                text.replace_range(rest..end, &pinned);
+            } else if text[rest..].starts_with([',', ')']) {
+                text.insert_str(rest, &pinned);
+            }
         }
     }
     fs::write(msl, text).unwrap();

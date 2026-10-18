@@ -8,7 +8,7 @@ struct Push {
     uint size;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]

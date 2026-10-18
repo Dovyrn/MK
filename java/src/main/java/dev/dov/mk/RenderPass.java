@@ -111,35 +111,11 @@ public class RenderPass {
 
     private static native void nSetBlendColor(long target, float color0, float color1, float color2, float color3);
 
-    public void bindUniformBuffer(int slot, Buffer buffer, long offset, long size) {
-        nBindUniformBuffer(handle(), slot, Buffer.raw(buffer), offset, size);
+    public void bindDescriptorSet(DescriptorSet set) {
+        nBindDescriptorSet(handle(), DescriptorSet.raw(set));
     }
 
-    private static native void nBindUniformBuffer(long target, int slot, long buffer, long offset, long size);
-
-    public void bindStorageBuffer(int slot, Buffer buffer, long offset, long size) {
-        nBindStorageBuffer(handle(), slot, Buffer.raw(buffer), offset, size);
-    }
-
-    private static native void nBindStorageBuffer(long target, int slot, long buffer, long offset, long size);
-
-    public void bindTexture(int slot, Texture texture) {
-        nBindTexture(handle(), slot, Texture.raw(texture));
-    }
-
-    private static native void nBindTexture(long target, int slot, long texture);
-
-    public void bindStorageTexture(int slot, Texture texture) {
-        nBindStorageTexture(handle(), slot, Texture.raw(texture));
-    }
-
-    private static native void nBindStorageTexture(long target, int slot, long texture);
-
-    public void bindSampler(int slot, Sampler sampler) {
-        nBindSampler(handle(), slot, Sampler.raw(sampler));
-    }
-
-    private static native void nBindSampler(long target, int slot, long sampler);
+    private static native void nBindDescriptorSet(long target, long set);
 
     public void bindVertexBuffer(int slot, Buffer buffer, long offset) {
         nBindVertexBuffer(handle(), slot, Buffer.raw(buffer), offset);

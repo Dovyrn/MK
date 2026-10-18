@@ -1,5 +1,6 @@
 use super::{Device, function_descriptor, labels, mtl_compare, size, vertex_format};
 use crate::Error;
+use crate::descriptors::set_of;
 use crate::mtl::pipeline::Pipeline;
 use crate::mtl::recorder::VERTICES;
 use crate::mtl::render::Render;
@@ -8,6 +9,7 @@ use crate::{
     MeshPipelineInfo, RenderPipelineInfo, StencilFace, TilePipelineInfo, Topology,
 };
 use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
+use crate::{DescriptorLayout, sets};
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
@@ -169,6 +171,25 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
 
 static COMPILE: Mutex<()> = Mutex::new(());
 
+impl Device {
+    fn buffer_room(&self, layouts: &[DescriptorLayout], vertices: usize) -> Result<(), Error> {
+        let used = layouts
+            .iter()
+            .flat_map(|&l| self.res.layouts.get(l))
+            .filter(|b| set_of(b.kind) == sets::BUFFERS)
+            .map(|b| (b.binding + b.count) as usize)
+            .max()
+            .unwrap_or(0);
+        if used + vertices > VERTICES + 1 {
+            return Err(Error::Unsupported(format!(
+                "create_render_pipeline needs {used} buffer bindings and {vertices} vertex buffers, but Metal has {} buffer indices for both",
+                VERTICES + 1
+            )));
+        }
+        Ok(())
+    }
+}
+
 fn label(desc: &MTL4PipelineDescriptor, text: &str) {
     if let Some(text) = labels::label(text) {
         desc.setLabel(Some(&text));
@@ -232,6 +253,7 @@ impl Device {
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
+        let layouts = self.res.table.layout_ids(info.sets);
         autoreleasepool(|_| {
             let (library, groups) = self.library(info.code)?;
             let shape = group(&groups, info.entry, info.group)?;
@@ -255,7 +277,7 @@ impl Device {
             check_threads(shape, state.maxTotalThreadsPerThreadgroup())?;
             let group = size(shape);
             let id = self.res.pipelines.insert(Pipeline { state, group });
-            self.res.table.pipelines.set(id, ());
+            self.res.table.pipelines.set(id, layouts);
             Ok(id)
         })
     }
@@ -272,6 +294,8 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
             self.caps.check_render_pipeline(info)?;
+            let layouts = self.res.table.layout_ids(info.sets);
+            self.buffer_room(info.sets, info.buffers.len())?;
             let (library, groups) = self.library(info.code)?;
             let desc = MTL4RenderPipelineDescriptor::new();
             label(&desc, info.label);
@@ -298,7 +322,7 @@ impl Device {
             if !info.attributes.is_empty() {
                 let layout = MTLVertexDescriptor::new();
                 for (i, b) in info.buffers.iter().enumerate() {
-                    let l = unsafe { layout.layouts().objectAtIndexedSubscript(VERTICES + i) };
+                    let l = unsafe { layout.layouts().objectAtIndexedSubscript(VERTICES - i) };
                     unsafe { l.setStride(b.stride as usize) };
                     l.setStepFunction(if b.instance {
                         MTLVertexStepFunction::PerInstance
@@ -315,7 +339,7 @@ impl Device {
                     at.setFormat(vertex_format(a.format));
                     unsafe {
                         at.setOffset(a.offset as usize);
-                        at.setBufferIndex(VERTICES + a.buffer as usize);
+                        at.setBufferIndex(VERTICES - a.buffer as usize);
                     }
                 }
                 desc.setVertexDescriptor(Some(&layout));
@@ -346,6 +370,7 @@ impl Device {
                     indirect: info.indirect,
                     vertices: crate::table::vertex_buffer_mask(info),
                     reads: attachment_reads(&groups, info.fragment),
+                    layouts,
                 },
             );
             Ok(id)
@@ -355,6 +380,7 @@ impl Device {
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         autoreleasepool(|_| {
             self.caps.check_mesh_pipeline(info)?;
+            let layouts = self.res.table.layout_ids(info.sets);
             let (library, groups) = self.library(info.code)?;
             let mesh = group(&groups, info.mesh, info.mesh_group)?;
             let task = if info.task.is_empty() {
@@ -400,6 +426,7 @@ impl Device {
                     indirect: info.indirect,
                     vertices: 0,
                     reads: attachment_reads(&groups, info.fragment),
+                    layouts,
                 },
             );
             Ok(id)
@@ -415,6 +442,7 @@ impl Device {
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         autoreleasepool(|_| {
             crate::caps::check_tile_pipeline(info);
+            let layouts = self.res.table.layout_ids(info.sets);
             if cfg!(feature = "validation") && !self.caps.tiles {
                 return Err(Error::Unsupported(
                     "create_tile_pipeline needs caps.tiles".into(),
@@ -432,7 +460,10 @@ impl Device {
             desc.setThreadgroupSizeMatchesTileSize(true);
             let state = self.compile(&desc)?;
             let id = self.res.tiles.insert(state);
-            self.res.table.tile_pipelines.set(id, info.samples);
+            self.res
+                .table
+                .tile_pipelines
+                .set(id, (info.samples, layouts));
             Ok(id)
         })
     }

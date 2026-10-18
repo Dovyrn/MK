@@ -1,4 +1,4 @@
-use mk::{BufferUsage, ComputePipelineInfo, Error, Memory, Stage};
+use mk::{BufferUsage, ComputePipelineInfo, DescriptorType, Error, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -7,13 +7,24 @@ mod host;
 const SOURCE: &str = "#include <metal_stdlib>
 using namespace metal;
 
-kernel void triple(device uint* data [[buffer(5)]], uint i [[thread_position_in_grid]]) {
+kernel void triple(device uint* data [[buffer(0)]], uint i [[thread_position_in_grid]]) {
     data[i] = i * 3;
 }
 ";
 
 fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> Vec<u32> {
-    let pipeline = device.create_compute_pipeline(info).unwrap();
+    let kinds: &[DescriptorType] = if push.is_empty() {
+        &[DescriptorType::StorageBuffer]
+    } else {
+        &[DescriptorType::UniformBuffer, DescriptorType::StorageBuffer]
+    };
+    let layout = host::layout(device, kinds);
+    let pipeline = device
+        .create_compute_pipeline(&ComputePipelineInfo {
+            sets: &[layout],
+            ..*info
+        })
+        .unwrap();
     let data = device
         .create_buffer(
             n as u64 * 4,
@@ -26,6 +37,14 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
         .create_buffer(n as u64 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
     let (constants, _) = host::constants(device, &[push]);
+    let mut writes = vec![host::buffer(0, constants, 0, push.len() as u64)];
+    if push.is_empty() {
+        writes.clear();
+    }
+    writes.push(host::buffer(writes.len() as u32, data, 0, n as u64 * 4));
+    let sets = device.create_descriptor_pool(layout, 1).unwrap();
+    let bound = device.create_descriptor_set(sets).unwrap();
+    device.write_descriptor_set(bound, &writes);
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into(), constants.into()]);
     device.commit_residency(set);
@@ -37,10 +56,7 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
         .begin_compute_pass(Stage::default(), Stage::default())
         .unwrap();
     pass.bind_compute_pipeline(pipeline);
-    if !push.is_empty() {
-        pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
-    }
-    pass.bind_storage_buffer(0, data, 0, n as u64 * 4);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
     pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
@@ -56,6 +72,8 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
         device.destroy_buffer(buffer);
     }
     device.destroy_compute_pipeline(pipeline);
+    device.destroy_descriptor_pool(sets);
+    device.destroy_descriptor_layout(layout);
     device.destroy_timeline(timeline);
     device.destroy_command_pool(pool);
     values
@@ -145,8 +163,8 @@ fn native(device: &mk::Device) {
 
 pub fn main() {
     let device = host::device(1);
-    if !device.caps().slot_binding || !device.caps().compute {
-        println!("no compute slots");
+    if !device.caps().storage_sets || !device.caps().compute {
+        println!("no compute storage sets");
         return;
     }
     let wrong = device.create_compute_pipeline(&ComputePipelineInfo {

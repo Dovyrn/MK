@@ -29,8 +29,13 @@ public class Caps {
     public int anisotropy = 1;
     public boolean depthClamp = false;
     public boolean lineFill = false;
-    public boolean slotBinding = false;
-    public boolean storageSlots = false;
+    public boolean storageSets = false;
+    public int setUniforms = 0;
+    public int setStorages = 0;
+    public int setTextures = 0;
+    public int setImages = 0;
+    public int setSamplers = 0;
+    public int setInputs = 0;
     public boolean persistentMaps = false;
     public int bindAlignment = 0;
     public boolean compute = false;
@@ -68,10 +73,10 @@ public class Caps {
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 248;
+    public static final int SIZE = 268;
 
     int encodedSize() {
-        return 248;
+        return 268;
     }
 
     long encode(long p) {
@@ -117,9 +122,19 @@ public class Caps {
         p += 4;
         memPutInt(p, lineFill ? 1 : 0);
         p += 4;
-        memPutInt(p, slotBinding ? 1 : 0);
+        memPutInt(p, storageSets ? 1 : 0);
         p += 4;
-        memPutInt(p, storageSlots ? 1 : 0);
+        memPutInt(p, setUniforms);
+        p += 4;
+        memPutInt(p, setStorages);
+        p += 4;
+        memPutInt(p, setTextures);
+        p += 4;
+        memPutInt(p, setImages);
+        p += 4;
+        memPutInt(p, setSamplers);
+        p += 4;
+        memPutInt(p, setInputs);
         p += 4;
         memPutInt(p, persistentMaps ? 1 : 0);
         p += 4;
@@ -240,9 +255,19 @@ public class Caps {
         p += 4;
         r.lineFill = memGetInt(p) != 0;
         p += 4;
-        r.slotBinding = memGetInt(p) != 0;
+        r.storageSets = memGetInt(p) != 0;
         p += 4;
-        r.storageSlots = memGetInt(p) != 0;
+        r.setUniforms = memGetInt(p);
+        p += 4;
+        r.setStorages = memGetInt(p);
+        p += 4;
+        r.setTextures = memGetInt(p);
+        p += 4;
+        r.setImages = memGetInt(p);
+        p += 4;
+        r.setSamplers = memGetInt(p);
+        p += 4;
+        r.setInputs = memGetInt(p);
         p += 4;
         r.persistentMaps = memGetInt(p) != 0;
         p += 4;

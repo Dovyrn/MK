@@ -1,6 +1,6 @@
 #include "mk.slangh"
 
-RWTexture2D<uint64_t> peaks : IMAGE(0);
+TEXTURE(0) RWTexture2D<uint64_t> peaks;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

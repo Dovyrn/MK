@@ -25,5 +25,8 @@ pub struct Resources {
     pub indirects: Slots<crate::mtl::indirect::Indirect>,
     pub sets: Slots<Retained<ProtocolObject<dyn MTLResidencySet>>>,
     pub swapchains: Slots<crate::mtl::swapchain::SwapchainObject>,
+    pub layouts: Slots<Vec<crate::DescriptorBinding>>,
+    pub descriptor_pools: Slots<crate::mtl::descriptor_pool::DescriptorPoolObject>,
+    pub descriptor_sets: Slots<crate::mtl::descriptor_set::DescriptorSetObject>,
     pub table: crate::table::Table,
 }

@@ -25,6 +25,7 @@ public class RenderPipelineInfo {
     public boolean indirect = false;
     public VertexBufferLayout[] buffers = new VertexBufferLayout[0];
     public VertexAttribute[] attributes = new VertexAttribute[0];
+    public DescriptorLayout[] sets = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
@@ -40,7 +41,11 @@ public class RenderPipelineInfo {
         for (var x : attributes) {
             attributesSize += x.encodedSize();
         }
-        return 64 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize + label.getBytes(StandardCharsets.UTF_8).length;
+        var setsSize = 4;
+        for (var x : sets) {
+            setsSize += 8;
+        }
+        return 64 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -95,6 +100,12 @@ public class RenderPipelineInfo {
         p += 4;
         for (var x : attributes) {
             p = x.encode(p);
+        }
+        memPutInt(p, sets.length);
+        p += 4;
+        for (var x : sets) {
+            memPutLong(p, DescriptorLayout.raw(x));
+            p += 8;
         }
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);

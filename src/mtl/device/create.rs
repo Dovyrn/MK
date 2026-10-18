@@ -70,7 +70,6 @@ fn supported(raw: &ProtocolObject<dyn MTLDevice>) -> DeviceInfo {
         attachment_reads: true,
         ordered_reads: true,
         image_atomics64: caps.atomics64.contains(Atomic64::IMAGE),
-        slot_binding: true,
         swapchain: true,
         present_wait: true,
         shared_handles: false,

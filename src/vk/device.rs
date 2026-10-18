@@ -3,6 +3,7 @@ mod buffers;
 mod caps;
 mod copies;
 mod create;
+mod descriptors;
 mod indirect;
 mod labels;
 mod pipelines;
@@ -48,7 +49,7 @@ pub struct Device {
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
     bindless: Bindless,
-    slots: vk::DescriptorSetLayout,
+    empty: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     res: Resources,
     queues: Vec<Queue>,
@@ -200,13 +201,13 @@ impl Device {
         let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
         let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut properties12);
         unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
-        let slots = bindings::slot_layout(&raw, ext.push.is_some()).map_err(Error::from)?;
-        let unset = || unsafe { raw.destroy_descriptor_set_layout(slots, None) };
+        let empty = bindings::set_layout(&raw, &[]).map_err(Error::from)?;
+        let unset = || unsafe { raw.destroy_descriptor_set_layout(empty, None) };
         let bindless = Bindless::new(&raw, &properties12).map_err(|e| {
             unset();
             Error::from(e)
         })?;
-        let sets = [slots, bindless.layout];
+        let sets = [bindless.layout];
         let info = vk::PipelineLayoutCreateInfo::default().set_layouts(&sets);
         let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
             bindless.destroy(&raw);
@@ -242,7 +243,7 @@ impl Device {
             physical,
             raw,
             ext,
-            slots,
+            empty,
             bindless,
             layout,
             res: Resources::default(),
@@ -444,6 +445,7 @@ impl Device {
             ext: &self.ext,
             buffer,
             layout: self.layout,
+            pipeline: self.layout,
             points,
             res: &self.res,
             colors: Vec::new(),
@@ -612,18 +614,26 @@ impl Drop for Device {
             for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
             }
-            for (pipeline, _) in res.renders.drain() {
+            for (pipeline, _, layout) in res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
+                self.raw.destroy_pipeline_layout(layout, None);
             }
-            for pipeline in res.pipelines.drain() {
+            for (pipeline, layout) in res.pipelines.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
+                self.raw.destroy_pipeline_layout(layout, None);
+            }
+            for pool in res.descriptor_pools.drain() {
+                self.raw.destroy_descriptor_pool(pool.raw, None);
+            }
+            for (layout, _) in res.layouts.drain() {
+                self.raw.destroy_descriptor_set_layout(layout, None);
             }
             for semaphore in res.timelines.drain() {
                 semaphore.free(&self.raw);
             }
             self.raw.destroy_pipeline_layout(self.layout, None);
             self.bindless.destroy(&self.raw);
-            self.raw.destroy_descriptor_set_layout(self.slots, None);
+            self.raw.destroy_descriptor_set_layout(self.empty, None);
             if self.entry.is_some() {
                 self.raw.destroy_device(None);
                 self.instance.destroy_instance(None);

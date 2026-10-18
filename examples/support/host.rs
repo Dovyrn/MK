@@ -41,6 +41,40 @@ macro_rules! code {
 
 pub(crate) use code;
 
+pub fn layout(device: &mk::Device, kinds: &[mk::DescriptorType]) -> mk::DescriptorLayout {
+    let bindings: Vec<_> = kinds
+        .iter()
+        .enumerate()
+        .map(|(i, &kind)| mk::DescriptorBinding {
+            binding: i as u32,
+            kind,
+            count: 1,
+        })
+        .collect();
+    device.create_descriptor_layout(&bindings).unwrap()
+}
+
+pub fn set(
+    device: &mk::Device,
+    layout: mk::DescriptorLayout,
+    writes: &[mk::DescriptorWrite],
+) -> mk::DescriptorSet {
+    let pool = device.create_descriptor_pool(layout, 1).unwrap();
+    let set = device.create_descriptor_set(pool).unwrap();
+    device.write_descriptor_set(set, writes);
+    set
+}
+
+pub fn buffer(binding: u32, buffer: mk::Buffer, offset: u64, size: u64) -> mk::DescriptorWrite {
+    mk::DescriptorWrite {
+        binding,
+        buffer,
+        offset,
+        size,
+        ..Default::default()
+    }
+}
+
 pub fn constants(device: &mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
     let stride = device.caps().bind_alignment.max(256) as u64;
     let buffer = device

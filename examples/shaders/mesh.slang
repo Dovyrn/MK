@@ -13,7 +13,7 @@ struct Push {
     float z;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 [shader("amplification")]
 [numthreads(1, 1, 1)]

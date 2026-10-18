@@ -1,10 +1,12 @@
+use crate::descriptors::{LayoutEntry, SetEntry};
 use crate::entries::Entries;
 use crate::handle::TimelineId;
 use crate::residency::{Members, Residency};
 use crate::{
-    Buffer, BufferUsage, CommandPool, ComputePipeline, DepthState, Format, HostTextureCopy,
-    IndexType, IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet,
-    Sampler, Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
+    Buffer, BufferUsage, CommandPool, ComputePipeline, DepthState, DescriptorBinding,
+    DescriptorLayout, DescriptorPool, DescriptorSet, Format, HostTextureCopy, IndexType,
+    IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
+    Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
@@ -17,6 +19,7 @@ pub struct RenderEntry {
     pub indirect: bool,
     pub vertices: u32,
     pub reads: u32,
+    pub layouts: [u32; 3],
 }
 
 pub type Signal = (u64, usize, Weak<()>);
@@ -26,9 +29,9 @@ pub struct Table {
     pub buffers: Entries<Buffer, u64>,
     pub textures: Entries<Texture, TextureInfo<'static>>,
     pub samplers: Entries<Sampler, ()>,
-    pub pipelines: Entries<ComputePipeline, ()>,
+    pub pipelines: Entries<ComputePipeline, [u32; 3]>,
     pub renders: Entries<RenderPipeline, RenderEntry>,
-    pub tile_pipelines: Entries<TilePipeline, u32>,
+    pub tile_pipelines: Entries<TilePipeline, (u32, [u32; 3])>,
     pub states: Entries<DepthState, ()>,
     pub queries: Entries<QueryPool, (crate::QueryKind, u32)>,
     pub timelines: Mutex<Entries<TimelineId, Signal>>,
@@ -42,6 +45,10 @@ pub struct Table {
     pub usages: Entries<Buffer, BufferUsage>,
     pub presentable: Entries<Texture, AtomicBool>,
     pub shared: Entries<Texture, ()>,
+    pub layouts: Entries<DescriptorLayout, LayoutEntry>,
+    pub layout_ids: Mutex<Vec<(u32, Vec<DescriptorBinding>)>>,
+    pub pools_of: Entries<DescriptorPool, DescriptorLayout>,
+    pub sets: Entries<DescriptorSet, SetEntry>,
 }
 
 #[derive(Clone, Copy)]

@@ -122,7 +122,7 @@ pub fn rust(table: &toml::Table) -> String {
     for (name, rows) in groups(table, "flags") {
         s += &rust_flags(&name, &rows);
     }
-    for module in ["slot", "register"] {
+    for module in ["slot", "sets"] {
         writeln!(s, "pub mod {module} {{").unwrap();
         for (name, value) in rows(&table[module]) {
             writeln!(s, "    pub const {name}: u32 = {value};").unwrap();
@@ -174,7 +174,7 @@ pub fn java(table: &toml::Table) -> Vec<(String, String)> {
         let text = java_ints(&name, &rows);
         files.push((name, text));
     }
-    for module in ["slot", "register"] {
+    for module in ["slot", "sets"] {
         files.push((
             pascal(module),
             java_ints(&pascal(module), &rows(&table[module])),
@@ -184,32 +184,16 @@ pub fn java(table: &toml::Table) -> Vec<(String, String)> {
 }
 
 pub fn slang(table: &toml::Table) -> String {
-    let get = |group: &str, name: &str| table[group][name].as_integer().unwrap();
+    let get = |name: &str| table["sets"][name].as_integer().unwrap();
     let mut s = String::new();
-    for (kind, letter, first, count) in [
-        ("UNIFORM", "b", "UNIFORM", "UNIFORMS"),
-        ("STORAGE", "u", "STORAGE", "STORAGES"),
-        ("IMAGE", "u", "IMAGE", "IMAGES"),
-        ("TEXTURE", "t", "TEXTURE", "TEXTURES"),
-        ("SAMPLER", "s", "SAMPLER", "SAMPLERS"),
+    for (kind, set) in [
+        ("BUFFER", "BUFFERS"),
+        ("TEXTURE", "TEXTURES"),
+        ("SAMPLER", "SAMPLERS"),
     ] {
-        writeln!(s, "#define {kind}(n) MK_{kind}_##n").unwrap();
-        for i in 0..get("slot", count) {
-            let at = get("register", first) + i;
-            writeln!(s, "#define MK_{kind}_{i} register({letter}{at})").unwrap();
-        }
-        s += "\n";
+        writeln!(s, "#define {kind}(n) [[vk::binding(n, {})]]", get(set)).unwrap();
     }
-    writeln!(s, "#define ATTACHMENT(n) MK_ATTACHMENT_##n").unwrap();
-    for i in 0..get("slot", "COLORS") {
-        let at = get("register", "ATTACHMENT") + i;
-        writeln!(
-            s,
-            "#define MK_ATTACHMENT_{i} [[vk::input_attachment_index({i})]] [[vk::binding({at}, 0)]]"
-        )
-        .unwrap();
-    }
-    s += "\n";
+    s += "#define INPUT(n) [[vk::input_attachment_index(n)]]\n\n";
     s += "#ifdef MK_SPIRV\ntypealias Uniform<T> = ConstantBuffer<T, Std430DataLayout>;\n#else\ntypealias Uniform<T> = ConstantBuffer<T>;\n#endif\n\n";
     s +=
         "#include \"atomics.slangh\"\n#include \"bindless.slangh\"\n#include \"indirect.slangh\"\n";

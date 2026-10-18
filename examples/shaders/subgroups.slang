@@ -1,6 +1,6 @@
 #include "mk.slangh"
 
-RWStructuredBuffer<uint> results : STORAGE(0);
+BUFFER(0) RWStructuredBuffer<uint> results;
 
 groupshared uint seen[64];
 

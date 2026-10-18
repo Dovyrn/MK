@@ -52,7 +52,7 @@ pub(super) fn probe(
             t.property_flags
                 .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
         });
-    let reads = ext.local && ext.push.is_some();
+    let reads = ext.local;
     Caps {
         transients,
         transient_reads: false,
@@ -141,8 +141,25 @@ pub(super) fn probe(
         max_cube: limits.max_image_dimension_cube,
         max_volume: limits.max_image_dimension3_d,
         max_layers: limits.max_image_array_layers,
-        slot_binding: ext.push.is_some(),
-        storage_slots: ext.push.is_some(),
+        storage_sets: true,
+        set_uniforms: limits
+            .max_per_stage_descriptor_uniform_buffers
+            .min(limits.max_descriptor_set_uniform_buffers),
+        set_storages: limits
+            .max_per_stage_descriptor_storage_buffers
+            .min(limits.max_descriptor_set_storage_buffers),
+        set_textures: limits
+            .max_per_stage_descriptor_sampled_images
+            .min(limits.max_descriptor_set_sampled_images),
+        set_images: limits
+            .max_per_stage_descriptor_storage_images
+            .min(limits.max_descriptor_set_storage_images),
+        set_samplers: limits
+            .max_per_stage_descriptor_samplers
+            .min(limits.max_descriptor_set_samplers),
+        set_inputs: limits
+            .max_per_stage_descriptor_input_attachments
+            .min(limits.max_descriptor_set_input_attachments),
         persistent_maps: true,
         bind_alignment: limits
             .min_uniform_buffer_offset_alignment

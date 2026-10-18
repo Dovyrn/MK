@@ -13,7 +13,7 @@ public class Smoke {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
             var caps = device.caps();
-            System.out.println("caps: mesh " + caps.mesh + ", slots " + caps.slotBinding + ", tiles " + caps.tiles);
+            System.out.println("caps: mesh " + caps.mesh + ", storage sets " + caps.storageSets + ", tiles " + caps.tiles);
             clear(device);
             if (!caps.compute) {
                 System.out.println("java: no compute");
@@ -26,10 +26,15 @@ public class Smoke {
             var bytes = Files.readAllBytes(Path.of(args[1]));
             var code = nmemAlloc(bytes.length);
             memByteBuffer(code, bytes.length).put(bytes);
+            var layout = device.createDescriptorLayout(new DescriptorBinding[] {
+                new DescriptorBinding().binding(0).kind(DescriptorType.UNIFORM_BUFFER),
+                new DescriptorBinding().binding(1).kind(DescriptorType.STORAGE_BUFFER)
+            });
             var info = new ComputePipelineInfo()
                     .code(code)
                     .codeSize(bytes.length)
-                    .entry("fill");
+                    .entry("fill")
+                    .sets(new DescriptorLayout[] {layout});
             var pipeline = device.createComputePipeline(info);
             var timeline = device.createTimeline();
             var constants = device.createBuffer(8, Memory.UPLOAD, BufferUsage.UNIFORM, "");
@@ -37,14 +42,19 @@ public class Smoke {
             memPutInt(push, n);
             memPutInt(push + 4, 100);
             device.unmapBuffer(constants);
+            var sets = device.createDescriptorPool(layout, 1);
+            var bound = device.createDescriptorSet(sets);
+            device.writeDescriptorSet(bound, new DescriptorWrite[] {
+                new DescriptorWrite().binding(0).buffer(constants).size(8),
+                new DescriptorWrite().binding(1).buffer(buffer).size(n * 4L)
+            });
             var set = device.createResidencySet();
             device.addResidency(set, new Resource[] {buffer.resource(), constants.resource()});
             device.commitResidency(set);
             commands.useResidencySet(set);
             var compute = commands.beginComputePass(0, 0);
             compute.bindComputePipeline(pipeline);
-            compute.bindStorageBuffer(0, buffer, 0, n * 4L);
-            compute.bindUniformBuffer(0, constants, 0, 8);
+            compute.bindDescriptorSet(bound);
             compute.dispatch(n / 64, 1, 1);
             compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
             compute.end();

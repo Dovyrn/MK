@@ -15,10 +15,15 @@ public class ComputePipelineInfo {
     public int[] group = new int[] {0, 0, 0};
     public int subgroup = 0;
     public boolean full = false;
+    public DescriptorLayout[] sets = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
-        return 44 + entry.getBytes(StandardCharsets.UTF_8).length + label.getBytes(StandardCharsets.UTF_8).length;
+        var setsSize = 4;
+        for (var x : sets) {
+            setsSize += 8;
+        }
+        return 44 + entry.getBytes(StandardCharsets.UTF_8).length + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -40,6 +45,12 @@ public class ComputePipelineInfo {
         p += 4;
         memPutInt(p, full ? 1 : 0);
         p += 4;
+        memPutInt(p, sets.length);
+        p += 4;
+        for (var x : sets) {
+            memPutLong(p, DescriptorLayout.raw(x));
+            p += 8;
+        }
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);
         memByteBuffer(p + 4, labelBytes.length).put(labelBytes);

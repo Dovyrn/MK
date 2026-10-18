@@ -29,9 +29,11 @@ pub fn main() {
     let back = device
         .create_buffer(n as u64 * 4, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
+    let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("handles"),
+            sets: &[layout],
             entry: "fill",
             ..Default::default()
         })
@@ -40,6 +42,11 @@ pub fn main() {
     let mut push = device.buffer_address(data).to_le_bytes().to_vec();
     push.extend(n.to_le_bytes());
     let (constants, _) = host::constants(&device, &[&push]);
+    let bound = host::set(
+        &device,
+        layout,
+        &[host::buffer(0, constants, 0, push.len() as u64)],
+    );
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into(), constants.into()]);
     device.commit_residency(set);
@@ -49,7 +56,7 @@ pub fn main() {
         .begin_compute_pass(Stage::default(), Stage::default())
         .unwrap();
     pass.bind_compute_pipeline(fill);
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
     pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_buffer(data, 0, back, 0, n as u64 * 4);

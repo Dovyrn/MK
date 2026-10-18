@@ -13,7 +13,7 @@ pub fn main() {
         | SubgroupOp::BALLOT
         | SubgroupOp::SHUFFLE
         | SubgroupOp::QUAD;
-    if !caps.compute || !caps.storage_slots || caps.subgroup_ops & need != need {
+    if !caps.compute || !caps.storage_sets || caps.subgroup_ops & need != need {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
     }
@@ -28,6 +28,8 @@ pub fn main() {
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
+    let layout = host::layout(&device, &[mk::DescriptorType::StorageBuffer]);
+    let bound = host::set(&device, layout, &[host::buffer(0, buffer, 0, 64 * 11 * 4)]);
     let sizes: Vec<u32> = (0..7)
         .map(|i| 1u32 << i)
         .filter(|n| caps.subgroup_sizes & n != 0 && *n >= 4)
@@ -46,6 +48,7 @@ pub fn main() {
                 entry: "lanes",
                 subgroup: size,
                 full,
+                sets: &[layout],
                 ..Default::default()
             })
             .unwrap();
@@ -55,7 +58,7 @@ pub fn main() {
             .begin_compute_pass(Stage::default(), Stage::default())
             .unwrap();
         pass.bind_compute_pipeline(pipeline);
-        pass.bind_storage_buffer(0, buffer, 0, 64 * 11 * 4);
+        pass.bind_descriptor_set(bound);
         pass.dispatch(1, 1, 1);
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();

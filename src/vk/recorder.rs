@@ -1,16 +1,15 @@
 mod textures;
 
 use crate::Error;
+use crate::Texture;
 use crate::command::Command;
-use crate::vk::bindings;
+use crate::descriptors::set_of;
+use crate::sets;
 use crate::vk::device::indirect_stride;
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::TextureObject;
-use crate::{Buffer, Texture};
-use crate::{
-    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, TextureUsage, slot,
-};
+use crate::{CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, slot};
 use ash::vk;
 use std::ffi::CString;
 
@@ -19,6 +18,7 @@ pub struct Recorder<'a> {
     pub ext: &'a Extensions,
     pub buffer: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
+    pub pipeline: vk::PipelineLayout,
     pub points: &'static [vk::PipelineBindPoint],
     pub res: &'a Resources,
     pub colors: Vec<vk::RenderingAttachmentInfo<'static>>,
@@ -150,67 +150,6 @@ impl Recorder<'_> {
         self.depth = None;
     }
 
-    fn push(
-        &self,
-        point: vk::PipelineBindPoint,
-        kind: vk::DescriptorType,
-        slot: u32,
-        buffer: vk::DescriptorBufferInfo,
-        image: vk::DescriptorImageInfo,
-    ) -> Result<(), Error> {
-        let push =
-            self.ext.push.as_ref().ok_or_else(|| {
-                Error::Unsupported("VK_KHR_push_descriptor is not enabled".into())
-            })?;
-        let write = vk::WriteDescriptorSet::default()
-            .dst_binding(bindings::binding(kind, slot))
-            .descriptor_type(kind);
-        let write = match kind {
-            vk::DescriptorType::UNIFORM_BUFFER | vk::DescriptorType::STORAGE_BUFFER => {
-                write.buffer_info(std::slice::from_ref(&buffer))
-            }
-            _ => write.image_info(std::slice::from_ref(&image)),
-        };
-        unsafe { push.cmd_push_descriptor_set(self.buffer, point, self.layout, 0, &[write]) };
-        Ok(())
-    }
-
-    fn buffer_slot(
-        &self,
-        kind: vk::DescriptorType,
-        slot: u32,
-        buffer: Buffer,
-        offset: u64,
-        size: u64,
-    ) -> Result<(), Error> {
-        let info = vk::DescriptorBufferInfo::default()
-            .buffer(self.res.buffers.get(buffer).raw)
-            .offset(offset)
-            .range(size);
-        self.push(
-            self.point,
-            kind,
-            slot,
-            info,
-            vk::DescriptorImageInfo::default(),
-        )
-    }
-
-    fn image_slot(
-        &self,
-        kind: vk::DescriptorType,
-        slot: u32,
-        info: vk::DescriptorImageInfo,
-    ) -> Result<(), Error> {
-        self.push(
-            self.point,
-            kind,
-            slot,
-            vk::DescriptorBufferInfo::default(),
-            info,
-        )
-    }
-
     fn bind_heap(&self) {
         for point in self.points {
             unsafe {
@@ -218,7 +157,7 @@ impl Recorder<'_> {
                     self.buffer,
                     *point,
                     self.layout,
-                    1,
+                    sets::BINDLESS,
                     &[self.heap],
                     &[],
                 )
@@ -420,11 +359,11 @@ impl Recorder<'_> {
                     self.barrier(src_stage, dst_stage);
                 }
                 Command::EndComputePass => {}
-                Command::BindComputePipeline { pipeline } => d.cmd_bind_pipeline(
-                    b,
-                    vk::PipelineBindPoint::COMPUTE,
-                    *self.res.pipelines.get(pipeline),
-                ),
+                Command::BindComputePipeline { pipeline } => {
+                    let (raw, layout) = *self.res.pipelines.get(pipeline);
+                    self.pipeline = layout;
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::COMPUTE, raw)
+                }
                 Command::Dispatch { x, y, z } => d.cmd_dispatch(b, x, y, z),
                 Command::DispatchIndirect { buffer, offset } => {
                     d.cmd_dispatch_indirect(b, self.res.buffers.get(buffer).raw, offset)
@@ -619,19 +558,6 @@ impl Recorder<'_> {
                             .resize(i + 1, vk::RenderingAttachmentInfo::default());
                     }
                     self.colors[i] = info;
-                    let t = self.res.textures.get(texture);
-                    if t.usage.contains(TextureUsage::INPUT) {
-                        let image = vk::DescriptorImageInfo::default()
-                            .image_view(t.target)
-                            .image_layout(vk::ImageLayout::GENERAL);
-                        self.push(
-                            vk::PipelineBindPoint::GRAPHICS,
-                            vk::DescriptorType::INPUT_ATTACHMENT,
-                            index,
-                            vk::DescriptorBufferInfo::default(),
-                            image,
-                        )?;
-                    }
                 }
                 Command::DepthAttachment {
                     texture,
@@ -708,7 +634,8 @@ impl Recorder<'_> {
                     unreachable!("caps.tiles is false on Vulkan")
                 }
                 Command::BindRenderPipeline { pipeline } => {
-                    let (raw, topology) = *self.res.renders.get(pipeline);
+                    let (raw, topology, layout) = *self.res.renders.get(pipeline);
+                    self.pipeline = layout;
                     d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
                     if let Some(topology) = topology {
                         d.cmd_set_primitive_topology(b, topology);
@@ -745,46 +672,17 @@ impl Recorder<'_> {
                 }
                 Command::SetBlendColor { color } => d.cmd_set_blend_constants(b, &color),
                 Command::UseResidencySet { .. } => {}
-                Command::BindUniformBuffer {
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                } => self.buffer_slot(
-                    vk::DescriptorType::UNIFORM_BUFFER,
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                )?,
-                Command::BindStorageBuffer {
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                } => self.buffer_slot(
-                    vk::DescriptorType::STORAGE_BUFFER,
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                )?,
-                Command::BindTexture { slot, texture } => {
-                    let info = vk::DescriptorImageInfo::default()
-                        .image_view(self.res.textures.get(texture).view)
-                        .image_layout(vk::ImageLayout::GENERAL);
-                    self.image_slot(vk::DescriptorType::SAMPLED_IMAGE, slot, info)?
-                }
-                Command::BindStorageTexture { slot, texture } => {
-                    let info = vk::DescriptorImageInfo::default()
-                        .image_view(self.res.textures.get(texture).view)
-                        .image_layout(vk::ImageLayout::GENERAL);
-                    self.image_slot(vk::DescriptorType::STORAGE_IMAGE, slot, info)?
-                }
-                Command::BindSampler { slot, sampler } => {
-                    let info =
-                        vk::DescriptorImageInfo::default().sampler(*self.res.samplers.get(sampler));
-                    self.image_slot(vk::DescriptorType::SAMPLER, slot, info)?
+                Command::BindDescriptorSet { set } => {
+                    let (raw, pool) = *self.res.descriptor_sets.get(set);
+                    let bindings = &self.res.descriptor_pools.get(pool).bindings;
+                    d.cmd_bind_descriptor_sets(
+                        b,
+                        self.point,
+                        self.pipeline,
+                        set_of(bindings[0].kind),
+                        &[raw],
+                        &[],
+                    )
                 }
                 Command::BindVertexBuffer {
                     slot,

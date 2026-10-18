@@ -32,8 +32,10 @@ pub fn main() {
         format: Format::Rgba8Unorm,
         ..Default::default()
     }];
+    let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = match device.create_mesh_pipeline(&MeshPipelineInfo {
         code: host::code!("mesh"),
+        sets: &[layout],
         task: "task",
         mesh: "mesh",
         fragment: "frag",
@@ -50,6 +52,7 @@ pub fn main() {
     let single = device
         .create_mesh_pipeline(&MeshPipelineInfo {
             code: host::code!("mesh"),
+            sets: &[layout],
             mesh: "single",
             fragment: "frag",
             colors: &colors,
@@ -70,6 +73,7 @@ pub fn main() {
     let passes = [Some(0), listed.then_some(1), Some(2)];
     let mut wrong = Vec::new();
     let (half, _) = host::constants(&device, &[&0.5f32.to_le_bytes()]);
+    let bound = host::set(&device, layout, &[host::buffer(0, half, 0, 4)]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -109,7 +113,7 @@ pub fn main() {
         }]);
         host::states(&mut pass, none);
         pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
-        pass.bind_uniform_buffer(0, half, 0, 4);
+        pass.bind_descriptor_set(bound);
         if round == 1 {
             pass.draw_mesh_tasks_indirect(groups, 0);
         } else {
@@ -185,9 +189,11 @@ fn executed(
         format: Format::Rgba8Unorm,
         ..Default::default()
     }];
+    let layout = host::layout(device, &[mk::DescriptorType::UniformBuffer]);
     let single = device
         .create_mesh_pipeline(&mk::MeshPipelineInfo {
             code: host::code!("mesh"),
+            sets: &[layout],
             mesh: "single",
             fragment: "frag",
             colors: &colors,
@@ -206,6 +212,7 @@ fn executed(
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("encode_mesh"),
             entry: "encode",
+            sets: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -218,6 +225,12 @@ fn executed(
         .unwrap();
     let (half, _) = host::constants(device, &[&0.5f32.to_le_bytes()]);
     let (constants, _) = host::constants(device, &[&bytes]);
+    let halves = host::set(device, layout, &[host::buffer(0, half, 0, 4)]);
+    let bound = host::set(
+        device,
+        layout,
+        &[host::buffer(0, constants, 0, bytes.len() as u64)],
+    );
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -237,7 +250,7 @@ fn executed(
         .begin_compute_pass(Stage::default(), Stage::default())
         .unwrap();
     pass.bind_compute_pipeline(encode);
-    pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(1, 1, 1);
     pass.end();
     c.discard_textures(&[TextureDiscard {
@@ -272,7 +285,7 @@ fn executed(
     }]);
     host::states(&mut pass, none);
     pass.bind_render_pipeline(single);
-    pass.bind_uniform_buffer(0, half, 0, 4);
+    pass.bind_descriptor_set(halves);
     pass.execute_indirect(list, 0, 1);
     pass.end();
     let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();

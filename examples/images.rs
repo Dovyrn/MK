@@ -32,9 +32,11 @@ pub fn main() {
     let back = device
         .create_buffer(size, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
+    let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: host::code!("images"),
+            sets: &[layout],
             entry: "fill",
             ..Default::default()
         })
@@ -46,6 +48,11 @@ pub fn main() {
     push.extend(n.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
     let (constants, _) = host::constants(&device, &[&push]);
+    let bound = host::set(
+        &device,
+        layout,
+        &[host::buffer(0, constants, 0, push.len() as u64)],
+    );
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -71,7 +78,7 @@ pub fn main() {
     });
     pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(n / 8, n / 8, 1);
     pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_texture_to_buffer(&BufferTextureCopy {

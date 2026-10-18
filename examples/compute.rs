@@ -1,4 +1,4 @@
-use mk::{BufferUsage, Memory, Stage};
+use mk::{BufferUsage, DescriptorType, Memory, Stage};
 
 #[path = "support/host.rs"]
 mod host;
@@ -21,10 +21,15 @@ pub fn main() {
             "",
         )
         .unwrap();
+    let layout = host::layout(
+        &device,
+        &[DescriptorType::UniformBuffer, DescriptorType::StorageBuffer],
+    );
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("count"),
             entry: "fill",
+            sets: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -32,6 +37,14 @@ pub fn main() {
     let mut push = n.to_le_bytes().to_vec();
     push.extend(100u32.to_le_bytes());
     let (constants, _) = host::constants(&device, &[&push]);
+    let bound = host::set(
+        &device,
+        layout,
+        &[
+            host::buffer(0, constants, 0, push.len() as u64),
+            host::buffer(1, buffer, 0, n as u64 * 4),
+        ],
+    );
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[buffer.into(), constants.into()]);
     device.commit_residency(set);
@@ -43,8 +56,7 @@ pub fn main() {
     pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff);
     pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
-    pass.bind_storage_buffer(0, buffer, 0, n as u64 * 4);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
     let spare = device
         .create_buffer(4, Memory::Upload, BufferUsage::COPY_DST, "")

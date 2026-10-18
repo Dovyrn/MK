@@ -20,7 +20,6 @@ pub fn glsl(out: &Path, name: &str) {
 }
 
 fn container(out: &Path, name: &str) -> Result<String, String> {
-    let (textures, samplers) = super::shifts();
     let spv = out.join(format!("{name}.spv"));
     let reflection: Value =
         serde_json::from_str(&run(Command::new("spirv-cross").arg(&spv).arg("--reflect"))).unwrap();
@@ -32,7 +31,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
     let meshy = entries
         .iter()
         .any(|e| e["mode"] == "task" || e["mode"] == "mesh");
-    let heaps = reflection.to_string().contains("\"set\":1");
+    let heaps = reflection.to_string().contains("_slang_resource_heap");
     let groups = subgroups(&fs::read(&spv).unwrap());
     for e in entries {
         let entry = e["name"].as_str().unwrap();
@@ -69,7 +68,7 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
                     .unwrap();
                 let text = String::from_utf8_lossy(&output.stdout);
                 !output.status.success()
-                    || text.contains("set = 1")
+                    || text.contains("_slang_resource_heap")
                     || text.contains("GL_KHR_shader_subgroup")
             };
         if vulkan {
@@ -204,9 +203,9 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
                 let rest = &pair[texture.len()..];
                 match separate.iter().find(|(n, _)| n == rest) {
                     Some((_, sampler)) => {
-                        format!("texture {name} {} {}", slot - textures, sampler - samplers)
+                        format!("texture {name} {slot} {sampler}")
                     }
-                    None => format!("texture {name} {}", slot - textures),
+                    None => format!("texture {name} {slot}"),
                 }
             } else {
                 format!("{kind} {name} {slot}")

@@ -2,7 +2,6 @@ use super::run;
 use rspirv::binary::Assemble;
 use rspirv::dr::Operand;
 use rspirv::spirv::{Capability, Decoration, Op, StorageClass};
-use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -24,7 +23,6 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             .arg(&spv));
         return;
     }
-    let (textures, samplers) = super::shifts();
     let json = out.join(format!("{name}.json"));
     run(Command::new("slangc")
         .arg(dir.join(format!("{name}.slang")))
@@ -38,9 +36,7 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
             "MK_SPIRV",
         ])
         .args(["-fvk-invert-y"])
-        .args(["-bindless-space-index", "1"])
-        .args(["-fvk-b-shift", "64", "0", "-fvk-u-shift", "0", "0"])
-        .args(["-fvk-s-shift", &samplers.to_string(), "0"])
+        .args(["-bindless-space-index", "0"])
         .arg("-reflection-json")
         .arg(&json)
         .arg("-o")
@@ -50,57 +46,8 @@ pub fn spirv(dir: &Path, out: &Path, name: &str) {
         .chunks(4)
         .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
         .collect();
-    let words = indexing(shift(payloads(words), &json, textures));
-    fs::remove_file(&json).unwrap();
+    let words = indexing(payloads(words));
     fs::write(&spv, queries(&words)).unwrap();
-}
-
-fn shift(words: Vec<u32>, json: &Path, by: u32) -> Vec<u32> {
-    let reflection: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
-    let moves: Vec<(&str, u32)> = reflection["parameters"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|p| p["binding"]["space"].is_null())
-        .filter_map(|p| {
-            let t = &p["type"];
-            let name = p["name"].as_str().unwrap();
-            if p["binding"]["kind"] == "constantBuffer" {
-                Some((name, 64u32.wrapping_neg()))
-            } else if p["binding"]["kind"] == "descriptorTableSlot"
-                && t["kind"] == "resource"
-                && t["access"] != "readWrite"
-                && t["baseShape"] != "subpassInput"
-            {
-                Some((name, by))
-            } else {
-                None
-            }
-        })
-        .collect();
-    let mut module = rspirv::dr::load_words(words).unwrap();
-    let ids: Vec<(u32, u32)> = module
-        .debug_names
-        .iter()
-        .filter_map(|i| match i.operands.as_slice() {
-            [Operand::IdRef(id), Operand::LiteralString(n)] => {
-                moves.iter().find(|m| m.0 == n).map(|m| (*id, m.1))
-            }
-            _ => None,
-        })
-        .collect();
-    for i in &mut module.annotations {
-        if let [
-            Operand::IdRef(id),
-            Operand::Decoration(Decoration::Binding),
-            Operand::LiteralBit32(b),
-        ] = i.operands.as_mut_slice()
-            && let Some(m) = ids.iter().find(|m| m.0 == *id)
-        {
-            *b = b.wrapping_add(m.1);
-        }
-    }
-    module.assemble()
 }
 
 fn indexing(words: Vec<u32>) -> Vec<u32> {

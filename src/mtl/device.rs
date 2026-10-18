@@ -3,6 +3,7 @@ mod buffers;
 mod caps;
 mod copies;
 mod create;
+mod descriptors;
 mod indirect;
 mod labels;
 mod pipelines;
@@ -189,6 +190,10 @@ fn texture_type(dimension: TextureDimension, samples: u32) -> MTLTextureType {
 
 pub fn id(id: MTLResourceID) -> u64 {
     unsafe { std::mem::transmute(id) }
+}
+
+pub fn resource(value: u64) -> MTLResourceID {
+    unsafe { std::mem::transmute(value) }
 }
 
 pub struct Device {

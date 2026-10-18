@@ -1,46 +1,7 @@
-#define UNIFORM(n) MK_UNIFORM_##n
-#define MK_UNIFORM_0 register(b0)
-#define MK_UNIFORM_1 register(b1)
-#define MK_UNIFORM_2 register(b2)
-#define MK_UNIFORM_3 register(b3)
-
-#define STORAGE(n) MK_STORAGE_##n
-#define MK_STORAGE_0 register(u5)
-#define MK_STORAGE_1 register(u6)
-#define MK_STORAGE_2 register(u7)
-#define MK_STORAGE_3 register(u8)
-#define MK_STORAGE_4 register(u9)
-#define MK_STORAGE_5 register(u10)
-#define MK_STORAGE_6 register(u11)
-#define MK_STORAGE_7 register(u12)
-
-#define IMAGE(n) MK_IMAGE_##n
-#define MK_IMAGE_0 register(u13)
-#define MK_IMAGE_1 register(u14)
-#define MK_IMAGE_2 register(u15)
-#define MK_IMAGE_3 register(u16)
-
-#define TEXTURE(n) MK_TEXTURE_##n
-#define MK_TEXTURE_0 register(t0)
-#define MK_TEXTURE_1 register(t1)
-#define MK_TEXTURE_2 register(t2)
-#define MK_TEXTURE_3 register(t3)
-
-#define SAMPLER(n) MK_SAMPLER_##n
-#define MK_SAMPLER_0 register(s0)
-#define MK_SAMPLER_1 register(s1)
-#define MK_SAMPLER_2 register(s2)
-#define MK_SAMPLER_3 register(s3)
-
-#define ATTACHMENT(n) MK_ATTACHMENT_##n
-#define MK_ATTACHMENT_0 [[vk::input_attachment_index(0)]] [[vk::binding(25, 0)]]
-#define MK_ATTACHMENT_1 [[vk::input_attachment_index(1)]] [[vk::binding(26, 0)]]
-#define MK_ATTACHMENT_2 [[vk::input_attachment_index(2)]] [[vk::binding(27, 0)]]
-#define MK_ATTACHMENT_3 [[vk::input_attachment_index(3)]] [[vk::binding(28, 0)]]
-#define MK_ATTACHMENT_4 [[vk::input_attachment_index(4)]] [[vk::binding(29, 0)]]
-#define MK_ATTACHMENT_5 [[vk::input_attachment_index(5)]] [[vk::binding(30, 0)]]
-#define MK_ATTACHMENT_6 [[vk::input_attachment_index(6)]] [[vk::binding(31, 0)]]
-#define MK_ATTACHMENT_7 [[vk::input_attachment_index(7)]] [[vk::binding(32, 0)]]
+#define BUFFER(n) [[vk::binding(n, 1)]]
+#define TEXTURE(n) [[vk::binding(n, 2)]]
+#define SAMPLER(n) [[vk::binding(n, 3)]]
+#define INPUT(n) [[vk::input_attachment_index(n)]]
 
 #ifdef MK_SPIRV
 typealias Uniform<T> = ConstantBuffer<T, Std430DataLayout>;

@@ -1,8 +1,9 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorMask, ColorTarget, DepthAttachment,
-    DepthStateInfo, Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage,
-    StoreOp, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    DepthStateInfo, DescriptorType, DescriptorWrite, Format, LoadOp, Memory, RenderPassInfo,
+    RenderPipelineInfo, Scissor, Stage, StoreOp, TextureDiscard, TextureInfo, TextureUsage,
+    Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -71,6 +72,16 @@ pub fn main() {
             "",
         )
         .unwrap();
+    let uniforms = host::layout(&device, &[DescriptorType::UniformBuffer]);
+    let inputs = host::layout(&device, &[DescriptorType::InputAttachment]);
+    let read = host::set(
+        &device,
+        inputs,
+        &[DescriptorWrite {
+            texture: value,
+            ..Default::default()
+        }],
+    );
     let pipeline = |device: &mut mk::Device, fragment, value_mask, color_mask, ordered| {
         let colors = [
             ColorTarget {
@@ -91,6 +102,7 @@ pub fn main() {
             colors: &colors,
             depth: Some(Format::D32Float),
             ordered,
+            sets: &[uniforms, inputs],
             ..Default::default()
         })
     };
@@ -134,6 +146,8 @@ pub fn main() {
         &device,
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
     );
+    let [first, second] =
+        [0, stride].map(|at| host::set(&device, uniforms, &[host::buffer(0, constants, at, 4)]));
     let mut textures = vec![color];
     if memory != Memory::Transient {
         textures.push(value);
@@ -200,11 +214,12 @@ pub fn main() {
     }]);
     host::states(&mut pass, none);
     pass.bind_render_pipeline(fill);
-    pass.bind_uniform_buffer(0, constants, 0, 4);
+    pass.bind_descriptor_set(first);
+    pass.bind_descriptor_set(read);
     pass.draw(3, 1, 0, 0);
     pass.input_attachment_barrier();
     pass.bind_render_pipeline(add);
-    pass.bind_uniform_buffer(0, constants, stride, 4);
+    pass.bind_descriptor_set(second);
     pass.draw(3, count, 0, 0);
     pass.input_attachment_barrier();
     pass.bind_render_pipeline(copy);

@@ -1,9 +1,7 @@
 use crate::Atomic64;
 use crate::Error;
 use ash::ext::{debug_utils, host_image_copy, memory_budget, mesh_shader};
-use ash::khr::{
-    external_memory_win32, external_semaphore_win32, present_wait, push_descriptor, swapchain,
-};
+use ash::khr::{external_memory_win32, external_semaphore_win32, present_wait, swapchain};
 use ash::vk;
 
 pub struct Extensions {
@@ -19,7 +17,6 @@ pub struct Extensions {
     pub moltenvk: bool,
     pub features: vk::PhysicalDeviceFeatures,
     pub mirror: bool,
-    pub push: Option<push_descriptor::Device>,
     pub copy: Option<host_image_copy::Device>,
     pub swapchain: Option<swapchain::Device>,
     pub win32: Option<(
@@ -125,8 +122,6 @@ impl Extensions {
                 && chained::<vk::PhysicalDeviceMeshShaderFeaturesEXT>(features)
                     .is_some_and(|f| f.task_shader != 0);
             let mesh = mesh.then(|| mesh_shader::Device::new(instance, raw));
-            let push = has(c"vkCmdPushDescriptorSetKHR")
-                .then(|| push_descriptor::Device::new(instance, raw));
             let swapchain =
                 has(c"vkCreateSwapchainKHR").then(|| swapchain::Device::new(instance, raw));
             let win32 = (has(c"vkGetMemoryWin32HandlePropertiesKHR")
@@ -227,7 +222,6 @@ impl Extensions {
                 moltenvk,
                 features: features.features,
                 mirror: v12.is_some_and(|f| f.sampler_mirror_clamp_to_edge != 0),
-                push,
                 copy,
                 swapchain,
                 win32,

@@ -43,7 +43,6 @@ fields = [
     ["attachment_reads", "bool", "false"],
     ["ordered_reads", "bool", "false"],
     ["image_atomics64", "bool", "false"],
-    ["slot_binding", "bool", "false"],
     ["swapchain", "bool", "false"],
     ["present_wait", "bool", "false"],
     ["shared_handles", "bool", "false"],
@@ -142,6 +141,7 @@ fields = [
     ["indirect", "bool", "false"],
     ["buffers", "[VertexBufferLayout]", ""],
     ["attributes", "[VertexAttribute]", ""],
+    ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
 ]
 
@@ -163,6 +163,7 @@ fields = [
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
     ["indirect", "bool", "false"],
+    ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
 ]
 
@@ -173,6 +174,7 @@ fields = [
     ["entry", "str", ""],
     ["colors", "[ColorTarget]", ""],
     ["samples", "u32", "1"],
+    ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
 ]
 
@@ -222,8 +224,13 @@ fields = [
     ["anisotropy", "u32", "1"],
     ["depth_clamp", "bool", "false"],
     ["line_fill", "bool", "false"],
-    ["slot_binding", "bool", "false"],
-    ["storage_slots", "bool", "false"],
+    ["storage_sets", "bool", "false"],
+    ["set_uniforms", "u32", "0"],
+    ["set_storages", "u32", "0"],
+    ["set_textures", "u32", "0"],
+    ["set_images", "u32", "0"],
+    ["set_samplers", "u32", "0"],
+    ["set_inputs", "u32", "0"],
     ["persistent_maps", "bool", "false"],
     ["bind_alignment", "u32", "0"],
     ["compute", "bool", "false"],
@@ -277,7 +284,28 @@ fields = [
     ["group", "u32x3", "[0, 0, 0]"],
     ["subgroup", "u32", "0"],
     ["full", "bool", "false"],
+    ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
+]
+
+[[info]]
+name = "DescriptorBinding"
+fields = [
+    ["binding", "u32", "0"],
+    ["kind", "DescriptorType", "descriptor_type::UNIFORM_BUFFER"],
+    ["count", "u32", "1"],
+]
+
+[[info]]
+name = "DescriptorWrite"
+fields = [
+    ["binding", "u32", "0"],
+    ["element", "u32", "0"],
+    ["buffer", "Buffer", ""],
+    ["offset", "u64", "0"],
+    ["size", "u64", "!0"],
+    ["texture", "Texture", ""],
+    ["sampler", "Sampler", ""],
 ]
 
 [[info]]

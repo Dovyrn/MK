@@ -1,5 +1,4 @@
 use crate::Error;
-use crate::register;
 use glow::HasContext;
 
 pub struct Program {
@@ -127,12 +126,12 @@ impl Program {
                     }
                     "storage" => {
                         if let Some(i) = gl.get_shader_storage_block_index(raw, words[1]) {
-                            gl.shader_storage_block_binding(raw, i, number(2) - register::STORAGE);
+                            gl.shader_storage_block_binding(raw, i, number(2));
                         }
                     }
                     "image" => {
                         if let Some(l) = gl.get_uniform_location(raw, words[1]) {
-                            gl.uniform_1_i32(Some(&l), (number(2) - register::IMAGE) as i32);
+                            gl.uniform_1_i32(Some(&l), number(2) as i32);
                         }
                     }
                     "texture" => {

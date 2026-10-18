@@ -5,7 +5,7 @@ struct Push {
     IndirectBuffer list;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 [shader("compute")]
 [numthreads(1, 1, 1)]

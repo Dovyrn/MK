@@ -14,7 +14,7 @@ struct Push {
     float z;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 [shader("vertex")]
 Varyings vert(Vertex v) {

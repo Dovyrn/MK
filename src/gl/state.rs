@@ -1,6 +1,6 @@
 use crate::Error;
 use crate::gl::extra::Extra;
-use crate::{Caps, register, slot};
+use crate::{Caps, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
 
@@ -243,6 +243,7 @@ impl State {
         gl: &glow::Context,
         extra: &Extra,
         caps: &Caps,
+        bounds: [u32; 3],
         has: &dyn Fn(u32, &str) -> bool,
     ) -> Self {
         unsafe {
@@ -272,7 +273,7 @@ impl State {
                     glow::DISPATCH_INDIRECT_BUFFER_BINDING,
                 ));
             }
-            if caps.storage_slots {
+            if caps.storage_sets {
                 targets.push((
                     glow::SHADER_STORAGE_BUFFER,
                     glow::SHADER_STORAGE_BUFFER_BINDING,
@@ -289,9 +290,9 @@ impl State {
                     glow::UNIFORM_BUFFER_START,
                     glow::UNIFORM_BUFFER_SIZE,
                 ],
-                register::UNIFORM + slot::UNIFORMS,
+                bounds[0],
             )];
-            if caps.storage_slots {
+            if caps.storage_sets {
                 points.push((
                     glow::SHADER_STORAGE_BUFFER,
                     [
@@ -299,7 +300,7 @@ impl State {
                         glow::SHADER_STORAGE_BUFFER_START,
                         glow::SHADER_STORAGE_BUFFER_SIZE,
                     ],
-                    slot::STORAGES,
+                    bounds[1],
                 ));
             }
             let mut ranges = Vec::new();
@@ -315,7 +316,7 @@ impl State {
                 }
             }
             let images = if has(42, "GL_ARB_shader_image_load_store") {
-                (0..slot::IMAGES)
+                (0..bounds[2])
                     .map(|i| {
                         [
                             glow::IMAGE_BINDING_NAME,

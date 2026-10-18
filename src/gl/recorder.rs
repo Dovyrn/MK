@@ -12,11 +12,10 @@ use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::resources::Resources;
 use crate::gl::state::{State, set_enabled};
-use crate::register;
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, Format, FrontFace, IndexType,
-    LoadOp, Stage, StoreOp, Topology, slot,
+    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, Format, FrontFace,
+    IndexType, LoadOp, Stage, StoreOp, Topology, slot,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -70,8 +69,8 @@ pub struct Recorder<'a> {
     render: Option<&'a Pipeline>,
     colors: Vec<Color>,
     depth: Option<DepthAttachment>,
-    textures: [Option<Texture>; slot::TEXTURES as usize],
-    samplers: [Option<Sampler>; slot::SAMPLERS as usize],
+    textures: Vec<Option<Texture>>,
+    samplers: Vec<Option<Sampler>>,
     vertices: [Option<(Buffer, u64)>; slot::VERTICES as usize],
     index: Option<(Buffer, u64, u32)>,
     mode: u32,
@@ -215,8 +214,8 @@ impl<'a> Recorder<'a> {
             render: None,
             colors: Vec::new(),
             depth: None,
-            textures: [None; slot::TEXTURES as usize],
-            samplers: [None; slot::SAMPLERS as usize],
+            textures: vec![None; caps.set_textures as usize],
+            samplers: vec![None; caps.set_samplers as usize],
             vertices: [None; slot::VERTICES as usize],
             index: None,
             mode: glow::TRIANGLES,
@@ -419,7 +418,7 @@ impl<'a> Recorder<'a> {
 
     fn barrier(&self, src: Stage, dst: Stage) {
         let shaders = Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE;
-        if !(src & shaders).is_empty() && self.caps.storage_slots {
+        if !(src & shaders).is_empty() && self.caps.storage_sets {
             unsafe { self.gl.memory_barrier(gl_barrier_bits(dst)) };
         }
     }
@@ -820,44 +819,43 @@ impl<'a> Recorder<'a> {
                     self.apply_scissors();
                 }
                 Command::UseResidencySet { .. } => {}
-                Command::BindUniformBuffer {
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                } => self.bind_range(
-                    glow::UNIFORM_BUFFER,
-                    register::UNIFORM + slot,
-                    buffer,
-                    offset,
-                    size,
-                ),
-                Command::BindStorageBuffer {
-                    slot,
-                    buffer,
-                    offset,
-                    size,
-                } => {
-                    self.bind_range(glow::SHADER_STORAGE_BUFFER, slot, buffer, offset, size);
-                }
-                Command::BindStorageTexture { slot, texture } => {
-                    let t = res.textures.get(texture);
-                    let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
-                    gl.bind_image_texture(
-                        slot,
-                        t.raw,
-                        0,
-                        layered,
-                        0,
-                        glow::READ_WRITE,
-                        t.format.gl()[0],
-                    );
-                }
-                Command::BindTexture { slot, texture } => {
-                    self.textures[slot as usize] = Some(texture)
-                }
-                Command::BindSampler { slot, sampler } => {
-                    self.samplers[slot as usize] = Some(sampler)
+                Command::BindDescriptorSet { set } => {
+                    let entries = res.descriptor_sets.get(set).entries.borrow();
+                    for (i, e) in entries.iter().enumerate() {
+                        let Some((kind, w)) = *e else {
+                            continue;
+                        };
+                        let i = i as u32;
+                        match kind {
+                            DescriptorType::UniformBuffer => {
+                                self.bind_range(glow::UNIFORM_BUFFER, i, w.buffer, w.offset, w.size)
+                            }
+                            DescriptorType::StorageBuffer => self.bind_range(
+                                glow::SHADER_STORAGE_BUFFER,
+                                i,
+                                w.buffer,
+                                w.offset,
+                                w.size,
+                            ),
+                            DescriptorType::StorageTexture => {
+                                let t = res.textures.get(w.texture);
+                                let layered =
+                                    !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
+                                gl.bind_image_texture(
+                                    i,
+                                    t.raw,
+                                    0,
+                                    layered,
+                                    0,
+                                    glow::READ_WRITE,
+                                    t.format.gl()[0],
+                                );
+                            }
+                            DescriptorType::Texture => self.textures[i as usize] = Some(w.texture),
+                            DescriptorType::Sampler => self.samplers[i as usize] = Some(w.sampler),
+                            DescriptorType::InputAttachment => {}
+                        }
+                    }
                 }
             }
         }

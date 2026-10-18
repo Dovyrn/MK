@@ -1,6 +1,4 @@
 use crate::Error;
-use crate::mtl::recorder::VERTICES;
-use crate::{register, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
@@ -19,9 +17,9 @@ pub struct Pool {
 impl Pool {
     pub fn new(device: &ProtocolObject<dyn MTLDevice>) -> Result<Self, Error> {
         let desc = MTL4ArgumentTableDescriptor::new();
-        desc.setMaxBufferBindCount(VERTICES + slot::VERTICES as usize);
-        desc.setMaxTextureBindCount((register::IMAGE + slot::IMAGES) as usize);
-        desc.setMaxSamplerStateBindCount(slot::SAMPLERS as usize);
+        desc.setMaxBufferBindCount(31);
+        desc.setMaxTextureBindCount(128);
+        desc.setMaxSamplerStateBindCount(16);
         Ok(Self {
             allocator: device
                 .newCommandAllocator()

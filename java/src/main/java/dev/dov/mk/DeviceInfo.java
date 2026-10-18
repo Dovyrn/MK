@@ -50,15 +50,14 @@ public class DeviceInfo {
     public boolean attachmentReads = false;
     public boolean orderedReads = false;
     public boolean imageAtomics64 = false;
-    public boolean slotBinding = false;
     public boolean swapchain = false;
     public boolean presentWait = false;
     public boolean sharedHandles = false;
 
-    public static final int SIZE = 184;
+    public static final int SIZE = 180;
 
     int encodedSize() {
-        return 184;
+        return 180;
     }
 
     long encode(long p) {
@@ -145,8 +144,6 @@ public class DeviceInfo {
         memPutInt(p, orderedReads ? 1 : 0);
         p += 4;
         memPutInt(p, imageAtomics64 ? 1 : 0);
-        p += 4;
-        memPutInt(p, slotBinding ? 1 : 0);
         p += 4;
         memPutInt(p, swapchain ? 1 : 0);
         p += 4;
@@ -242,8 +239,6 @@ public class DeviceInfo {
         r.orderedReads = memGetInt(p) != 0;
         p += 4;
         r.imageAtomics64 = memGetInt(p) != 0;
-        p += 4;
-        r.slotBinding = memGetInt(p) != 0;
         p += 4;
         r.swapchain = memGetInt(p) != 0;
         p += 4;

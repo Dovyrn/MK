@@ -8,8 +8,9 @@ use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
 
 use crate::command::Command;
+use crate::mtl::device::resource;
 use crate::{Format, FrontFace, IndexType, LoadOp, Stage, StoreOp};
-use crate::{register, slot};
+use crate::{sets, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSRange, NSString};
@@ -22,6 +23,7 @@ use objc2_metal::{
     MTLTriangleFillMode, MTLViewport, MTLVisibilityResultMode, MTLWinding,
 };
 use std::ptr::NonNull;
+use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
@@ -55,7 +57,7 @@ unsafe impl Send for Recorder<'_> {}
 
 const COMPUTE: MTLStages = MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0);
 
-pub const VERTICES: usize = (register::STORAGE + slot::STORAGES) as usize;
+pub const VERTICES: usize = 30;
 
 fn mtl_stages(bits: Stage) -> MTLStages {
     let same =
@@ -583,38 +585,21 @@ impl<'a> Recorder<'a> {
                 let raw = self.res.sets.get(set);
                 self.command_buffer().useResidencySet(raw);
             }
-            Command::BindUniformBuffer {
-                slot,
-                buffer,
-                offset,
-                ..
-            } => {
-                let address = self.res.buffers.get(buffer).address + offset;
-                let index = (register::UNIFORM + slot) as usize;
-                unsafe { self.table.setAddress_atIndex(address, index) };
-            }
-            Command::BindStorageBuffer {
-                slot,
-                buffer,
-                offset,
-                ..
-            } => {
-                let address = self.res.buffers.get(buffer).address + offset;
-                let index = (register::STORAGE + slot) as usize;
-                unsafe { self.table.setAddress_atIndex(address, index) };
-            }
-            Command::BindTexture { slot, texture } => {
-                let id = self.res.textures.get(texture).id;
-                unsafe { self.table.setTexture_atIndex(id, slot as usize) };
-            }
-            Command::BindStorageTexture { slot, texture } => {
-                let id = self.res.textures.get(texture).id;
-                let index = (register::IMAGE + slot) as usize;
-                unsafe { self.table.setTexture_atIndex(id, index) };
-            }
-            Command::BindSampler { slot, sampler } => {
-                let id = self.res.samplers.get(sampler).1;
-                unsafe { self.table.setSamplerState_atIndex(id, slot as usize) };
+            Command::BindDescriptorSet { set } => {
+                let s = self.res.descriptor_sets.get(set);
+                for (i, v) in s.values.iter().enumerate() {
+                    let v = v.load(Ordering::Relaxed);
+                    if v == 0 {
+                        continue;
+                    }
+                    unsafe {
+                        match s.set {
+                            sets::BUFFERS => self.table.setAddress_atIndex(v, i),
+                            sets::SAMPLERS => self.table.setSamplerState_atIndex(resource(v), i),
+                            _ => self.table.setTexture_atIndex(resource(v), i),
+                        }
+                    }
+                }
             }
             Command::BindVertexBuffer {
                 slot,
@@ -624,7 +609,7 @@ impl<'a> Recorder<'a> {
                 let address = self.res.buffers.get(buffer).address + offset;
                 unsafe {
                     self.table
-                        .setAddress_atIndex(address, VERTICES + slot as usize)
+                        .setAddress_atIndex(address, VERTICES - slot as usize)
                 };
             }
             Command::BindIndexBuffer {

@@ -6,8 +6,8 @@ use ash::ext::{
 };
 use ash::khr::{
     android_surface, dynamic_rendering_local_read, external_memory_win32, external_semaphore_win32,
-    portability_enumeration, portability_subset, present_id, present_wait, push_descriptor,
-    surface, swapchain, wayland_surface, win32_surface, xcb_surface, xlib_surface,
+    portability_enumeration, portability_subset, present_id, present_wait, surface, swapchain,
+    wayland_surface, win32_surface, xcb_surface, xlib_surface,
 };
 use ash::vk;
 use std::ffi::{CStr, c_char};
@@ -190,7 +190,6 @@ struct Features {
     rotate: vk::PhysicalDeviceShaderSubgroupRotateFeaturesKHR<'static>,
     portability: vk::PhysicalDevicePortabilitySubsetFeaturesKHR<'static>,
     portable: bool,
-    push: bool,
     swapchain: bool,
     shared: bool,
 }
@@ -235,7 +234,6 @@ impl Features {
         }
         unsafe { instance.get_physical_device_features2(physical, &mut query) };
         s.core = query.features;
-        s.push = has(available, push_descriptor::NAME);
         s.swapchain = has(available, swapchain::NAME);
         s.shared = has(available, external_memory_win32::NAME)
             && has(available, external_semaphore_win32::NAME);
@@ -290,7 +288,6 @@ impl Features {
             attachment_reads: self.local.dynamic_rendering_local_read != 0,
             ordered_reads: self.order.rasterization_order_color_attachment_access != 0,
             image_atomics64: self.image64.shader_image_int64_atomics != 0,
-            slot_binding: self.push,
             swapchain: self.swapchain,
             present_wait: self.id.present_id != 0 && self.wait.present_wait != 0,
             shared_handles: self.shared,
@@ -346,7 +343,6 @@ impl Features {
         e.local.dynamic_rendering_local_read = on(info.attachment_reads);
         e.order.rasterization_order_color_attachment_access = on(info.ordered_reads);
         e.image64.shader_image_int64_atomics = on(info.image_atomics64);
-        e.push = info.slot_binding;
         e.swapchain = info.swapchain;
         e.shared = info.shared_handles;
         e.id.present_id = on(info.present_wait);
@@ -357,7 +353,6 @@ impl Features {
     fn names(&self, available: &[vk::ExtensionProperties]) -> Vec<*const c_char> {
         [
             (portability_subset::NAME, true),
-            (push_descriptor::NAME, self.push),
             (swapchain::NAME, self.swapchain),
             (external_memory_win32::NAME, self.shared),
             (external_semaphore_win32::NAME, self.shared),

@@ -1,5 +1,7 @@
 mod bindless;
 mod buffer;
+mod descriptor_pool;
+mod descriptor_set;
 mod device;
 mod errors;
 mod extra;

@@ -370,6 +370,109 @@ public class Device implements AutoCloseable {
 
     private static native long nBindlessStorageTexture(long device, long texture);
 
+    public DescriptorLayout createDescriptorLayout(DescriptorBinding[] bindings) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var bindingsSize = 4;
+                for (var x : bindings) {
+                    bindingsSize += x.encodedSize();
+                }
+                var bindingsAddress = arena.alloc(bindingsSize);
+                var bindingsAt = bindingsAddress;
+                memPutInt(bindingsAt, bindings.length);
+                bindingsAt += 4;
+                for (var x : bindings) {
+                    bindingsAt = x.encode(bindingsAt);
+                }
+                return DescriptorLayout.of(nCreateDescriptorLayout(handle(), bindingsAddress, bindingsSize));
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nCreateDescriptorLayout(long device, long bindings, int bindingsLength);
+
+    public void destroyDescriptorLayout(DescriptorLayout layout) {
+        lock.readLock().lock();
+        try {
+            nDestroyDescriptorLayout(handle(), DescriptorLayout.raw(layout));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nDestroyDescriptorLayout(long device, long layout);
+
+    public DescriptorPool createDescriptorPool(DescriptorLayout layout, int count) {
+        lock.readLock().lock();
+        try {
+            return DescriptorPool.of(nCreateDescriptorPool(handle(), DescriptorLayout.raw(layout), count));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nCreateDescriptorPool(long device, long layout, int count);
+
+    public void destroyDescriptorPool(DescriptorPool pool) {
+        lock.readLock().lock();
+        try {
+            nDestroyDescriptorPool(handle(), DescriptorPool.raw(pool));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nDestroyDescriptorPool(long device, long pool);
+
+    public void resetDescriptorPool(DescriptorPool pool) {
+        lock.readLock().lock();
+        try {
+            nResetDescriptorPool(handle(), DescriptorPool.raw(pool));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nResetDescriptorPool(long device, long pool);
+
+    public DescriptorSet createDescriptorSet(DescriptorPool pool) {
+        lock.readLock().lock();
+        try {
+            return DescriptorSet.of(nCreateDescriptorSet(handle(), DescriptorPool.raw(pool)));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nCreateDescriptorSet(long device, long pool);
+
+    public void writeDescriptorSet(DescriptorSet set, DescriptorWrite[] writes) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var writesSize = 4;
+                for (var x : writes) {
+                    writesSize += x.encodedSize();
+                }
+                var writesAddress = arena.alloc(writesSize);
+                var writesAt = writesAddress;
+                memPutInt(writesAt, writes.length);
+                writesAt += 4;
+                for (var x : writes) {
+                    writesAt = x.encode(writesAt);
+                }
+                nWriteDescriptorSet(handle(), DescriptorSet.raw(set), writesAddress, writesSize);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nWriteDescriptorSet(long device, long set, long writes, int writesLength);
+
     public Sampler createSampler(SamplerInfo info) {
         lock.readLock().lock();
         try {

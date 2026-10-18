@@ -10,5 +10,8 @@ handles = [
     "ResidencySet",
     "IndirectBuffer",
     "CommandPool",
+    "DescriptorLayout",
+    "DescriptorPool",
+    "DescriptorSet",
     "Swapchain",
 ]

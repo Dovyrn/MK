@@ -1,13 +1,34 @@
 use mk::{
     AddressMode, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, ComputePipelineInfo,
-    DepthStateInfo, Filter, Format, Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo,
-    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    DepthStateInfo, DescriptorBinding, DescriptorType, DescriptorWrite, Error, Filter, Format,
+    Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage, TextureDiscard,
+    TextureInfo, TextureUsage, Viewport,
 };
 
 #[path = "support/host.rs"]
 mod host;
 
-const CODE: &[u8] = host::code!("slots");
+const CODE: &[u8] = host::code!("sets");
+
+fn layout(device: &mk::Device, bindings: &[(u32, DescriptorType)]) -> mk::DescriptorLayout {
+    let list: Vec<_> = bindings
+        .iter()
+        .map(|&(binding, kind)| DescriptorBinding {
+            binding,
+            kind,
+            count: 1,
+        })
+        .collect();
+    device.create_descriptor_layout(&list).unwrap()
+}
+
+fn texture(binding: u32, texture: mk::Texture) -> DescriptorWrite {
+    DescriptorWrite {
+        binding,
+        texture,
+        ..Default::default()
+    }
+}
 
 fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
     TextureDiscard {
@@ -21,10 +42,6 @@ pub fn main() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    if !caps.slot_binding {
-        println!("no slot bindings");
-        return;
-    }
     let texel = |usage| TextureInfo {
         format: Format::Rgba8Unorm,
         width: 4,
@@ -74,12 +91,16 @@ pub fn main() {
         format: Format::Rgba8Unorm,
         ..Default::default()
     }];
+    let tints = layout(&device, &[(1, DescriptorType::UniformBuffer)]);
+    let sources = layout(&device, &[(0, DescriptorType::Texture)]);
+    let samplers = layout(&device, &[(0, DescriptorType::Sampler)]);
     let draw = device
         .create_render_pipeline(&RenderPipelineInfo {
             code: CODE,
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
+            sets: &[tints, sources, samplers],
             ..Default::default()
         })
         .unwrap();
@@ -87,6 +108,20 @@ pub fn main() {
     let none = device
         .create_depth_state(&DepthStateInfo::default())
         .unwrap();
+    let tinted = device.create_descriptor_pool(tints, 1).unwrap();
+    let tint = device.create_descriptor_set(tinted).unwrap();
+    let full = device.create_descriptor_set(tinted);
+    assert!(matches!(full, Err(Error::OutOfMemory(_))), "{full:?}");
+    device.write_descriptor_set(tint, &[host::buffer(1, upload, at, 16)]);
+    let read = host::set(&device, sources, &[texture(0, source)]);
+    let nearest = host::set(
+        &device,
+        samplers,
+        &[DescriptorWrite {
+            sampler,
+            ..Default::default()
+        }],
+    );
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -133,9 +168,9 @@ pub fn main() {
     }]);
     host::states(&mut pass, none);
     pass.bind_render_pipeline(draw);
-    pass.bind_uniform_buffer(1, upload, at, 16);
-    pass.bind_texture(0, source);
-    pass.bind_sampler(0, sampler);
+    pass.bind_descriptor_set(tint);
+    pass.bind_descriptor_set(read);
+    pass.bind_descriptor_set(nearest);
     pass.draw(3, 1, 0, 0);
     pass.end();
     let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
@@ -149,17 +184,32 @@ pub fn main() {
     pass.memory_barrier(Stage::COPY, Stage::HOST);
     pass.end();
     c.end().unwrap();
+    if cfg!(feature = "validation") {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let write = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            device.write_descriptor_set(tint, &[host::buffer(1, upload, at, 16)])
+        }));
+        std::panic::set_hook(hook);
+        assert!(
+            write.is_err(),
+            "a write to a set bound in an unsubmitted command buffer"
+        );
+    }
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
+    device.reset_descriptor_pool(tinted);
+    let again = device.create_descriptor_set(tinted).unwrap();
+    device.write_descriptor_set(again, &[host::buffer(1, upload, at, 16)]);
     let pixels = unsafe { device.map_buffer::<u8>(back) }.to_vec();
     device.unmap_buffer(back);
     for (i, p) in pixels.chunks(4).enumerate() {
         let red = (i % 4 * 30) as u8;
         assert!(p[0].abs_diff(red) <= 1, "pixel {i} red {} not {red}", p[0]);
     }
-    println!("render: uniform, texture and sampler slots drew 16 pixels");
-    if !caps.storage_slots {
-        println!("compute: storage slots are not supported");
+    println!("render: uniform, texture and sampler sets drew 16 pixels");
+    if !caps.storage_sets || !caps.compute {
+        println!("compute: storage sets are not supported");
         return;
     }
     let image = device
@@ -179,14 +229,40 @@ pub fn main() {
     let out = device
         .create_buffer(64 * 4 + 64, Memory::Readback, BufferUsage::COPY_DST, "")
         .unwrap();
+    let buffers = layout(
+        &device,
+        &[
+            (0, DescriptorType::UniformBuffer),
+            (1, DescriptorType::UniformBuffer),
+            (2, DescriptorType::StorageBuffer),
+        ],
+    );
+    let textures = layout(
+        &device,
+        &[
+            (0, DescriptorType::Texture),
+            (1, DescriptorType::StorageTexture),
+        ],
+    );
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code: CODE,
             entry: "fill",
+            sets: &[buffers, textures, samplers],
             ..Default::default()
         })
         .unwrap();
     let (constants, _) = host::constants(&device, &[&64u32.to_le_bytes()]);
+    let values = host::set(
+        &device,
+        buffers,
+        &[
+            host::buffer(0, constants, 0, 4),
+            host::buffer(1, upload, at, 16),
+            host::buffer(2, data, 0, 64 * 4),
+        ],
+    );
+    let images = host::set(&device, textures, &[texture(0, source), texture(1, image)]);
     device.add_residency(
         set,
         &[data.into(), out.into(), constants.into(), image.into()],
@@ -199,12 +275,9 @@ pub fn main() {
         .unwrap();
     pass.discard_textures(&[discard(image, Stage::COMPUTE)]);
     pass.bind_compute_pipeline(fill);
-    pass.bind_uniform_buffer(1, upload, at, 16);
-    pass.bind_storage_buffer(0, data, 0, 64 * 4);
-    pass.bind_storage_texture(0, image);
-    pass.bind_texture(0, source);
-    pass.bind_sampler(0, sampler);
-    pass.bind_uniform_buffer(0, constants, 0, 4);
+    pass.bind_descriptor_set(values);
+    pass.bind_descriptor_set(images);
+    pass.bind_descriptor_set(nearest);
     pass.dispatch(1, 1, 1);
     pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_buffer(data, 0, out, 0, 64 * 4);
@@ -238,5 +311,5 @@ pub fn main() {
         let expect = (i * 60) as f32 / 255.0 * 0.5;
         assert!((r - expect).abs() < 1e-3, "image {i} red {r} not {expect}");
     }
-    println!("compute: storage and image slots wrote 64 values and 4 texels");
+    println!("compute: storage buffer and storage texture sets wrote 64 values and 4 texels");
 }

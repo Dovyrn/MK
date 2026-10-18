@@ -1,6 +1,6 @@
 use mk::{
-    Atomic64, BufferTextureCopy, BufferUsage, ComputePipelineInfo, Device, Format, Memory, Stage,
-    TextureDiscard, TextureInfo, TextureUsage, Timeline,
+    Atomic64, BufferTextureCopy, BufferUsage, ComputePipelineInfo, DescriptorType, DescriptorWrite,
+    Device, Format, Memory, Stage, TextureDiscard, TextureInfo, TextureUsage, Timeline,
 };
 
 #[path = "support/host.rs"]
@@ -10,7 +10,7 @@ pub fn main() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();
-    if !caps.compute || !caps.storage_slots {
+    if !caps.compute || !caps.storage_sets {
         println!("no compute or storage");
         return;
     }
@@ -55,11 +55,24 @@ pub fn main() {
         let low = (-1i64 << 40) as u64;
         entries.push(("counts", [0, low], [(-64i64 << 32) as u64, 0]));
     }
+    let layout = host::layout(
+        &device,
+        &[DescriptorType::StorageBuffer, DescriptorType::StorageBuffer],
+    );
+    let bound = host::set(
+        &device,
+        layout,
+        &[
+            host::buffer(0, buffer, 0, 16),
+            host::buffer(1, buffer, 0, 16),
+        ],
+    );
     for (value, (entry, start, want)) in (1..).zip(&entries) {
         let pipeline = device
             .create_compute_pipeline(&ComputePipelineInfo {
                 code: host::code!("atomics"),
                 entry,
+                sets: &[layout],
                 ..Default::default()
             })
             .unwrap();
@@ -71,8 +84,7 @@ pub fn main() {
             .begin_compute_pass(Stage::default(), Stage::default())
             .unwrap();
         pass.bind_compute_pipeline(pipeline);
-        pass.bind_storage_buffer(0, buffer, 0, 16);
-        pass.bind_storage_buffer(1, buffer, 0, 16);
+        pass.bind_descriptor_set(bound);
         pass.dispatch(1, 1, 1);
         pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
         pass.end();
@@ -128,10 +140,20 @@ fn textures(
     } else {
         (host::code!("texels"), "texels")
     };
+    let layout = host::layout(device, &[DescriptorType::StorageTexture]);
+    let bound = host::set(
+        device,
+        layout,
+        &[DescriptorWrite {
+            texture,
+            ..Default::default()
+        }],
+    );
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
             code,
             entry,
+            sets: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -158,7 +180,7 @@ fn textures(
     pass.copy_buffer_to_texture(&BufferTextureCopy { ..copy(zeros) });
     pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
-    pass.bind_storage_texture(0, texture);
+    pass.bind_descriptor_set(bound);
     pass.dispatch(1, 1, 1);
     pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
     pass.copy_texture_to_buffer(&BufferTextureCopy { ..copy(back) });

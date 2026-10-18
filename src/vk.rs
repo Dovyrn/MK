@@ -1,6 +1,7 @@
 mod bindings;
 mod bindless;
 mod buffer;
+mod descriptor_pool;
 mod device;
 mod extensions;
 mod pool;

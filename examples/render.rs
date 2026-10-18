@@ -69,9 +69,11 @@ pub fn main() {
         format: Format::Rgba8Unorm,
         ..Default::default()
     }];
+    let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
             code: host::code!("triangle"),
+            sets: &[layout],
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
@@ -107,6 +109,8 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let (constants, stride) =
         host::constants(&device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
+    let [near, far] =
+        [0, stride].map(|at| host::set(&device, layout, &[host::buffer(0, constants, at, 4)]));
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -161,9 +165,9 @@ pub fn main() {
     pass.bind_render_pipeline(pipeline);
     pass.bind_vertex_buffer(0, vbuf, 0);
     pass.bind_index_buffer(ibuf, 0, IndexType::U16);
-    pass.bind_uniform_buffer(0, constants, 0, 4);
+    pass.bind_descriptor_set(near);
     pass.draw_indexed(3, 1, 0, 0, 0);
-    pass.bind_uniform_buffer(0, constants, stride, 4);
+    pass.bind_descriptor_set(far);
     pass.draw_indexed(3, 1, 0, 3, 0);
     pass.end();
     c.end().unwrap();

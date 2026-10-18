@@ -201,10 +201,12 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             ..Default::default()
         })
         .unwrap();
+    let layout = host::layout(device, &[mk::DescriptorType::UniformBuffer]);
     let encode = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("encode"),
             entry: "encode",
+            sets: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -221,6 +223,14 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
     };
     let blocks = [push(0), push(1)];
     let (constants, stride) = host::constants(device, &[&blocks[0], &blocks[1]]);
+    let size = blocks[0].len() as u64;
+    let bounds = [0, 1].map(|i| {
+        host::set(
+            device,
+            layout,
+            &[host::buffer(0, constants, i * stride, size)],
+        )
+    });
     device.add_residency(
         p.set,
         &[range.into(), constants.into(), list.into(), indexed.into()],
@@ -236,13 +246,13 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             continue;
         }
         ran += 1;
-        let at = count.unwrap_or(0) as u64 * stride;
+        let bound = bounds[count.unwrap_or(0) as usize];
         let encoded = |c: &mut CommandBuffer| {
             let mut pass = c
                 .begin_compute_pass(Stage::default(), Stage::default())
                 .unwrap();
             pass.bind_compute_pipeline(encode);
-            pass.bind_uniform_buffer(0, constants, at, blocks[0].len() as u64);
+            pass.bind_descriptor_set(bound);
             pass.dispatch(1, 1, 1);
             pass.end();
         };
@@ -266,6 +276,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             .create_compute_pipeline(&mk::ComputePipelineInfo {
                 code: host::code!("encode_pair"),
                 entry: "encode",
+                sets: &[layout],
                 ..Default::default()
             })
             .unwrap();
@@ -274,6 +285,11 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             bytes.extend(word.to_le_bytes());
         }
         let (constants, _) = host::constants(device, &[&bytes]);
+        let bound = host::set(
+            device,
+            layout,
+            &[host::buffer(0, constants, 0, bytes.len() as u64)],
+        );
         device.add_residency(p.set, &[constants.into(), pair.into()]);
         device.commit_residency(p.set);
         for gpu in [false, true].into_iter().filter(|&g| !g || counted) {
@@ -283,7 +299,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
                     .begin_compute_pass(Stage::default(), Stage::default())
                     .unwrap();
                 pass.bind_compute_pipeline(encode);
-                pass.bind_uniform_buffer(0, constants, 0, bytes.len() as u64);
+                pass.bind_descriptor_set(bound);
                 pass.dispatch(1, 1, 1);
                 pass.end();
             };

@@ -1,6 +1,6 @@
 #include "mk.slangh"
 
-RWStructuredBuffer<uint64_t> results : STORAGE(0);
+BUFFER(0) RWStructuredBuffer<uint64_t> results;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
@@ -18,7 +18,7 @@ void sums(uint i: SV_GroupIndex) {
     InterlockedOr(results[1], uint64_t(1) << (i % 64), before);
 }
 
-RWStructuredBuffer<int64_t> signed : STORAGE(1);
+BUFFER(1) RWStructuredBuffer<int64_t> signed;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

@@ -1,6 +1,6 @@
 #include "mk.slangh"
 
-RWTexture2D<uint> counts : IMAGE(0);
+TEXTURE(0) RWTexture2D<uint> counts;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

@@ -1,56 +1,35 @@
-use crate::register;
-use crate::slot;
+use crate::{DescriptorBinding, DescriptorType};
 use ash::vk;
 
-const KINDS: [(vk::DescriptorType, u32); 6] = [
-    (vk::DescriptorType::UNIFORM_BUFFER, slot::UNIFORMS),
-    (vk::DescriptorType::STORAGE_BUFFER, slot::STORAGES),
-    (vk::DescriptorType::STORAGE_IMAGE, slot::IMAGES),
-    (vk::DescriptorType::SAMPLED_IMAGE, slot::TEXTURES),
-    (vk::DescriptorType::SAMPLER, slot::SAMPLERS),
-    (vk::DescriptorType::INPUT_ATTACHMENT, slot::COLORS),
-];
-
-pub fn binding(kind: vk::DescriptorType, slot: u32) -> u32 {
+pub fn vk_type(kind: DescriptorType) -> vk::DescriptorType {
     match kind {
-        vk::DescriptorType::UNIFORM_BUFFER => register::UNIFORM + slot,
-        vk::DescriptorType::STORAGE_BUFFER => register::STORAGE + slot,
-        vk::DescriptorType::STORAGE_IMAGE => register::IMAGE + slot,
-        vk::DescriptorType::SAMPLED_IMAGE => register::IMAGE + slot::IMAGES + slot,
-        vk::DescriptorType::INPUT_ATTACHMENT => register::ATTACHMENT + slot,
-        _ => register::IMAGE + slot::IMAGES + slot::TEXTURES + slot,
+        DescriptorType::UniformBuffer => vk::DescriptorType::UNIFORM_BUFFER,
+        DescriptorType::StorageBuffer => vk::DescriptorType::STORAGE_BUFFER,
+        DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
+        DescriptorType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
+        DescriptorType::InputAttachment => vk::DescriptorType::INPUT_ATTACHMENT,
+        DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
     }
 }
 
-pub fn slot_layout(
+pub fn set_layout(
     device: &ash::Device,
-    push: bool,
+    bindings: &[DescriptorBinding],
 ) -> Result<vk::DescriptorSetLayout, vk::Result> {
-    let mut list = Vec::new();
-    if push {
-        for (kind, count) in KINDS {
-            for i in 0..count {
-                list.push(
-                    vk::DescriptorSetLayoutBinding::default()
-                        .binding(binding(kind, i))
-                        .descriptor_type(kind)
-                        .descriptor_count(1)
-                        .stage_flags(if kind == vk::DescriptorType::INPUT_ATTACHMENT {
-                            vk::ShaderStageFlags::FRAGMENT
-                        } else {
-                            vk::ShaderStageFlags::ALL
-                        }),
-                );
-            }
-        }
-    }
-    let flags = if push {
-        vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR
-    } else {
-        vk::DescriptorSetLayoutCreateFlags::empty()
-    };
-    let info = vk::DescriptorSetLayoutCreateInfo::default()
-        .flags(flags)
-        .bindings(&list);
+    let list: Vec<_> = bindings
+        .iter()
+        .map(|b| {
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(b.binding)
+                .descriptor_type(vk_type(b.kind))
+                .descriptor_count(b.count)
+                .stage_flags(if b.kind == DescriptorType::InputAttachment {
+                    vk::ShaderStageFlags::FRAGMENT
+                } else {
+                    vk::ShaderStageFlags::ALL
+                })
+        })
+        .collect();
+    let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&list);
     unsafe { device.create_descriptor_set_layout(&info, None) }
 }

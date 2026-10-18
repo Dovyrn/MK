@@ -4,9 +4,9 @@ struct Push {
     float value;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
-ATTACHMENT(0) SubpassInput<float4> value;
+INPUT(0) TEXTURE(0) SubpassInput<float4> value;
 
 struct Targets {
     float4 value : SV_Target0;

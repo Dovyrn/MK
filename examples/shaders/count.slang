@@ -5,9 +5,9 @@ struct Push {
     uint value;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
-RWStructuredBuffer<uint> data : STORAGE(0);
+BUFFER(1) RWStructuredBuffer<uint> data;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

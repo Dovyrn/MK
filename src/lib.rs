@@ -36,6 +36,7 @@ mod caps;
 mod check;
 mod chunks;
 mod command;
+mod descriptors;
 #[cfg(any(feature = "vk", feature = "mtl"))]
 mod device_info;
 mod entries;

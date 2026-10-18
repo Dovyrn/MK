@@ -21,5 +21,8 @@ pub struct Resources {
     pub timelines: Slots<Rc<RefCell<Fences>>>,
     pub pools: Slots<()>,
     pub sets: Slots<()>,
+    pub layouts: Slots<Vec<crate::DescriptorBinding>>,
+    pub descriptor_pools: Slots<crate::gl::descriptor_pool::DescriptorPoolObject>,
+    pub descriptor_sets: Slots<crate::gl::descriptor_set::DescriptorSetObject>,
     pub table: crate::table::Table,
 }

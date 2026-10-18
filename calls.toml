@@ -155,6 +155,47 @@ result = "u64"
 shared = true
 
 [[call]]
+name = "create_descriptor_layout"
+params = [["bindings", "[DescriptorBinding]"]]
+result = "DescriptorLayout"
+fails = true
+shared = true
+
+[[call]]
+name = "destroy_descriptor_layout"
+params = [["layout", "DescriptorLayout"]]
+shared = true
+
+[[call]]
+name = "create_descriptor_pool"
+params = [["layout", "DescriptorLayout"], ["count", "u32"]]
+result = "DescriptorPool"
+fails = true
+shared = true
+
+[[call]]
+name = "destroy_descriptor_pool"
+params = [["pool", "DescriptorPool"]]
+shared = true
+
+[[call]]
+name = "reset_descriptor_pool"
+params = [["pool", "DescriptorPool"]]
+shared = true
+
+[[call]]
+name = "create_descriptor_set"
+params = [["pool", "DescriptorPool"]]
+result = "DescriptorSet"
+fails = true
+shared = true
+
+[[call]]
+name = "write_descriptor_set"
+params = [["set", "DescriptorSet"], ["writes", "[DescriptorWrite]"]]
+shared = true
+
+[[call]]
 name = "create_sampler"
 params = [["info", "SamplerInfo"]]
 result = "Sampler"

@@ -6,7 +6,7 @@ struct Push {
     uint value;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

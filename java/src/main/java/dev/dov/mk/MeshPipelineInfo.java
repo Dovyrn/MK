@@ -25,6 +25,7 @@ public class MeshPipelineInfo {
     public boolean clamp = false;
     public boolean ordered = false;
     public boolean indirect = false;
+    public DescriptorLayout[] sets = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
@@ -32,7 +33,11 @@ public class MeshPipelineInfo {
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + label.getBytes(StandardCharsets.UTF_8).length;
+        var setsSize = 4;
+        for (var x : sets) {
+            setsSize += 8;
+        }
+        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -94,6 +99,12 @@ public class MeshPipelineInfo {
         p += 4;
         memPutInt(p, indirect ? 1 : 0);
         p += 4;
+        memPutInt(p, sets.length);
+        p += 4;
+        for (var x : sets) {
+            memPutLong(p, DescriptorLayout.raw(x));
+            p += 8;
+        }
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);
         memByteBuffer(p + 4, labelBytes.length).put(labelBytes);

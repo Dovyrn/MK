@@ -4,17 +4,17 @@ struct Push {
     uint count;
 };
 
-Uniform<Push> push : UNIFORM(0);
+BUFFER(0) Uniform<Push> push;
 
 struct Params {
     float4 tint;
 };
 
-Uniform<Params> params : UNIFORM(1);
-RWStructuredBuffer<uint> data : STORAGE(0);
-RWTexture2D<float4> image : IMAGE(0);
-Texture2D<float4> source : TEXTURE(0);
-SamplerState nearest : SAMPLER(0);
+BUFFER(1) Uniform<Params> params;
+BUFFER(2) RWStructuredBuffer<uint> data;
+TEXTURE(1) RWTexture2D<float4> image;
+TEXTURE(0) Texture2D<float4> source;
+SAMPLER(0) SamplerState nearest;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

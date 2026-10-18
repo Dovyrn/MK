@@ -1,7 +1,7 @@
 use mk::{
-    BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory, QueryKind,
-    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
-    VertexAttribute, VertexBufferLayout, Viewport,
+    BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, DescriptorType, Format, Memory,
+    QueryKind, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo,
+    TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
 };
 
 #[path = "support/host.rs"]
@@ -33,10 +33,16 @@ pub fn main() {
     let data = device
         .create_buffer(1 << 20, Memory::Device, BufferUsage::STORAGE, "")
         .unwrap();
+    let both = host::layout(
+        &device,
+        &[DescriptorType::UniformBuffer, DescriptorType::StorageBuffer],
+    );
+    let layout = host::layout(&device, &[DescriptorType::UniformBuffer]);
     let fill = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
             code: host::code!("count"),
             entry: "fill",
+            sets: &[both],
             ..Default::default()
         })
         .unwrap();
@@ -56,6 +62,7 @@ pub fn main() {
     let triangle = device
         .create_render_pipeline(&RenderPipelineInfo {
             code: host::code!("triangle"),
+            sets: &[layout],
             vertex: "vert",
             fragment: "frag",
             colors: &colors,
@@ -103,6 +110,15 @@ pub fn main() {
         .create_depth_state(&DepthStateInfo::default())
         .unwrap();
     let (constants, stride) = host::constants(&device, &[&push, &0.5f32.to_le_bytes()]);
+    let counted = host::set(
+        &device,
+        both,
+        &[
+            host::buffer(0, constants, 0, push.len() as u64),
+            host::buffer(1, data, 0, count as u64 * 4),
+        ],
+    );
+    let shade = host::set(&device, layout, &[host::buffer(0, constants, stride, 4)]);
     let set = device.create_residency_set().unwrap();
     let queries: Vec<_> = times.into_iter().chain([samples]).collect();
     let mut list: Vec<mk::Resource> = vec![
@@ -128,8 +144,7 @@ pub fn main() {
         pass.write_timestamp(times, 0, Stage::COMPUTE);
     }
     pass.bind_compute_pipeline(fill);
-    pass.bind_storage_buffer(0, data, 0, count as u64 * 4);
-    pass.bind_uniform_buffer(0, constants, 0, push.len() as u64);
+    pass.bind_descriptor_set(counted);
     pass.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
         pass.write_timestamp(times, 1, Stage::COMPUTE);
@@ -167,7 +182,7 @@ pub fn main() {
     }]);
     pass.bind_render_pipeline(triangle);
     pass.bind_vertex_buffer(0, vbuf, 0);
-    pass.bind_uniform_buffer(0, constants, stride, 4);
+    pass.bind_descriptor_set(shade);
     pass.begin_occlusion_query(samples, 0);
     pass.draw(3, 1, 0, 0);
     pass.end_occlusion_query(samples, 0);
