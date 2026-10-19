@@ -156,6 +156,11 @@ scope = "compute render"
 fields = [["set", "DescriptorSet"]]
 
 [[command]]
+name = "bind_descriptor_set_dynamic"
+scope = "compute render"
+fields = [["set", "DescriptorSet"], ["offsets", "[u32]"]]
+
+[[command]]
 name = "bind_vertex_buffer"
 scope = "render"
 fields = [["slot", "u32"], ["buffer", "Buffer"], ["offset", "u64"]]

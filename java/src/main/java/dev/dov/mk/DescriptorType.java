@@ -9,7 +9,9 @@ public enum DescriptorType {
     TEXTURE(2),
     STORAGE_TEXTURE(3),
     INPUT_ATTACHMENT(4),
-    SAMPLER(5);
+    SAMPLER(5),
+    UNIFORM_BUFFER_DYNAMIC(6),
+    STORAGE_BUFFER_DYNAMIC(7);
 
     final int value;
 
@@ -21,6 +23,8 @@ public enum DescriptorType {
             case 3 -> STORAGE_TEXTURE;
             case 4 -> INPUT_ATTACHMENT;
             case 5 -> SAMPLER;
+            case 6 -> UNIFORM_BUFFER_DYNAMIC;
+            case 7 -> STORAGE_BUFFER_DYNAMIC;
             default -> throw new IllegalArgumentException(v + " is no DescriptorType");
         };
     }

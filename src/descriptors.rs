@@ -10,18 +10,37 @@ pub struct LayoutEntry {
     pub id: u32,
     pub set: u32,
     pub bindings: Vec<DescriptorBinding>,
+    pub dynamic: Vec<(u32, u32)>,
     pub pools: AtomicU32,
 }
 
 pub struct SetEntry {
     pub layout: DescriptorLayout,
-    pub resources: Mutex<Vec<(u32, u32, Resource)>>,
+    pub resources: Mutex<Vec<(u32, u32, Resource, u64)>>,
     pub bound: AtomicU32,
+}
+
+pub fn dynamic(kind: DescriptorType) -> bool {
+    matches!(
+        kind,
+        DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+    )
+}
+
+pub fn dynamic_slots(bindings: &[DescriptorBinding]) -> Vec<(u32, u32)> {
+    let mut list: Vec<_> = bindings.iter().filter(|b| dynamic(b.kind)).collect();
+    list.sort_by_key(|b| b.binding);
+    list.iter()
+        .flat_map(|b| (0..b.count).map(move |e| (b.binding, e)))
+        .collect()
 }
 
 pub fn set_of(kind: DescriptorType) -> u32 {
     match kind {
-        DescriptorType::UniformBuffer | DescriptorType::StorageBuffer => sets::BUFFERS,
+        DescriptorType::UniformBuffer
+        | DescriptorType::StorageBuffer
+        | DescriptorType::UniformBufferDynamic
+        | DescriptorType::StorageBufferDynamic => sets::BUFFERS,
         DescriptorType::Sampler => sets::SAMPLERS,
         _ => sets::TEXTURES,
     }
@@ -29,8 +48,12 @@ pub fn set_of(kind: DescriptorType) -> u32 {
 
 fn limit(caps: &Caps, kind: DescriptorType) -> (u32, &'static str) {
     match kind {
-        DescriptorType::UniformBuffer => (caps.set_uniforms, "set_uniforms"),
-        DescriptorType::StorageBuffer => (caps.set_storages, "set_storages"),
+        DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
+            (caps.set_uniforms, "set_uniforms")
+        }
+        DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
+            (caps.set_storages, "set_storages")
+        }
         DescriptorType::Texture => (caps.set_textures, "set_textures"),
         DescriptorType::StorageTexture => (caps.set_images, "set_images"),
         DescriptorType::InputAttachment => (caps.set_inputs, "set_inputs"),
@@ -69,7 +92,9 @@ pub fn check_layout(caps: &Caps, bindings: &[DescriptorBinding]) -> Result<u32, 
         }
         let storage = matches!(
             b.kind,
-            DescriptorType::StorageBuffer | DescriptorType::StorageTexture
+            DescriptorType::StorageBuffer
+                | DescriptorType::StorageBufferDynamic
+                | DescriptorType::StorageTexture
         );
         if storage && !caps.storage_sets {
             return Err(Error::Unsupported(format!(
@@ -82,6 +107,29 @@ pub fn check_layout(caps: &Caps, bindings: &[DescriptorBinding]) -> Result<u32, 
             return Err(Error::Unsupported(format!(
                 "{name} binding {} count {} reaches {end}, over caps.{cap} {max}",
                 b.binding, b.count
+            )));
+        }
+    }
+    for (kind, max, cap) in [
+        (
+            DescriptorType::UniformBufferDynamic,
+            caps.set_dynamic_uniforms,
+            "set_dynamic_uniforms",
+        ),
+        (
+            DescriptorType::StorageBufferDynamic,
+            caps.set_dynamic_storages,
+            "set_dynamic_storages",
+        ),
+    ] {
+        let count: u32 = bindings
+            .iter()
+            .filter(|b| b.kind == kind)
+            .map(|b| b.count)
+            .sum();
+        if count > max {
+            return Err(Error::Unsupported(format!(
+                "{name} has {count} {kind:?} descriptors, over caps.{cap} {max}"
             )));
         }
     }
@@ -110,6 +158,7 @@ impl Table {
             LayoutEntry {
                 id,
                 set,
+                dynamic: dynamic_slots(&key.1),
                 bindings: key.1,
                 pools: AtomicU32::new(0),
             },
@@ -237,15 +286,27 @@ impl Table {
                 w.binding,
                 b.count
             );
-            let resource = match b.kind {
-                DescriptorType::UniformBuffer | DescriptorType::StorageBuffer => {
-                    let uniform = b.kind == DescriptorType::UniformBuffer;
+            let (resource, end) = match b.kind {
+                DescriptorType::UniformBuffer
+                | DescriptorType::StorageBuffer
+                | DescriptorType::UniformBufferDynamic
+                | DescriptorType::StorageBufferDynamic => {
+                    let uniform = matches!(
+                        b.kind,
+                        DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic
+                    );
                     let (needs, what, max) = if uniform {
                         (BufferUsage::UNIFORM, "UNIFORM", caps.max_uniform)
                     } else {
                         (BufferUsage::STORAGE, "STORAGE", caps.max_storage)
                     };
                     self.assert_usage(name, w.buffer, needs, what);
+                    check!(
+                        !dynamic(b.kind) || w.size != !0,
+                        "{name} binding {} is {:?}, which needs an explicit size since its offset moves at bind",
+                        w.binding,
+                        b.kind
+                    );
                     let total = *self.buffers.get(w.buffer);
                     let end = if w.size == !0 {
                         total
@@ -270,7 +331,7 @@ impl Table {
                         end - w.offset,
                         w.buffer
                     );
-                    Resource::from(w.buffer)
+                    (Resource::from(w.buffer), end)
                 }
                 DescriptorType::Sampler => {
                     self.samplers.get(w.sampler);
@@ -288,11 +349,11 @@ impl Table {
                         "{name} needs {} created with TextureUsage::{what}",
                         w.texture
                     );
-                    Resource::from(w.texture)
+                    (Resource::from(w.texture), 0)
                 }
             };
             resources.retain(|r| (r.0, r.1) != (w.binding, w.element));
-            resources.push((w.binding, w.element, resource));
+            resources.push((w.binding, w.element, resource, end));
         }
     }
 }

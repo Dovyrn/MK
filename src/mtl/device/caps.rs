@@ -66,6 +66,8 @@ impl Device {
             storage_sets: true,
             set_uniforms: 31,
             set_storages: 31,
+            set_dynamic_uniforms: 31,
+            set_dynamic_storages: 31,
             set_textures: 128,
             set_images: 128,
             set_samplers: 16,

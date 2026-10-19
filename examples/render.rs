@@ -69,7 +69,7 @@ pub fn main() {
         format: Format::Rgba8Unorm,
         ..Default::default()
     }];
-    let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
+    let layout = host::layout(&device, &[mk::DescriptorType::UniformBufferDynamic]);
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
             code: host::code!("triangle"),
@@ -109,8 +109,7 @@ pub fn main() {
     let timeline = device.create_timeline().unwrap();
     let (constants, stride) =
         host::constants(&device, &[&0.5f32.to_le_bytes(), &0.7f32.to_le_bytes()]);
-    let [near, far] =
-        [0, stride].map(|at| host::set(&device, layout, &[host::buffer(0, constants, at, 4)]));
+    let depths = host::set(&device, layout, &[host::buffer(0, constants, 0, 4)]);
     let set = device.create_residency_set().unwrap();
     device.add_residency(
         set,
@@ -165,10 +164,10 @@ pub fn main() {
     pass.bind_render_pipeline(pipeline);
     pass.bind_vertex_buffer(0, vbuf, 0);
     pass.bind_index_buffer(ibuf, 0, IndexType::U16);
-    pass.bind_descriptor_set(near);
-    pass.draw_indexed(3, 1, 0, 0, 0);
-    pass.bind_descriptor_set(far);
+    pass.bind_descriptor_set_dynamic(depths, &[stride as u32]);
     pass.draw_indexed(3, 1, 0, 3, 0);
+    pass.bind_descriptor_set_dynamic(depths, &[0]);
+    pass.draw_indexed(3, 1, 0, 0, 0);
     pass.end();
     c.end().unwrap();
     let mut copy = device.begin_commands(pool).unwrap();
@@ -194,5 +193,7 @@ pub fn main() {
     assert_eq!(at(20, 44), red, "lower left of the triangle");
     assert_eq!(at(20, 20), green, "upper left, outside the triangle");
     assert_eq!(at(0, 0), green, "corner");
-    println!("triangle depth-tested over the background, read back by a second command buffer");
+    println!(
+        "triangle depth-tested over the background, both depths picked by dynamic offsets into one set"
+    );
 }

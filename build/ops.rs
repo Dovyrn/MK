@@ -43,6 +43,7 @@ pub fn rust_type(kind: &str) -> String {
         "str" => "&'a str".into(),
         "f32x4" => "[f32; 4]".into(),
         k => match list(k) {
+            Some(item) if crate::infos::scalar(item) => format!("&'a [{item}]"),
             Some(item) => format!("&'a [crate::{item}]"),
             None if k.chars().next().unwrap().is_uppercase() => format!("crate::{k}"),
             None => k.into(),
@@ -128,6 +129,7 @@ pub fn exposed(op: &Op, class: &str) -> bool {
 
 fn param(f: &Field) -> String {
     match list(&f.kind) {
+        Some(item) if crate::infos::scalar(item) => format!("{}: &[{item}]", f.name),
         Some(item) => format!("{}: &[crate::{item}]", f.name),
         None => format!("{}: {}", f.name, rust_type(&f.kind).replace("'a ", "")),
     }
@@ -243,9 +245,12 @@ fn rust_value(f: &Field) -> String {
         k if crate::word(k) => format!("crate::{k}::of({n} as u32)"),
         k => {
             let item = list(k).unwrap();
-            format!(
-                "&crate::wire::list(&mut crate::java::bytes({n}, {n}_length as i64), crate::{item}::read)"
-            )
+            let read = if crate::infos::scalar(item) {
+                format!("crate::wire::{item}")
+            } else {
+                format!("crate::{item}::read")
+            };
+            format!("&crate::wire::list(&mut crate::java::bytes({n}, {n}_length as i64), {read})")
         }
     }
 }
@@ -331,6 +336,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
                         "bool" => "boolean".into(),
                         "str" => "String".into(),
                         k if crate::handle(k) => k.into(),
+                        "[u32]" => "int[]".into(),
                         k => format!("{}[]", list(k).unwrap()),
                     };
                     format!("{t} {}", crate::camel(&f.name))

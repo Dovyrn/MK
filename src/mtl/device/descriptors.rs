@@ -1,5 +1,5 @@
 use super::{Device, id};
-use crate::descriptors::{check_layout, set_of};
+use crate::descriptors::{check_layout, dynamic_slots, set_of};
 use crate::mtl::descriptor_pool::DescriptorPoolObject;
 use crate::mtl::descriptor_set::DescriptorSetObject;
 use crate::table::lock;
@@ -32,9 +32,15 @@ impl Device {
         count: u32,
     ) -> Result<DescriptorPool, Error> {
         let bindings = self.res.layouts.get(layout).clone();
+        let size = bindings.iter().map(|b| b.binding + b.count).max();
+        let mut offsets = vec![None; size.unwrap_or(0) as usize];
+        for (i, (binding, element)) in dynamic_slots(&bindings).into_iter().enumerate() {
+            offsets[(binding + element) as usize] = Some(i);
+        }
         let id = self.res.descriptor_pools.insert(DescriptorPoolObject {
             set: set_of(bindings[0].kind),
             bindings,
+            offsets,
             count,
             sets: Mutex::new(Vec::new()),
         });

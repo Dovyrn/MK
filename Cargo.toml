@@ -23,6 +23,7 @@ mtl = [
 ]
 gl = ["dep:glow"]
 jni = ["dep:jni"]
+sdl = ["dep:sdl3-sys"]
 
 [dependencies]
 ash = { version = "0.38", optional = true }
@@ -42,9 +43,11 @@ objc2-core-graphics = { version = "0.3", optional = true, features = ["CGColorSp
 dispatch2 = { version = "0.3", optional = true }
 glow = { version = "0.17", optional = true }
 jni = { version = "0.21", optional = true }
+sdl3-sys = { version = "0.7", optional = true }
 
 [dev-dependencies]
 khronos-egl = { version = "6", features = ["dynamic"] }
+png = "0.17"
 
 [target.'cfg(windows)'.dev-dependencies]
 windows = { version = "0.61", features = [
@@ -62,6 +65,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[[example]]
+name = "model"
+required-features = ["sdl"]
 
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }

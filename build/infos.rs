@@ -9,7 +9,7 @@ pub struct Info {
     pub fields: Vec<Field>,
 }
 
-fn scalar(kind: &str) -> bool {
+pub fn scalar(kind: &str) -> bool {
     matches!(kind, "u32" | "u64" | "f32" | "bool" | "f32x4" | "u32x3")
 }
 

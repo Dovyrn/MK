@@ -1,11 +1,11 @@
 use super::Device;
-use crate::descriptors::check_layout;
+use crate::descriptors::{check_layout, set_of};
 use crate::table::lock;
 use crate::vk::bindings::{set_layout, vk_type};
 use crate::vk::descriptor_pool::DescriptorPoolObject;
 use crate::{
     DescriptorBinding, DescriptorLayout, DescriptorPool, DescriptorSet, DescriptorType,
-    DescriptorWrite, Error,
+    DescriptorWrite, Error, sets,
 };
 use ash::vk;
 use std::sync::Mutex;
@@ -120,7 +120,7 @@ impl Device {
                 .kind;
             kinds.push(kind);
             match kind {
-                DescriptorType::UniformBuffer | DescriptorType::StorageBuffer => {
+                kind if set_of(kind) == sets::BUFFERS => {
                     let size = if w.size == !0 { vk::WHOLE_SIZE } else { w.size };
                     buffers.push(
                         vk::DescriptorBufferInfo::default()
@@ -153,10 +153,7 @@ impl Device {
                     .dst_binding(w.binding)
                     .dst_array_element(w.element)
                     .descriptor_type(vk_type(kind));
-                if matches!(
-                    kind,
-                    DescriptorType::UniformBuffer | DescriptorType::StorageBuffer
-                ) {
+                if set_of(kind) == sets::BUFFERS {
                     b += 1;
                     write.buffer_info(std::slice::from_ref(&buffers[b - 1]))
                 } else {

@@ -423,6 +423,46 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn bind_set(&mut self, set: crate::DescriptorSet, offsets: &[u32]) {
+        let (gl, res) = (self.gl, self.res);
+        let s = res.descriptor_sets.get(set);
+        let moves = &res.descriptor_pools.get(s.pool).offsets;
+        let entries = s.entries.borrow();
+        for (i, e) in entries.iter().enumerate() {
+            let Some((kind, w)) = *e else {
+                continue;
+            };
+            let offset = w.offset + moves[i].map_or(0, |k| offsets[k] as u64);
+            let i = i as u32;
+            match kind {
+                DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
+                    self.bind_range(glow::UNIFORM_BUFFER, i, w.buffer, offset, w.size)
+                }
+                DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
+                    self.bind_range(glow::SHADER_STORAGE_BUFFER, i, w.buffer, offset, w.size)
+                }
+                DescriptorType::StorageTexture => {
+                    let t = res.textures.get(w.texture);
+                    let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
+                    unsafe {
+                        gl.bind_image_texture(
+                            i,
+                            t.raw,
+                            0,
+                            layered,
+                            0,
+                            glow::READ_WRITE,
+                            t.format.gl()[0],
+                        )
+                    };
+                }
+                DescriptorType::Texture => self.textures[i as usize] = Some(w.texture),
+                DescriptorType::Sampler => self.samplers[i as usize] = Some(w.sampler),
+                DescriptorType::InputAttachment => {}
+            }
+        }
+    }
+
     fn apply(&mut self, command: Command) -> Result<(), Error> {
         let gl = self.gl;
         let res = self.res;
@@ -819,44 +859,8 @@ impl<'a> Recorder<'a> {
                     self.apply_scissors();
                 }
                 Command::UseResidencySet { .. } => {}
-                Command::BindDescriptorSet { set } => {
-                    let entries = res.descriptor_sets.get(set).entries.borrow();
-                    for (i, e) in entries.iter().enumerate() {
-                        let Some((kind, w)) = *e else {
-                            continue;
-                        };
-                        let i = i as u32;
-                        match kind {
-                            DescriptorType::UniformBuffer => {
-                                self.bind_range(glow::UNIFORM_BUFFER, i, w.buffer, w.offset, w.size)
-                            }
-                            DescriptorType::StorageBuffer => self.bind_range(
-                                glow::SHADER_STORAGE_BUFFER,
-                                i,
-                                w.buffer,
-                                w.offset,
-                                w.size,
-                            ),
-                            DescriptorType::StorageTexture => {
-                                let t = res.textures.get(w.texture);
-                                let layered =
-                                    !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
-                                gl.bind_image_texture(
-                                    i,
-                                    t.raw,
-                                    0,
-                                    layered,
-                                    0,
-                                    glow::READ_WRITE,
-                                    t.format.gl()[0],
-                                );
-                            }
-                            DescriptorType::Texture => self.textures[i as usize] = Some(w.texture),
-                            DescriptorType::Sampler => self.samplers[i as usize] = Some(w.sampler),
-                            DescriptorType::InputAttachment => {}
-                        }
-                    }
-                }
+                Command::BindDescriptorSet { set } => self.bind_set(set, &[]),
+                Command::BindDescriptorSetDynamic { set, offsets } => self.bind_set(set, offsets),
             }
         }
         Ok(())

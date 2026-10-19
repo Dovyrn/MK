@@ -32,6 +32,8 @@ public class Caps {
     public boolean storageSets = false;
     public int setUniforms = 0;
     public int setStorages = 0;
+    public int setDynamicUniforms = 0;
+    public int setDynamicStorages = 0;
     public int setTextures = 0;
     public int setImages = 0;
     public int setSamplers = 0;
@@ -73,10 +75,10 @@ public class Caps {
     public boolean orderedReads = false;
     public boolean tiles = false;
 
-    public static final int SIZE = 268;
+    public static final int SIZE = 276;
 
     int encodedSize() {
-        return 268;
+        return 276;
     }
 
     long encode(long p) {
@@ -127,6 +129,10 @@ public class Caps {
         memPutInt(p, setUniforms);
         p += 4;
         memPutInt(p, setStorages);
+        p += 4;
+        memPutInt(p, setDynamicUniforms);
+        p += 4;
+        memPutInt(p, setDynamicStorages);
         p += 4;
         memPutInt(p, setTextures);
         p += 4;
@@ -260,6 +266,10 @@ public class Caps {
         r.setUniforms = memGetInt(p);
         p += 4;
         r.setStorages = memGetInt(p);
+        p += 4;
+        r.setDynamicUniforms = memGetInt(p);
+        p += 4;
+        r.setDynamicStorages = memGetInt(p);
         p += 4;
         r.setTextures = memGetInt(p);
         p += 4;

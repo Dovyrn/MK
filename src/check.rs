@@ -364,6 +364,86 @@ impl<'a> Check<'a> {
         }
     }
 
+    fn bind_set(&mut self, name: &str, set: DescriptorSet, offsets: Option<&[u32]>) {
+        check!(
+            self.compute || self.render || self.tile.is_some(),
+            "{name} needs a pipeline bound earlier in this pass"
+        );
+        let e = self.table.sets.get(set);
+        let layout = self.table.layouts.get(e.layout);
+        let k = (layout.set - sets::BUFFERS) as usize;
+        if self.compute || self.render {
+            check_eq!(
+                self.layouts[k],
+                layout.id,
+                "{name} {set} has a different layout than set {} of the bound pipeline",
+                layout.set
+            );
+        }
+        let offsets = match offsets {
+            Some(list) => {
+                check!(
+                    !layout.dynamic.is_empty(),
+                    "{name} on {set}, which has no dynamic descriptors; use bind_descriptor_set"
+                );
+                list
+            }
+            None => {
+                check!(
+                    layout.dynamic.is_empty(),
+                    "{name} on {set}, which has dynamic descriptors; use bind_descriptor_set_dynamic with their offsets"
+                );
+                &[]
+            }
+        };
+        check_eq!(
+            offsets.len(),
+            layout.dynamic.len(),
+            "{name} got {} offsets for {} dynamic descriptors in {set}; pass one per dynamic descriptor, by binding then element",
+            offsets.len(),
+            layout.dynamic.len()
+        );
+        let alignment = self.caps.bind_alignment.max(1);
+        let resources = lock(&e.resources);
+        for (&offset, &(binding, element)) in offsets.iter().zip(&layout.dynamic) {
+            check!(
+                offset.is_multiple_of(alignment),
+                "{name} offset {offset} for binding {binding} is not a multiple of caps.bind_alignment {alignment}"
+            );
+            let found = resources.iter().find(|r| (r.0, r.1) == (binding, element));
+            check!(
+                found.is_some(),
+                "{name} {set} binding {binding} element {element} was never written"
+            );
+            let &(_, _, r, end) = found.unwrap();
+            let buffer = Buffer::from_raw(r.handle);
+            let total = *self.table.buffers.get(buffer);
+            let moved = end + offset as u64;
+            check!(
+                moved <= total,
+                "{name} offset {offset} moves binding {binding} to end at byte {moved} of {buffer}, which has {total}"
+            );
+        }
+        for &(_, _, r, _) in resources.iter() {
+            match r.kind {
+                ResourceKind::Buffer => {
+                    let b = Buffer::from_raw(r.handle);
+                    self.assert_resident(name, &b, lock(&self.table.residency).buffer(b));
+                }
+                _ => {
+                    let t = Texture::from_raw(r.handle);
+                    let root = self.table.root(t);
+                    self.assert_resident(name, &t, lock(&self.table.residency).texture(root));
+                }
+            }
+        }
+        self.sets[k] = Some((set, self.layouts));
+        if !self.held.contains(&set) {
+            e.bound.fetch_add(1, Ordering::Relaxed);
+            self.held.push(set);
+        }
+    }
+
     fn check_draw(&self, c: &Command, indexed: bool) {
         check!(
             self.render,
@@ -1051,44 +1131,9 @@ impl<'a> Check<'a> {
                 lock(&self.table.residency).assert_set(set);
                 self.resident = true;
             }
-            Command::BindDescriptorSet { set } => {
-                check!(
-                    self.compute || self.render || self.tile.is_some(),
-                    "bind_descriptor_set needs a pipeline bound earlier in this pass"
-                );
-                let e = self.table.sets.get(set);
-                let layout = self.table.layouts.get(e.layout);
-                let k = (layout.set - sets::BUFFERS) as usize;
-                if self.compute || self.render {
-                    check_eq!(
-                        self.layouts[k],
-                        layout.id,
-                        "bind_descriptor_set {set} has a different layout than set {} of the bound pipeline",
-                        layout.set
-                    );
-                }
-                for &(_, _, r) in lock(&e.resources).iter() {
-                    match r.kind {
-                        ResourceKind::Buffer => {
-                            let b = Buffer::from_raw(r.handle);
-                            self.assert_resident(name, &b, lock(&self.table.residency).buffer(b));
-                        }
-                        _ => {
-                            let t = Texture::from_raw(r.handle);
-                            let root = self.table.root(t);
-                            self.assert_resident(
-                                name,
-                                &t,
-                                lock(&self.table.residency).texture(root),
-                            );
-                        }
-                    }
-                }
-                self.sets[k] = Some((set, self.layouts));
-                if !self.held.contains(&set) {
-                    e.bound.fetch_add(1, Ordering::Relaxed);
-                    self.held.push(set);
-                }
+            Command::BindDescriptorSet { set } => self.bind_set(name, set, None),
+            Command::BindDescriptorSetDynamic { set, offsets } => {
+                self.bind_set(name, set, Some(offsets))
             }
             Command::BindVertexBuffer {
                 slot: i,

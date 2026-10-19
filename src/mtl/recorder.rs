@@ -281,6 +281,27 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn bind_set(&self, set: crate::DescriptorSet, offsets: &[u32]) {
+        let s = self.res.descriptor_sets.get(set);
+        let moves = &self.res.descriptor_pools.get(s.pool).offsets;
+        for (i, v) in s.values.iter().enumerate() {
+            let mut v = v.load(Ordering::Relaxed);
+            if v == 0 {
+                continue;
+            }
+            if let Some(k) = moves[i] {
+                v += offsets[k] as u64;
+            }
+            unsafe {
+                match s.set {
+                    sets::BUFFERS => self.table.setAddress_atIndex(v, i),
+                    sets::SAMPLERS => self.table.setSamplerState_atIndex(resource(v), i),
+                    _ => self.table.setTexture_atIndex(resource(v), i),
+                }
+            }
+        }
+    }
+
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
         match command {
             Command::BeginComputePass {
@@ -585,22 +606,8 @@ impl<'a> Recorder<'a> {
                 let raw = self.res.sets.get(set);
                 self.command_buffer().useResidencySet(raw);
             }
-            Command::BindDescriptorSet { set } => {
-                let s = self.res.descriptor_sets.get(set);
-                for (i, v) in s.values.iter().enumerate() {
-                    let v = v.load(Ordering::Relaxed);
-                    if v == 0 {
-                        continue;
-                    }
-                    unsafe {
-                        match s.set {
-                            sets::BUFFERS => self.table.setAddress_atIndex(v, i),
-                            sets::SAMPLERS => self.table.setSamplerState_atIndex(resource(v), i),
-                            _ => self.table.setTexture_atIndex(resource(v), i),
-                        }
-                    }
-                }
-            }
+            Command::BindDescriptorSet { set } => self.bind_set(set, &[]),
+            Command::BindDescriptorSetDynamic { set, offsets } => self.bind_set(set, offsets),
             Command::BindVertexBuffer {
                 slot,
                 buffer,

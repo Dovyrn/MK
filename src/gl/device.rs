@@ -183,6 +183,12 @@ impl Device {
                 } else {
                     0
                 },
+                set_dynamic_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
+                set_dynamic_storages: if storage {
+                    int(glow::MAX_SHADER_STORAGE_BUFFER_BINDINGS) as u32
+                } else {
+                    0
+                },
                 set_textures: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
                 set_images: if storage {
                     int(glow::MAX_IMAGE_UNITS) as u32

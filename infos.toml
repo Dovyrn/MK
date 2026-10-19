@@ -227,6 +227,8 @@ fields = [
     ["storage_sets", "bool", "false"],
     ["set_uniforms", "u32", "0"],
     ["set_storages", "u32", "0"],
+    ["set_dynamic_uniforms", "u32", "0"],
+    ["set_dynamic_storages", "u32", "0"],
     ["set_textures", "u32", "0"],
     ["set_images", "u32", "0"],
     ["set_samplers", "u32", "0"],

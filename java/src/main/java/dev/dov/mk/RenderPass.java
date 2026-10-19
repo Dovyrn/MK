@@ -117,6 +117,26 @@ public class RenderPass {
 
     private static native void nBindDescriptorSet(long target, long set);
 
+    public void bindDescriptorSetDynamic(DescriptorSet set, int[] offsets) {
+        try (var arena = new Arena()) {
+            var offsetsSize = 4;
+            for (var x : offsets) {
+                offsetsSize += 4;
+            }
+            var list = arena.alloc(offsetsSize);
+            var at = list;
+            memPutInt(at, offsets.length);
+            at += 4;
+            for (var x : offsets) {
+                memPutInt(at, x);
+                at += 4;
+            }
+            nBindDescriptorSetDynamic(handle(), DescriptorSet.raw(set), list, offsetsSize);
+        }
+    }
+
+    private static native void nBindDescriptorSetDynamic(long target, long set, long offsets, int offsetsLength);
+
     public void bindVertexBuffer(int slot, Buffer buffer, long offset) {
         nBindVertexBuffer(handle(), slot, Buffer.raw(buffer), offset);
     }

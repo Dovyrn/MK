@@ -1,5 +1,5 @@
 use super::Device;
-use crate::descriptors::check_layout;
+use crate::descriptors::{check_layout, dynamic_slots};
 use crate::gl::descriptor_pool::DescriptorPoolObject;
 use crate::gl::descriptor_set::DescriptorSetObject;
 use crate::{
@@ -18,8 +18,8 @@ impl Device {
         let mut bounds = self.bounds.get();
         for b in bindings {
             let i = match b.kind {
-                DescriptorType::UniformBuffer => 0,
-                DescriptorType::StorageBuffer => 1,
+                DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => 0,
+                DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => 1,
                 DescriptorType::StorageTexture => 2,
                 _ => continue,
             };
@@ -43,8 +43,15 @@ impl Device {
         count: u32,
     ) -> Result<DescriptorPool, Error> {
         self.thread();
+        let bindings = self.res.layouts.get(layout).clone();
+        let size = bindings.iter().map(|b| b.binding + b.count).max();
+        let mut offsets = vec![None; size.unwrap_or(0) as usize];
+        for (i, (binding, element)) in dynamic_slots(&bindings).into_iter().enumerate() {
+            offsets[(binding + element) as usize] = Some(i);
+        }
         let id = self.res.descriptor_pools.insert(DescriptorPoolObject {
-            bindings: self.res.layouts.get(layout).clone(),
+            bindings,
+            offsets,
             count,
             sets: RefCell::new(Vec::new()),
         });

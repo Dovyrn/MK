@@ -148,6 +148,8 @@ pub(super) fn probe(
         set_storages: limits
             .max_per_stage_descriptor_storage_buffers
             .min(limits.max_descriptor_set_storage_buffers),
+        set_dynamic_uniforms: limits.max_descriptor_set_uniform_buffers_dynamic,
+        set_dynamic_storages: limits.max_descriptor_set_storage_buffers_dynamic,
         set_textures: limits
             .max_per_stage_descriptor_sampled_images
             .min(limits.max_descriptor_set_sampled_images),

@@ -9,6 +9,8 @@ pub fn vk_type(kind: DescriptorType) -> vk::DescriptorType {
         DescriptorType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
         DescriptorType::InputAttachment => vk::DescriptorType::INPUT_ATTACHMENT,
         DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+        DescriptorType::UniformBufferDynamic => vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+        DescriptorType::StorageBufferDynamic => vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
     }
 }
 

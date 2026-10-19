@@ -347,6 +347,21 @@ impl Recorder<'_> {
         unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
     }
 
+    fn bind_set(&self, set: crate::DescriptorSet, offsets: &[u32]) {
+        let (raw, pool) = *self.res.descriptor_sets.get(set);
+        let bindings = &self.res.descriptor_pools.get(pool).bindings;
+        unsafe {
+            self.device.cmd_bind_descriptor_sets(
+                self.buffer,
+                self.point,
+                self.pipeline,
+                set_of(bindings[0].kind),
+                &[raw],
+                offsets,
+            )
+        }
+    }
+
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
         let (d, b) = (self.device, self.buffer);
         unsafe {
@@ -672,18 +687,8 @@ impl Recorder<'_> {
                 }
                 Command::SetBlendColor { color } => d.cmd_set_blend_constants(b, &color),
                 Command::UseResidencySet { .. } => {}
-                Command::BindDescriptorSet { set } => {
-                    let (raw, pool) = *self.res.descriptor_sets.get(set);
-                    let bindings = &self.res.descriptor_pools.get(pool).bindings;
-                    d.cmd_bind_descriptor_sets(
-                        b,
-                        self.point,
-                        self.pipeline,
-                        set_of(bindings[0].kind),
-                        &[raw],
-                        &[],
-                    )
-                }
+                Command::BindDescriptorSet { set } => self.bind_set(set, &[]),
+                Command::BindDescriptorSetDynamic { set, offsets } => self.bind_set(set, offsets),
                 Command::BindVertexBuffer {
                     slot,
                     buffer,
