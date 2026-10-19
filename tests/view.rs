@@ -1,6 +1,7 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, RenderPassInfo, Scissor,
-    Stage, TextureDiscard, TextureInfo, TextureUsage, TextureViewInfo, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, PipelineStages,
+    RenderPassInfo, Scissor, TextureContentDiscard, TextureInfo, TextureUsage, TextureViewInfo,
+    Viewport,
 };
 
 use crate::host;
@@ -8,7 +9,7 @@ use crate::host;
 pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if !device.caps().texture_views {
+    if !device.capabilities().texture_views {
         println!("no texture views");
         return;
     }
@@ -42,10 +43,10 @@ pub fn test() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -71,7 +72,9 @@ pub fn test() {
         height: 4,
     }]);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
         mip: 1,
@@ -80,7 +83,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

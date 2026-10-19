@@ -65,7 +65,7 @@ impl Device {
         }
     }
 
-    pub fn create_descriptor_set(&self, pool: DescriptorPool) -> Result<DescriptorSet, Error> {
+    pub fn allocate_descriptor_set(&self, pool: DescriptorPool) -> Result<DescriptorSet, Error> {
         let p = self.res.descriptor_pools.get(pool);
         let mut sets = lock(&p.sets);
         if sets.len() as u32 == p.count {

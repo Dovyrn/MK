@@ -1,6 +1,7 @@
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, MeshPipelineInfo,
-    RenderPassInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    PipelineStages, RenderPassInfo, Scissor, TextureContentDiscard, TextureInfo, TextureUsage,
+    Viewport,
 };
 
 use crate::host;
@@ -42,7 +43,7 @@ pub fn test() {
     }) {
         Ok(p) => p,
         Err(e) => {
-            assert!(!device.caps().mesh, "{e}");
+            assert!(!device.capabilities().mesh, "{e}");
             println!("no mesh shaders: {e}");
             return;
         }
@@ -58,7 +59,7 @@ pub fn test() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let listed = device.caps().mesh_indirect;
+    let listed = device.capabilities().mesh_indirect;
     let groups = device
         .create_buffer(12, Memory::Upload, BufferUsage::INDIRECT, "")
         .unwrap();
@@ -78,10 +79,10 @@ pub fn test() {
     for round in passes.into_iter().flatten() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.discard_textures(&[TextureDiscard {
+        c.discard_texture_contents(&[TextureContentDiscard {
             texture: color,
-            src_stage: Stage::COLOR,
-            dst_stage: Stage::COLOR,
+            src_stage: PipelineStages::COLOR,
+            dst_stage: PipelineStages::COLOR,
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -114,7 +115,9 @@ pub fn test() {
             pass.draw_mesh_tasks(1, 1, 1);
         }
         pass.end();
-        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+        let mut pass = c
+            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: color,
             width: n,
@@ -122,7 +125,7 @@ pub fn test() {
             buffer: back,
             ..Default::default()
         });
-        pass.memory_barrier(Stage::COPY, Stage::HOST);
+        pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
         pass.end();
         c.end().unwrap();
         device.submit([c], &[], &[(&timeline, round + 1)]).unwrap();
@@ -238,16 +241,16 @@ fn executed(
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.bind_compute_pipeline(encode);
     pass.bind_descriptor_set(bound);
     pass.dispatch(1, 1, 1);
     pass.end();
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -258,8 +261,8 @@ fn executed(
                 clear: [0.0, 0.0, 1.0, 1.0],
                 ..Default::default()
             }],
-            src_stage: Stage::COMPUTE,
-            dst_stage: Stage::INDIRECT,
+            src_stage: PipelineStages::COMPUTE,
+            dst_stage: PipelineStages::INDIRECT,
             ..Default::default()
         })
         .unwrap();
@@ -278,7 +281,9 @@ fn executed(
     pass.bind_descriptor_set(halves);
     pass.execute_indirect(list, 0, 1);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,
@@ -286,7 +291,7 @@ fn executed(
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(timeline, value)]).unwrap();

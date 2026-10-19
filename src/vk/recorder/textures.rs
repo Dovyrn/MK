@@ -26,8 +26,8 @@ fn subresource_layers(
 }
 
 impl Recorder<'_> {
-    pub fn copy_texture(&self, c: Command) {
-        let Command::CopyTexture {
+    pub fn copy_texture_to_texture(&self, c: Command) {
+        let Command::CopyTextureToTexture {
             src,
             src_mip,
             src_layer,

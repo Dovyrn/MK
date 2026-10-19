@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, Device, Format, Memory, RenderPassInfo,
-    Scissor, Stage, TextureDiscard, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Device, Format, Memory, PipelineStages,
+    RenderPassInfo, Scissor, TextureContentDiscard, Viewport,
 };
 
 use crate::host;
@@ -240,10 +240,10 @@ pub fn test() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -269,7 +269,9 @@ pub fn test() {
         height: n,
     }]);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
         width: n,
@@ -277,8 +279,8 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.copy_buffer(source, 0, words, 0, 16);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.copy_buffer_to_buffer(source, 0, words, 0, 16);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

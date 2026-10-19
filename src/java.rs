@@ -99,8 +99,8 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
 ) -> jlong {
     call(&mut env, |_| {
         let (src, dst) = (
-            crate::Stage(src_stage as u32),
-            crate::Stage(dst_stage as u32),
+            crate::PipelineStages(src_stage as u32),
+            crate::PipelineStages(dst_stage as u32),
         );
         Ok(new_compute_pass(
             command_buffer(commands).begin_compute_pass(src, dst)?,

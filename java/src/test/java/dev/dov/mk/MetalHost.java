@@ -14,7 +14,7 @@ public class MetalHost {
         var send = ObjCRuntime.getLibrary().getFunctionAddress("objc_msgSend");
         var descriptor = JNI.invokePPP(ObjCRuntime.objc_getClass("MTL4CompilerDescriptor"), ObjCRuntime.sel_getUid("new"), send);
         var compiler = JNI.invokePPPPP(raw, ObjCRuntime.sel_getUid("newCompilerWithDescriptor:error:"), descriptor, 0L, send);
-        var device = MtlDevice.importDeviceRaw(raw, compiler, 1);
+        var device = MtlDevice.importRawDevice(raw, compiler, 1);
         for (var object : new long[] {compiler, descriptor, raw}) {
             JNI.invokePPV(object, ObjCRuntime.sel_getUid("release"), send);
         }

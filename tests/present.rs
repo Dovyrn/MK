@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, RenderPassInfo, Stage,
-    SwapchainInfo, TextureDiscard, TextureUsage,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, Memory, PipelineStages,
+    RenderPassInfo, SwapchainInfo, TextureContentDiscard, TextureUsage,
 };
 
 #[cfg(not(feature = "gl"))]
@@ -45,16 +45,16 @@ fn surface(
 }
 
 #[cfg(feature = "vk")]
-fn caps(device: &mk::Device, raw: &mk::ash::vk::SurfaceKHR) -> mk::SurfaceCaps {
-    device.surface_caps(*raw).unwrap()
+fn caps(device: &mk::Device, raw: &mk::ash::vk::SurfaceKHR) -> mk::SurfaceCapabilities {
+    device.surface_capabilities(*raw).unwrap()
 }
 
 #[cfg(feature = "mtl")]
 fn caps(
     device: &mk::Device,
     raw: &mk::objc2::rc::Retained<mk::objc2_quartz_core::CAMetalLayer>,
-) -> mk::SurfaceCaps {
-    device.surface_caps(raw).unwrap()
+) -> mk::SurfaceCapabilities {
+    device.surface_capabilities(raw).unwrap()
 }
 
 #[cfg(not(feature = "gl"))]
@@ -149,10 +149,10 @@ pub fn test() {
             ),
         ];
         for (texture, n, buffer, clear) in targets {
-            c.discard_textures(&[TextureDiscard {
+            c.discard_texture_contents(&[TextureContentDiscard {
                 texture,
-                src_stage: Stage::COLOR,
-                dst_stage: Stage::COLOR,
+                src_stage: PipelineStages::COLOR,
+                dst_stage: PipelineStages::COLOR,
             }]);
             let pass = c
                 .begin_render_pass(&RenderPassInfo {
@@ -167,7 +167,9 @@ pub fn test() {
                 })
                 .unwrap();
             pass.end();
-            let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+            let mut pass = c
+                .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+                .unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {
                 texture,
                 width: n,
@@ -175,9 +177,9 @@ pub fn test() {
                 buffer,
                 ..Default::default()
             });
-            pass.memory_barrier(Stage::COPY, Stage::HOST);
+            pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
             pass.end();
-            c.present_barrier(texture, Stage::COPY);
+            c.present_barrier(texture, PipelineStages::COPY);
         }
         c.end().unwrap();
         device

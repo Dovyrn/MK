@@ -109,19 +109,19 @@ public class CommandBuffer implements AutoCloseable {
 
     private static native void nPresentBarrier(long target, long texture, int srcStage);
 
-    public void acquireShared(Texture texture, int dstStage) {
-        nAcquireShared(handle(), Texture.raw(texture), dstStage);
+    public void acquireSharedTexture(Texture texture, int dstStage) {
+        nAcquireSharedTexture(handle(), Texture.raw(texture), dstStage);
     }
 
-    private static native void nAcquireShared(long target, long texture, int dstStage);
+    private static native void nAcquireSharedTexture(long target, long texture, int dstStage);
 
-    public void releaseShared(Texture texture, int srcStage) {
-        nReleaseShared(handle(), Texture.raw(texture), srcStage);
+    public void releaseSharedTexture(Texture texture, int srcStage) {
+        nReleaseSharedTexture(handle(), Texture.raw(texture), srcStage);
     }
 
-    private static native void nReleaseShared(long target, long texture, int srcStage);
+    private static native void nReleaseSharedTexture(long target, long texture, int srcStage);
 
-    public void discardTextures(TextureDiscard[] textures) {
+    public void discardTextureContents(TextureContentDiscard[] textures) {
         try (var arena = new Arena()) {
             var texturesSize = 4;
             for (var x : textures) {
@@ -134,11 +134,11 @@ public class CommandBuffer implements AutoCloseable {
             for (var x : textures) {
                 at = x.encode(at);
             }
-            nDiscardTextures(handle(), list, texturesSize);
+            nDiscardTextureContents(handle(), list, texturesSize);
         }
     }
 
-    private static native void nDiscardTextures(long target, long textures, int texturesLength);
+    private static native void nDiscardTextureContents(long target, long textures, int texturesLength);
 
     public void useResidencySet(ResidencySet set) {
         nUseResidencySet(handle(), ResidencySet.raw(set));

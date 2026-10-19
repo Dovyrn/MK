@@ -9,7 +9,9 @@ use crate::vk::device::indirect_stride;
 use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::TextureObject;
-use crate::{CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, Stage, StoreOp, slot};
+use crate::{
+    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, PipelineStages, StoreOp, slot,
+};
 use ash::vk;
 use std::ffi::CString;
 
@@ -54,30 +56,45 @@ pub fn vk_compare_op(c: crate::CompareOp) -> vk::CompareOp {
     }
 }
 
-fn vk_stages(bits: Stage) -> vk::PipelineStageFlags2 {
+fn vk_stages(bits: PipelineStages) -> vk::PipelineStageFlags2 {
     let map = [
         (
-            Stage::VERTEX,
+            PipelineStages::VERTEX,
             vk::PipelineStageFlags2::INDEX_INPUT
                 | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
                 | vk::PipelineStageFlags2::VERTEX_SHADER,
         ),
-        (Stage::FRAGMENT, vk::PipelineStageFlags2::FRAGMENT_SHADER),
-        (Stage::TASK, vk::PipelineStageFlags2::TASK_SHADER_EXT),
-        (Stage::MESH, vk::PipelineStageFlags2::MESH_SHADER_EXT),
-        (Stage::INDIRECT, vk::PipelineStageFlags2::DRAW_INDIRECT),
         (
-            Stage::DEPTH,
+            PipelineStages::FRAGMENT,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+        ),
+        (
+            PipelineStages::TASK,
+            vk::PipelineStageFlags2::TASK_SHADER_EXT,
+        ),
+        (
+            PipelineStages::MESH,
+            vk::PipelineStageFlags2::MESH_SHADER_EXT,
+        ),
+        (
+            PipelineStages::INDIRECT,
+            vk::PipelineStageFlags2::DRAW_INDIRECT,
+        ),
+        (
+            PipelineStages::DEPTH,
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
                 | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
         ),
         (
-            Stage::COLOR,
+            PipelineStages::COLOR,
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
         ),
-        (Stage::HOST, vk::PipelineStageFlags2::HOST),
-        (Stage::COMPUTE, vk::PipelineStageFlags2::COMPUTE_SHADER),
-        (Stage::COPY, vk::PipelineStageFlags2::ALL_TRANSFER),
+        (PipelineStages::HOST, vk::PipelineStageFlags2::HOST),
+        (
+            PipelineStages::COMPUTE,
+            vk::PipelineStageFlags2::COMPUTE_SHADER,
+        ),
+        (PipelineStages::COPY, vk::PipelineStageFlags2::ALL_TRANSFER),
     ];
     let mut flags = vk::PipelineStageFlags2::NONE;
     for (bit, f) in map {
@@ -88,8 +105,12 @@ fn vk_stages(bits: Stage) -> vk::PipelineStageFlags2 {
     flags
 }
 
-fn vk_access(bits: Stage, reads: bool) -> vk::AccessFlags2 {
-    let shader = Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE;
+fn vk_access(bits: PipelineStages, reads: bool) -> vk::AccessFlags2 {
+    let shader = PipelineStages::VERTEX
+        | PipelineStages::FRAGMENT
+        | PipelineStages::TASK
+        | PipelineStages::MESH
+        | PipelineStages::COMPUTE;
     let map = [
         (
             shader,
@@ -97,37 +118,37 @@ fn vk_access(bits: Stage, reads: bool) -> vk::AccessFlags2 {
             vk::AccessFlags2::SHADER_STORAGE_WRITE,
         ),
         (
-            Stage::VERTEX,
+            PipelineStages::VERTEX,
             vk::AccessFlags2::INDEX_READ | vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            Stage::FRAGMENT,
+            PipelineStages::FRAGMENT,
             vk::AccessFlags2::INPUT_ATTACHMENT_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            Stage::INDIRECT,
+            PipelineStages::INDIRECT,
             vk::AccessFlags2::INDIRECT_COMMAND_READ,
             vk::AccessFlags2::NONE,
         ),
         (
-            Stage::DEPTH,
+            PipelineStages::DEPTH,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
         (
-            Stage::COLOR,
+            PipelineStages::COLOR,
             vk::AccessFlags2::COLOR_ATTACHMENT_READ,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
         (
-            Stage::COPY,
+            PipelineStages::COPY,
             vk::AccessFlags2::TRANSFER_READ,
             vk::AccessFlags2::TRANSFER_WRITE,
         ),
         (
-            Stage::HOST,
+            PipelineStages::HOST,
             vk::AccessFlags2::HOST_READ,
             vk::AccessFlags2::HOST_WRITE,
         ),
@@ -165,22 +186,22 @@ impl Recorder<'_> {
         }
     }
 
-    fn timestamp_stage(&self, bit: Stage) -> vk::PipelineStageFlags2 {
+    fn timestamp_stage(&self, bit: PipelineStages) -> vk::PipelineStageFlags2 {
         let graphics = self.points.contains(&vk::PipelineBindPoint::GRAPHICS);
         let mesh = graphics && self.ext.mesh.is_some();
         let (flag, valid) = match bit {
-            Stage::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
-            Stage::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
-            Stage::TASK => (
+            PipelineStages::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
+            PipelineStages::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
+            PipelineStages::TASK => (
                 vk::PipelineStageFlags2::TASK_SHADER_EXT,
                 graphics && self.ext.task,
             ),
-            Stage::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
-            Stage::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
-            Stage::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
-            Stage::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
-            Stage::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
-            Stage::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
+            PipelineStages::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
+            PipelineStages::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
+            PipelineStages::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
+            PipelineStages::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
+            PipelineStages::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
+            PipelineStages::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
         };
         if valid {
@@ -290,18 +311,18 @@ impl Recorder<'_> {
         unsafe { self.device.end_command_buffer(self.buffer) }.map_err(Error::from)
     }
 
-    fn usable(&self, bits: Stage) -> Stage {
-        let mut gone = Stage::default();
+    fn usable(&self, bits: PipelineStages) -> PipelineStages {
+        let mut gone = PipelineStages::default();
         if self.ext.mesh.is_none() {
-            gone |= Stage::MESH;
+            gone |= PipelineStages::MESH;
         }
         if !self.ext.task {
-            gone |= Stage::TASK;
+            gone |= PipelineStages::TASK;
         }
         bits & !gone
     }
 
-    fn share(&self, texture: crate::Texture, release: bool, stage: Stage) {
+    fn share(&self, texture: crate::Texture, release: bool, stage: PipelineStages) {
         let t = self.res.textures.get(texture);
         let barrier = vk::ImageMemoryBarrier2::default()
             .old_layout(vk::ImageLayout::GENERAL)
@@ -332,7 +353,7 @@ impl Recorder<'_> {
         unsafe { self.device.cmd_pipeline_barrier2(self.buffer, &info) };
     }
 
-    fn barrier(&self, src: Stage, dst: Stage) {
+    fn barrier(&self, src: PipelineStages, dst: PipelineStages) {
         if src.is_empty() {
             return;
         }
@@ -383,7 +404,7 @@ impl Recorder<'_> {
                 Command::DispatchIndirect { buffer, offset } => {
                     d.cmd_dispatch_indirect(b, self.res.buffers.get(buffer).raw, offset)
                 }
-                Command::CopyBuffer {
+                Command::CopyBufferToBuffer {
                     src,
                     src_offset,
                     dst,
@@ -438,13 +459,13 @@ impl Recorder<'_> {
                     let info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
                     d.cmd_pipeline_barrier2(b, &info);
                 }
-                Command::AcquireShared { texture, dst_stage } => {
+                Command::AcquireSharedTexture { texture, dst_stage } => {
                     self.share(texture, false, self.usable(dst_stage))
                 }
-                Command::ReleaseShared { texture, src_stage } => {
+                Command::ReleaseSharedTexture { texture, src_stage } => {
                     self.share(texture, true, self.usable(src_stage))
                 }
-                Command::DiscardTextures { textures } => {
+                Command::DiscardTextureContents { textures } => {
                     for chunk in textures.chunks(16) {
                         let mut list = [vk::ImageMemoryBarrier2::default(); 16];
                         for (out, x) in list.iter_mut().zip(chunk) {
@@ -537,7 +558,7 @@ impl Recorder<'_> {
                         &[region],
                     )
                 }
-                Command::CopyTexture { .. } => self.copy_texture(command),
+                Command::CopyTextureToTexture { .. } => self.copy_texture_to_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,
@@ -670,7 +691,7 @@ impl Recorder<'_> {
                     b,
                     vk::PrimitiveTopology::from_raw(topology as i32),
                 ),
-                Command::SetDepthState { state } => {
+                Command::SetDepthStencilState { state } => {
                     self.record_depth_state(self.res.depths.get(state))
                 }
                 Command::SetStencilReference { front, back } => {

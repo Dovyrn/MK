@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 
 @Setter
 @Accessors(fluent = true, chain = true)
-public class Caps {
+public class DeviceCapabilities {
     public boolean mesh = false;
     public boolean task = false;
     public boolean meshIndirect = false;
@@ -217,8 +217,8 @@ public class Caps {
         return p;
     }
 
-    static Caps decode(long p) {
-        var r = new Caps();
+    static DeviceCapabilities decode(long p) {
+        var r = new DeviceCapabilities();
         r.mesh = memGetInt(p) != 0;
         p += 4;
         r.task = memGetInt(p) != 0;

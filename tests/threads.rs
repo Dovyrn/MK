@@ -10,7 +10,7 @@ pub fn test() {
 pub fn test() {
     let host = host::device(1);
     let device: &mk::Device = &host;
-    if !device.caps().buffer_clear {
+    if !device.capabilities().buffer_clear {
         println!("no buffer fills");
         return;
     }
@@ -53,7 +53,7 @@ fn record(device: &mk::Device, size: u64, value: u8) -> (mk::CommandBuffer<'_>, 
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(mk::Stage::default(), mk::Stage::default())
+        .begin_compute_pass(mk::PipelineStages::default(), mk::PipelineStages::default())
         .unwrap();
     pass.fill_buffer(buffer, 0, size, value);
     for _ in 0..64 {
@@ -62,7 +62,7 @@ fn record(device: &mk::Device, size: u64, value: u8) -> (mk::CommandBuffer<'_>, 
             .unwrap();
         device.destroy_buffer(spare);
     }
-    pass.memory_barrier(mk::Stage::COPY, mk::Stage::HOST);
+    pass.memory_barrier(mk::PipelineStages::COPY, mk::PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     (c, buffer)

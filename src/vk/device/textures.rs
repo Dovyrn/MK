@@ -1,7 +1,7 @@
 use super::{Device, image_create_info, vk_image_usage, whole_view};
 use crate::Error;
 use crate::Texture;
-use crate::caps::check_support;
+use crate::device_capabilities::check_support;
 use crate::handle::Handle;
 use crate::table::lock;
 use crate::vk::texture::{TextureObject, aspect, count};
@@ -177,7 +177,7 @@ impl Device {
         texture.free(self);
     }
 
-    pub fn bindless_texture(&self, texture: Texture) -> u64 {
+    pub fn bindless_texture_id(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_texture_slot(texture);
         let view = self.res.textures.get(texture).view;
@@ -186,7 +186,7 @@ impl Device {
         texture.index() as u64
     }
 
-    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
+    pub fn bindless_storage_texture_id(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
         let view = self.res.textures.get(texture).view;

@@ -38,7 +38,7 @@ pub fn test() {
     let pool = device.create_command_pool(0).unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     #[cfg(feature = "vk")]
-    c.acquire_shared(texture, mk::Stage::COLOR);
+    c.acquire_shared_texture(texture, mk::PipelineStages::COLOR);
     let pass = c
         .begin_render_pass(&RenderPassInfo {
             width: size,
@@ -53,7 +53,7 @@ pub fn test() {
         .unwrap();
     pass.end();
     #[cfg(feature = "vk")]
-    c.release_shared(texture, mk::Stage::COLOR);
+    c.release_shared_texture(texture, mk::PipelineStages::COLOR);
     c.end().unwrap();
     #[cfg(feature = "vk")]
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

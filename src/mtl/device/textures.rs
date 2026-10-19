@@ -1,7 +1,7 @@
 use super::{Device, id, labels, texture_desc, texture_type};
 use crate::Error;
 use crate::Texture;
-use crate::caps;
+use crate::device_capabilities;
 use crate::mtl::texture::TextureObject;
 use crate::table::lock;
 use crate::{Format, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
@@ -135,7 +135,7 @@ impl Device {
             if cfg!(feature = "validation") {
                 let usable = self.format_usage(info.format);
                 let counts = self.format_samples(info.format, info.usage);
-                caps::check_support(
+                device_capabilities::check_support(
                     "create_texture_view",
                     info.format,
                     info.usage,
@@ -183,13 +183,13 @@ impl Device {
         self.res.textures.remove(texture);
     }
 
-    pub fn bindless_texture(&self, texture: Texture) -> u64 {
+    pub fn bindless_texture_id(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_texture_slot(texture);
         id(self.res.textures.get(texture).id)
     }
 
-    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
+    pub fn bindless_storage_texture_id(&self, texture: Texture) -> u64 {
         self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
         id(self.res.textures.get(texture).id)

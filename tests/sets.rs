@@ -1,8 +1,8 @@
 use mk::{
     AddressMode, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, ComputePipelineInfo,
     DescriptorBinding, DescriptorType, DescriptorWrite, Error, Filter, Format, Memory,
-    RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage, TextureDiscard, TextureInfo,
-    TextureUsage, Viewport,
+    PipelineStages, RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor,
+    TextureContentDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -29,8 +29,8 @@ fn texture(binding: u32, texture: mk::Texture) -> DescriptorWrite {
     }
 }
 
-fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
-    TextureDiscard {
+fn discard(texture: mk::Texture, stage: PipelineStages) -> TextureContentDiscard {
+    TextureContentDiscard {
         texture,
         src_stage: stage,
         dst_stage: stage,
@@ -40,7 +40,7 @@ fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
 pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let caps = device.caps();
+    let caps = device.capabilities();
     let texel = |usage| TextureInfo {
         format: Format::Rgba8Unorm,
         width: 4,
@@ -105,8 +105,8 @@ pub fn test() {
         .unwrap();
     let timeline = device.create_timeline().unwrap();
     let tinted = device.create_descriptor_pool(tints, 1).unwrap();
-    let tint = device.create_descriptor_set(tinted).unwrap();
-    let full = device.create_descriptor_set(tinted);
+    let tint = device.allocate_descriptor_set(tinted).unwrap();
+    let full = device.allocate_descriptor_set(tinted);
     assert!(matches!(full, Err(Error::OutOfMemory(_))), "{full:?}");
     device.write_descriptor_set(tint, &[host::buffer(1, upload, at, 16)]);
     let read = host::set(&device, sources, &[texture(0, source)]);
@@ -127,9 +127,9 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.discard_textures(&[discard(source, Stage::COPY)]);
+    pass.discard_texture_contents(&[discard(source, PipelineStages::COPY)]);
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
         texture: source,
@@ -137,7 +137,7 @@ pub fn test() {
         ..Default::default()
     });
     pass.end();
-    c.discard_textures(&[discard(target, Stage::COLOR)]);
+    c.discard_texture_contents(&[discard(target, PipelineStages::COLOR)]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -146,8 +146,8 @@ pub fn test() {
                 texture: target,
                 ..Default::default()
             }],
-            src_stage: Stage::COPY,
-            dst_stage: Stage::FRAGMENT | Stage::COMPUTE,
+            src_stage: PipelineStages::COPY,
+            dst_stage: PipelineStages::FRAGMENT | PipelineStages::COMPUTE,
             ..Default::default()
         })
         .unwrap();
@@ -168,7 +168,9 @@ pub fn test() {
     pass.bind_descriptor_set(nearest);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: target,
         width: 4,
@@ -176,7 +178,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     if cfg!(feature = "validation") {
@@ -194,7 +196,7 @@ pub fn test() {
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
     assert!(timeline.wait(1, 1000).unwrap());
     device.reset_descriptor_pool(tinted);
-    let again = device.create_descriptor_set(tinted).unwrap();
+    let again = device.allocate_descriptor_set(tinted).unwrap();
     device.write_descriptor_set(again, &[host::buffer(1, upload, at, 16)]);
     let pixels = unsafe { device.map_buffer::<u8>(back) }.to_vec();
     device.unmap_buffer(back);
@@ -266,16 +268,16 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.discard_textures(&[discard(image, Stage::COMPUTE)]);
+    pass.discard_texture_contents(&[discard(image, PipelineStages::COMPUTE)]);
     pass.bind_compute_pipeline(fill);
     pass.bind_descriptor_set(values);
     pass.bind_descriptor_set(images);
     pass.bind_descriptor_set(nearest);
     pass.dispatch(1, 1, 1);
-    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
-    pass.copy_buffer(data, 0, out, 0, 64 * 4);
+    pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::COPY);
+    pass.copy_buffer_to_buffer(data, 0, out, 0, 64 * 4);
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: image,
         width: 4,
@@ -283,7 +285,7 @@ pub fn test() {
         offset: 256,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 2)]).unwrap();

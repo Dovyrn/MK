@@ -4,7 +4,9 @@ use crate::vk::bindless::Bindless;
 use crate::vk::extensions::Extensions;
 use crate::vk::queue::Queue;
 use crate::vk::texture::aspect;
-use crate::{Caps, Format, Stage, SubgroupOp, TextureInfo, TextureUsage, slot};
+use crate::{
+    DeviceCapabilities, Format, PipelineStages, SubgroupOp, TextureInfo, TextureUsage, slot,
+};
 use ash::vk;
 
 pub(super) fn probe(
@@ -14,7 +16,7 @@ pub(super) fn probe(
     queues: &[Queue],
     bindless: &Bindless,
     limits: &vk::PhysicalDeviceLimits,
-) -> Caps {
+) -> DeviceCapabilities {
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
     let mut groups = vk::PhysicalDeviceVulkan11Properties::default();
     let mut mesh = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
@@ -36,15 +38,15 @@ pub(super) fn probe(
         groups.subgroup_size
     };
     let stages = [
-        (vk::ShaderStageFlags::VERTEX, Stage::VERTEX),
-        (vk::ShaderStageFlags::FRAGMENT, Stage::FRAGMENT),
-        (vk::ShaderStageFlags::COMPUTE, Stage::COMPUTE),
-        (vk::ShaderStageFlags::TASK_EXT, Stage::TASK),
-        (vk::ShaderStageFlags::MESH_EXT, Stage::MESH),
+        (vk::ShaderStageFlags::VERTEX, PipelineStages::VERTEX),
+        (vk::ShaderStageFlags::FRAGMENT, PipelineStages::FRAGMENT),
+        (vk::ShaderStageFlags::COMPUTE, PipelineStages::COMPUTE),
+        (vk::ShaderStageFlags::TASK_EXT, PipelineStages::TASK),
+        (vk::ShaderStageFlags::MESH_EXT, PipelineStages::MESH),
     ]
     .into_iter()
     .filter(|(v, _)| groups.subgroup_supported_stages.contains(*v))
-    .fold(Stage::default(), |m, (_, s)| m | s);
+    .fold(PipelineStages::default(), |m, (_, s)| m | s);
     let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
     let transients = memory.memory_types[..memory.memory_type_count as usize]
         .iter()
@@ -53,7 +55,7 @@ pub(super) fn probe(
                 .contains(vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
         });
     let reads = ext.local;
-    Caps {
+    DeviceCapabilities {
         transients,
         transient_reads: false,
         attachment_reads: reads,
@@ -170,7 +172,7 @@ pub(super) fn probe(
 }
 
 impl Device {
-    pub fn caps(&self) -> Caps {
+    pub fn capabilities(&self) -> DeviceCapabilities {
         self.caps
     }
 

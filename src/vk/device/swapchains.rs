@@ -1,8 +1,8 @@
 use super::{Device, vk_image_usage};
 use crate::vk::swapchain::{Present, State, SwapchainObject};
 use crate::{
-    ColorSpace, CommandBuffer, Error, PresentMode, SurfaceCaps, Swapchain, SwapchainInfo, Texture,
-    TextureInfo, TextureUsage, Timeline,
+    ColorSpace, CommandBuffer, Error, PresentMode, SurfaceCapabilities, Swapchain, SwapchainInfo,
+    Texture, TextureInfo, TextureUsage, Timeline,
 };
 use ash::khr::swapchain;
 use ash::vk;
@@ -46,7 +46,10 @@ impl Device {
         self.instance.handle()
     }
 
-    pub fn surface_caps(&self, surface: vk::SurfaceKHR) -> Result<SurfaceCaps, Error> {
+    pub fn surface_capabilities(
+        &self,
+        surface: vk::SurfaceKHR,
+    ) -> Result<SurfaceCapabilities, Error> {
         let caps = unsafe {
             self.surface
                 .get_physical_device_surface_capabilities(self.physical, surface)
@@ -56,7 +59,7 @@ impl Device {
                 .get_physical_device_surface_present_modes(self.physical, surface)
         }?;
         let fixed = caps.current_extent.width != u32::MAX;
-        Ok(SurfaceCaps {
+        Ok(SurfaceCapabilities {
             min_images: caps.min_image_count,
             max_images: match caps.max_image_count {
                 0 => u32::MAX,
@@ -72,7 +75,7 @@ impl Device {
         })
     }
 
-    pub fn surface_format(
+    pub fn supports_surface_format(
         &self,
         surface: vk::SurfaceKHR,
         format: crate::Format,
@@ -102,7 +105,7 @@ impl Device {
         let format = info.format;
         let space = info.color_space;
         check!(
-            self.surface_format(surface, format, space)?,
+            self.supports_surface_format(surface, format, space)?,
             "the surface does not take {format} in {space:?}"
         );
         let caps = unsafe {

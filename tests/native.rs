@@ -1,4 +1,4 @@
-use mk::{BufferUsage, Device, Memory, Stage};
+use mk::{BufferUsage, Device, Memory, PipelineStages};
 
 use crate::host;
 
@@ -61,12 +61,12 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     fill(&device, &mut pass, data, n);
-    pass.memory_barrier(Stage::COPY, Stage::COPY);
-    pass.copy_buffer(data, 0, back, 0, n);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::COPY);
+    pass.copy_buffer_to_buffer(data, 0, back, 0, n);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

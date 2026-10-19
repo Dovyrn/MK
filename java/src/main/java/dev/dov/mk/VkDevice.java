@@ -9,27 +9,27 @@ public class VkDevice extends Device {
         super(handle);
     }
 
-    public long bindlessTexture(Texture texture) {
+    public long bindlessTextureId(Texture texture) {
         lock.readLock().lock();
         try {
-            return nBindlessTexture(handle(), Texture.raw(texture));
+            return nBindlessTextureId(handle(), Texture.raw(texture));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nBindlessTexture(long device, long texture);
+    private static native long nBindlessTextureId(long device, long texture);
 
-    public long bindlessSampler(Sampler sampler) {
+    public long bindlessSamplerId(Sampler sampler) {
         lock.readLock().lock();
         try {
-            return nBindlessSampler(handle(), Sampler.raw(sampler));
+            return nBindlessSamplerId(handle(), Sampler.raw(sampler));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nBindlessSampler(long device, long sampler);
+    private static native long nBindlessSamplerId(long device, long sampler);
 
     public static DeviceInfo supportedFeatures() {
         try (var arena = new Arena()) {
@@ -167,31 +167,31 @@ public class VkDevice extends Device {
 
     private static native long nCreateSwapchain(long device, int queue, long surface, long info, int infoLength);
 
-    public SurfaceCaps surfaceCaps(long surface) {
+    public SurfaceCapabilities surfaceCapabilities(long surface) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
-                var out = arena.alloc(SurfaceCaps.SIZE);
-                nSurfaceCaps(handle(), surface, out);
-                return SurfaceCaps.decode(out);
+                var out = arena.alloc(SurfaceCapabilities.SIZE);
+                nSurfaceCapabilities(handle(), surface, out);
+                return SurfaceCapabilities.decode(out);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native void nSurfaceCaps(long device, long surface, long out);
+    private static native void nSurfaceCapabilities(long device, long surface, long out);
 
-    public boolean surfaceFormat(long surface, Format format, ColorSpace space) {
+    public boolean supportsSurfaceFormat(long surface, Format format, ColorSpace space) {
         lock.readLock().lock();
         try {
-            return nSurfaceFormat(handle(), surface, format.value, space.value);
+            return nSupportsSurfaceFormat(handle(), surface, format.value, space.value);
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native boolean nSurfaceFormat(long device, long surface, int format, int space);
+    private static native boolean nSupportsSurfaceFormat(long device, long surface, int format, int space);
 
     public long rawInstance() {
         lock.readLock().lock();
@@ -204,16 +204,16 @@ public class VkDevice extends Device {
 
     private static native long nRawInstance(long device);
 
-    public static VkDevice importDeviceRaw(long proc, long instance, long physical, long device, int[] queues, long features) {
+    public static VkDevice importRawDevice(long proc, long instance, long physical, long device, int[] queues, long features) {
         try (var arena = new Arena()) {
             if (queues.length % 2 != 0) {
                 throw new IllegalArgumentException("queues holds pairs");
             }
-            return new VkDevice(nImportDeviceRaw(proc, instance, physical, device, arena.ints(queues), queues.length / 2, features));
+            return new VkDevice(nImportRawDevice(proc, instance, physical, device, arena.ints(queues), queues.length / 2, features));
         }
     }
 
-    private static native long nImportDeviceRaw(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
+    private static native long nImportRawDevice(long proc, long instance, long physical, long device, long queues, int queuesLength, long features);
 
     public Buffer importBuffer(long raw, long size, int usage, long data) {
         lock.readLock().lock();
@@ -289,16 +289,16 @@ public class VkDevice extends Device {
 
     private static native long nDeviceLuid(long device);
 
-    public CommandBuffer importCommands(CommandPool pool, long raw) {
+    public CommandBuffer importCommandBuffer(CommandPool pool, long raw) {
         lock.readLock().lock();
         try {
-            return CommandBuffer.adopt(this, nImportCommands(handle(), CommandPool.raw(pool), raw));
+            return CommandBuffer.adopt(this, nImportCommandBuffer(handle(), CommandPool.raw(pool), raw));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nImportCommands(long device, long pool, long raw);
+    private static native long nImportCommandBuffer(long device, long pool, long raw);
 
     public RenderPass importRenderPass(CommandPool pool, long raw, ImportedPassInfo info) {
         lock.readLock().lock();

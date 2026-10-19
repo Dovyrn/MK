@@ -1,4 +1,4 @@
-use mk::{Buffer, BufferUsage, CommandPool, Device, Memory, ResidencySet, Stage};
+use mk::{Buffer, BufferUsage, CommandPool, Device, Memory, PipelineStages, ResidencySet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use crate::host;
@@ -7,9 +7,9 @@ fn copy(device: &Device, pool: CommandPool, set: ResidencySet, a: Buffer, b: Buf
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.copy_buffer(a, 0, b, 0, 16);
+    pass.copy_buffer_to_buffer(a, 0, b, 0, 16);
     pass.end();
 }
 
@@ -41,9 +41,9 @@ pub fn test() {
     let unused = message(|| {
         let mut c = device.begin_commands(pool).unwrap();
         let mut pass = c
-            .begin_compute_pass(Stage::default(), Stage::default())
+            .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
             .unwrap();
-        pass.copy_buffer(a, 0, b, 0, 16);
+        pass.copy_buffer_to_buffer(a, 0, b, 0, 16);
         pass.end();
     });
     copy(&device, pool, set, a, b);

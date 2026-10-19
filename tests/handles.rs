@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage};
+use mk::{BufferUsage, ComputePipelineInfo, Memory, PipelineStages};
 
 #[cfg(not(feature = "gl"))]
 use crate::host;
@@ -14,7 +14,7 @@ pub fn test() {
     let n = 256u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if !device.caps().addresses {
+    if !device.capabilities().addresses {
         println!("no buffer addresses");
         return;
     }
@@ -53,14 +53,14 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.bind_compute_pipeline(fill);
     pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
-    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
-    pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::COPY);
+    pass.copy_buffer_to_buffer(data, 0, back, 0, n as u64 * 4);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

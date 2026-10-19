@@ -22,8 +22,10 @@ use crate::mtl::recorder::{Kind, Recorder};
 use crate::mtl::resources::Resources;
 use crate::recording::{Held, Recording};
 use crate::slots::Slots;
-use crate::{Caps, Format, Memory, TextureDimension, TextureInfo, TextureUsage, Timeline};
 use crate::{CommandBuffer, CommandPool, ComputePass, ImportedPassInfo, RenderPass};
+use crate::{
+    DeviceCapabilities, Format, Memory, TextureDimension, TextureInfo, TextureUsage, Timeline,
+};
 use objc2::Message;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
@@ -204,7 +206,7 @@ pub struct Device {
     queues: Vec<Queue>,
     pools: Slots<Pool>,
     lost: Arc<OnceLock<String>>,
-    caps: Caps,
+    caps: DeviceCapabilities,
     residency: Mutex<()>,
 }
 
@@ -256,7 +258,7 @@ impl Device {
         })
     }
 
-    pub fn import_device_raw(device: u64, compiler: u64, queues: u32) -> Result<Self, Error> {
+    pub fn import_raw_device(device: u64, compiler: u64, queues: u32) -> Result<Self, Error> {
         let raw = unsafe { Retained::retain(device as *mut ProtocolObject<dyn MTLDevice>) };
         let compiler =
             unsafe { Retained::retain(compiler as *mut ProtocolObject<dyn MTL4Compiler>) };
@@ -342,7 +344,7 @@ impl Device {
         Ok(CommandBuffer { recording })
     }
 
-    pub fn import_commands(
+    pub fn import_command_buffer(
         &self,
         pool: CommandPool,
         raw: &ProtocolObject<dyn MTL4CommandBuffer>,

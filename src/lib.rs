@@ -32,11 +32,11 @@ macro_rules! check_ne {
     };
 }
 
-mod caps;
 mod check;
 mod chunks;
 mod command;
 mod descriptors;
+mod device_capabilities;
 #[cfg(any(feature = "vk", feature = "mtl"))]
 mod device_info;
 mod entries;

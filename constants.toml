@@ -1,4 +1,4 @@
-[flags.stage]
+[flags.pipeline_stages]
 VERTEX = 1
 FRAGMENT = 2
 TASK = 8
@@ -172,7 +172,7 @@ INVERT = 5
 INCREMENT_WRAP = 6
 DECREMENT_WRAP = 7
 
-[flags.dynamic_state]
+[flags.dynamic_pipeline_states]
 CULL = 1
 FACE = 2
 DEPTH_STATE = 4

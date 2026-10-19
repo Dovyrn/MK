@@ -1,11 +1,11 @@
-use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage, SubgroupOp};
+use mk::{BufferUsage, ComputePipelineInfo, Memory, PipelineStages, SubgroupOp};
 
 use crate::host;
 
 pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let caps = device.caps();
+    let caps = device.capabilities();
     let need = SubgroupOp::BASIC
         | SubgroupOp::VOTE
         | SubgroupOp::ARITHMETIC
@@ -16,7 +16,7 @@ pub fn test() {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
     }
-    if !caps.subgroup_stages.contains(Stage::COMPUTE) {
+    if !caps.subgroup_stages.contains(PipelineStages::COMPUTE) {
         println!("no subgroup ops in compute shaders");
         return;
     }
@@ -54,12 +54,12 @@ pub fn test() {
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
         let mut pass = c
-            .begin_compute_pass(Stage::default(), Stage::default())
+            .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
             .unwrap();
         pass.bind_compute_pipeline(pipeline);
         pass.bind_descriptor_set(bound);
         pass.dispatch(1, 1, 1);
-        pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
+        pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::HOST);
         pass.end();
         c.end().unwrap();
         device.submit([c], &[], &[(&timeline, value)]).unwrap();

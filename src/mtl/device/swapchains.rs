@@ -1,8 +1,8 @@
 use super::Device;
 use crate::mtl::swapchain::{Presented, State, SwapchainObject};
 use crate::{
-    ColorSpace, CommandBuffer, Error, Format, PresentMode, SurfaceCaps, Swapchain, SwapchainInfo,
-    Texture, TextureUsage, Timeline,
+    ColorSpace, CommandBuffer, Error, Format, PresentMode, SurfaceCapabilities, Swapchain,
+    SwapchainInfo, Texture, TextureUsage, Timeline,
 };
 use block2::RcBlock;
 use objc2::rc::{Retained, autoreleasepool};
@@ -20,9 +20,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 impl Device {
-    pub fn surface_caps(&self, layer: &CAMetalLayer) -> Result<SurfaceCaps, Error> {
+    pub fn surface_capabilities(&self, layer: &CAMetalLayer) -> Result<SurfaceCapabilities, Error> {
         let size = layer.drawableSize();
-        Ok(SurfaceCaps {
+        Ok(SurfaceCapabilities {
             min_images: 2,
             max_images: 3,
             width: size.width as u32,
@@ -33,7 +33,7 @@ impl Device {
         })
     }
 
-    pub fn surface_format(
+    pub fn supports_surface_format(
         &self,
         _: &CAMetalLayer,
         format: Format,
@@ -51,7 +51,7 @@ impl Device {
 
     fn configure(&self, layer: &CAMetalLayer, info: &SwapchainInfo) -> Result<(), Error> {
         if cfg!(feature = "validation") {
-            let caps = self.surface_caps(layer)?;
+            let caps = self.surface_capabilities(layer)?;
             let images = info.images;
             check!(
                 (caps.min_images..=caps.max_images).contains(&images),
@@ -59,7 +59,7 @@ impl Device {
             );
             let (format, space) = (info.format, info.color_space);
             check!(
-                self.surface_format(layer, format, space)?,
+                self.supports_surface_format(layer, format, space)?,
                 "the layer does not take {format} in {space:?}"
             );
             let mode = info.mode;

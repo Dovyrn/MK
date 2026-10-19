@@ -1,6 +1,6 @@
 [[call]]
-name = "caps"
-result = "Caps"
+name = "capabilities"
+result = "DeviceCapabilities"
 shared = true
 
 [[call]]
@@ -87,15 +87,15 @@ params = [["pipeline", "TilePipeline"]]
 shared = true
 
 [[call]]
-name = "create_depth_state"
+name = "create_depth_stencil_state"
 params = [["info", "DepthStateInfo"], ["label", "str"]]
-result = "DepthState"
+result = "DepthStencilState"
 fails = true
 shared = true
 
 [[call]]
-name = "destroy_depth_state"
-params = [["state", "DepthState"]]
+name = "destroy_depth_stencil_state"
+params = [["state", "DepthStencilState"]]
 shared = true
 
 [[call]]
@@ -142,14 +142,14 @@ params = [["texture", "Texture"]]
 shared = true
 
 [[call]]
-name = "bindless_texture"
+name = "bindless_texture_id"
 backend = "vk mtl"
 params = [["texture", "Texture"]]
 result = "u64"
 shared = true
 
 [[call]]
-name = "bindless_storage_texture"
+name = "bindless_storage_texture_id"
 params = [["texture", "Texture"]]
 result = "u64"
 shared = true
@@ -184,7 +184,7 @@ params = [["pool", "DescriptorPool"]]
 shared = true
 
 [[call]]
-name = "create_descriptor_set"
+name = "allocate_descriptor_set"
 params = [["pool", "DescriptorPool"]]
 result = "DescriptorSet"
 fails = true
@@ -208,7 +208,7 @@ params = [["sampler", "Sampler"]]
 shared = true
 
 [[call]]
-name = "bindless_sampler"
+name = "bindless_sampler_id"
 backend = "vk mtl"
 params = [["sampler", "Sampler"]]
 result = "u64"
@@ -377,15 +377,15 @@ fails = true
 shared = true
 
 [[call]]
-name = "surface_caps"
+name = "surface_capabilities"
 backend = "vk"
 params = [["surface", "handle"]]
-result = "SurfaceCaps"
+result = "SurfaceCapabilities"
 fails = true
 shared = true
 
 [[call]]
-name = "surface_format"
+name = "supports_surface_format"
 backend = "vk"
 params = [["surface", "handle"], ["format", "Format"], ["space", "ColorSpace"]]
 result = "bool"
@@ -399,7 +399,7 @@ result = "handle"
 shared = true
 
 [[call]]
-name = "import_device_raw"
+name = "import_raw_device"
 backend = "vk"
 params = [["proc", "u64"], ["instance", "u64"], ["physical", "u64"], ["device", "u64"], ["queues", "pairs"], ["features", "u64"]]
 result = "device"
@@ -450,7 +450,7 @@ result = "u64"
 shared = true
 
 [[call]]
-name = "import_commands"
+name = "import_command_buffer"
 backend = "vk"
 params = [["pool", "CommandPool"], ["raw", "handle"]]
 result = "CommandBuffer"
@@ -487,15 +487,15 @@ result = "handle"
 shared = true
 
 [[call]]
-name = "surface_caps"
+name = "surface_capabilities"
 backend = "mtl"
 params = [["layer", "objref"]]
-result = "SurfaceCaps"
+result = "SurfaceCapabilities"
 fails = true
 shared = true
 
 [[call]]
-name = "surface_format"
+name = "supports_surface_format"
 backend = "mtl"
 params = [["layer", "objref"], ["format", "Format"], ["space", "ColorSpace"]]
 result = "bool"
@@ -511,7 +511,7 @@ fails = true
 shared = true
 
 [[call]]
-name = "import_device_raw"
+name = "import_raw_device"
 backend = "mtl"
 params = [["device", "u64"], ["compiler", "u64"], ["queues", "u32"]]
 result = "device"
@@ -547,7 +547,7 @@ result = "timeline"
 shared = true
 
 [[call]]
-name = "import_commands"
+name = "import_command_buffer"
 backend = "mtl"
 params = [["pool", "CommandPool"], ["raw", "objref"]]
 result = "CommandBuffer"
@@ -599,7 +599,7 @@ result = "object"
 shared = true
 
 [[call]]
-name = "import_device_raw"
+name = "import_raw_device"
 backend = "gl"
 params = [["proc", "u64"]]
 result = "device"

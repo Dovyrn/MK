@@ -61,7 +61,7 @@ impl Device {
         unsafe { self.raw.destroy_sampler(sampler, None) };
     }
 
-    pub fn bindless_sampler(&self, sampler: Sampler) -> u64 {
+    pub fn bindless_sampler_id(&self, sampler: Sampler) -> u64 {
         self.res.table.samplers.get(sampler);
         self.caps.assert_sampler_slot(sampler);
         self.bindless

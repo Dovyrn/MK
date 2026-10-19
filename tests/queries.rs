@@ -1,7 +1,7 @@
 use mk::{
-    BufferUsage, ColorAttachment, ColorTarget, DescriptorType, Format, Memory, QueryKind,
-    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
-    VertexAttribute, VertexBufferLayout, Viewport,
+    BufferUsage, ColorAttachment, ColorTarget, DescriptorType, Format, Memory, PipelineStages,
+    QueryKind, RenderPassInfo, RenderPipelineInfo, Scissor, TextureContentDiscard, TextureInfo,
+    TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
 };
 
 use crate::host;
@@ -10,7 +10,7 @@ pub fn test() {
     let n = 64u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let caps = device.caps();
+    let caps = device.capabilities();
     if !caps.occlusion || !caps.compute {
         println!("no occlusion queries or no compute");
         return;
@@ -134,22 +134,22 @@ pub fn test() {
     }
     c.reset_queries(samples, 0, 1);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     if let Some(times) = times {
-        pass.write_timestamp(times, 0, Stage::COMPUTE);
+        pass.write_timestamp(times, 0, PipelineStages::COMPUTE);
     }
     pass.bind_compute_pipeline(fill);
     pass.bind_descriptor_set(counted);
     pass.dispatch(count / 64, 1, 1);
     if let Some(times) = times {
-        pass.write_timestamp(times, 1, Stage::COMPUTE);
+        pass.write_timestamp(times, 1, PipelineStages::COMPUTE);
     }
     pass.end();
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -185,9 +185,11 @@ pub fn test() {
     if let Some(times) = times {
         c.resolve_timestamps(times, 0, 2, out, 0);
     }
-    let mut pass = c.begin_compute_pass(Stage::FRAGMENT, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::FRAGMENT, PipelineStages::COPY)
+        .unwrap();
     pass.resolve_occlusion(samples, 0, 1, out, 16);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

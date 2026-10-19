@@ -9,11 +9,11 @@ public class GlDevice extends Device {
         super(handle);
     }
 
-    public static GlDevice importDeviceRaw(long proc) {
-        return new GlDevice(nImportDeviceRaw(proc));
+    public static GlDevice importRawDevice(long proc) {
+        return new GlDevice(nImportRawDevice(proc));
     }
 
-    private static native long nImportDeviceRaw(long proc);
+    private static native long nImportRawDevice(long proc);
 
     public Buffer importBuffer(int raw, long size) {
         lock.readLock().lock();

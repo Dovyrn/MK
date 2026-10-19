@@ -1,6 +1,6 @@
 package dev.dov.mk;
 
-public interface Stage {
+public interface PipelineStages {
     int VERTEX = 1;
     int FRAGMENT = 2;
     int TASK = 8;

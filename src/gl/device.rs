@@ -8,8 +8,8 @@ mod residency;
 mod shared;
 
 use crate::Error;
-use crate::caps;
 use crate::check::Check;
+use crate::device_capabilities;
 use crate::gl::buffer::BufferObject;
 use crate::gl::extra::Extra;
 use crate::gl::fences::Fences;
@@ -24,13 +24,13 @@ use crate::gl::texture::{TextureObject, target};
 use crate::recording::{Held, Recording};
 use crate::table::lock;
 use crate::{
-    Atomic64, BufferUsage, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory,
-    MeshPipelineInfo, RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureInfo,
+    Atomic64, BufferUsage, ComputePipelineInfo, DepthStateInfo, DeviceCapabilities, Format, Memory,
+    MeshPipelineInfo, PipelineStages, RenderPipelineInfo, SamplerInfo, SubgroupOp, TextureInfo,
     TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, slot,
 };
 use crate::{
-    Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
-    RenderPass, RenderPipeline, Sampler, Texture, TilePipeline,
+    Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthStencilState, ImportedPassInfo,
+    QueryPool, RenderPass, RenderPipeline, Sampler, Texture, TilePipeline,
 };
 use glow::HasContext;
 use std::cell::{Cell, RefCell};
@@ -47,7 +47,7 @@ pub struct Device {
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     open: Cell<bool>,
-    caps: Caps,
+    caps: DeviceCapabilities,
     samples: [i32; 4],
     thread: std::thread::ThreadId,
     bounds: Cell<[u32; 3]>,
@@ -94,7 +94,7 @@ impl Device {
         Self::load(&proc)
     }
 
-    pub fn import_device_raw(proc: u64) -> Result<Self, Error> {
+    pub fn import_raw_device(proc: u64) -> Result<Self, Error> {
         if proc == 0 {
             return Err(Error::Invalid("null GL loader".into()));
         }
@@ -147,16 +147,16 @@ impl Device {
             let groups = has(99, "GL_KHR_shader_subgroup");
             let group = |p| if groups { int(p) as u32 } else { 0 };
             let stages = [
-                (glow::VERTEX_SHADER_BIT, Stage::VERTEX),
-                (glow::FRAGMENT_SHADER_BIT, Stage::FRAGMENT),
-                (glow::COMPUTE_SHADER_BIT, Stage::COMPUTE),
-                (MESH_SHADER_BIT, Stage::MESH),
-                (TASK_SHADER_BIT, Stage::TASK),
+                (glow::VERTEX_SHADER_BIT, PipelineStages::VERTEX),
+                (glow::FRAGMENT_SHADER_BIT, PipelineStages::FRAGMENT),
+                (glow::COMPUTE_SHADER_BIT, PipelineStages::COMPUTE),
+                (MESH_SHADER_BIT, PipelineStages::MESH),
+                (TASK_SHADER_BIT, PipelineStages::TASK),
             ]
             .into_iter()
             .filter(|(g, _)| group(SUBGROUP_STAGES) & g != 0)
-            .fold(Stage::default(), |m, (_, s)| m | s);
-            let caps = Caps {
+            .fold(PipelineStages::default(), |m, (_, s)| m | s);
+            let caps = DeviceCapabilities {
                 queues: 1,
                 timestamp_period: 1.0,
                 timestamps: results,
@@ -319,7 +319,7 @@ impl Device {
         has(self.version, &self.extensions, version, extension)
     }
 
-    pub fn caps(&self) -> Caps {
+    pub fn capabilities(&self) -> DeviceCapabilities {
         self.thread();
         self.caps
     }
@@ -544,7 +544,7 @@ impl Device {
 
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         self.thread();
-        crate::caps::check_tile_pipeline(info);
+        crate::device_capabilities::check_tile_pipeline(info);
         Err(Error::Unsupported(
             "create_tile_pipeline needs caps.tiles".into(),
         ))
@@ -555,18 +555,18 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(
+    pub fn create_depth_stencil_state(
         &self,
         info: &DepthStateInfo,
         _label: &str,
-    ) -> Result<DepthState, Error> {
+    ) -> Result<DepthStencilState, Error> {
         self.thread();
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
     }
 
-    pub fn destroy_depth_state(&self, state: DepthState) {
+    pub fn destroy_depth_stencil_state(&self, state: DepthStencilState) {
         self.thread();
         self.res.table.states.clear(state);
         self.res.depths.remove(state);
@@ -611,7 +611,7 @@ impl Device {
         self.res.textures.get(texture).raw.map_or(0, |t| t.0.get())
     }
 
-    pub fn bindless_storage_texture(&self, texture: Texture) -> u64 {
+    pub fn bindless_storage_texture_id(&self, texture: Texture) -> u64 {
         self.thread();
         self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
@@ -748,7 +748,7 @@ impl Device {
         let parent = self.res.textures.get(texture);
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
-        caps::check_support(
+        device_capabilities::check_support(
             "create_texture_view",
             info.format,
             info.usage | TextureUsage::VIEW,

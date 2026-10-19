@@ -48,20 +48,20 @@ public class Device implements AutoCloseable {
 
     private static native void nFree(long device);
 
-    public Caps caps() {
+    public DeviceCapabilities capabilities() {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
-                var out = arena.alloc(Caps.SIZE);
-                nCaps(handle(), out);
-                return Caps.decode(out);
+                var out = arena.alloc(DeviceCapabilities.SIZE);
+                nCapabilities(handle(), out);
+                return DeviceCapabilities.decode(out);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native void nCaps(long device, long out);
+    private static native void nCapabilities(long device, long out);
 
     public String deviceName() {
         lock.readLock().lock();
@@ -240,32 +240,32 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTilePipeline(long device, long pipeline);
 
-    public DepthState createDepthState(DepthStateInfo info, String label) {
+    public DepthStencilState createDepthStencilState(DepthStateInfo info, String label) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 var labelBytes = label.getBytes(StandardCharsets.UTF_8);
-                return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize(), arena.bytes(labelBytes), labelBytes.length));
+                return DepthStencilState.of(nCreateDepthStencilState(handle(), infoAddress, info.encodedSize(), arena.bytes(labelBytes), labelBytes.length));
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nCreateDepthState(long device, long info, int infoLength, long label, int labelLength);
+    private static native long nCreateDepthStencilState(long device, long info, int infoLength, long label, int labelLength);
 
-    public void destroyDepthState(DepthState state) {
+    public void destroyDepthStencilState(DepthStencilState state) {
         lock.readLock().lock();
         try {
-            nDestroyDepthState(handle(), DepthState.raw(state));
+            nDestroyDepthStencilState(handle(), DepthStencilState.raw(state));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native void nDestroyDepthState(long device, long state);
+    private static native void nDestroyDepthStencilState(long device, long state);
 
     public Texture createTexture(TextureInfo info) {
         lock.readLock().lock();
@@ -360,16 +360,16 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTexture(long device, long texture);
 
-    public long bindlessStorageTexture(Texture texture) {
+    public long bindlessStorageTextureId(Texture texture) {
         lock.readLock().lock();
         try {
-            return nBindlessStorageTexture(handle(), Texture.raw(texture));
+            return nBindlessStorageTextureId(handle(), Texture.raw(texture));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nBindlessStorageTexture(long device, long texture);
+    private static native long nBindlessStorageTextureId(long device, long texture);
 
     public DescriptorLayout createDescriptorLayout(DescriptorBinding[] bindings) {
         lock.readLock().lock();
@@ -439,16 +439,16 @@ public class Device implements AutoCloseable {
 
     private static native void nResetDescriptorPool(long device, long pool);
 
-    public DescriptorSet createDescriptorSet(DescriptorPool pool) {
+    public DescriptorSet allocateDescriptorSet(DescriptorPool pool) {
         lock.readLock().lock();
         try {
-            return DescriptorSet.of(nCreateDescriptorSet(handle(), DescriptorPool.raw(pool)));
+            return DescriptorSet.of(nAllocateDescriptorSet(handle(), DescriptorPool.raw(pool)));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nCreateDescriptorSet(long device, long pool);
+    private static native long nAllocateDescriptorSet(long device, long pool);
 
     public void writeDescriptorSet(DescriptorSet set, DescriptorWrite[] writes) {
         lock.readLock().lock();

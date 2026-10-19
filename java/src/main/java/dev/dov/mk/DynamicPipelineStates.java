@@ -1,6 +1,6 @@
 package dev.dov.mk;
 
-public interface DynamicState {
+public interface DynamicPipelineStates {
     int CULL = 1;
     int FACE = 2;
     int DEPTH_STATE = 4;

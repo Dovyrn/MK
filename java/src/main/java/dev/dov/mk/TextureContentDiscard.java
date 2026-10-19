@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 
 @Setter
 @Accessors(fluent = true, chain = true)
-public class TextureDiscard {
+public class TextureContentDiscard {
     public Texture texture = null;
     public int srcStage = 0;
     public int dstStage = 0;
@@ -28,8 +28,8 @@ public class TextureDiscard {
         return p;
     }
 
-    static TextureDiscard decode(long p) {
-        var r = new TextureDiscard();
+    static TextureContentDiscard decode(long p) {
+        var r = new TextureContentDiscard();
         r.texture = Texture.of(memGetLong(p));
         p += 8;
         r.srcStage = memGetInt(p);

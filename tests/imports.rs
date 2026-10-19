@@ -1,7 +1,7 @@
 use mk::{
     BufferTextureCopy, BufferUsage, ColorTarget, CommandPool, Device, Format, ImportedPassInfo,
-    Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture,
-    TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    Memory, PipelineStages, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Texture,
+    TextureContentDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -23,11 +23,11 @@ fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
     pass.draw(3, 1, 0, 0);
 }
 
-fn discard(texture: Texture) -> TextureDiscard {
-    TextureDiscard {
+fn discard(texture: Texture) -> TextureContentDiscard {
+    TextureContentDiscard {
         texture,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }
 }
 
@@ -39,7 +39,7 @@ fn read_back(
 ) {
     commands.use_residency_set(set);
     let mut pass = commands
-        .begin_compute_pass(Stage::COLOR, Stage::COPY)
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
@@ -48,7 +48,7 @@ fn read_back(
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
 }
 
@@ -84,9 +84,9 @@ fn host_frame(
         let buffer = raw.allocate_command_buffers(&info).unwrap()[0];
         raw.begin_command_buffer(buffer, &vk::CommandBufferBeginInfo::default())
             .unwrap();
-        let mut commands = device.import_commands(pool, buffer).unwrap();
+        let mut commands = device.import_command_buffer(pool, buffer).unwrap();
         commands.use_residency_set(set);
-        commands.discard_textures(&[discard(texture)]);
+        commands.discard_texture_contents(&[discard(texture)]);
         commands.end().unwrap();
         let (image, view) = device.raw_texture(texture);
         let layout = |old, new, src, src_access, dst, dst_access| {
@@ -158,7 +158,7 @@ fn host_frame(
             vk::PipelineStageFlags2::COPY,
             vk::AccessFlags2::TRANSFER_READ,
         );
-        let mut commands = device.import_commands(pool, buffer).unwrap();
+        let mut commands = device.import_command_buffer(pool, buffer).unwrap();
         read_back(&mut commands, set, texture, back);
         commands.end().unwrap();
         raw.end_command_buffer(buffer).unwrap();
@@ -197,9 +197,9 @@ fn host_frame(
     let allocator = raw.newCommandAllocator().unwrap();
     let buffer = raw.newCommandBuffer().unwrap();
     buffer.beginCommandBufferWithAllocator(&allocator);
-    let mut commands = device.import_commands(pool, &buffer).unwrap();
+    let mut commands = device.import_command_buffer(pool, &buffer).unwrap();
     commands.use_residency_set(set);
-    commands.discard_textures(&[discard(texture)]);
+    commands.discard_texture_contents(&[discard(texture)]);
     commands.end().unwrap();
     let desc = MTL4RenderPassDescriptor::new();
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
@@ -224,7 +224,7 @@ fn host_frame(
     draw(&mut pass, pipeline);
     pass.end();
     encoder.endEncoding();
-    let mut commands = device.import_commands(pool, &buffer).unwrap();
+    let mut commands = device.import_command_buffer(pool, &buffer).unwrap();
     read_back(&mut commands, set, texture, back);
     commands.end().unwrap();
     buffer.endCommandBuffer();
@@ -249,7 +249,7 @@ fn host_frame(
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
-    commands.discard_textures(&[discard(texture)]);
+    commands.discard_texture_contents(&[discard(texture)]);
     commands.end().unwrap();
     device.submit([commands], &[], &[]).unwrap();
     let gl = &device.gl;

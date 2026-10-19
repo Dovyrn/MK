@@ -3,7 +3,7 @@ use crate::entries::Entries;
 use crate::handle::TimelineId;
 use crate::residency::{Members, Residency};
 use crate::{
-    Buffer, BufferUsage, CommandPool, ComputePipeline, DepthState, DescriptorBinding,
+    Buffer, BufferUsage, CommandPool, ComputePipeline, DepthStencilState, DescriptorBinding,
     DescriptorLayout, DescriptorPool, DescriptorSet, Format, HostTextureCopy, IndexType,
     IndirectBuffer, IndirectBufferInfo, Memory, QueryPool, RenderPipeline, ResidencySet, Sampler,
     Texture, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo, TilePipeline,
@@ -17,7 +17,7 @@ pub struct RenderEntry {
     pub topology: crate::Topology,
     pub mesh: bool,
     pub indirect: bool,
-    pub dynamic: crate::DynamicState,
+    pub dynamic: crate::DynamicPipelineStates,
     pub vertices: u32,
     pub reads: u32,
     pub layouts: [u32; 3],
@@ -33,7 +33,7 @@ pub struct Table {
     pub pipelines: Entries<ComputePipeline, [u32; 3]>,
     pub renders: Entries<RenderPipeline, RenderEntry>,
     pub tile_pipelines: Entries<TilePipeline, (u32, [u32; 3])>,
-    pub states: Entries<DepthState, ()>,
+    pub states: Entries<DepthStencilState, ()>,
     pub queries: Entries<QueryPool, (crate::QueryKind, u32)>,
     pub timelines: Mutex<Entries<TimelineId, Signal>>,
     pub parents: Entries<Texture, Texture>,
@@ -277,7 +277,7 @@ impl Table {
         }
         check!(
             !undefined.contains(&root),
-            "{name} uses {texture} before discard_textures; discard it before its first use"
+            "{name} uses {texture} before discard_texture_contents; discard it before its first use"
         );
     }
 
@@ -327,12 +327,12 @@ impl Table {
         );
         let linear = |f: Format| format!("{f:?}").replace("Srgb", "Unorm");
         check!(
-            if crate::caps::is_depth_format(t.format) {
+            if crate::device_capabilities::is_depth_format(t.format) {
                 info.format == t.format
             } else if t.format.block()[1] > 1 {
                 linear(info.format) == linear(t.format)
             } else {
-                !crate::caps::is_depth_format(info.format)
+                !crate::device_capabilities::is_depth_format(info.format)
             },
             "a view of {texture} cannot reinterpret {} as {}",
             t.format,

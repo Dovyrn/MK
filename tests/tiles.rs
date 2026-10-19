@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo,
-    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, TileMemory, TilePipelineInfo,
-    Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, PipelineStages,
+    RenderPassInfo, Scissor, TextureContentDiscard, TextureInfo, TextureUsage, TileInfo,
+    TilePipelineInfo, Viewport,
 };
 
 use crate::host;
@@ -27,7 +27,7 @@ pub fn test() {
     let stamp = match made {
         Ok(p) => p,
         Err(e) => {
-            assert!(!device.caps().tiles, "{e}");
+            assert!(!device.capabilities().tiles, "{e}");
             println!("no tile dispatch: {e}");
             return;
         }
@@ -55,10 +55,10 @@ pub fn test() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -69,7 +69,7 @@ pub fn test() {
                 clear: [0.0, 0.0, 0.0, 1.0],
                 ..Default::default()
             }],
-            tile: Some(TileMemory {
+            tile: Some(TileInfo {
                 width: 16,
                 height: 16,
                 shared: 512,
@@ -91,7 +91,10 @@ pub fn test() {
     pass.dispatch_tile(stamp);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(Stage::COLOR | Stage::FRAGMENT, Stage::COPY)
+        .begin_compute_pass(
+            PipelineStages::COLOR | PipelineStages::FRAGMENT,
+            PipelineStages::COPY,
+        )
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
@@ -100,7 +103,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

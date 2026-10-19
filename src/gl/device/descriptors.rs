@@ -74,7 +74,7 @@ impl Device {
         }
     }
 
-    pub fn create_descriptor_set(&self, pool: DescriptorPool) -> Result<DescriptorSet, Error> {
+    pub fn allocate_descriptor_set(&self, pool: DescriptorPool) -> Result<DescriptorSet, Error> {
         self.thread();
         let p = self.res.descriptor_pools.get(pool);
         let mut sets = p.sets.borrow_mut();

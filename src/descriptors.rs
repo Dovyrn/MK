@@ -1,7 +1,7 @@
 use crate::table::{Table, lock};
 use crate::{
-    BufferUsage, Caps, DescriptorBinding, DescriptorLayout, DescriptorPool, DescriptorSet,
-    DescriptorType, DescriptorWrite, Error, Resource, TextureUsage, sets,
+    BufferUsage, DescriptorBinding, DescriptorLayout, DescriptorPool, DescriptorSet,
+    DescriptorType, DescriptorWrite, DeviceCapabilities, Error, Resource, TextureUsage, sets,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -46,7 +46,7 @@ pub fn set_of(kind: DescriptorType) -> u32 {
     }
 }
 
-fn limit(caps: &Caps, kind: DescriptorType) -> (u32, &'static str) {
+fn limit(caps: &DeviceCapabilities, kind: DescriptorType) -> (u32, &'static str) {
     match kind {
         DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
             (caps.set_uniforms, "set_uniforms")
@@ -61,7 +61,10 @@ fn limit(caps: &Caps, kind: DescriptorType) -> (u32, &'static str) {
     }
 }
 
-pub fn check_layout(caps: &Caps, bindings: &[DescriptorBinding]) -> Result<u32, Error> {
+pub fn check_layout(
+    caps: &DeviceCapabilities,
+    bindings: &[DescriptorBinding],
+) -> Result<u32, Error> {
     let name = "create_descriptor_layout";
     let Some(first) = bindings.first() else {
         return Err(Error::Invalid(format!("{name} got no bindings")));
@@ -264,7 +267,12 @@ impl Table {
         *found.unwrap()
     }
 
-    pub fn check_write(&self, caps: &Caps, set: DescriptorSet, writes: &[DescriptorWrite]) {
+    pub fn check_write(
+        &self,
+        caps: &DeviceCapabilities,
+        set: DescriptorSet,
+        writes: &[DescriptorWrite],
+    ) {
         if !cfg!(feature = "validation") {
             return;
         }

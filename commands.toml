@@ -2,7 +2,7 @@
 name = "begin_compute_pass"
 scope = "outside"
 fails = true
-fields = [["src_stage", "Stage"], ["dst_stage", "Stage"]]
+fields = [["src_stage", "PipelineStages"], ["dst_stage", "PipelineStages"]]
 
 [[command]]
 name = "end_compute_pass"
@@ -24,7 +24,7 @@ scope = "compute"
 fields = [["buffer", "Buffer"], ["offset", "u64"]]
 
 [[command]]
-name = "copy_buffer"
+name = "copy_buffer_to_buffer"
 scope = "compute"
 fields = [["src", "Buffer"], ["src_offset", "u64"], ["dst", "Buffer"], ["dst_offset", "u64"], ["size", "u64"]]
 
@@ -36,7 +36,7 @@ fields = [["buffer", "Buffer"], ["offset", "u64"], ["size", "u64"], ["value", "u
 [[command]]
 name = "memory_barrier"
 scope = "compute"
-fields = [["src_stage", "Stage"], ["dst_stage", "Stage"]]
+fields = [["src_stage", "PipelineStages"], ["dst_stage", "PipelineStages"]]
 
 [[command]]
 name = "begin_debug_label"
@@ -51,24 +51,24 @@ scope = "outside compute render"
 name = "present_barrier"
 backend = "vk mtl"
 scope = "outside compute"
-fields = [["texture", "Texture"], ["src_stage", "Stage"]]
+fields = [["texture", "Texture"], ["src_stage", "PipelineStages"]]
 
 [[command]]
-name = "acquire_shared"
+name = "acquire_shared_texture"
 backend = "vk"
 scope = "outside compute"
-fields = [["texture", "Texture"], ["dst_stage", "Stage"]]
+fields = [["texture", "Texture"], ["dst_stage", "PipelineStages"]]
 
 [[command]]
-name = "release_shared"
+name = "release_shared_texture"
 backend = "vk"
 scope = "outside compute"
-fields = [["texture", "Texture"], ["src_stage", "Stage"]]
+fields = [["texture", "Texture"], ["src_stage", "PipelineStages"]]
 
 [[command]]
-name = "discard_textures"
+name = "discard_texture_contents"
 scope = "outside compute"
-fields = [["textures", "[TextureDiscard]"]]
+fields = [["textures", "[TextureContentDiscard]"]]
 
 [[command]]
 name = "copy_buffer_to_texture"
@@ -81,7 +81,7 @@ scope = "compute"
 info = "BufferTextureCopy"
 
 [[command]]
-name = "copy_texture"
+name = "copy_texture_to_texture"
 scope = "compute"
 info = "TextureCopy"
 
@@ -99,7 +99,7 @@ info = "DepthAttachment"
 name = "begin_render_pass"
 scope = "outside"
 fails = true
-fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"], ["src_stage", "Stage"], ["dst_stage", "Stage"]]
+fields = [["width", "u32"], ["height", "u32"], ["layers", "u32"], ["src_stage", "PipelineStages"], ["dst_stage", "PipelineStages"]]
 
 [[command]]
 name = "end_render_pass"
@@ -126,9 +126,9 @@ scope = "render"
 fields = [["topology", "Topology"]]
 
 [[command]]
-name = "set_depth_state"
+name = "set_depth_stencil_state"
 scope = "render"
-fields = [["state", "DepthState"]]
+fields = [["state", "DepthStencilState"]]
 
 [[command]]
 name = "set_stencil_reference"
@@ -223,7 +223,7 @@ fields = [["pool", "QueryPool"], ["first", "u32"], ["count", "u32"]]
 [[command]]
 name = "write_timestamp"
 scope = "outside compute render"
-fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "Stage"]]
+fields = [["pool", "QueryPool"], ["index", "u32"], ["stage", "PipelineStages"]]
 
 [[command]]
 name = "begin_occlusion_query"
@@ -262,7 +262,7 @@ scope = "render"
 [[command]]
 name = "tile_memory"
 internal = true
-info = "TileMemory"
+info = "TileInfo"
 
 [[command]]
 name = "dispatch_tile"

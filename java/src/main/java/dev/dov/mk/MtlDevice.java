@@ -9,27 +9,27 @@ public class MtlDevice extends Device {
         super(handle);
     }
 
-    public long bindlessTexture(Texture texture) {
+    public long bindlessTextureId(Texture texture) {
         lock.readLock().lock();
         try {
-            return nBindlessTexture(handle(), Texture.raw(texture));
+            return nBindlessTextureId(handle(), Texture.raw(texture));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nBindlessTexture(long device, long texture);
+    private static native long nBindlessTextureId(long device, long texture);
 
-    public long bindlessSampler(Sampler sampler) {
+    public long bindlessSamplerId(Sampler sampler) {
         lock.readLock().lock();
         try {
-            return nBindlessSampler(handle(), Sampler.raw(sampler));
+            return nBindlessSamplerId(handle(), Sampler.raw(sampler));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nBindlessSampler(long device, long sampler);
+    private static native long nBindlessSamplerId(long device, long sampler);
 
     public static DeviceInfo supportedFeatures() {
         try (var arena = new Arena()) {
@@ -152,31 +152,31 @@ public class MtlDevice extends Device {
 
     private static native boolean nWaitPresented(long device, long swapchain, long present, long ms);
 
-    public SurfaceCaps surfaceCaps(long layer) {
+    public SurfaceCapabilities surfaceCapabilities(long layer) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
-                var out = arena.alloc(SurfaceCaps.SIZE);
-                nSurfaceCaps(handle(), layer, out);
-                return SurfaceCaps.decode(out);
+                var out = arena.alloc(SurfaceCapabilities.SIZE);
+                nSurfaceCapabilities(handle(), layer, out);
+                return SurfaceCapabilities.decode(out);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native void nSurfaceCaps(long device, long layer, long out);
+    private static native void nSurfaceCapabilities(long device, long layer, long out);
 
-    public boolean surfaceFormat(long layer, Format format, ColorSpace space) {
+    public boolean supportsSurfaceFormat(long layer, Format format, ColorSpace space) {
         lock.readLock().lock();
         try {
-            return nSurfaceFormat(handle(), layer, format.value, space.value);
+            return nSupportsSurfaceFormat(handle(), layer, format.value, space.value);
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native boolean nSurfaceFormat(long device, long layer, int format, int space);
+    private static native boolean nSupportsSurfaceFormat(long device, long layer, int format, int space);
 
     public Swapchain createSwapchain(int queue, long layer, SwapchainInfo info) {
         lock.readLock().lock();
@@ -193,11 +193,11 @@ public class MtlDevice extends Device {
 
     private static native long nCreateSwapchain(long device, int queue, long layer, long info, int infoLength);
 
-    public static MtlDevice importDeviceRaw(long device, long compiler, int queues) {
-        return new MtlDevice(nImportDeviceRaw(device, compiler, queues));
+    public static MtlDevice importRawDevice(long device, long compiler, int queues) {
+        return new MtlDevice(nImportRawDevice(device, compiler, queues));
     }
 
-    private static native long nImportDeviceRaw(long device, long compiler, int queues);
+    private static native long nImportRawDevice(long device, long compiler, int queues);
 
     public Buffer importBuffer(long raw) {
         lock.readLock().lock();
@@ -243,16 +243,16 @@ public class MtlDevice extends Device {
 
     private static native long nImportTimeline(long device, long raw);
 
-    public CommandBuffer importCommands(CommandPool pool, long raw) {
+    public CommandBuffer importCommandBuffer(CommandPool pool, long raw) {
         lock.readLock().lock();
         try {
-            return CommandBuffer.adopt(this, nImportCommands(handle(), CommandPool.raw(pool), raw));
+            return CommandBuffer.adopt(this, nImportCommandBuffer(handle(), CommandPool.raw(pool), raw));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nImportCommands(long device, long pool, long raw);
+    private static native long nImportCommandBuffer(long device, long pool, long raw);
 
     public RenderPass importRenderPass(CommandPool pool, long raw, ImportedPassInfo info) {
         lock.readLock().lock();

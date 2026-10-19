@@ -4,11 +4,11 @@ use crate::descriptors::set_of;
 use crate::vk::recorder::vk_compare_op;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, CompareOp, ComputePipelineInfo, DepthStateInfo, DescriptorLayout, DynamicState,
-    FillMode, Format, FrontFace, MeshPipelineInfo, RenderPipelineInfo, Stage, StencilFace,
-    TilePipelineInfo, VertexPipelineStates,
+    ColorTarget, CompareOp, ComputePipelineInfo, DepthStateInfo, DescriptorLayout,
+    DynamicPipelineStates, FillMode, Format, FrontFace, MeshPipelineInfo, PipelineStages,
+    RenderPipelineInfo, StencilFace, TilePipelineInfo, VertexPipelineStates,
 };
-use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
+use crate::{ComputePipeline, DepthStencilState, RenderPipeline, TilePipeline};
 use ash::vk;
 use std::ffi::CString;
 
@@ -76,17 +76,17 @@ impl Device {
             ));
         }
         let ops = spirv::subgroups(&words);
-        self.capabilities(&words)?;
+        self.check_shader(&words)?;
         for (flag, name) in entries {
             let stage = [
-                (vk::ShaderStageFlags::VERTEX, Stage::VERTEX),
-                (vk::ShaderStageFlags::FRAGMENT, Stage::FRAGMENT),
-                (vk::ShaderStageFlags::TASK_EXT, Stage::TASK),
-                (vk::ShaderStageFlags::MESH_EXT, Stage::MESH),
+                (vk::ShaderStageFlags::VERTEX, PipelineStages::VERTEX),
+                (vk::ShaderStageFlags::FRAGMENT, PipelineStages::FRAGMENT),
+                (vk::ShaderStageFlags::TASK_EXT, PipelineStages::TASK),
+                (vk::ShaderStageFlags::MESH_EXT, PipelineStages::MESH),
             ]
             .into_iter()
             .find(|(f, _)| f == flag)
-            .map_or(Stage::default(), |(_, s)| s);
+            .map_or(PipelineStages::default(), |(_, s)| s);
             if !name.is_empty() {
                 self.caps.check_subgroups(ops, stage)?;
             }
@@ -232,10 +232,13 @@ impl Device {
             vk::DynamicState::SCISSOR_WITH_COUNT,
         ];
         for (flag, more) in [
-            (DynamicState::CULL, &[vk::DynamicState::CULL_MODE][..]),
-            (DynamicState::FACE, &[vk::DynamicState::FRONT_FACE]),
             (
-                DynamicState::DEPTH_STATE,
+                DynamicPipelineStates::CULL,
+                &[vk::DynamicState::CULL_MODE][..],
+            ),
+            (DynamicPipelineStates::FACE, &[vk::DynamicState::FRONT_FACE]),
+            (
+                DynamicPipelineStates::DEPTH_STATE,
                 &[
                     vk::DynamicState::DEPTH_TEST_ENABLE,
                     vk::DynamicState::DEPTH_WRITE_ENABLE,
@@ -247,22 +250,22 @@ impl Device {
                 ],
             ),
             (
-                DynamicState::STENCIL_REFERENCE,
+                DynamicPipelineStates::STENCIL_REFERENCE,
                 &[vk::DynamicState::STENCIL_REFERENCE],
             ),
             (
-                DynamicState::DEPTH_BIAS,
+                DynamicPipelineStates::DEPTH_BIAS,
                 &[
                     vk::DynamicState::DEPTH_BIAS,
                     vk::DynamicState::DEPTH_BIAS_ENABLE,
                 ],
             ),
             (
-                DynamicState::BLEND_COLOR,
+                DynamicPipelineStates::BLEND_COLOR,
                 &[vk::DynamicState::BLEND_CONSTANTS],
             ),
             (
-                DynamicState::TOPOLOGY,
+                DynamicPipelineStates::TOPOLOGY,
                 &[vk::DynamicState::PRIMITIVE_TOPOLOGY],
             ),
         ] {
@@ -303,7 +306,7 @@ impl Device {
         if !label.is_empty() {
             self.name(pipeline, label);
         }
-        let stuck = self.ext.moltenvk && !states.dynamic.contains(DynamicState::FACE);
+        let stuck = self.ext.moltenvk && !states.dynamic.contains(DynamicPipelineStates::FACE);
         let id = self
             .res
             .renders
@@ -392,7 +395,7 @@ impl Device {
     }
 
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
-        crate::caps::check_tile_pipeline(info);
+        crate::device_capabilities::check_tile_pipeline(info);
         Err(Error::Unsupported(
             "create_tile_pipeline needs caps.tiles".into(),
         ))
@@ -402,22 +405,22 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(
+    pub fn create_depth_stencil_state(
         &self,
         info: &DepthStateInfo,
         _label: &str,
-    ) -> Result<DepthState, Error> {
+    ) -> Result<DepthStencilState, Error> {
         let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
     }
 
-    pub fn destroy_depth_state(&self, state: DepthState) {
+    pub fn destroy_depth_stencil_state(&self, state: DepthStencilState) {
         self.res.table.states.clear(state);
         self.res.depths.remove(state);
     }
 
-    fn capabilities(&self, words: &[u32]) -> Result<(), Error> {
+    fn check_shader(&self, words: &[u32]) -> Result<(), Error> {
         self.caps.check_atomics(spirv::atomics(words))?;
         if spirv::declares(words, MODEL) && !self.ext.model {
             return Err(Error::Unsupported(
@@ -442,8 +445,8 @@ impl Device {
         let sets = info.sets;
         let words = spirv::read(code, &[entry])?;
         self.caps
-            .check_subgroups(spirv::subgroups(&words), Stage::COMPUTE)?;
-        self.capabilities(&words)?;
+            .check_subgroups(spirv::subgroups(&words), PipelineStages::COMPUTE)?;
+        self.check_shader(&words)?;
         check_group(&words, entry, info.group)?;
         if info.full {
             let size = if info.subgroup == 0 {

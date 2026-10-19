@@ -1,8 +1,9 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorMask, ColorTarget, DepthAttachment,
-    DescriptorType, DescriptorWrite, Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo,
-    Scissor, Stage, StoreOp, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    DescriptorType, DescriptorWrite, Format, LoadOp, Memory, PipelineStages, RenderPassInfo,
+    RenderPipelineInfo, Scissor, StoreOp, TextureContentDiscard, TextureInfo, TextureUsage,
+    Viewport,
 };
 
 use crate::host;
@@ -10,7 +11,7 @@ use crate::host;
 #[cfg(feature = "gl")]
 pub fn test() {
     let device = host::device(1);
-    assert!(!device.caps().attachment_reads);
+    assert!(!device.capabilities().attachment_reads);
     println!("GL has no attachment reads");
 }
 
@@ -19,7 +20,7 @@ pub fn test() {
     let n = 32u32;
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let caps = device.caps();
+    let caps = device.capabilities();
     if !caps.attachment_reads {
         println!("no attachment reads");
         return;
@@ -157,20 +158,20 @@ pub fn test() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: value,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR | Stage::FRAGMENT,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR | PipelineStages::FRAGMENT,
     }]);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: depth,
-        src_stage: Stage::DEPTH,
-        dst_stage: Stage::DEPTH,
+        src_stage: PipelineStages::DEPTH,
+        dst_stage: PipelineStages::DEPTH,
     }]);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -219,7 +220,9 @@ pub fn test() {
     pass.bind_render_pipeline(copy);
     pass.draw(3, 1, 0, 0);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,
@@ -227,7 +230,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

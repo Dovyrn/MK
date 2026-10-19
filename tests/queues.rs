@@ -1,5 +1,5 @@
 #[cfg(not(feature = "gl"))]
-use mk::{BufferUsage, Memory, Stage};
+use mk::{BufferUsage, Memory, PipelineStages};
 
 #[cfg(not(feature = "gl"))]
 use crate::host;
@@ -54,7 +54,7 @@ pub fn test() {
     let mut compute = device.begin_commands(other).unwrap();
     compute.use_residency_set(set);
     let mut pass = compute
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.bind_compute_pipeline(pipeline);
     pass.bind_descriptor_set(bound);
@@ -64,19 +64,19 @@ pub fn test() {
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);
     let mut pass = copy
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.copy_buffer(data, 0, back, 0, half);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.copy_buffer_to_buffer(data, 0, back, 0, half);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     copy.end().unwrap();
     let mut rest = device.begin_commands(pool).unwrap();
     rest.use_residency_set(set);
     let mut pass = rest
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.copy_buffer(data, half, back, half, half);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.copy_buffer_to_buffer(data, half, back, half, half);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     rest.end().unwrap();
     device

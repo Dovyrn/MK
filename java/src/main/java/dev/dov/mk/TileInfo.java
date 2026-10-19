@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 
 @Setter
 @Accessors(fluent = true, chain = true)
-public class TileMemory {
+public class TileInfo {
     public int width = 0;
     public int height = 0;
     public int shared = 0;
@@ -28,8 +28,8 @@ public class TileMemory {
         return p;
     }
 
-    static TileMemory decode(long p) {
-        var r = new TileMemory();
+    static TileInfo decode(long p) {
+        var r = new TileInfo();
         r.width = memGetInt(p);
         p += 4;
         r.height = memGetInt(p);

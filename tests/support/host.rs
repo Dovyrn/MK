@@ -60,7 +60,7 @@ pub fn set(
     writes: &[mk::DescriptorWrite],
 ) -> mk::DescriptorSet {
     let pool = device.create_descriptor_pool(layout, 1).unwrap();
-    let set = device.create_descriptor_set(pool).unwrap();
+    let set = device.allocate_descriptor_set(pool).unwrap();
     device.write_descriptor_set(set, writes);
     set
 }
@@ -76,7 +76,7 @@ pub fn buffer(binding: u32, buffer: mk::Buffer, offset: u64, size: u64) -> mk::D
 }
 
 pub fn constants(device: &mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
-    let stride = device.caps().bind_alignment.max(256) as u64;
+    let stride = device.capabilities().bind_alignment.max(256) as u64;
     let buffer = device
         .create_buffer(
             stride * blocks.len() as u64,

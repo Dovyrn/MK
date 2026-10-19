@@ -1,6 +1,6 @@
 use crate::Error;
 use crate::gl::extra::Extra;
-use crate::{Caps, slot};
+use crate::{DeviceCapabilities, slot};
 use glow::HasContext;
 use std::num::NonZeroU32;
 
@@ -242,7 +242,7 @@ impl State {
     pub fn save(
         gl: &glow::Context,
         extra: &Extra,
-        caps: &Caps,
+        caps: &DeviceCapabilities,
         bounds: [u32; 3],
         has: &dyn Fn(u32, &str) -> bool,
     ) -> Self {

@@ -8,7 +8,7 @@ use crate::{
     BlendFactor, ColorMask, ColorTarget, ComputePipelineInfo, DepthStateInfo, FillMode,
     MeshPipelineInfo, RenderPipelineInfo, StencilFace, TilePipelineInfo, Topology,
 };
-use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
+use crate::{ComputePipeline, DepthStencilState, RenderPipeline, TilePipeline};
 use crate::{DescriptorLayout, sets};
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
@@ -447,7 +447,7 @@ impl Device {
 
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         autoreleasepool(|_| {
-            crate::caps::check_tile_pipeline(info);
+            crate::device_capabilities::check_tile_pipeline(info);
             let layouts = self.res.table.layout_ids(info.sets);
             if cfg!(feature = "validation") && !self.caps.tiles {
                 return Err(Error::Unsupported(
@@ -500,11 +500,11 @@ impl Device {
             .ok_or_else(|| Error::OutOfMemory("depth state allocation failed".into()))
     }
 
-    pub fn create_depth_state(
+    pub fn create_depth_stencil_state(
         &self,
         info: &DepthStateInfo,
         label: &str,
-    ) -> Result<DepthState, Error> {
+    ) -> Result<DepthStencilState, Error> {
         autoreleasepool(|_| {
             let state = self.depth_stencil(info, label)?;
             let id = self.res.depths.insert(state);
@@ -513,7 +513,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_depth_state(&self, state: DepthState) {
+    pub fn destroy_depth_stencil_state(&self, state: DepthStencilState) {
         self.res.table.states.clear(state);
         let state = self.res.depths.remove(state);
         drop(state);

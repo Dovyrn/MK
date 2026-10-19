@@ -22,6 +22,6 @@ public class GlHost {
             throw new IllegalStateException("no GL window");
         }
         glfwMakeContextCurrent(window);
-        return GlDevice.importDeviceRaw(Functions.GetProcAddress);
+        return GlDevice.importRawDevice(Functions.GetProcAddress);
     }
 }

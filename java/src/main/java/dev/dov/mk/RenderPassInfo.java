@@ -14,7 +14,7 @@ public class RenderPassInfo {
     public ColorAttachment[] colors = new ColorAttachment[0];
     public DepthAttachment depth = null;
     public QueryPool occlusion = null;
-    public TileMemory tile = null;
+    public TileInfo tile = null;
     public int srcStage = 0;
     public int dstStage = 0;
 

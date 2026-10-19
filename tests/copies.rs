@@ -1,7 +1,7 @@
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, DepthAttachment, Format, LoadOp, Memory,
-    RenderPassInfo, Stage, TextureCopy, TextureDimension, TextureDiscard, TextureInfo,
-    TextureUsage, TextureViewInfo,
+    PipelineStages, RenderPassInfo, TextureContentDiscard, TextureCopy, TextureDimension,
+    TextureInfo, TextureUsage, TextureViewInfo,
 };
 
 use crate::host;
@@ -15,7 +15,7 @@ fn pattern(x: u32, y: u32) -> [u8; 4] {
 pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    let caps = device.caps();
+    let caps = device.capabilities();
     let make = |dimension, format, [width, height, layers]: [u32; 3], bits| {
         device
             .create_texture(&TextureInfo {
@@ -101,16 +101,16 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.discard_textures(&[a, cast, array, depth, depth2, srgb, line].map(|texture| {
-        TextureDiscard {
+    pass.discard_texture_contents(&[a, cast, array, depth, depth2, srgb, line].map(|texture| {
+        TextureContentDiscard {
             texture,
-            src_stage: Stage::COPY,
-            dst_stage: Stage::COPY | Stage::COLOR | Stage::DEPTH,
+            src_stage: PipelineStages::COPY,
+            dst_stage: PipelineStages::COPY | PipelineStages::COLOR | PipelineStages::DEPTH,
         }
     }));
-    pass.copy_buffer(upload, 0, back, 0, size);
+    pass.copy_buffer_to_buffer(upload, 0, back, 0, size);
     let row = (N * 4) as u64;
     for (texture, layer, offset, width, height) in [
         (a, 0, 0, N, N),
@@ -130,9 +130,9 @@ pub fn test() {
             ..Default::default()
         });
     }
-    pass.memory_barrier(Stage::COPY, Stage::COPY);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::COPY);
     if let Some(words) = words {
-        pass.copy_texture(&TextureCopy {
+        pass.copy_texture_to_texture(&TextureCopy {
             src: words,
             dst: cast,
             width: N,
@@ -140,7 +140,7 @@ pub fn test() {
             ..Default::default()
         });
     }
-    pass.copy_texture(&TextureCopy {
+    pass.copy_texture_to_texture(&TextureCopy {
         src: array,
         dst: array,
         dst_layer: 2,
@@ -177,16 +177,19 @@ pub fn test() {
     .unwrap()
     .end();
     let mut pass = c
-        .begin_compute_pass(Stage::COLOR | Stage::DEPTH | Stage::COPY, Stage::COPY)
+        .begin_compute_pass(
+            PipelineStages::COLOR | PipelineStages::DEPTH | PipelineStages::COPY,
+            PipelineStages::COPY,
+        )
         .unwrap();
-    pass.copy_texture(&TextureCopy {
+    pass.copy_texture_to_texture(&TextureCopy {
         src: depth,
         dst: depth2,
         width: 8,
         height: 8,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::COPY);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::COPY);
     for (s, &offset) in slots.iter().zip(&offsets) {
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             buffer: back,
@@ -198,7 +201,7 @@ pub fn test() {
             ..Default::default()
         });
     }
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
@@ -210,7 +213,7 @@ pub fn test() {
     };
     for (i, p) in pixels.iter().enumerate() {
         let at = i * 4;
-        assert_eq!(&data[at..at + 4], p, "copy_buffer texel {i}");
+        assert_eq!(&data[at..at + 4], p, "copy_buffer_to_buffer texel {i}");
     }
     for y in 0..N {
         for x in 0..N {

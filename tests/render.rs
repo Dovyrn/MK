@@ -1,8 +1,8 @@
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CompareOp, DepthAttachment,
-    DepthStateInfo, Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage,
-    StoreOp, TextureDiscard, TextureInfo, TextureUsage, VertexAttribute, VertexBufferLayout,
-    VertexPipelineStates, Viewport,
+    DepthStateInfo, Format, IndexType, Memory, PipelineStages, RenderPassInfo, RenderPipelineInfo,
+    Scissor, StoreOp, TextureContentDiscard, TextureInfo, TextureUsage, VertexAttribute,
+    VertexBufferLayout, VertexPipelineStates, Viewport,
 };
 
 use crate::host;
@@ -125,8 +125,12 @@ pub fn test() {
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(
-        &[(color, Stage::COLOR), (depth, Stage::DEPTH)].map(|(texture, stage)| TextureDiscard {
+    c.discard_texture_contents(
+        &[
+            (color, PipelineStages::COLOR),
+            (depth, PipelineStages::DEPTH),
+        ]
+        .map(|(texture, stage)| TextureContentDiscard {
             texture,
             src_stage: stage,
             dst_stage: stage,
@@ -171,7 +175,9 @@ pub fn test() {
     c.end().unwrap();
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);
-    let mut pass = copy.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = copy
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: n,
@@ -179,7 +185,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     copy.end().unwrap();
     device.submit([c, copy], &[], &[(&timeline, 1)]).unwrap();

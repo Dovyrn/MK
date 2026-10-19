@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, Format, LoadOp, Memory, RenderPassInfo,
-    Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, Format, LoadOp, Memory, PipelineStages,
+    RenderPassInfo, Scissor, TextureContentDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -23,7 +23,7 @@ pub fn test() {
     device.commit_residency(set);
     let mut value = 0;
     let mut done = Vec::new();
-    let area = if device.caps().partial_resolve {
+    let area = if device.capabilities().partial_resolve {
         n / 2
     } else {
         n
@@ -56,10 +56,10 @@ pub fn test() {
         device.commit_residency(set);
         let mut c = device.begin_commands(pool).unwrap();
         c.use_residency_set(set);
-        c.discard_textures(&[ms, dst].map(|t| TextureDiscard {
+        c.discard_texture_contents(&[ms, dst].map(|t| TextureContentDiscard {
             texture: t,
-            src_stage: Stage::COLOR,
-            dst_stage: Stage::COLOR,
+            src_stage: PipelineStages::COLOR,
+            dst_stage: PipelineStages::COLOR,
         }));
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -87,8 +87,8 @@ pub fn test() {
         pass.end();
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
-                src_stage: Stage::COLOR,
-                dst_stage: Stage::COLOR,
+                src_stage: PipelineStages::COLOR,
+                dst_stage: PipelineStages::COLOR,
                 width: n,
                 height: n,
                 colors: &[ColorAttachment {
@@ -113,8 +113,8 @@ pub fn test() {
         pass.end();
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
-                src_stage: Stage::COLOR,
-                dst_stage: Stage::COLOR,
+                src_stage: PipelineStages::COLOR,
+                dst_stage: PipelineStages::COLOR,
                 width: area,
                 height: area,
                 colors: &[ColorAttachment {
@@ -138,7 +138,9 @@ pub fn test() {
             height: area,
         }]);
         pass.end();
-        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+        let mut pass = c
+            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: dst,
             width: n,
@@ -146,7 +148,7 @@ pub fn test() {
             buffer: back,
             ..Default::default()
         });
-        pass.memory_barrier(Stage::COPY, Stage::HOST);
+        pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
         pass.end();
         value += 1;
         c.end().unwrap();

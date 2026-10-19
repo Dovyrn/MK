@@ -1,12 +1,12 @@
-use mk::{BufferUsage, DescriptorType, Memory, Stage};
+use mk::{BufferUsage, DescriptorType, Memory, PipelineStages};
 
 use crate::host;
 
 pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    println!("{:?}", device.caps());
-    if !device.caps().compute {
+    println!("{:?}", device.capabilities());
+    if !device.capabilities().compute {
         println!("no compute shaders");
         return;
     }
@@ -50,10 +50,10 @@ pub fn test() {
     c.use_residency_set(set);
     c.begin_debug_label("fill");
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.fill_buffer(buffer, 0, n as u64 * 4, 0xff);
-    pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
     pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
@@ -61,7 +61,7 @@ pub fn test() {
         .create_buffer(4, Memory::Upload, BufferUsage::COPY_DST, "")
         .unwrap();
     device.destroy_buffer(spare);
-    pass.memory_barrier(Stage::COMPUTE, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::HOST);
     pass.end();
     c.end_debug_label();
     c.end().unwrap();

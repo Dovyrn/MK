@@ -4,8 +4,8 @@ use crate::command::Command;
 use objc2_metal::MTL4ComputeCommandEncoder;
 
 impl Recorder<'_> {
-    pub(super) fn copy_texture(&mut self, c: Command) -> Result<(), Error> {
-        let Command::CopyTexture {
+    pub(super) fn copy_texture_to_texture(&mut self, c: Command) -> Result<(), Error> {
+        let Command::CopyTextureToTexture {
             src,
             src_mip,
             src_layer,

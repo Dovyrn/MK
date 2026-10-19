@@ -1,7 +1,7 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CullMode, DynamicState, Format,
-    FrontFace, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard,
-    TextureInfo, TextureUsage, VertexPipelineStates, Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CullMode, DynamicPipelineStates,
+    Format, FrontFace, Memory, PipelineStages, RenderPassInfo, RenderPipelineInfo, Scissor,
+    TextureContentDiscard, TextureInfo, TextureUsage, VertexPipelineStates, Viewport,
 };
 
 use crate::host;
@@ -59,7 +59,7 @@ pub fn test() {
         ..Default::default()
     });
     let dynamic = pipeline(VertexPipelineStates {
-        dynamic: DynamicState::CULL | DynamicState::FACE,
+        dynamic: DynamicPipelineStates::CULL | DynamicPipelineStates::FACE,
         ..Default::default()
     });
     let set = device.create_residency_set().unwrap();
@@ -68,10 +68,10 @@ pub fn test() {
     let timeline = device.create_timeline().unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
-    c.discard_textures(&[TextureDiscard {
+    c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: Stage::COLOR,
-        dst_stage: Stage::COLOR,
+        src_stage: PipelineStages::COLOR,
+        dst_stage: PipelineStages::COLOR,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -121,7 +121,9 @@ pub fn test() {
     pass.bind_render_pipeline(backs);
     cell(&mut pass, 6);
     pass.end();
-    let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,
         width: w,
@@ -129,7 +131,7 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

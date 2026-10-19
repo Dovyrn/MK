@@ -5,7 +5,7 @@ mod draw;
 mod pass;
 mod textures;
 
-use crate::caps::same_blend;
+use crate::device_capabilities::same_blend;
 use crate::gl::device::compare;
 use crate::gl::extra::Extra;
 use crate::gl::pipeline::Pipeline;
@@ -14,8 +14,9 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{State, set_enabled};
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, DynamicState,
-    Format, FrontFace, IndexType, LoadOp, Stage, StoreOp, Topology, VertexPipelineStates, slot,
+    ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, DeviceCapabilities,
+    DynamicPipelineStates, Format, FrontFace, IndexType, LoadOp, PipelineStages, StoreOp, Topology,
+    VertexPipelineStates, slot,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -62,7 +63,7 @@ pub struct Recorder<'a> {
     gl: &'a glow::Context,
     extra: &'a Extra,
     res: &'a Resources,
-    caps: &'a Caps,
+    caps: &'a DeviceCapabilities,
     fbo: glow::Framebuffer,
     read: glow::Framebuffer,
     program: Option<&'a Program>,
@@ -153,31 +154,37 @@ fn is_integer_format(f: Format) -> bool {
     f.uint() || f.sint()
 }
 
-fn gl_barrier_bits(stages: Stage) -> u32 {
+fn gl_barrier_bits(stages: PipelineStages) -> u32 {
     let shader = glow::UNIFORM_BARRIER_BIT
         | glow::SHADER_STORAGE_BARRIER_BIT
         | glow::SHADER_IMAGE_ACCESS_BARRIER_BIT
         | glow::TEXTURE_FETCH_BARRIER_BIT;
     let map = [
-        (Stage::INDIRECT, glow::COMMAND_BARRIER_BIT),
+        (PipelineStages::INDIRECT, glow::COMMAND_BARRIER_BIT),
         (
-            Stage::VERTEX,
+            PipelineStages::VERTEX,
             shader | glow::ELEMENT_ARRAY_BARRIER_BIT | glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT,
         ),
         (
-            Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE,
+            PipelineStages::FRAGMENT
+                | PipelineStages::TASK
+                | PipelineStages::MESH
+                | PipelineStages::COMPUTE,
             shader,
         ),
-        (Stage::DEPTH | Stage::COLOR, glow::FRAMEBUFFER_BARRIER_BIT),
         (
-            Stage::COPY,
+            PipelineStages::DEPTH | PipelineStages::COLOR,
+            glow::FRAMEBUFFER_BARRIER_BIT,
+        ),
+        (
+            PipelineStages::COPY,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::TEXTURE_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::FRAMEBUFFER_BARRIER_BIT,
         ),
         (
-            Stage::HOST,
+            PipelineStages::HOST,
             glow::BUFFER_UPDATE_BARRIER_BIT
                 | glow::PIXEL_BUFFER_BARRIER_BIT
                 | glow::CLIENT_MAPPED_BUFFER_BARRIER_BIT,
@@ -198,7 +205,7 @@ impl<'a> Recorder<'a> {
         gl: &'a glow::Context,
         extra: &'a Extra,
         res: &'a Resources,
-        caps: &'a Caps,
+        caps: &'a DeviceCapabilities,
         (fbo, read): (glow::Framebuffer, glow::Framebuffer),
         (host, errors): (State, Vec<u32>),
         open: &'a Cell<bool>,
@@ -452,23 +459,23 @@ impl<'a> Recorder<'a> {
 
     fn statics(&mut self, s: &VertexPipelineStates) {
         let dynamic = s.dynamic;
-        if !dynamic.contains(DynamicState::CULL) {
+        if !dynamic.contains(DynamicPipelineStates::CULL) {
             self.cull(s.cull);
         }
-        if !dynamic.contains(DynamicState::FACE) {
+        if !dynamic.contains(DynamicPipelineStates::FACE) {
             self.face(s.face);
         }
-        if !dynamic.contains(DynamicState::DEPTH_STATE) {
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_STATE) {
             self.depth(s.depth);
         }
-        if !dynamic.contains(DynamicState::STENCIL_REFERENCE) {
+        if !dynamic.contains(DynamicPipelineStates::STENCIL_REFERENCE) {
             self.references = (s.front_reference, s.back_reference);
             self.apply_stencil();
         }
-        if !dynamic.contains(DynamicState::DEPTH_BIAS) {
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_BIAS) {
             self.bias(s.bias_constant, s.bias_slope, s.bias_clamp);
         }
-        if !dynamic.contains(DynamicState::BLEND_COLOR) {
+        if !dynamic.contains(DynamicPipelineStates::BLEND_COLOR) {
             let [r, g, b, a] = s.blend_color;
             unsafe { self.gl.blend_color(r, g, b, a) };
         }
@@ -496,8 +503,12 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn barrier(&self, src: Stage, dst: Stage) {
-        let shaders = Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE;
+    fn barrier(&self, src: PipelineStages, dst: PipelineStages) {
+        let shaders = PipelineStages::VERTEX
+            | PipelineStages::FRAGMENT
+            | PipelineStages::TASK
+            | PipelineStages::MESH
+            | PipelineStages::COMPUTE;
         if !(src & shaders).is_empty() && self.caps.storage_sets {
             unsafe { self.gl.memory_barrier(gl_barrier_bits(dst)) };
         }
@@ -553,7 +564,7 @@ impl<'a> Recorder<'a> {
                     dst_stage,
                 } => self.barrier(src_stage, dst_stage),
                 Command::EndComputePass
-                | Command::DiscardTextures { .. }
+                | Command::DiscardTextureContents { .. }
                 | Command::OcclusionPool { .. }
                 | Command::ResetQueries { .. } => {}
                 Command::BindComputePipeline { pipeline } => {
@@ -574,7 +585,7 @@ impl<'a> Recorder<'a> {
                         self.extra.dispatch.unwrap()(offset as isize);
                     }
                 }
-                Command::CopyBuffer {
+                Command::CopyBufferToBuffer {
                     src,
                     src_offset,
                     dst,
@@ -643,7 +654,7 @@ impl<'a> Recorder<'a> {
                     self.units.clear();
                 }
                 Command::CopyTextureToBuffer { .. } => self.readback(command)?,
-                Command::CopyTexture { .. } => self.copy_texture(command),
+                Command::CopyTextureToTexture { .. } => self.copy_texture_to_texture(command),
                 Command::ColorAttachment {
                     index,
                     texture,
@@ -706,7 +717,7 @@ impl<'a> Recorder<'a> {
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
-                    if !p.states.dynamic.contains(DynamicState::TOPOLOGY) {
+                    if !p.states.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
                         self.mode = gl_primitive_mode(p.topology);
                     }
                     let fill = if p.fill == crate::FillMode::Line {
@@ -725,7 +736,7 @@ impl<'a> Recorder<'a> {
                 Command::SetPrimitiveTopology { topology } => {
                     self.mode = gl_primitive_mode(topology)
                 }
-                Command::SetDepthState { state } => self.depth(*res.depths.get(state)),
+                Command::SetDepthStencilState { state } => self.depth(*res.depths.get(state)),
                 Command::SetStencilReference { front, back } => {
                     self.references = (front, back);
                     self.apply_stencil();

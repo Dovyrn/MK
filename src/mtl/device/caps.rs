@@ -1,13 +1,18 @@
 use super::Device;
 use crate::Error;
 use crate::{
-    Atomic64, Caps, Format, Stage, SubgroupOp, TextureDimension, TextureInfo, TextureUsage,
+    Atomic64, DeviceCapabilities, Format, PipelineStages, SubgroupOp, TextureDimension,
+    TextureInfo, TextureUsage,
 };
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLDevice, MTLGPUFamily};
 
 impl Device {
-    pub(super) fn detect(raw: &ProtocolObject<dyn MTLDevice>, queues: usize, width: u32) -> Caps {
+    pub(super) fn detect(
+        raw: &ProtocolObject<dyn MTLDevice>,
+        queues: usize,
+        width: u32,
+    ) -> DeviceCapabilities {
         let apple9 = raw.supportsFamily(MTLGPUFamily::Apple9);
         let apple10 = raw.supportsFamily(MTLGPUFamily::Apple10);
         let groups = if apple10 {
@@ -18,11 +23,11 @@ impl Device {
             1024
         };
         let size = if apple10 { 32768 } else { 16384 };
-        Caps {
+        DeviceCapabilities {
             subgroup: width,
             subgroup_sizes: width,
             subgroup_ops: !SubgroupOp::CLUSTERED,
-            subgroup_stages: Stage::COMPUTE | Stage::FRAGMENT,
+            subgroup_stages: PipelineStages::COMPUTE | PipelineStages::FRAGMENT,
             full_subgroups: true,
             max_threads: raw.maxThreadsPerThreadgroup().width as u32,
             max_shared: raw.maxThreadgroupMemoryLength() as u32,
@@ -98,7 +103,7 @@ impl Device {
         }
     }
 
-    pub fn caps(&self) -> Caps {
+    pub fn capabilities(&self) -> DeviceCapabilities {
         self.caps
     }
 

@@ -99,7 +99,7 @@ public class VulkanHost {
                     .ppEnabledExtensionNames(extensions);
             check(vkCreateDevice(physical, create, null, p));
             var proc = VK.getFunctionProvider().getFunctionAddress("vkGetInstanceProcAddr");
-            return VkDevice.importDeviceRaw(
+            return VkDevice.importRawDevice(
                     proc, instance.address(), physical.address(), p.get(0), new int[] {family, 0}, features.address());
         }
     }

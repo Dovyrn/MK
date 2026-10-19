@@ -4,10 +4,10 @@ mod window;
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandPool, CompareOp,
     DepthAttachment, DepthStateInfo, DescriptorBinding, DescriptorLayout, DescriptorSet,
-    DescriptorType, DescriptorWrite, Format, IndexType, Memory, RenderPassInfo, RenderPipeline,
-    RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, Stage, StoreOp, Swapchain,
-    SwapchainInfo, Texture, TextureDiscard, TextureInfo, TextureUsage, Timeline, VertexAttribute,
-    VertexBufferLayout, VertexPipelineStates, Viewport,
+    DescriptorType, DescriptorWrite, Format, IndexType, Memory, PipelineStages, RenderPassInfo,
+    RenderPipeline, RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, StoreOp, Swapchain,
+    SwapchainInfo, Texture, TextureContentDiscard, TextureInfo, TextureUsage, Timeline,
+    VertexAttribute, VertexBufferLayout, VertexPipelineStates, Viewport,
 };
 use model::Model;
 use std::time::Instant;
@@ -86,7 +86,7 @@ fn layout(device: &mk::Device, kind: DescriptorType) -> DescriptorLayout {
 
 fn set(device: &mk::Device, layout: DescriptorLayout, write: DescriptorWrite) -> DescriptorSet {
     let pool = device.create_descriptor_pool(layout, 1).unwrap();
-    let set = device.create_descriptor_set(pool).unwrap();
+    let set = device.allocate_descriptor_set(pool).unwrap();
     device.write_descriptor_set(set, &[write]);
     set
 }
@@ -244,7 +244,7 @@ impl App {
         let sets: Vec<DescriptorSet> = albedos
             .iter()
             .map(|&texture| {
-                let set = device.create_descriptor_set(pool).unwrap();
+                let set = device.allocate_descriptor_set(pool).unwrap();
                 device.write_descriptor_set(
                     set,
                     &[DescriptorWrite {
@@ -261,15 +261,15 @@ impl App {
         let mut c = device.begin_commands(commands).unwrap();
         c.use_residency_set(resident);
         let mut pass = c
-            .begin_compute_pass(Stage::default(), Stage::default())
+            .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
             .unwrap();
-        pass.discard_textures(
+        pass.discard_texture_contents(
             &albedos
                 .iter()
-                .map(|&texture| TextureDiscard {
+                .map(|&texture| TextureContentDiscard {
                     texture,
-                    src_stage: Stage::COPY,
-                    dst_stage: Stage::COPY,
+                    src_stage: PipelineStages::COPY,
+                    dst_stage: PipelineStages::COPY,
                 })
                 .collect::<Vec<_>>(),
         );
@@ -288,7 +288,7 @@ impl App {
                 offset += size_of_val(level.as_slice()) as u64;
             }
         }
-        pass.memory_barrier(Stage::COPY, Stage::FRAGMENT);
+        pass.memory_barrier(PipelineStages::COPY, PipelineStages::FRAGMENT);
         pass.end();
         c.end().unwrap();
         device.submit([c], &[], &[(&timeline, 1)]).unwrap();
@@ -352,13 +352,17 @@ impl App {
         let target = self.device.acquire_texture(self.swapchain).unwrap();
         let mut c = self.device.begin_commands(self.commands).unwrap();
         c.use_residency_set(self.resident);
-        c.discard_textures(&[(target, Stage::COLOR), (self.depth, Stage::DEPTH)].map(
-            |(texture, stage)| TextureDiscard {
+        c.discard_texture_contents(
+            &[
+                (target, PipelineStages::COLOR),
+                (self.depth, PipelineStages::DEPTH),
+            ]
+            .map(|(texture, stage)| TextureContentDiscard {
                 texture,
                 src_stage: stage,
                 dst_stage: stage,
-            },
-        ));
+            }),
+        );
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
                 width,
@@ -397,7 +401,7 @@ impl App {
             pass.draw_indexed(count, 1, first, 0, 0);
         }
         pass.end();
-        c.present_barrier(target, Stage::COLOR);
+        c.present_barrier(target, PipelineStages::COLOR);
         c.end().unwrap();
         self.frame += 1;
         self.device

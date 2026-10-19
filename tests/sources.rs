@@ -1,4 +1,4 @@
-use mk::{BufferUsage, ComputePipelineInfo, DescriptorType, Error, Memory, Stage};
+use mk::{BufferUsage, ComputePipelineInfo, DescriptorType, Error, Memory, PipelineStages};
 
 use crate::host;
 
@@ -42,7 +42,7 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
     }
     writes.push(host::buffer(writes.len() as u32, data, 0, n as u64 * 4));
     let sets = device.create_descriptor_pool(layout, 1).unwrap();
-    let bound = device.create_descriptor_set(sets).unwrap();
+    let bound = device.allocate_descriptor_set(sets).unwrap();
     device.write_descriptor_set(bound, &writes);
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[data.into(), back.into(), constants.into()]);
@@ -52,14 +52,14 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.bind_compute_pipeline(pipeline);
     pass.bind_descriptor_set(bound);
     pass.dispatch(n / 64, 1, 1);
-    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
-    pass.copy_buffer(data, 0, back, 0, n as u64 * 4);
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::COPY);
+    pass.copy_buffer_to_buffer(data, 0, back, 0, n as u64 * 4);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
@@ -129,7 +129,7 @@ fn native(device: &mk::Device) {
     desc.setSupportArgumentBuffers(true);
     let raw = device.raw.newSamplerStateWithDescriptor(&desc).unwrap();
     let sampler = device.import_sampler(raw);
-    assert_ne!(device.bindless_sampler(sampler), 0);
+    assert_ne!(device.bindless_sampler_id(sampler), 0);
     device.destroy_sampler(sampler);
     println!(
         "MSL source and a plain metallib ran 256 threads each; label and sampler import checked"
@@ -162,7 +162,7 @@ fn native(device: &mk::Device) {
 
 pub fn test() {
     let device = host::device(1);
-    if !device.caps().storage_sets || !device.caps().compute {
+    if !device.capabilities().storage_sets || !device.capabilities().compute {
         println!("no compute storage sets");
         return;
     }

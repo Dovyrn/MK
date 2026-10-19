@@ -11,7 +11,7 @@ use applied::Applied;
 
 use crate::command::Command;
 use crate::mtl::device::resource;
-use crate::{DynamicState, Format, IndexType, LoadOp, Stage, StoreOp};
+use crate::{DynamicPipelineStates, Format, IndexType, LoadOp, PipelineStages, StoreOp};
 use crate::{sets, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -62,17 +62,24 @@ const COMPUTE: MTLStages = MTLStages(MTLStages::Dispatch.0 | MTLStages::Blit.0);
 
 pub const VERTICES: usize = 30;
 
-fn mtl_stages(bits: Stage) -> MTLStages {
-    let same =
-        Stage::VERTEX | Stage::FRAGMENT | Stage::TASK | Stage::MESH | Stage::COMPUTE | Stage::COPY;
+fn mtl_stages(bits: PipelineStages) -> MTLStages {
+    let same = PipelineStages::VERTEX
+        | PipelineStages::FRAGMENT
+        | PipelineStages::TASK
+        | PipelineStages::MESH
+        | PipelineStages::COMPUTE
+        | PipelineStages::COPY;
     let mut s = bits & same;
-    if bits.contains(Stage::INDIRECT) {
-        s |= Stage::VERTEX | Stage::TASK | Stage::MESH | Stage::COMPUTE;
+    if bits.contains(PipelineStages::INDIRECT) {
+        s |= PipelineStages::VERTEX
+            | PipelineStages::TASK
+            | PipelineStages::MESH
+            | PipelineStages::COMPUTE;
     }
-    if !(bits & (Stage::DEPTH | Stage::COLOR)).is_empty() {
-        s |= Stage::FRAGMENT;
+    if !(bits & (PipelineStages::DEPTH | PipelineStages::COLOR)).is_empty() {
+        s |= PipelineStages::FRAGMENT;
     }
-    let tile = if s.contains(Stage::FRAGMENT) {
+    let tile = if s.contains(PipelineStages::FRAGMENT) {
         MTLStages::Tile.0
     } else {
         0
@@ -80,7 +87,11 @@ fn mtl_stages(bits: Stage) -> MTLStages {
     MTLStages(s.0 as usize | tile)
 }
 
-fn wait(encoder: &ProtocolObject<dyn MTL4CommandEncoder>, src: Stage, dst: Stage) {
+fn wait(
+    encoder: &ProtocolObject<dyn MTL4CommandEncoder>,
+    src: PipelineStages,
+    dst: PipelineStages,
+) {
     if !src.is_empty() {
         encoder.barrierAfterQueueStages_beforeStages_visibilityOptions(
             mtl_stages(src),
@@ -90,11 +101,11 @@ fn wait(encoder: &ProtocolObject<dyn MTL4CommandEncoder>, src: Stage, dst: Stage
     }
 }
 
-fn mtl_render_stage(bits: crate::Stage) -> MTLRenderStages {
+fn mtl_render_stage(bits: crate::PipelineStages) -> MTLRenderStages {
     match bits {
-        Stage::VERTEX | Stage::INDIRECT => MTLRenderStages::Vertex,
-        Stage::TASK => MTLRenderStages::Object,
-        Stage::MESH => MTLRenderStages::Mesh,
+        PipelineStages::VERTEX | PipelineStages::INDIRECT => MTLRenderStages::Vertex,
+        PipelineStages::TASK => MTLRenderStages::Object,
+        PipelineStages::MESH => MTLRenderStages::Mesh,
         _ => MTLRenderStages::Fragment,
     }
 }
@@ -357,7 +368,7 @@ impl<'a> Recorder<'a> {
                         )
                 };
             }
-            Command::CopyBuffer {
+            Command::CopyBufferToBuffer {
                 src,
                 src_offset,
                 dst,
@@ -408,7 +419,7 @@ impl<'a> Recorder<'a> {
                         );
                 }
             }
-            Command::DiscardTextures { .. } | Command::PresentBarrier { .. } => {}
+            Command::DiscardTextureContents { .. } | Command::PresentBarrier { .. } => {}
             Command::CopyBufferToTexture {
                 buffer,
                 offset,
@@ -479,7 +490,7 @@ impl<'a> Recorder<'a> {
                         )
                 }
             }
-            Command::CopyTexture { .. } => self.copy_texture(command)?,
+            Command::CopyTextureToTexture { .. } => self.copy_texture_to_texture(command)?,
             Command::ColorAttachment {
                 index,
                 texture,
@@ -580,7 +591,7 @@ impl<'a> Recorder<'a> {
                     e.setDepthClipMode(p.clip);
                 }
                 self.raster = Some((p.fill, p.clip));
-                if !p.states.dynamic.contains(DynamicState::TOPOLOGY) {
+                if !p.states.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
                     self.primitive = p.primitive;
                 }
                 self.applied.bind(e, p);
@@ -597,7 +608,7 @@ impl<'a> Recorder<'a> {
             Command::SetPrimitiveTopology { topology } => {
                 self.primitive = MTLPrimitiveType(topology as usize)
             }
-            Command::SetDepthState { state } => {
+            Command::SetDepthStencilState { state } => {
                 let state = self.res.depths.get(state);
                 let (e, applied) = self.states();
                 applied.depth(e, state);

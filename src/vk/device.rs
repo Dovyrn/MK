@@ -32,8 +32,10 @@ use crate::vk::queue::Queue;
 use crate::vk::recorder::Recorder;
 use crate::vk::resources::Resources;
 use crate::vk::swapchain::Present;
-use crate::{Caps, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo};
 use crate::{CommandBuffer, CommandPool, ImportedPassInfo, RenderPass};
+use crate::{
+    DeviceCapabilities, Memory, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo,
+};
 use ash::vk;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -43,7 +45,7 @@ pub struct Device {
     pub physical: vk::PhysicalDevice,
     pub raw: ash::Device,
     ext: Extensions,
-    caps: Caps,
+    caps: DeviceCapabilities,
     name: String,
     limits: vk::PhysicalDeviceLimits,
     memory: vk::PhysicalDeviceMemoryProperties,
@@ -323,7 +325,7 @@ impl Device {
         .map_err(Error::from)
     }
 
-    pub fn import_device_raw(
+    pub fn import_raw_device(
         proc: u64,
         instance: u64,
         physical: u64,
@@ -475,7 +477,7 @@ impl Device {
         })
     }
 
-    pub fn import_commands(
+    pub fn import_command_buffer(
         &self,
         pool: CommandPool,
         raw: vk::CommandBuffer,

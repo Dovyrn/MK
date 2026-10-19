@@ -213,7 +213,7 @@ fields = [
     ["bias_slope", "f32", "0.0"],
     ["bias_clamp", "f32", "0.0"],
     ["blend_color", "f32x4", "[0.0, 0.0, 0.0, 0.0]"],
-    ["dynamic", "DynamicState", "0"],
+    ["dynamic", "DynamicPipelineStates", "0"],
 ]
 
 [[info]]
@@ -228,11 +228,11 @@ fields = [
     ["bias_slope", "f32", "0.0"],
     ["bias_clamp", "f32", "0.0"],
     ["blend_color", "f32x4", "[0.0, 0.0, 0.0, 0.0]"],
-    ["dynamic", "DynamicState", "0"],
+    ["dynamic", "DynamicPipelineStates", "0"],
 ]
 
 [[info]]
-name = "Caps"
+name = "DeviceCapabilities"
 fields = [
     ["mesh", "bool", "false"],
     ["task", "bool", "false"],
@@ -290,7 +290,7 @@ fields = [
     ["subgroup", "u32", "0"],
     ["subgroup_sizes", "u32", "0"],
     ["subgroup_ops", "SubgroupOp", "0"],
-    ["subgroup_stages", "Stage", "0"],
+    ["subgroup_stages", "PipelineStages", "0"],
     ["full_subgroups", "bool", "false"],
     ["max_threads", "u32", "0"],
     ["max_shared", "u32", "0"],
@@ -361,11 +361,11 @@ fields = [
 ]
 
 [[info]]
-name = "TextureDiscard"
+name = "TextureContentDiscard"
 fields = [
     ["texture", "Texture", ""],
-    ["src_stage", "Stage", "0"],
-    ["dst_stage", "Stage", "0"],
+    ["src_stage", "PipelineStages", "0"],
+    ["dst_stage", "PipelineStages", "0"],
 ]
 
 [[info]]
@@ -466,7 +466,7 @@ fields = [
 ]
 
 [[info]]
-name = "TileMemory"
+name = "TileInfo"
 fields = [
     ["width", "u32", "0"],
     ["height", "u32", "0"],
@@ -482,9 +482,9 @@ fields = [
     ["colors", "[ColorAttachment]", ""],
     ["depth", "DepthAttachment?", ""],
     ["occlusion", "QueryPool?", ""],
-    ["tile", "TileMemory?", ""],
-    ["src_stage", "Stage", "0"],
-    ["dst_stage", "Stage", "0"],
+    ["tile", "TileInfo?", ""],
+    ["src_stage", "PipelineStages", "0"],
+    ["dst_stage", "PipelineStages", "0"],
 ]
 
 [[info]]
@@ -509,7 +509,7 @@ fields = [
 ]
 
 [[info]]
-name = "SurfaceCaps"
+name = "SurfaceCapabilities"
 fields = [
     ["min_images", "u32", "0"],
     ["max_images", "u32", "0"],

@@ -1,6 +1,6 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, Format, HostTextureCopy, Memory, Stage, TextureDimension,
-    TextureInfo, TextureUsage,
+    BufferTextureCopy, BufferUsage, Format, HostTextureCopy, Memory, PipelineStages,
+    TextureDimension, TextureInfo, TextureUsage,
 };
 
 use crate::host;
@@ -20,7 +20,7 @@ pub fn test() {
         println!("no TextureUsage::HOST for RGBA8_UNORM");
         return;
     }
-    if !device.caps().host_read {
+    if !device.capabilities().host_read {
         println!("read_texture needs caps.host_read");
         return;
     }
@@ -57,7 +57,7 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         buffer: back,
@@ -66,7 +66,7 @@ pub fn test() {
         height: n,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::HOST);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();
@@ -215,7 +215,7 @@ pub fn test() {
             let mut c = device.begin_commands(pool).unwrap();
             c.use_residency_set(set);
             let mut pass = c
-                .begin_compute_pass(Stage::default(), Stage::default())
+                .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
                 .unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {
                 buffer: back,
@@ -226,7 +226,7 @@ pub fn test() {
                 height: 8,
                 ..Default::default()
             });
-            pass.memory_barrier(Stage::COPY, Stage::HOST);
+            pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
             pass.end();
             c.end().unwrap();
             device.submit([c], &[], &[(&timeline, 1)]).unwrap();
@@ -238,11 +238,11 @@ pub fn test() {
     }
     let budget = match device.memory_budget() {
         Ok(b) => {
-            assert!(device.caps().budget && b.budget > 0, "budget {b:?}");
+            assert!(device.capabilities().budget && b.budget > 0, "budget {b:?}");
             format!("{} of {} MB", b.usage >> 20, b.budget >> 20)
         }
         Err(e) => {
-            assert!(!device.caps().budget, "{e}");
+            assert!(!device.capabilities().budget, "{e}");
             e.to_string()
         }
     };

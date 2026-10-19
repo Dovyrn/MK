@@ -1,8 +1,8 @@
 use crate::Error;
 use crate::{
-    AddressMode, BufferUsage, Caps, ColorTarget, DynamicState, FillMode, Format, Memory,
-    MeshPipelineInfo, QueryKind, RenderPipelineInfo, SamplerInfo, TextureDimension, TextureInfo,
-    TextureUsage,
+    AddressMode, BufferUsage, ColorTarget, DeviceCapabilities, DynamicPipelineStates, FillMode,
+    Format, Memory, MeshPipelineInfo, QueryKind, RenderPipelineInfo, SamplerInfo, TextureDimension,
+    TextureInfo, TextureUsage,
 };
 
 fn need(name: &str, has: bool, cap: &str) -> Result<(), Error> {
@@ -118,7 +118,7 @@ pub(crate) fn check_tile_pipeline(info: &crate::TilePipelineInfo) {
     );
 }
 
-impl Caps {
+impl DeviceCapabilities {
     pub(crate) fn check_render_pipeline(&self, info: &RenderPipelineInfo) -> Result<(), Error> {
         if !cfg!(feature = "validation") {
             return Ok(());
@@ -146,8 +146,11 @@ impl Caps {
         need(name, self.mesh, "mesh")?;
         need(name, info.task.is_empty() || self.task, "task")?;
         check!(
-            !info.states.dynamic.contains(DynamicState::TOPOLOGY),
-            "{name} lists DynamicState::TOPOLOGY in MeshPipelineStates.dynamic, but mesh pipelines have no primitive topology"
+            !info
+                .states
+                .dynamic
+                .contains(DynamicPipelineStates::TOPOLOGY),
+            "{name} lists DynamicPipelineStates::TOPOLOGY in MeshPipelineStates.dynamic, but mesh pipelines have no primitive topology"
         );
         need(
             name,
@@ -220,7 +223,7 @@ impl Caps {
     pub(crate) fn check_subgroups(
         &self,
         ops: crate::SubgroupOp,
-        stage: crate::Stage,
+        stage: crate::PipelineStages,
     ) -> Result<(), Error> {
         if !cfg!(feature = "validation") {
             return Ok(());
@@ -295,7 +298,7 @@ impl Caps {
         }
         check!(
             crate::handle::Handle::index(texture) < self.images,
-            "bindless_storage_texture of {texture} is outside caps.images {}",
+            "bindless_storage_texture_id of {texture} is outside caps.images {}",
             self.images
         );
     }
@@ -307,7 +310,7 @@ impl Caps {
         }
         check!(
             crate::handle::Handle::index(texture) < self.textures,
-            "bindless_texture of {texture} is outside caps.textures {}",
+            "bindless_texture_id of {texture} is outside caps.textures {}",
             self.textures
         );
     }
@@ -319,7 +322,7 @@ impl Caps {
         }
         check!(
             crate::handle::Handle::index(sampler) < self.samplers,
-            "bindless_sampler of {sampler} is outside caps.samplers {}",
+            "bindless_sampler_id of {sampler} is outside caps.samplers {}",
             self.samplers
         );
     }

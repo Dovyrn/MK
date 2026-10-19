@@ -1,7 +1,7 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
-    AddressMode, BufferTextureCopy, BufferUsage, Filter, Format, Memory, SamplerInfo, Stage,
-    TextureDiscard, TextureInfo, TextureUsage,
+    AddressMode, BufferTextureCopy, BufferUsage, Filter, Format, Memory, PipelineStages,
+    SamplerInfo, TextureContentDiscard, TextureInfo, TextureUsage,
 };
 
 #[cfg(not(feature = "gl"))]
@@ -83,9 +83,9 @@ pub fn test() {
         .collect();
     unsafe { device.map_buffer::<[u8; 4]>(upload) }.copy_from_slice(&pattern);
     let mut push = device.buffer_address(out).to_le_bytes().to_vec();
-    push.extend(device.bindless_texture(src).to_le_bytes());
-    push.extend(device.bindless_sampler(sampler).to_le_bytes());
-    push.extend(device.bindless_storage_texture(dst).to_le_bytes());
+    push.extend(device.bindless_texture_id(src).to_le_bytes());
+    push.extend(device.bindless_sampler_id(sampler).to_le_bytes());
+    push.extend(device.bindless_storage_texture_id(dst).to_le_bytes());
     push.extend(n.to_le_bytes());
     let (constants, _) = host::constants(&device, &[&push]);
     let bound = host::set(
@@ -109,12 +109,12 @@ pub fn test() {
     let mut c = device.begin_commands(pool).unwrap();
     c.use_residency_set(set);
     let mut pass = c
-        .begin_compute_pass(Stage::default(), Stage::default())
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
         .unwrap();
-    pass.discard_textures(&[src, dst].map(|texture| TextureDiscard {
+    pass.discard_texture_contents(&[src, dst].map(|texture| TextureContentDiscard {
         texture,
-        src_stage: Stage::COPY,
-        dst_stage: Stage::COPY | Stage::COMPUTE,
+        src_stage: PipelineStages::COPY,
+        dst_stage: PipelineStages::COPY | PipelineStages::COMPUTE,
     }));
     pass.copy_buffer_to_texture(&BufferTextureCopy {
         buffer: upload,
@@ -123,11 +123,11 @@ pub fn test() {
         height: n,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COPY, Stage::COMPUTE);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::COMPUTE);
     pass.bind_compute_pipeline(pipeline);
     pass.bind_descriptor_set(bound);
     pass.dispatch(n / 8, n / 8, 1);
-    pass.memory_barrier(Stage::COMPUTE, Stage::COPY);
+    pass.memory_barrier(PipelineStages::COMPUTE, PipelineStages::COPY);
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: dst,
         width: n,
@@ -135,7 +135,10 @@ pub fn test() {
         buffer: back,
         ..Default::default()
     });
-    pass.memory_barrier(Stage::COMPUTE | Stage::COPY, Stage::HOST);
+    pass.memory_barrier(
+        PipelineStages::COMPUTE | PipelineStages::COPY,
+        PipelineStages::HOST,
+    );
     pass.end();
     c.end().unwrap();
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

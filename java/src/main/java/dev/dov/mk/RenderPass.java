@@ -87,11 +87,11 @@ public class RenderPass {
 
     private static native void nSetPrimitiveTopology(long target, int topology);
 
-    public void setDepthState(DepthState state) {
-        nSetDepthState(handle(), DepthState.raw(state));
+    public void setDepthStencilState(DepthStencilState state) {
+        nSetDepthStencilState(handle(), DepthStencilState.raw(state));
     }
 
-    private static native void nSetDepthState(long target, long state);
+    private static native void nSetDepthStencilState(long target, long state);
 
     public void setStencilReference(int front, int back) {
         nSetStencilReference(handle(), front, back);

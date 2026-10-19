@@ -1,8 +1,8 @@
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandBuffer,
-    CommandPool, Device, Format, IndexType, IndirectBufferInfo, Memory, RenderPass, RenderPassInfo,
-    RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture, TextureDiscard,
-    TextureInfo, TextureUsage, Timeline, Viewport,
+    CommandPool, Device, Format, IndexType, IndirectBufferInfo, Memory, PipelineStages, RenderPass,
+    RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Texture,
+    TextureContentDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
 };
 
 use crate::host;
@@ -32,10 +32,10 @@ impl Frame {
         let mut c = device.begin_commands(self.pool).unwrap();
         c.use_residency_set(self.set);
         before(&mut c);
-        c.discard_textures(&[TextureDiscard {
+        c.discard_texture_contents(&[TextureContentDiscard {
             texture: self.color,
-            src_stage: Stage::COLOR,
-            dst_stage: Stage::COLOR,
+            src_stage: PipelineStages::COLOR,
+            dst_stage: PipelineStages::COLOR,
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -46,8 +46,8 @@ impl Frame {
                     clear: [0.0, 0.0, 1.0, 1.0],
                     ..Default::default()
                 }],
-                src_stage: Stage::COMPUTE,
-                dst_stage: Stage::INDIRECT,
+                src_stage: PipelineStages::COMPUTE,
+                dst_stage: PipelineStages::INDIRECT,
                 ..Default::default()
             })
             .unwrap();
@@ -66,7 +66,9 @@ impl Frame {
         pass.bind_index_buffer(self.indices, 0, IndexType::U16);
         draw(&mut pass);
         pass.end();
-        let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();
+        let mut pass = c
+            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: self.color,
             width: N,
@@ -74,7 +76,7 @@ impl Frame {
             buffer: self.back,
             ..Default::default()
         });
-        pass.memory_barrier(Stage::COPY, Stage::HOST);
+        pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
         pass.end();
         c.end().unwrap();
         device.submit([c], &[], &[(timeline, value)]).unwrap();
@@ -144,7 +146,7 @@ pub fn test() {
         pipeline,
         indices,
     };
-    let single = device.caps().indirect;
+    let single = device.capabilities().indirect;
     if single {
         let none = |_: &mut CommandBuffer| {};
         let plain = frame.center(&device, &timeline, 1, &none, &|p| p.draw_indirect(args, 0));
@@ -162,7 +164,7 @@ pub fn test() {
     let counted = match kit {
         Ok(list) => run(&mut device, &frame, list),
         Err(e) => {
-            assert!(!device.caps().addresses, "{e}");
+            assert!(!device.capabilities().addresses, "{e}");
             format!("no indirect buffers: {e}")
         }
     };
@@ -229,7 +231,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         &[range.into(), constants.into(), list.into(), indexed.into()],
     );
     device.commit_residency(p.set);
-    let counted = device.caps().indirect_count;
+    let counted = device.capabilities().indirect_count;
     let timeline = device.create_timeline().unwrap();
     let cases = [(Some(0), BLUE), (Some(1), RED), (None, RED)];
     let cases = [list, indexed].map(|l| cases.map(|(count, center)| (l, count, center)));
@@ -242,7 +244,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         let bound = bounds[count.unwrap_or(0) as usize];
         let encoded = |c: &mut CommandBuffer| {
             let mut pass = c
-                .begin_compute_pass(Stage::default(), Stage::default())
+                .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
                 .unwrap();
             pass.bind_compute_pipeline(encode);
             pass.bind_descriptor_set(bound);
@@ -256,7 +258,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         let got = p.center(device, &timeline, ran, &encoded, &draw);
         assert_eq!(got, center, "{target} with count {count:?}");
     }
-    let multi = device.caps().multi_draw;
+    let multi = device.capabilities().multi_draw;
     if multi {
         let pair = device
             .create_indirect_buffer(&IndirectBufferInfo {
@@ -289,7 +291,7 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
             ran += 1;
             let encoded = |c: &mut CommandBuffer| {
                 let mut pass = c
-                    .begin_compute_pass(Stage::default(), Stage::default())
+                    .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
                     .unwrap();
                 pass.bind_compute_pipeline(encode);
                 pass.bind_descriptor_set(bound);

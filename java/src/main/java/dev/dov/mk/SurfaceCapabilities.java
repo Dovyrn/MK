@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 
 @Setter
 @Accessors(fluent = true, chain = true)
-public class SurfaceCaps {
+public class SurfaceCapabilities {
     public int minImages = 0;
     public int maxImages = 0;
     public int width = 0;
@@ -40,8 +40,8 @@ public class SurfaceCaps {
         return p;
     }
 
-    static SurfaceCaps decode(long p) {
-        var r = new SurfaceCaps();
+    static SurfaceCapabilities decode(long p) {
+        var r = new SurfaceCapabilities();
         r.minImages = memGetInt(p);
         p += 4;
         r.maxImages = memGetInt(p);

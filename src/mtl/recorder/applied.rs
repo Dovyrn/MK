@@ -1,5 +1,5 @@
 use crate::mtl::render::Render;
-use crate::{CullMode, DynamicState, FrontFace};
+use crate::{CullMode, DynamicPipelineStates, FrontFace};
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTL4RenderCommandEncoder, MTLCullMode, MTLDepthStencilState, MTLWinding};
 
@@ -77,22 +77,22 @@ impl Applied {
 
     pub fn bind(&mut self, e: &Encoder, p: &Render) {
         let (s, dynamic) = (&p.states, p.states.dynamic);
-        if !dynamic.contains(DynamicState::CULL) {
+        if !dynamic.contains(DynamicPipelineStates::CULL) {
             self.cull(e, s.cull);
         }
-        if !dynamic.contains(DynamicState::FACE) {
+        if !dynamic.contains(DynamicPipelineStates::FACE) {
             self.face(e, s.face);
         }
-        if !dynamic.contains(DynamicState::DEPTH_STATE) {
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_STATE) {
             self.depth(e, &p.depth);
         }
-        if !dynamic.contains(DynamicState::STENCIL_REFERENCE) {
+        if !dynamic.contains(DynamicPipelineStates::STENCIL_REFERENCE) {
             self.reference(e, s.front_reference, s.back_reference);
         }
-        if !dynamic.contains(DynamicState::DEPTH_BIAS) {
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_BIAS) {
             self.bias(e, s.bias_constant, s.bias_slope, s.bias_clamp);
         }
-        if !dynamic.contains(DynamicState::BLEND_COLOR) {
+        if !dynamic.contains(DynamicPipelineStates::BLEND_COLOR) {
             self.blend(e, s.blend_color);
         }
     }

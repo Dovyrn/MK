@@ -1,7 +1,7 @@
 use crate::Error;
 use crate::check::Check;
 use crate::command::Command;
-use crate::{RenderPassInfo, Stage};
+use crate::{PipelineStages, RenderPassInfo};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "gl")]
@@ -114,8 +114,8 @@ pub struct CommandBuffer<'d> {
 impl<'d> CommandBuffer<'d> {
     pub fn begin_compute_pass(
         &mut self,
-        src_stage: Stage,
-        dst_stage: Stage,
+        src_stage: PipelineStages,
+        dst_stage: PipelineStages,
     ) -> Result<ComputePass<'_, 'd>, Error> {
         self.recording.record(Command::BeginComputePass {
             src_stage,

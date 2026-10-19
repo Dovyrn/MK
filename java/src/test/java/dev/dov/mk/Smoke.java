@@ -12,7 +12,7 @@ public class Smoke {
     public static void main(String[] args) throws Exception {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
-            var caps = device.caps();
+            var caps = device.capabilities();
             System.out.println("caps: mesh " + caps.mesh + ", storage sets " + caps.storageSets + ", tiles " + caps.tiles);
             clear(device);
             if (!caps.compute) {
@@ -43,7 +43,7 @@ public class Smoke {
             memPutInt(push + 4, 100);
             device.unmapBuffer(constants);
             var sets = device.createDescriptorPool(layout, 1);
-            var bound = device.createDescriptorSet(sets);
+            var bound = device.allocateDescriptorSet(sets);
             device.writeDescriptorSet(bound, new DescriptorWrite[] {
                 new DescriptorWrite().binding(0).buffer(constants).size(8),
                 new DescriptorWrite().binding(1).buffer(buffer).size(n * 4L)
@@ -56,7 +56,7 @@ public class Smoke {
             compute.bindComputePipeline(pipeline);
             compute.bindDescriptorSet(bound);
             compute.dispatch(n / 64, 1, 1);
-            compute.memoryBarrier(Stage.COMPUTE, Stage.HOST);
+            compute.memoryBarrier(PipelineStages.COMPUTE, PipelineStages.HOST);
             compute.end();
             var spare = device.createBuffer(4, Memory.UPLOAD, BufferUsage.COPY_DST, "");
             device.destroyBuffer(spare);
@@ -136,25 +136,25 @@ public class Smoke {
             var texture = acquire.get();
             var commands = device.beginCommands(pool);
             commands.useResidencySet(set);
-            commands.discardTextures(new TextureDiscard[] {new TextureDiscard()
+            commands.discardTextureContents(new TextureContentDiscard[] {new TextureContentDiscard()
                     .texture(texture)
-                    .srcStage(Stage.COLOR)
-                    .dstStage(Stage.COLOR)});
+                    .srcStage(PipelineStages.COLOR)
+                    .dstStage(PipelineStages.COLOR)});
             var color = new ColorAttachment().texture(texture).clear(new float[] {rgb[0], rgb[1], rgb[2], 1});
             commands.beginRenderPass(new RenderPassInfo()
                     .width(size)
                     .height(size)
                     .colors(new ColorAttachment[] {color}))
                     .end();
-            var copy = commands.beginComputePass(Stage.COLOR, Stage.COPY);
+            var copy = commands.beginComputePass(PipelineStages.COLOR, PipelineStages.COPY);
             copy.copyTextureToBuffer(new BufferTextureCopy()
                     .texture(texture)
                     .width(size)
                     .height(size)
                     .buffer(pixels));
-            copy.memoryBarrier(Stage.COPY, Stage.HOST);
+            copy.memoryBarrier(PipelineStages.COPY, PipelineStages.HOST);
             copy.end();
-            commands.presentBarrier(texture, Stage.COPY);
+            commands.presentBarrier(texture, PipelineStages.COPY);
             commands.end();
             present.accept(commands, new TimelinePoint(timeline, frame));
             if (!timeline.await(frame, 1000)) {
@@ -191,7 +191,7 @@ public class Smoke {
                 c.useResidencySet(set);
                 var pass = c.beginComputePass(0, 0);
                 pass.fillBuffer(buffer, 0, size, at + 1);
-                pass.memoryBarrier(Stage.COPY, Stage.HOST);
+                pass.memoryBarrier(PipelineStages.COPY, PipelineStages.HOST);
                 pass.end();
                 c.end();
                 buffers[at] = buffer;
@@ -233,22 +233,22 @@ public class Smoke {
         device.commitResidency(set);
         var commands = device.beginCommands(pool);
         commands.useResidencySet(set);
-        commands.discardTextures(new TextureDiscard[] {new TextureDiscard()
+        commands.discardTextureContents(new TextureContentDiscard[] {new TextureContentDiscard()
                 .texture(texture)
-                .dstStage(Stage.COLOR)});
+                .dstStage(PipelineStages.COLOR)});
         var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
         commands.beginRenderPass(new RenderPassInfo()
                 .width(size)
                 .height(size)
                 .colors(new ColorAttachment[] {color}))
                 .end();
-        var copy = commands.beginComputePass(Stage.COLOR, Stage.COPY);
+        var copy = commands.beginComputePass(PipelineStages.COLOR, PipelineStages.COPY);
         copy.copyTextureToBuffer(new BufferTextureCopy()
                 .texture(texture)
                 .width(size)
                 .height(size)
                 .buffer(pixels));
-        copy.memoryBarrier(Stage.COPY, Stage.HOST);
+        copy.memoryBarrier(PipelineStages.COPY, PipelineStages.HOST);
         copy.end();
         commands.end();
         device.submit(new CommandBuffer[] {commands}, new TimelinePoint[0], new TimelinePoint[] {new TimelinePoint(timeline, 1)});

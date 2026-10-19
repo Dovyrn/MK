@@ -1,18 +1,19 @@
 use crate::Error;
-use crate::caps::is_depth_format;
 use crate::command::Command;
+use crate::device_capabilities::is_depth_format;
 use crate::residency::Residency;
 use crate::table::Table;
 use crate::table::lock;
 use crate::{
-    Buffer, BufferUsage, Caps, CommandPool, DescriptorSet, DynamicState, Format, IndexType,
-    IndirectBuffer, LoadOp, Memory, QueryKind, QueryPool, ResourceKind, Stage, StoreOp, Texture,
-    TextureDimension, TextureInfo, TextureUsage, Topology, sets, slot,
+    Buffer, BufferUsage, CommandPool, DescriptorSet, DeviceCapabilities, DynamicPipelineStates,
+    Format, IndexType, IndirectBuffer, LoadOp, Memory, PipelineStages, QueryKind, QueryPool,
+    ResourceKind, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage, Topology, sets,
+    slot,
 };
 use std::sync::atomic::Ordering;
 
 pub struct Check<'a> {
-    caps: &'a Caps,
+    caps: &'a DeviceCapabilities,
     table: &'a Table,
     pool: CommandPool,
     base: &'static str,
@@ -37,7 +38,7 @@ pub struct Check<'a> {
     views: u32,
     scissors: u32,
     fresh: u32,
-    dynamic: DynamicState,
+    dynamic: DynamicPipelineStates,
     resident: bool,
     ended: bool,
     layouts: [u32; 3],
@@ -48,7 +49,7 @@ pub struct Check<'a> {
 const STATES: [(&str, &str); 9] = [
     ("set_cull_mode", "CULL"),
     ("set_front_face", "FACE"),
-    ("set_depth_state", "DEPTH_STATE"),
+    ("set_depth_stencil_state", "DEPTH_STATE"),
     ("set_stencil_reference", "STENCIL_REFERENCE"),
     ("set_depth_bias", "DEPTH_BIAS"),
     ("set_blend_color", "BLEND_COLOR"),
@@ -126,7 +127,7 @@ fn copy_block_size(f: Format) -> u32 {
 
 impl<'a> Check<'a> {
     pub fn new(
-        caps: &'a Caps,
+        caps: &'a DeviceCapabilities,
         table: &'a Table,
         pool: CommandPool,
         base: &'static str,
@@ -163,7 +164,7 @@ impl<'a> Check<'a> {
             views: 0,
             scissors: 0,
             fresh: 0,
-            dynamic: DynamicState(0),
+            dynamic: DynamicPipelineStates(0),
             resident: base != "outside",
             ended: false,
             layouts: [0; 3],
@@ -270,15 +271,15 @@ impl<'a> Check<'a> {
         Ok(())
     }
 
-    fn check_wait(&self, name: &str, src: Stage, dst: Stage) {
+    fn check_wait(&self, name: &str, src: PipelineStages, dst: PipelineStages) {
         check_eq!(
             src.is_empty(),
             dst.is_empty(),
             "{name} waits with src_stage {src:?} and dst_stage {dst:?}; give both or neither"
         );
         check!(
-            !src.contains(Stage::HOST),
-            "{name} waits on Stage::HOST; host writes before submit need no wait"
+            !src.contains(PipelineStages::HOST),
+            "{name} waits on PipelineStages::HOST; host writes before submit need no wait"
         );
     }
 
@@ -364,7 +365,7 @@ impl<'a> Check<'a> {
         );
         check!(
             self.dynamic.0 & 1 << state != 0,
-            "{name} needs the bound pipeline to list DynamicState::{} in its states.dynamic; without it the pipeline's own value applies",
+            "{name} needs the bound pipeline to list DynamicPipelineStates::{} in its states.dynamic; without it the pipeline's own value applies",
             STATES[state as usize].1
         );
         self.mark_state(state);
@@ -841,14 +842,14 @@ impl<'a> Check<'a> {
                     .assert_usage(name, buffer, BufferUsage::INDIRECT, "INDIRECT");
                 self.buffer_range(name, buffer, offset, 12);
             }
-            Command::CopyBuffer {
+            Command::CopyBufferToBuffer {
                 src,
                 src_offset,
                 dst,
                 dst_offset,
                 size,
             } => {
-                check!(size > 0, "copy_buffer size is 0");
+                check!(size > 0, "copy_buffer_to_buffer size is 0");
                 self.table
                     .assert_usage(name, src, BufferUsage::COPY_SRC, "COPY_SRC");
                 self.table
@@ -857,7 +858,7 @@ impl<'a> Check<'a> {
                 self.buffer_range(name, dst, dst_offset, size);
                 check!(
                     src != dst || src_offset + len <= dst_offset || dst_offset + len <= src_offset,
-                    "copy_buffer source and destination overlap in {src}"
+                    "copy_buffer_to_buffer source and destination overlap in {src}"
                 );
             }
             Command::FillBuffer {
@@ -883,10 +884,11 @@ impl<'a> Check<'a> {
                     !src_stage.is_empty() && !dst_stage.is_empty(),
                     "{name} needs a src_stage and a dst_stage"
                 );
-                let pass = Stage::COMPUTE | Stage::COPY;
+                let pass = PipelineStages::COMPUTE | PipelineStages::COPY;
                 check!(
                     (src_stage & !pass).is_empty()
-                        && (dst_stage & !(pass | Stage::INDIRECT | Stage::HOST)).is_empty(),
+                        && (dst_stage & !(pass | PipelineStages::INDIRECT | PipelineStages::HOST))
+                            .is_empty(),
                     "{name} {src_stage:?} -> {dst_stage:?} orders work outside this compute pass; wait on it with src_stage and dst_stage at the next pass's begin"
                 );
             }
@@ -900,11 +902,11 @@ impl<'a> Check<'a> {
                 self.table.assert_defined(name, texture);
             }
             #[cfg(feature = "vk")]
-            Command::AcquireShared {
+            Command::AcquireSharedTexture {
                 texture,
                 dst_stage: stage,
             }
-            | Command::ReleaseShared {
+            | Command::ReleaseSharedTexture {
                 texture,
                 src_stage: stage,
             } => {
@@ -915,7 +917,7 @@ impl<'a> Check<'a> {
                     "{name} on {texture}, which import_shared_texture did not make"
                 );
             }
-            Command::DiscardTextures { textures } => {
+            Command::DiscardTextureContents { textures } => {
                 check!(!textures.is_empty(), "{name} has no textures");
                 for d in textures {
                     check!(!d.dst_stage.is_empty(), "{name} needs a dst_stage");
@@ -943,7 +945,7 @@ impl<'a> Check<'a> {
             Command::CopyBufferToTexture { .. } | Command::CopyTextureToBuffer { .. } => {
                 self.check_buffer_copy(c);
             }
-            Command::CopyTexture {
+            Command::CopyTextureToTexture {
                 src,
                 src_mip,
                 src_layer,
@@ -966,7 +968,7 @@ impl<'a> Check<'a> {
                 let size = [width, height, d];
                 check!(
                     size.iter().all(|&n| n > 0),
-                    "copy_texture region {width}x{height}x{d} has a zero"
+                    "copy_texture_to_texture region {width}x{height}x{d} has a zero"
                 );
                 let from = (src_mip, src_layer, layers);
                 let s = self.texture_region(name, src, from, [src_x, src_y, src_z], size);
@@ -974,26 +976,26 @@ impl<'a> Check<'a> {
                 let t = self.texture_region(name, dst, to, [dst_x, dst_y, dst_z], size);
                 check!(
                     self.graphics() || !is_depth_format(s.format) && !is_depth_format(t.format),
-                    "copy_texture on depth formats needs a graphics queue"
+                    "copy_texture_to_texture on depth formats needs a graphics queue"
                 );
                 check_eq!(
                     s.format.block(),
                     t.format.block(),
-                    "copy_texture formats {} and {} have different blocks",
+                    "copy_texture_to_texture formats {} and {} have different blocks",
                     s.format,
                     t.format
                 );
                 check!(
                     s.format == t.format
                         || !is_depth_format(s.format) && !is_depth_format(t.format),
-                    "copy_texture between depth formats {} and {} needs one format",
+                    "copy_texture_to_texture between depth formats {} and {} needs one format",
                     s.format,
                     t.format
                 );
                 check_eq!(
                     s.samples,
                     t.samples,
-                    "copy_texture sample counts {} and {} differ",
+                    "copy_texture_to_texture sample counts {} and {} differ",
                     s.samples,
                     t.samples
                 );
@@ -1004,7 +1006,7 @@ impl<'a> Check<'a> {
                         || disjoint(src_x, dst_x, width)
                         || disjoint(src_y, dst_y, height)
                         || disjoint(src_z, dst_z, d),
-                    "copy_texture source and destination overlap in {src}"
+                    "copy_texture_to_texture source and destination overlap in {src}"
                 );
                 let line = |t: &TextureInfo| {
                     matches!(
@@ -1015,12 +1017,12 @@ impl<'a> Check<'a> {
                 check_eq!(
                     line(s),
                     line(t),
-                    "copy_texture cannot copy between a 1D texture and a 2D or 3D one"
+                    "copy_texture_to_texture cannot copy between a 1D texture and a 2D or 3D one"
                 );
                 check_eq!(
                     s.format,
                     t.format,
-                    "copy_texture from format {} to {}; to reinterpret, copy through a texture view in the other format",
+                    "copy_texture_to_texture from format {} to {}; to reinterpret, copy through a texture view in the other format",
                     s.format,
                     t.format
                 );
@@ -1091,7 +1093,7 @@ impl<'a> Check<'a> {
                 self.render = true;
                 self.bound = samples;
                 self.needs = entry.vertices;
-                if !entry.dynamic.contains(DynamicState::TOPOLOGY) {
+                if !entry.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
                     self.topology = entry.topology;
                 }
                 self.fresh &= entry.dynamic.0 | RECTS;
@@ -1155,7 +1157,7 @@ impl<'a> Check<'a> {
             }
             Command::Draw { .. } => self.check_draw(c, false),
             Command::DrawIndexed { .. } => self.check_draw(c, true),
-            Command::SetDepthState { state } => {
+            Command::SetDepthStencilState { state } => {
                 self.table.states.get(state);
                 self.set_dynamic(name, 2);
             }

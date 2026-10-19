@@ -66,11 +66,11 @@ public class ComputePass {
 
     private static native void nDispatchIndirect(long target, long buffer, long offset);
 
-    public void copyBuffer(Buffer src, long srcOffset, Buffer dst, long dstOffset, long size) {
-        nCopyBuffer(handle(), Buffer.raw(src), srcOffset, Buffer.raw(dst), dstOffset, size);
+    public void copyBufferToBuffer(Buffer src, long srcOffset, Buffer dst, long dstOffset, long size) {
+        nCopyBufferToBuffer(handle(), Buffer.raw(src), srcOffset, Buffer.raw(dst), dstOffset, size);
     }
 
-    private static native void nCopyBuffer(long target, long src, long srcOffset, long dst, long dstOffset, long size);
+    private static native void nCopyBufferToBuffer(long target, long src, long srcOffset, long dst, long dstOffset, long size);
 
     public void fillBuffer(Buffer buffer, long offset, long size, int value) {
         nFillBuffer(handle(), Buffer.raw(buffer), offset, size, value & 0xff);
@@ -105,19 +105,19 @@ public class ComputePass {
 
     private static native void nPresentBarrier(long target, long texture, int srcStage);
 
-    public void acquireShared(Texture texture, int dstStage) {
-        nAcquireShared(handle(), Texture.raw(texture), dstStage);
+    public void acquireSharedTexture(Texture texture, int dstStage) {
+        nAcquireSharedTexture(handle(), Texture.raw(texture), dstStage);
     }
 
-    private static native void nAcquireShared(long target, long texture, int dstStage);
+    private static native void nAcquireSharedTexture(long target, long texture, int dstStage);
 
-    public void releaseShared(Texture texture, int srcStage) {
-        nReleaseShared(handle(), Texture.raw(texture), srcStage);
+    public void releaseSharedTexture(Texture texture, int srcStage) {
+        nReleaseSharedTexture(handle(), Texture.raw(texture), srcStage);
     }
 
-    private static native void nReleaseShared(long target, long texture, int srcStage);
+    private static native void nReleaseSharedTexture(long target, long texture, int srcStage);
 
-    public void discardTextures(TextureDiscard[] textures) {
+    public void discardTextureContents(TextureContentDiscard[] textures) {
         try (var arena = new Arena()) {
             var texturesSize = 4;
             for (var x : textures) {
@@ -130,11 +130,11 @@ public class ComputePass {
             for (var x : textures) {
                 at = x.encode(at);
             }
-            nDiscardTextures(handle(), list, texturesSize);
+            nDiscardTextureContents(handle(), list, texturesSize);
         }
     }
 
-    private static native void nDiscardTextures(long target, long textures, int texturesLength);
+    private static native void nDiscardTextureContents(long target, long textures, int texturesLength);
 
     public void copyBufferToTexture(BufferTextureCopy info) {
         nCopyBufferToTexture(handle(), Buffer.raw(info.buffer), info.offset, info.rowLength, info.rowCount, Texture.raw(info.texture), info.mip, info.layer, info.x, info.y, info.z, info.width, info.height, info.depth);
@@ -148,11 +148,11 @@ public class ComputePass {
 
     private static native void nCopyTextureToBuffer(long target, long buffer, long offset, int rowLength, int rowCount, long texture, int mip, int layer, int x, int y, int z, int width, int height, int depth);
 
-    public void copyTexture(TextureCopy info) {
-        nCopyTexture(handle(), Texture.raw(info.src), info.srcMip, info.srcLayer, info.srcX, info.srcY, info.srcZ, Texture.raw(info.dst), info.dstMip, info.dstLayer, info.dstX, info.dstY, info.dstZ, info.width, info.height, info.depth, info.layers);
+    public void copyTextureToTexture(TextureCopy info) {
+        nCopyTextureToTexture(handle(), Texture.raw(info.src), info.srcMip, info.srcLayer, info.srcX, info.srcY, info.srcZ, Texture.raw(info.dst), info.dstMip, info.dstLayer, info.dstX, info.dstY, info.dstZ, info.width, info.height, info.depth, info.layers);
     }
 
-    private static native void nCopyTexture(long target, long src, int srcMip, int srcLayer, int srcX, int srcY, int srcZ, long dst, int dstMip, int dstLayer, int dstX, int dstY, int dstZ, int width, int height, int depth, int layers);
+    private static native void nCopyTextureToTexture(long target, long src, int srcMip, int srcLayer, int srcX, int srcY, int srcZ, long dst, int dstMip, int dstLayer, int dstX, int dstY, int dstZ, int width, int height, int depth, int layers);
 
     public void bindDescriptorSet(DescriptorSet set) {
         nBindDescriptorSet(handle(), DescriptorSet.raw(set));
