@@ -3,10 +3,9 @@ use mk::{
     TextureInfo, TextureUsage,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
-pub fn main() {
+pub fn test() {
     let n = 16u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

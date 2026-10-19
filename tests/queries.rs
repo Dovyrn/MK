@@ -4,10 +4,9 @@ use mk::{
     TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
-pub fn main() {
+pub fn test() {
     let n = 64u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

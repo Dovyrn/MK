@@ -3,8 +3,7 @@ use mk::{
     Scissor, Stage, TextureDiscard, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 #[cfg(feature = "gl")]
 fn native(n: u32) -> (Device, mk::Texture, ()) {
@@ -214,7 +213,7 @@ fn imported(
     }
 }
 
-pub fn main() {
+pub fn test() {
     let n = 32u32;
     let (mut device, texture, host) = native(n);
     let back = device

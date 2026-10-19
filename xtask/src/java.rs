@@ -159,7 +159,7 @@ pub fn java(root: &Path) -> usize {
             .arg(&classpath)
             .arg("dev.dov.mk.Smoke")
             .arg(library(root, b))
-            .arg(root.join("examples/shaders/out").join(code))
+            .arg(root.join("tests/shaders/out").join(code))
             .output();
         let text = output
             .as_ref()

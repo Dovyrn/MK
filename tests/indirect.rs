@@ -5,8 +5,7 @@ use mk::{
     Texture, TextureDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 const N: u32 = 32;
 const BLUE: [u8; 4] = [0, 0, 255, 255];
@@ -88,7 +87,7 @@ impl Frame {
     }
 }
 
-pub fn main() {
+pub fn test() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let color = device

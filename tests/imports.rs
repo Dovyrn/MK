@@ -4,8 +4,7 @@ use mk::{
     Stage, Texture, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 const N: u32 = 32;
 
@@ -294,7 +293,7 @@ fn host_frame(
     assert!(timeline.wait(1, 1000).unwrap());
 }
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let texture = device

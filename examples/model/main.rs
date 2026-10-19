@@ -1,15 +1,13 @@
-#[path = "../support/host.rs"]
-mod host;
-
 mod model;
 mod window;
 
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandPool, CompareOp,
-    DepthAttachment, DepthState, DepthStateInfo, DescriptorSet, DescriptorType, DescriptorWrite,
-    Format, IndexType, Memory, RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet,
-    SamplerInfo, Scissor, Stage, StoreOp, Swapchain, SwapchainInfo, Texture, TextureDiscard,
-    TextureInfo, TextureUsage, Timeline, VertexAttribute, VertexBufferLayout, Viewport,
+    CullMode, DepthAttachment, DepthState, DepthStateInfo, DescriptorBinding, DescriptorLayout,
+    DescriptorSet, DescriptorType, DescriptorWrite, Format, FrontFace, IndexType, Memory,
+    RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, Stage,
+    StoreOp, Swapchain, SwapchainInfo, Texture, TextureDiscard, TextureInfo, TextureUsage,
+    Timeline, VertexAttribute, VertexBufferLayout, Viewport,
 };
 use model::Model;
 use std::time::Instant;
@@ -77,6 +75,23 @@ fn depth(device: &mk::Device, width: u32, height: u32) -> Texture {
         .unwrap()
 }
 
+fn layout(device: &mk::Device, kind: DescriptorType) -> DescriptorLayout {
+    device
+        .create_descriptor_layout(&[DescriptorBinding {
+            binding: 0,
+            kind,
+            count: 1,
+        }])
+        .unwrap()
+}
+
+fn set(device: &mk::Device, layout: DescriptorLayout, write: DescriptorWrite) -> DescriptorSet {
+    let pool = device.create_descriptor_pool(layout, 1).unwrap();
+    let set = device.create_descriptor_set(pool).unwrap();
+    device.write_descriptor_set(set, &[write]);
+    set
+}
+
 fn mul(a: Matrix, b: Matrix) -> Matrix {
     std::array::from_fn(|i| std::array::from_fn(|j| (0..4).map(|k| a[i][k] * b[k][j]).sum()))
 }
@@ -112,7 +127,7 @@ impl App {
             env!("CARGO_MANIFEST_DIR"),
             "/examples/model/sponza.obj"
         ));
-        let device = host::device(1);
+        let device = mk::Device::create_device(&mk::Device::supported_features().unwrap()).unwrap();
         #[cfg(feature = "vk")]
         let surface = window.surface(&device);
         #[cfg(feature = "mtl")]
@@ -126,19 +141,26 @@ impl App {
         let camera = device
             .create_buffer(256, Memory::Upload, BufferUsage::UNIFORM, "camera")
             .unwrap();
-        let layout = host::layout(&device, &[DescriptorType::UniformBuffer]);
-        let set = host::set(&device, layout, &[host::buffer(0, camera, 0, 112)]);
-        let textures = host::layout(&device, &[DescriptorType::Texture]);
-        let samplers = host::layout(&device, &[DescriptorType::Sampler]);
+        let uniforms = layout(&device, DescriptorType::UniformBuffer);
+        let bound = set(
+            &device,
+            uniforms,
+            DescriptorWrite {
+                buffer: camera,
+                size: 112,
+                ..Default::default()
+            },
+        );
+        let textures = layout(&device, DescriptorType::Texture);
+        let samplers = layout(&device, DescriptorType::Sampler);
         let linear = device.create_sampler(&SamplerInfo::default()).unwrap();
-        let sampler = host::set(
+        let sampler = set(
             &device,
             samplers,
-            &[DescriptorWrite {
-                binding: 0,
+            DescriptorWrite {
                 sampler: linear,
                 ..Default::default()
-            }],
+            },
         );
         let attribute = |location, format, offset| VertexAttribute {
             location,
@@ -165,7 +187,7 @@ impl App {
                     attribute(1, Format::Rgb32Float, 12),
                     attribute(2, Format::Rg32Float, 24),
                 ],
-                sets: &[layout, textures, samplers],
+                sets: &[uniforms, textures, samplers],
                 label: "model",
                 ..Default::default()
             })
@@ -292,7 +314,7 @@ impl App {
             indices,
             parts,
             camera,
-            set,
+            set: bound,
             sampler,
             pipeline,
             less,
@@ -355,7 +377,12 @@ impl App {
                 ..Default::default()
             })
             .unwrap();
-        host::states(&mut pass, self.less);
+        pass.set_cull_mode(CullMode::None);
+        pass.set_front_face(FrontFace::Ccw);
+        pass.set_depth_state(self.less);
+        pass.set_stencil_reference(0, 0);
+        pass.set_depth_bias(0.0, 0.0, 0.0);
+        pass.set_blend_color([0.0; 4]);
         pass.set_viewport(&[Viewport {
             width: width as f32,
             height: height as f32,

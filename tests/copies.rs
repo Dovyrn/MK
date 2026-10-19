@@ -4,8 +4,7 @@ use mk::{
     TextureUsage, TextureViewInfo,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 const N: u32 = 16;
 
@@ -13,7 +12,7 @@ fn pattern(x: u32, y: u32) -> [u8; 4] {
     [(x * 16) as u8, (y * 16) as u8, ((x + y) * 8) as u8, 255]
 }
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();

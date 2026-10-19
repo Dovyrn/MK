@@ -5,11 +5,10 @@ use mk::{
 };
 
 #[cfg(not(feature = "gl"))]
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     println!("GL presents through the host's context");
 }
 
@@ -70,7 +69,7 @@ fn info(n: u32) -> SwapchainInfo {
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let have = mk::Device::supported_features().unwrap();
     if !have.swapchain {
         println!("no swapchains");

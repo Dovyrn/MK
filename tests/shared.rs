@@ -1,13 +1,13 @@
-#[path = "support/host.rs"]
-mod host;
+#[cfg(all(windows, any(feature = "vk", feature = "gl")))]
+use crate::host;
 
 #[cfg(not(all(windows, any(feature = "vk", feature = "gl"))))]
-pub fn main() {
+pub fn test() {
     println!("D3D11 sharing needs Windows and Vulkan or GL");
 }
 
 #[cfg(all(windows, any(feature = "vk", feature = "gl")))]
-pub fn main() {
+pub fn test() {
     use mk::{ColorAttachment, Error, Format, RenderPassInfo, TextureInfo, TextureUsage};
 
     let device = host::device(1);

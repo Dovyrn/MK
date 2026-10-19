@@ -1,5 +1,5 @@
 target/
-/examples/shaders/out
+/tests/shaders/out
 /examples/model/out
 .idea
 CLAUDE.md

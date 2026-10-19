@@ -17,21 +17,21 @@ macro_rules! code {
         #[cfg(feature = "mtl")]
         let code = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/examples/shaders/out/",
+            "/tests/shaders/out/",
             $name,
             ".metallib"
         ));
         #[cfg(feature = "vk")]
         let code = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/examples/shaders/out/",
+            "/tests/shaders/out/",
             $name,
             ".spv"
         ));
         #[cfg(feature = "gl")]
         let code = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/examples/shaders/out/",
+            "/tests/shaders/out/",
             $name,
             ".gl"
         ));

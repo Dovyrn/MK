@@ -5,8 +5,7 @@ use mk::{
     TextureInfo, TextureUsage, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 const CODE: &[u8] = host::code!("sets");
 
@@ -38,7 +37,7 @@ fn discard(texture: mk::Texture, stage: Stage) -> TextureDiscard {
     }
 }
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();

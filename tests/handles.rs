@@ -1,16 +1,16 @@
 #[cfg(not(feature = "gl"))]
 use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage};
 
-#[path = "support/host.rs"]
-mod host;
+#[cfg(not(feature = "gl"))]
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     println!("GL shaders reach buffers through slots, not addresses");
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let n = 256u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

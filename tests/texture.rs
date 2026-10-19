@@ -4,16 +4,16 @@ use mk::{
     TextureDiscard, TextureInfo, TextureUsage,
 };
 
-#[path = "support/host.rs"]
-mod host;
+#[cfg(not(feature = "gl"))]
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     println!("needs the bindless heap, which GL lacks");
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let n = 16u32;
     let texels = (n * n) as usize;
     let device = host::device(1);

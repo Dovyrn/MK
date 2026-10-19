@@ -1,16 +1,16 @@
 #[cfg(not(feature = "gl"))]
 use mk::{BufferUsage, Memory, Stage};
 
-#[path = "support/host.rs"]
-mod host;
+#[cfg(not(feature = "gl"))]
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     println!("GL has one queue");
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let Some(device) = host::try_device(2) else {
         println!("one queue only");
         return;

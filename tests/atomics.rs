@@ -3,10 +3,9 @@ use mk::{
     Device, Format, Memory, Stage, TextureDiscard, TextureInfo, TextureUsage, Timeline,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
-pub fn main() {
+pub fn test() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();

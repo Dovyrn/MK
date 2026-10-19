@@ -3,14 +3,13 @@ use mk::{
     TextureInfo, TextureUsage,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 fn pattern(size: usize, seed: usize) -> Vec<u8> {
     (0..size).map(|i| ((i * 7 + seed) % 251) as u8).collect()
 }
 
-pub fn main() {
+pub fn test() {
     let n = 64u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

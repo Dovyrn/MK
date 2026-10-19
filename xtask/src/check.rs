@@ -40,7 +40,7 @@ pub fn check(root: &Path, full: bool) -> i32 {
         }
     };
     step("fmt".into(), cargo(root, &["fmt", "--check"]), &mut out);
-    crate::shaders::compile(&root.join("examples/shaders"));
+    crate::shaders::compile(&root.join("tests/shaders"));
     let mut configs: Vec<String> = backends().iter().map(|b| b.to_string()).collect();
     configs.extend(backends().iter().map(|b| format!("{b},validation")));
     if full {
@@ -67,7 +67,7 @@ pub fn check(root: &Path, full: bool) -> i32 {
     for case in runner::cases(full) {
         let mut command = Command::new(&cargo);
         let features = format!("{},validation", case.backend);
-        command.args(["test", "--features", &features, "--test", "examples", "--"]);
+        command.args(["test", "--features", &features, "--test", "tests", "--"]);
         failed += runner::run(&case, command, root, &mut out);
         print!("{out}");
         out.clear();

@@ -1,9 +1,8 @@
 use mk::{BufferUsage, ComputePipelineInfo, Memory, Stage, SubgroupOp};
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.caps();

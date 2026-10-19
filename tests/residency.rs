@@ -1,8 +1,7 @@
 use mk::{Buffer, BufferUsage, CommandPool, Device, Memory, ResidencySet, Stage};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 fn copy(device: &Device, pool: CommandPool, set: ResidencySet, a: Buffer, b: Buffer) {
     let mut c = device.begin_commands(pool).unwrap();
@@ -19,7 +18,7 @@ fn message(run: impl FnOnce()) -> String {
     error.downcast_ref::<String>().cloned().unwrap_or_default()
 }
 
-pub fn main() {
+pub fn test() {
     if !cfg!(feature = "validation") {
         println!("residency checks need the validation feature");
         return;

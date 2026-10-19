@@ -34,7 +34,7 @@ fn copy(from: &Path, to: &Path) {
 }
 
 pub fn bundle(root: &Path) -> i32 {
-    crate::shaders::compile(&root.join("examples/shaders"));
+    crate::shaders::compile(&root.join("tests/shaders"));
     let out = root.join("target/windows");
     let _ = std::fs::remove_dir_all(&out);
     std::fs::create_dir_all(&out).unwrap();
@@ -48,7 +48,7 @@ pub fn bundle(root: &Path) -> i32 {
                 "--features",
                 &format!("{f},validation"),
                 "--test",
-                "examples",
+                "tests",
             ],
         ) {
             println!("X windows {f}\n{e}");
@@ -61,7 +61,7 @@ pub fn bundle(root: &Path) -> i32 {
             .map(|e| e.path())
             .filter(|p| {
                 let name = p.file_name().unwrap().to_string_lossy();
-                name.starts_with("examples-") && name.ends_with(".exe")
+                name.starts_with("tests-") && name.ends_with(".exe")
             })
             .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(exe) = exe else {
@@ -79,8 +79,8 @@ pub fn bundle(root: &Path) -> i32 {
         .join(TARGET)
         .join("release/xtask.exe");
     std::fs::copy(runner, out.join("run.exe")).unwrap();
-    let shaders = root.join("examples/shaders/out");
-    copy(&shaders, &out.join("examples/shaders/out"));
+    let shaders = root.join("tests/shaders/out");
+    copy(&shaders, &out.join("tests/shaders/out"));
     let zip = root.join("target/windows.zip");
     let _ = std::fs::remove_file(&zip);
     let zipped = Command::new("zip")

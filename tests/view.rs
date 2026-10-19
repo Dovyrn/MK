@@ -3,10 +3,9 @@ use mk::{
     Stage, TextureDiscard, TextureInfo, TextureUsage, TextureViewInfo, Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     if !device.caps().texture_views {

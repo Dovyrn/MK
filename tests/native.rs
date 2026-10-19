@@ -1,7 +1,6 @@
 use mk::{BufferUsage, Device, Memory, Stage};
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 #[cfg(feature = "gl")]
 fn fill(device: &Device, _: &mut mk::ComputePass, buffer: mk::Buffer, size: u64) {
@@ -40,7 +39,7 @@ fn fill(device: &Device, pass: &mut mk::ComputePass, buffer: mk::Buffer, size: u
     };
 }
 
-pub fn main() {
+pub fn test() {
     let n = 4096u64;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

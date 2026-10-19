@@ -1,7 +1,6 @@
 use mk::{BufferUsage, ComputePipelineInfo, DescriptorType, Error, Memory, Stage};
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 #[cfg(feature = "mtl")]
 const SOURCE: &str = "#include <metal_stdlib>
@@ -161,7 +160,7 @@ fn native(device: &mk::Device) {
     println!("a pipeline with its group and labels ran 256 threads");
 }
 
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     if !device.caps().storage_sets || !device.caps().compute {
         println!("no compute storage sets");

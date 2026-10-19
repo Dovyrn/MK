@@ -6,18 +6,17 @@ use mk::{
     Viewport,
 };
 
-#[path = "support/host.rs"]
-mod host;
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     let device = host::device(1);
     assert!(!device.caps().attachment_reads);
     println!("GL has no attachment reads");
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let n = 32u32;
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();

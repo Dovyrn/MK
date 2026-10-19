@@ -1,13 +1,13 @@
-#[path = "support/host.rs"]
-mod host;
+#[cfg(not(feature = "gl"))]
+use crate::host;
 
 #[cfg(feature = "gl")]
-pub fn main() {
+pub fn test() {
     println!("GL records only on its context's thread");
 }
 
 #[cfg(not(feature = "gl"))]
-pub fn main() {
+pub fn test() {
     let host = host::device(1);
     let device: &mk::Device = &host;
     if !device.caps().buffer_clear {
