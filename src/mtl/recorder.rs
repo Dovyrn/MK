@@ -1,3 +1,4 @@
+mod applied;
 mod textures;
 
 use crate::Buffer;
@@ -6,10 +7,11 @@ use crate::mtl::pipeline::Pipeline;
 use crate::mtl::query::Query;
 use crate::mtl::render::Render;
 use crate::mtl::resources::Resources;
+use applied::Applied;
 
 use crate::command::Command;
 use crate::mtl::device::resource;
-use crate::{Format, FrontFace, IndexType, LoadOp, Stage, StoreOp};
+use crate::{DynamicState, Format, IndexType, LoadOp, Stage, StoreOp};
 use crate::{sets, slot};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -18,9 +20,9 @@ use objc2_metal::{
     MTL4ArgumentTable, MTL4BufferRange, MTL4CommandBuffer, MTL4CommandEncoder,
     MTL4ComputeCommandEncoder, MTL4RenderCommandEncoder, MTL4RenderPassDescriptor,
     MTL4TimestampGranularity, MTL4VisibilityOptions, MTLBlitOption, MTLBuffer, MTLClearColor,
-    MTLCullMode, MTLDepthClipMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
-    MTLRenderStages, MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture,
-    MTLTriangleFillMode, MTLViewport, MTLVisibilityResultMode, MTLWinding,
+    MTLDepthClipMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType, MTLRenderStages,
+    MTLScissorRect, MTLSize, MTLStages, MTLStoreAction, MTLTexture, MTLTriangleFillMode,
+    MTLViewport, MTLVisibilityResultMode,
 };
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
@@ -48,6 +50,7 @@ pub struct Recorder<'a> {
     height: u32,
     primitive: MTLPrimitiveType,
     raster: Option<(MTLTriangleFillMode, MTLDepthClipMode)>,
+    applied: Applied,
     index: Option<(u64, usize, MTLIndexType, u64)>,
     tile: MTLSize,
     shared: usize,
@@ -173,6 +176,7 @@ impl<'a> Recorder<'a> {
             height: 0,
             primitive: MTLPrimitiveType::Triangle,
             raster: None,
+            applied: Applied::default(),
             index: None,
             tile: MTLSize {
                 width: 0,
@@ -215,6 +219,7 @@ impl<'a> Recorder<'a> {
         self.width = width;
         self.height = height;
         self.raster = None;
+        self.applied = Applied::default();
         self.render = Some(encoder);
     }
 
@@ -236,6 +241,11 @@ impl<'a> Recorder<'a> {
 
     fn compute_encoder(&self) -> &ProtocolObject<dyn MTL4ComputeCommandEncoder> {
         self.compute.as_deref().expect("checked by Command::enter")
+    }
+
+    fn states(&mut self) -> (&ProtocolObject<dyn MTL4RenderCommandEncoder>, &mut Applied) {
+        let e = self.render.as_deref().expect("checked by Command::enter");
+        (e, &mut self.applied)
     }
 
     fn render_encoder(&self) -> &ProtocolObject<dyn MTL4RenderCommandEncoder> {
@@ -551,6 +561,7 @@ impl<'a> Recorder<'a> {
                 wait(ProtocolObject::from_ref(&*encoder), src_stage, dst_stage);
                 self.render = Some(encoder);
                 self.raster = Some((MTLTriangleFillMode::Fill, MTLDepthClipMode::Clip));
+                self.applied = Applied::fresh();
                 self.clear_pass();
                 self.width = width;
                 self.height = height;
@@ -559,7 +570,7 @@ impl<'a> Recorder<'a> {
             Command::EndRenderPass => self.render.take().unwrap().endEncoding(),
             Command::BindRenderPipeline { pipeline } => {
                 let p = self.res.renders.get(pipeline);
-                let e = self.render_encoder();
+                let e = self.render.as_deref().expect("checked by Command::enter");
                 e.setRenderPipelineState(&p.state);
                 let (fill, clip) = self.raster.unzip();
                 if fill != Some(p.fill) {
@@ -569,39 +580,44 @@ impl<'a> Recorder<'a> {
                     e.setDepthClipMode(p.clip);
                 }
                 self.raster = Some((p.fill, p.clip));
-                self.primitive = p.primitive;
+                if !p.states.dynamic.contains(DynamicState::TOPOLOGY) {
+                    self.primitive = p.primitive;
+                }
+                self.applied.bind(e, p);
                 self.render_pipeline = Some(p);
             }
-            Command::SetCullMode { cull } => self
-                .render_encoder()
-                .setCullMode(MTLCullMode(cull as usize)),
-            Command::SetFrontFace { face: f } => {
-                self.render_encoder().setFrontFacingWinding(match f {
-                    FrontFace::Ccw => MTLWinding::CounterClockwise,
-                    FrontFace::Cw => MTLWinding::Clockwise,
-                })
+            Command::SetCullMode { cull } => {
+                let (e, applied) = self.states();
+                applied.cull(e, cull);
+            }
+            Command::SetFrontFace { face } => {
+                let (e, applied) = self.states();
+                applied.face(e, face);
             }
             Command::SetPrimitiveTopology { topology } => {
                 self.primitive = MTLPrimitiveType(topology as usize)
             }
-            Command::SetDepthState { state } => self
-                .render_encoder()
-                .setDepthStencilState(Some(self.res.depths.get(state))),
-            Command::SetStencilReference { front, back } => self
-                .render_encoder()
-                .setStencilFrontReferenceValue_backReferenceValue(front, back),
+            Command::SetDepthState { state } => {
+                let state = self.res.depths.get(state);
+                let (e, applied) = self.states();
+                applied.depth(e, state);
+            }
+            Command::SetStencilReference { front, back } => {
+                let (e, applied) = self.states();
+                applied.reference(e, front, back);
+            }
             Command::SetDepthBias {
                 constant,
                 slope,
                 clamp,
-            } => self
-                .render_encoder()
-                .setDepthBias_slopeScale_clamp(constant, slope, clamp),
-            Command::SetBlendColor {
-                color: [r, g, b, a],
-            } => self
-                .render_encoder()
-                .setBlendColorRed_green_blue_alpha(r, g, b, a),
+            } => {
+                let (e, applied) = self.states();
+                applied.bias(e, constant, slope, clamp);
+            }
+            Command::SetBlendColor { color } => {
+                let (e, applied) = self.states();
+                applied.blend(e, color);
+            }
             Command::UseResidencySet { set } => {
                 let raw = self.res.sets.get(set);
                 self.command_buffer().useResidencySet(raw);

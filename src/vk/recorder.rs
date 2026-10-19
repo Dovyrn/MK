@@ -47,7 +47,7 @@ fn vk_store_op(s: crate::StoreOp) -> vk::AttachmentStoreOp {
     }
 }
 
-fn vk_compare_op(c: crate::CompareOp) -> vk::CompareOp {
+pub fn vk_compare_op(c: crate::CompareOp) -> vk::CompareOp {
     match c {
         CompareOp::None => vk::CompareOp::ALWAYS,
         c => vk::CompareOp::from_raw(c as i32 - 1),
@@ -649,12 +649,12 @@ impl Recorder<'_> {
                     unreachable!("caps.tiles is false on Vulkan")
                 }
                 Command::BindRenderPipeline { pipeline } => {
-                    let (raw, topology, layout) = *self.res.renders.get(pipeline);
+                    let (raw, layout, stuck) = *self.res.renders.get(pipeline);
                     self.pipeline = layout;
-                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
-                    if let Some(topology) = topology {
-                        d.cmd_set_primitive_topology(b, topology);
+                    if let Some(face) = stuck {
+                        d.cmd_set_front_face(b, face);
                     }
+                    d.cmd_bind_pipeline(b, vk::PipelineBindPoint::GRAPHICS, raw);
                 }
                 Command::SetCullMode { cull } => {
                     d.cmd_set_cull_mode(b, vk::CullModeFlags::from_raw(cull as u32))

@@ -133,7 +133,6 @@ fields = [
     ["depth", "Format?", ""],
     ["stencil", "Format?", ""],
     ["samples", "u32", "1"],
-    ["topology", "Topology", "topology::TRIANGLE"],
     ["fill", "FillMode", "fill_mode::FILL"],
     ["coverage", "bool", "false"],
     ["clamp", "bool", "false"],
@@ -141,6 +140,7 @@ fields = [
     ["indirect", "bool", "false"],
     ["buffers", "[VertexBufferLayout]", ""],
     ["attributes", "[VertexAttribute]", ""],
+    ["states", "VertexPipelineStates", ""],
     ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
 ]
@@ -163,6 +163,7 @@ fields = [
     ["clamp", "bool", "false"],
     ["ordered", "bool", "false"],
     ["indirect", "bool", "false"],
+    ["states", "MeshPipelineStates", ""],
     ["sets", "[DescriptorLayout]", ""],
     ["label", "str", ""],
 ]
@@ -197,7 +198,37 @@ fields = [
     ["stencil", "bool", "false"],
     ["front", "StencilFace", ""],
     ["back", "StencilFace", ""],
-    ["label", "str", ""],
+]
+
+[[info]]
+name = "VertexPipelineStates"
+fields = [
+    ["topology", "Topology", "topology::TRIANGLE"],
+    ["cull", "CullMode", "cull_mode::NONE"],
+    ["face", "FrontFace", "front_face::CCW"],
+    ["depth", "DepthStateInfo", ""],
+    ["front_reference", "u32", "0"],
+    ["back_reference", "u32", "0"],
+    ["bias_constant", "f32", "0.0"],
+    ["bias_slope", "f32", "0.0"],
+    ["bias_clamp", "f32", "0.0"],
+    ["blend_color", "f32x4", "[0.0, 0.0, 0.0, 0.0]"],
+    ["dynamic", "DynamicState", "0"],
+]
+
+[[info]]
+name = "MeshPipelineStates"
+fields = [
+    ["cull", "CullMode", "cull_mode::NONE"],
+    ["face", "FrontFace", "front_face::CCW"],
+    ["depth", "DepthStateInfo", ""],
+    ["front_reference", "u32", "0"],
+    ["back_reference", "u32", "0"],
+    ["bias_constant", "f32", "0.0"],
+    ["bias_slope", "f32", "0.0"],
+    ["bias_clamp", "f32", "0.0"],
+    ["blend_color", "f32x4", "[0.0, 0.0, 0.0, 0.0]"],
+    ["dynamic", "DynamicState", "0"],
 ]
 
 [[info]]

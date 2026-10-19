@@ -17,6 +17,7 @@ pub struct RenderEntry {
     pub topology: crate::Topology,
     pub mesh: bool,
     pub indirect: bool,
+    pub dynamic: crate::DynamicState,
     pub vertices: u32,
     pub reads: u32,
     pub layouts: [u32; 3],

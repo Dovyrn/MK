@@ -20,9 +20,9 @@ use objc2_metal::{
     MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
     MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
     MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
-    MTLDepthStencilDescriptor, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
-    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
-    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLFunction, MTLLibrary,
+    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor,
+    MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 use std::sync::Mutex;
 
@@ -346,7 +346,7 @@ impl Device {
             }
             colors(&desc.colorAttachments(), info.colors);
             unsafe { desc.setRasterSampleCount(info.samples as usize) };
-            desc.setInputPrimitiveTopology(match info.topology {
+            desc.setInputPrimitiveTopology(match info.states.topology {
                 Topology::Point => MTLPrimitiveTopologyClass::Point,
                 Topology::Line | Topology::LineStrip => MTLPrimitiveTopologyClass::Line,
                 Topology::Triangle | Topology::TriangleStrip => MTLPrimitiveTopologyClass::Triangle,
@@ -357,17 +357,20 @@ impl Device {
                 state,
                 fill: mtl_fill_mode(info.fill),
                 clip: depth_clip(info.clamp),
-                primitive: MTLPrimitiveType(info.topology as usize),
+                primitive: MTLPrimitiveType(info.states.topology as usize),
                 task: size([1, 1, 1]),
                 mesh: size([1, 1, 1]),
+                states: info.states,
+                depth: self.depth_stencil(&info.states.depth, info.label)?,
             });
             self.res.table.renders.set(
                 id,
                 crate::table::RenderEntry {
                     samples: info.samples,
-                    topology: info.topology,
+                    topology: info.states.topology,
                     mesh: false,
                     indirect: info.indirect,
+                    dynamic: info.states.dynamic,
                     vertices: crate::table::vertex_buffer_mask(info),
                     reads: attachment_reads(&groups, info.fragment),
                     layouts,
@@ -416,6 +419,8 @@ impl Device {
                 primitive: MTLPrimitiveType::Triangle,
                 task: size(task),
                 mesh: size(mesh),
+                states: info.states.vertex(),
+                depth: self.depth_stencil(&info.states.depth, info.label)?,
             });
             self.res.table.renders.set(
                 id,
@@ -424,6 +429,7 @@ impl Device {
                     topology: Topology::Triangle,
                     mesh: true,
                     indirect: info.indirect,
+                    dynamic: info.states.dynamic,
                     vertices: 0,
                     reads: attachment_reads(&groups, info.fragment),
                     layouts,
@@ -474,22 +480,33 @@ impl Device {
         drop(pipeline);
     }
 
-    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
+    fn depth_stencil(
+        &self,
+        info: &DepthStateInfo,
+        label: &str,
+    ) -> Result<Retained<ProtocolObject<dyn MTLDepthStencilState>>, Error> {
+        let desc = MTLDepthStencilDescriptor::new();
+        desc.setDepthCompareFunction(mtl_compare(info.compare));
+        desc.setDepthWriteEnabled(info.write);
+        if let Some(text) = labels::label(label) {
+            desc.setLabel(Some(&text));
+        }
+        if info.stencil {
+            desc.setFrontFaceStencil(Some(&stencil(&info.front)));
+            desc.setBackFaceStencil(Some(&stencil(&info.back)));
+        }
+        self.raw
+            .newDepthStencilStateWithDescriptor(&desc)
+            .ok_or_else(|| Error::OutOfMemory("depth state allocation failed".into()))
+    }
+
+    pub fn create_depth_state(
+        &self,
+        info: &DepthStateInfo,
+        label: &str,
+    ) -> Result<DepthState, Error> {
         autoreleasepool(|_| {
-            let desc = MTLDepthStencilDescriptor::new();
-            desc.setDepthCompareFunction(mtl_compare(info.compare));
-            desc.setDepthWriteEnabled(info.write);
-            if let Some(text) = labels::label(info.label) {
-                desc.setLabel(Some(&text));
-            }
-            if info.stencil {
-                desc.setFrontFaceStencil(Some(&stencil(&info.front)));
-                desc.setBackFaceStencil(Some(&stencil(&info.back)));
-            }
-            let state = self
-                .raw
-                .newDepthStencilStateWithDescriptor(&desc)
-                .ok_or_else(|| Error::OutOfMemory("depth state allocation failed".into()))?;
+            let state = self.depth_stencil(info, label)?;
             let id = self.res.depths.insert(state);
             self.res.table.states.set(id, ());
             Ok(id)

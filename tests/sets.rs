@@ -1,8 +1,8 @@
 use mk::{
     AddressMode, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, ComputePipelineInfo,
-    DepthStateInfo, DescriptorBinding, DescriptorType, DescriptorWrite, Error, Filter, Format,
-    Memory, RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage, TextureDiscard,
-    TextureInfo, TextureUsage, Viewport,
+    DescriptorBinding, DescriptorType, DescriptorWrite, Error, Filter, Format, Memory,
+    RenderPassInfo, RenderPipelineInfo, SamplerInfo, Scissor, Stage, TextureDiscard, TextureInfo,
+    TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -104,9 +104,6 @@ pub fn test() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let none = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let tinted = device.create_descriptor_pool(tints, 1).unwrap();
     let tint = device.create_descriptor_set(tinted).unwrap();
     let full = device.create_descriptor_set(tinted);
@@ -165,7 +162,6 @@ pub fn test() {
         width: 4,
         height: 4,
     }]);
-    host::states(&mut pass, none);
     pass.bind_render_pipeline(draw);
     pass.bind_descriptor_set(tint);
     pass.bind_descriptor_set(read);

@@ -1,7 +1,9 @@
+use crate::VertexPipelineStates;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTLDepthClipMode, MTLPrimitiveType, MTLRenderPipelineState, MTLSize, MTLTriangleFillMode,
+    MTLDepthClipMode, MTLDepthStencilState, MTLPrimitiveType, MTLRenderPipelineState, MTLSize,
+    MTLTriangleFillMode,
 };
 
 pub struct Render {
@@ -11,4 +13,6 @@ pub struct Render {
     pub primitive: MTLPrimitiveType,
     pub task: MTLSize,
     pub mesh: MTLSize,
+    pub states: VertexPipelineStates,
+    pub depth: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
 }

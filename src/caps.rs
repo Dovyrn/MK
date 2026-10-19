@@ -1,7 +1,8 @@
 use crate::Error;
 use crate::{
-    AddressMode, BufferUsage, Caps, ColorTarget, FillMode, Format, Memory, MeshPipelineInfo,
-    QueryKind, RenderPipelineInfo, SamplerInfo, TextureDimension, TextureInfo, TextureUsage,
+    AddressMode, BufferUsage, Caps, ColorTarget, DynamicState, FillMode, Format, Memory,
+    MeshPipelineInfo, QueryKind, RenderPipelineInfo, SamplerInfo, TextureDimension, TextureInfo,
+    TextureUsage,
 };
 
 fn need(name: &str, has: bool, cap: &str) -> Result<(), Error> {
@@ -128,6 +129,11 @@ impl Caps {
             info.buffers.iter().all(|b| b.stride > 0),
             "{name} vertex buffer stride 0 means a different thing on each API; give a stride"
         );
+        need(
+            name,
+            info.states.bias_clamp == 0.0 || self.bias_clamp,
+            "bias_clamp",
+        )?;
         self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
     }
 
@@ -139,6 +145,15 @@ impl Caps {
         check_targets(name, info.colors, info.depth, info.stencil, info.samples);
         need(name, self.mesh, "mesh")?;
         need(name, info.task.is_empty() || self.task, "task")?;
+        check!(
+            !info.states.dynamic.contains(DynamicState::TOPOLOGY),
+            "{name} lists DynamicState::TOPOLOGY in MeshPipelineStates.dynamic, but mesh pipelines have no primitive topology"
+        );
+        need(
+            name,
+            info.states.bias_clamp == 0.0 || self.bias_clamp,
+            "bias_clamp",
+        )?;
         self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
     }
 

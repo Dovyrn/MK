@@ -1,7 +1,7 @@
 use mk::{
-    BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, DescriptorType, Format, Memory,
-    QueryKind, RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo,
-    TextureUsage, VertexAttribute, VertexBufferLayout, Viewport,
+    BufferUsage, ColorAttachment, ColorTarget, DescriptorType, Format, Memory, QueryKind,
+    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
+    VertexAttribute, VertexBufferLayout, Viewport,
 };
 
 use crate::host;
@@ -105,9 +105,6 @@ pub fn test() {
     let mut push = count.to_le_bytes().to_vec();
     push.extend(7u32.to_le_bytes());
     let timeline = device.create_timeline().unwrap();
-    let depth = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let (constants, stride) = host::constants(&device, &[&push, &0.5f32.to_le_bytes()]);
     let counted = host::set(
         &device,
@@ -167,7 +164,6 @@ pub fn test() {
             ..Default::default()
         })
         .unwrap();
-    host::states(&mut pass, depth);
     pass.set_viewport(&[Viewport {
         width: n as f32,
         height: n as f32,

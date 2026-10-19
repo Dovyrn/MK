@@ -2,7 +2,7 @@ use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CompareOp, DepthAttachment,
     DepthStateInfo, Format, IndexType, Memory, RenderPassInfo, RenderPipelineInfo, Scissor, Stage,
     StoreOp, TextureDiscard, TextureInfo, TextureUsage, VertexAttribute, VertexBufferLayout,
-    Viewport,
+    VertexPipelineStates, Viewport,
 };
 
 use crate::host;
@@ -77,6 +77,14 @@ pub fn test() {
             fragment: "frag",
             colors: &colors,
             depth: Some(Format::D32Float),
+            states: VertexPipelineStates {
+                depth: DepthStateInfo {
+                    compare: CompareOp::Less,
+                    write: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             buffers: &[VertexBufferLayout {
                 stride: 20,
                 instance: false,
@@ -95,13 +103,6 @@ pub fn test() {
                     offset: 8,
                 },
             ],
-            ..Default::default()
-        })
-        .unwrap();
-    let less = device
-        .create_depth_state(&DepthStateInfo {
-            compare: CompareOp::Less,
-            write: true,
             ..Default::default()
         })
         .unwrap();
@@ -159,7 +160,6 @@ pub fn test() {
         width: n,
         height: n,
     }]);
-    host::states(&mut pass, less);
     pass.bind_render_pipeline(pipeline);
     pass.bind_vertex_buffer(0, vbuf, 0);
     pass.bind_index_buffer(ibuf, 0, IndexType::U16);

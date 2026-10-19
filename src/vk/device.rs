@@ -614,7 +614,7 @@ impl Drop for Device {
             for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
             }
-            for (pipeline, _, layout) in res.renders.drain() {
+            for (pipeline, layout, _) in res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
                 self.raw.destroy_pipeline_layout(layout, None);
             }

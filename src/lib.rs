@@ -47,6 +47,7 @@ mod handle;
 mod indirect;
 #[cfg(feature = "jni")]
 mod java;
+mod mesh_pipeline_states;
 #[cfg(feature = "mtl")]
 pub mod mtl;
 mod recording;

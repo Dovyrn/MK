@@ -17,7 +17,6 @@ public class RenderPipelineInfo {
     public Format depth = null;
     public Format stencil = null;
     public int samples = 1;
-    public Topology topology = Topology.TRIANGLE;
     public FillMode fill = FillMode.FILL;
     public boolean coverage = false;
     public boolean clamp = false;
@@ -25,6 +24,7 @@ public class RenderPipelineInfo {
     public boolean indirect = false;
     public VertexBufferLayout[] buffers = new VertexBufferLayout[0];
     public VertexAttribute[] attributes = new VertexAttribute[0];
+    public VertexPipelineStates states = new VertexPipelineStates();
     public DescriptorLayout[] sets = new DescriptorLayout[0];
     public String label = "";
 
@@ -45,7 +45,7 @@ public class RenderPipelineInfo {
         for (var x : sets) {
             setsSize += 8;
         }
-        return 64 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize + states.encodedSize() + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -79,8 +79,6 @@ public class RenderPipelineInfo {
         }
         memPutInt(p, samples);
         p += 4;
-        memPutInt(p, topology.value);
-        p += 4;
         memPutInt(p, fill.value);
         p += 4;
         memPutInt(p, coverage ? 1 : 0);
@@ -101,6 +99,7 @@ public class RenderPipelineInfo {
         for (var x : attributes) {
             p = x.encode(p);
         }
+        p = states.encode(p);
         memPutInt(p, sets.length);
         p += 4;
         for (var x : sets) {

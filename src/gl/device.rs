@@ -26,7 +26,7 @@ use crate::table::lock;
 use crate::{
     Atomic64, BufferUsage, Caps, ComputePipelineInfo, DepthStateInfo, Format, Memory,
     MeshPipelineInfo, RenderPipelineInfo, SamplerInfo, Stage, SubgroupOp, TextureInfo,
-    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, Topology, slot,
+    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, slot,
 };
 use crate::{
     Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthState, ImportedPassInfo, QueryPool,
@@ -494,12 +494,12 @@ impl Device {
         let render = RenderPipelineInfo {
             code: info.code,
             colors: info.colors,
-            topology: Topology::Triangle,
             fill: info.fill,
             coverage: info.coverage,
             clamp: info.clamp,
             ordered: info.ordered,
             indirect: info.indirect,
+            states: info.states.vertex(),
             sets: info.sets,
             label: info.label,
             ..Default::default()
@@ -524,9 +524,10 @@ impl Device {
             id,
             crate::table::RenderEntry {
                 samples: info.samples,
-                topology: info.topology,
+                topology: info.states.topology,
                 mesh,
                 indirect: info.indirect,
+                dynamic: info.states.dynamic,
                 vertices: crate::table::vertex_buffer_mask(info),
                 reads: 0,
                 layouts,
@@ -554,12 +555,13 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
+    pub fn create_depth_state(
+        &self,
+        info: &DepthStateInfo,
+        _label: &str,
+    ) -> Result<DepthState, Error> {
         self.thread();
-        let id = self
-            .res
-            .depths
-            .insert(DepthStateInfo { label: "", ..*info });
+        let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
     }

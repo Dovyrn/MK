@@ -1,10 +1,12 @@
 use super::Device;
 use crate::Error;
 use crate::descriptors::set_of;
+use crate::vk::recorder::vk_compare_op;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, ComputePipelineInfo, DepthStateInfo, DescriptorLayout, FillMode, Format,
-    MeshPipelineInfo, RenderPipelineInfo, Stage, TilePipelineInfo, Topology,
+    ColorTarget, CompareOp, ComputePipelineInfo, DepthStateInfo, DescriptorLayout, DynamicState,
+    FillMode, Format, FrontFace, MeshPipelineInfo, RenderPipelineInfo, Stage, StencilFace,
+    TilePipelineInfo, VertexPipelineStates,
 };
 use crate::{ComputePipeline, DepthState, RenderPipeline, TilePipeline};
 use ash::vk;
@@ -51,6 +53,7 @@ impl Device {
         clamp: bool,
         ordered: bool,
         indirect: bool,
+        states: &VertexPipelineStates,
         sets: &[DescriptorLayout],
         label: &str,
     ) -> Result<RenderPipeline, Error> {
@@ -162,27 +165,46 @@ impl Device {
         let input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&bindings)
             .vertex_attribute_descriptions(&attributes);
-        let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(
-            match vertex.map(|v| v.topology) {
-                Some(Topology::Point) => vk::PrimitiveTopology::POINT_LIST,
-                Some(Topology::Line | Topology::LineStrip) => vk::PrimitiveTopology::LINE_LIST,
-                None | Some(Topology::Triangle | Topology::TriangleStrip) => {
-                    vk::PrimitiveTopology::TRIANGLE_LIST
-                }
-            },
-        );
+        let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
+            .topology(vk::PrimitiveTopology::from_raw(states.topology as i32));
         let viewport = vk::PipelineViewportStateCreateInfo::default();
+        let winding = match states.face {
+            FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
+            FrontFace::Cw => vk::FrontFace::CLOCKWISE,
+        };
         let raster = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(match fill {
                 FillMode::Line => vk::PolygonMode::LINE,
                 FillMode::Fill => vk::PolygonMode::FILL,
             })
             .depth_clamp_enable(clamp)
+            .cull_mode(vk::CullModeFlags::from_raw(states.cull as u32))
+            .front_face(winding)
+            .depth_bias_enable(states.bias_constant != 0.0 || states.bias_slope != 0.0)
+            .depth_bias_constant_factor(states.bias_constant)
+            .depth_bias_slope_factor(states.bias_slope)
+            .depth_bias_clamp(states.bias_clamp)
             .line_width(1.0);
         let multisample = vk::PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(vk::SampleCountFlags::from_raw(samples))
             .alpha_to_coverage_enable(coverage);
-        let depth_state = vk::PipelineDepthStencilStateCreateInfo::default();
+        let d = &states.depth;
+        let face = |f: &StencilFace, reference: u32| vk::StencilOpState {
+            fail_op: vk::StencilOp::from_raw(f.fail as i32),
+            pass_op: vk::StencilOp::from_raw(f.pass as i32),
+            depth_fail_op: vk::StencilOp::from_raw(f.depth_fail as i32),
+            compare_op: vk_compare_op(f.compare),
+            compare_mask: f.read,
+            write_mask: f.write,
+            reference,
+        };
+        let depth_state = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(d.compare != CompareOp::None || d.write)
+            .depth_write_enable(d.write)
+            .depth_compare_op(vk_compare_op(d.compare))
+            .stencil_test_enable(d.stencil)
+            .front(face(&d.front, states.front_reference))
+            .back(face(&d.back, states.back_reference));
         let blends: Vec<_> = colors
             .iter()
             .map(|c| vk::PipelineColorBlendAttachmentState {
@@ -203,28 +225,52 @@ impl Device {
         };
         let blend = vk::PipelineColorBlendStateCreateInfo::default()
             .flags(flags)
-            .attachments(&blends);
-        let mut states = vec![
+            .attachments(&blends)
+            .blend_constants(states.blend_color);
+        let mut list = vec![
             vk::DynamicState::VIEWPORT_WITH_COUNT,
             vk::DynamicState::SCISSOR_WITH_COUNT,
-            vk::DynamicState::CULL_MODE,
-            vk::DynamicState::FRONT_FACE,
-            vk::DynamicState::DEPTH_TEST_ENABLE,
-            vk::DynamicState::DEPTH_WRITE_ENABLE,
-            vk::DynamicState::DEPTH_COMPARE_OP,
-            vk::DynamicState::STENCIL_TEST_ENABLE,
-            vk::DynamicState::STENCIL_OP,
-            vk::DynamicState::STENCIL_COMPARE_MASK,
-            vk::DynamicState::STENCIL_WRITE_MASK,
-            vk::DynamicState::STENCIL_REFERENCE,
-            vk::DynamicState::DEPTH_BIAS,
-            vk::DynamicState::DEPTH_BIAS_ENABLE,
-            vk::DynamicState::BLEND_CONSTANTS,
         ];
-        if vertex.is_some() {
-            states.push(vk::DynamicState::PRIMITIVE_TOPOLOGY);
+        for (flag, more) in [
+            (DynamicState::CULL, &[vk::DynamicState::CULL_MODE][..]),
+            (DynamicState::FACE, &[vk::DynamicState::FRONT_FACE]),
+            (
+                DynamicState::DEPTH_STATE,
+                &[
+                    vk::DynamicState::DEPTH_TEST_ENABLE,
+                    vk::DynamicState::DEPTH_WRITE_ENABLE,
+                    vk::DynamicState::DEPTH_COMPARE_OP,
+                    vk::DynamicState::STENCIL_TEST_ENABLE,
+                    vk::DynamicState::STENCIL_OP,
+                    vk::DynamicState::STENCIL_COMPARE_MASK,
+                    vk::DynamicState::STENCIL_WRITE_MASK,
+                ],
+            ),
+            (
+                DynamicState::STENCIL_REFERENCE,
+                &[vk::DynamicState::STENCIL_REFERENCE],
+            ),
+            (
+                DynamicState::DEPTH_BIAS,
+                &[
+                    vk::DynamicState::DEPTH_BIAS,
+                    vk::DynamicState::DEPTH_BIAS_ENABLE,
+                ],
+            ),
+            (
+                DynamicState::BLEND_COLOR,
+                &[vk::DynamicState::BLEND_CONSTANTS],
+            ),
+            (
+                DynamicState::TOPOLOGY,
+                &[vk::DynamicState::PRIMITIVE_TOPOLOGY],
+            ),
+        ] {
+            if states.dynamic.contains(flag) {
+                list.extend(more);
+            }
         }
-        let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&states);
+        let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&list);
         let formats: Vec<_> = colors.iter().map(|c| c.format.vk()).collect();
         let mut rendering = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&formats)
@@ -257,9 +303,12 @@ impl Device {
         if !label.is_empty() {
             self.name(pipeline, label);
         }
-        let topology = vertex.map(|v| vk::PrimitiveTopology::from_raw(v.topology as i32));
-        let id = self.res.renders.insert((pipeline, topology, layout));
-        let shape = vertex.map_or(Topology::Triangle, |v| v.topology);
+        let stuck = self.ext.moltenvk && !states.dynamic.contains(DynamicState::FACE);
+        let id = self
+            .res
+            .renders
+            .insert((pipeline, layout, stuck.then_some(winding)));
+        let shape = states.topology;
         self.res.table.renders.set(
             id,
             crate::table::RenderEntry {
@@ -267,6 +316,7 @@ impl Device {
                 topology: shape,
                 mesh: vertex.is_none(),
                 indirect,
+                dynamic: states.dynamic,
                 vertices: vertex.map_or(0, crate::table::vertex_buffer_mask),
                 reads,
                 layouts,
@@ -296,6 +346,7 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            &info.states,
             info.sets,
             info.label,
         )
@@ -325,6 +376,7 @@ impl Device {
             info.clamp,
             info.ordered,
             info.indirect,
+            &info.states.vertex(),
             info.sets,
             info.label,
         )
@@ -332,7 +384,7 @@ impl Device {
 
     pub fn destroy_render_pipeline(&self, pipeline: RenderPipeline) {
         self.res.table.renders.clear(pipeline);
-        let (pipeline, _, layout) = self.res.renders.remove(pipeline);
+        let (pipeline, layout, _) = self.res.renders.remove(pipeline);
         unsafe {
             self.raw.destroy_pipeline(pipeline, None);
             self.raw.destroy_pipeline_layout(layout, None);
@@ -350,11 +402,12 @@ impl Device {
         self.res.table.tile_pipelines.clear(pipeline);
     }
 
-    pub fn create_depth_state(&self, info: &DepthStateInfo) -> Result<DepthState, Error> {
-        let id = self
-            .res
-            .depths
-            .insert(DepthStateInfo { label: "", ..*info });
+    pub fn create_depth_state(
+        &self,
+        info: &DepthStateInfo,
+        _label: &str,
+    ) -> Result<DepthState, Error> {
+        let id = self.res.depths.insert(*info);
         self.res.table.states.set(id, ());
         Ok(id)
     }

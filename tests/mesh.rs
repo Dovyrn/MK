@@ -1,7 +1,6 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
-    MeshPipelineInfo, RenderPassInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
-    Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, MeshPipelineInfo,
+    RenderPassInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -59,9 +58,6 @@ pub fn test() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let none = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let listed = device.caps().mesh_indirect;
     let groups = device
         .create_buffer(12, Memory::Upload, BufferUsage::INDIRECT, "")
@@ -110,7 +106,6 @@ pub fn test() {
             width: n,
             height: n,
         }]);
-        host::states(&mut pass, none);
         pass.bind_render_pipeline(if round == 2 { single } else { pipeline });
         pass.bind_descriptor_set(bound);
         if round == 1 {
@@ -219,9 +214,6 @@ fn executed(
     for word in device.indirect_shader_handle(list).0 {
         bytes.extend(word.to_le_bytes());
     }
-    let none = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let (half, _) = host::constants(device, &[&0.5f32.to_le_bytes()]);
     let (constants, _) = host::constants(device, &[&bytes]);
     let halves = host::set(device, layout, &[host::buffer(0, half, 0, 4)]);
@@ -282,7 +274,6 @@ fn executed(
         width: n,
         height: n,
     }]);
-    host::states(&mut pass, none);
     pass.bind_render_pipeline(single);
     pass.bind_descriptor_set(halves);
     pass.execute_indirect(list, 0, 1);

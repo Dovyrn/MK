@@ -1,7 +1,6 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, DepthStateInfo, Format, Memory,
-    RenderPassInfo, RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage,
-    Viewport,
+    BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, Format, Memory, RenderPassInfo,
+    RenderPipelineInfo, Scissor, Stage, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -73,9 +72,6 @@ pub fn test() {
         },
     ];
     let timeline = device.create_timeline().unwrap();
-    let none = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), color.into()]);
     device.commit_residency(set);
@@ -101,7 +97,6 @@ pub fn test() {
     pass.bind_render_pipeline(pipeline);
     pass.set_viewport(&viewports);
     pass.set_scissor(&scissors);
-    host::states(&mut pass, none);
     pass.draw(3, 2, 0, 0);
     pass.end();
     let mut pass = c.begin_compute_pass(Stage::COLOR, Stage::COPY).unwrap();

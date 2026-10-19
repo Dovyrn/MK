@@ -21,6 +21,7 @@ mod resolve;
 mod sets;
 mod shared;
 mod sources;
+mod states;
 mod subgroups;
 mod texture;
 mod threads;
@@ -42,6 +43,6 @@ macro_rules! tests {
 
 tests!(
     adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, present,
-    queries, queues, reads, render, residency, resolve, sets, shared, sources, subgroups, texture,
-    threads, tiles, uploads, view, viewports
+    queries, queues, reads, render, residency, resolve, sets, shared, sources, states, subgroups,
+    texture, threads, tiles, uploads, view, viewports
 );

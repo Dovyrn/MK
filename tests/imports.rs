@@ -1,15 +1,14 @@
 use mk::{
-    BufferTextureCopy, BufferUsage, ColorTarget, CommandPool, DepthState, DepthStateInfo, Device,
-    Format, ImportedPassInfo, Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor,
-    Stage, Texture, TextureDiscard, TextureInfo, TextureUsage, Viewport,
+    BufferTextureCopy, BufferUsage, ColorTarget, CommandPool, Device, Format, ImportedPassInfo,
+    Memory, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture,
+    TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
 
 const N: u32 = 32;
 
-fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline, depth: DepthState) {
-    host::states(pass, depth);
+fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
     pass.set_viewport(&[Viewport {
         width: N as f32,
         height: N as f32,
@@ -63,7 +62,6 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
-    depth: DepthState,
 ) {
     use mk::ash::vk;
     let families = unsafe {
@@ -149,7 +147,7 @@ fn host_frame(
             samples: 1,
         };
         let mut pass = device.import_render_pass(pool, buffer, &info).unwrap();
-        draw(&mut pass, pipeline, depth);
+        draw(&mut pass, pipeline);
         pass.end();
         raw.cmd_end_rendering(buffer);
         layout(
@@ -187,7 +185,6 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
-    depth: DepthState,
 ) {
     use mk::objc2::runtime::ProtocolObject;
     use mk::objc2_metal::{
@@ -224,7 +221,7 @@ fn host_frame(
         samples: 1,
     };
     let mut pass = device.import_render_pass(pool, &encoder, &info).unwrap();
-    draw(&mut pass, pipeline, depth);
+    draw(&mut pass, pipeline);
     pass.end();
     encoder.endEncoding();
     let mut commands = device.import_commands(pool, &buffer).unwrap();
@@ -249,7 +246,6 @@ fn host_frame(
     pipeline: RenderPipeline,
     timeline: &mk::Timeline,
     set: ResidencySet,
-    depth: DepthState,
 ) {
     use mk::glow::HasContext;
     let mut commands = device.begin_commands(pool).unwrap();
@@ -280,7 +276,7 @@ fn host_frame(
         samples: 1,
     };
     let mut pass = device.import_render_pass(pool, &info).unwrap();
-    draw(&mut pass, pipeline, depth);
+    draw(&mut pass, pipeline);
     pass.end();
     unsafe {
         gl.bind_framebuffer(mk::glow::FRAMEBUFFER, None);
@@ -327,15 +323,10 @@ pub fn test() {
         })
         .unwrap();
     let timeline = device.create_timeline().unwrap();
-    let depth = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let set = device.create_residency_set().unwrap();
     device.add_residency(set, &[back.into(), texture.into()]);
     device.commit_residency(set);
-    host_frame(
-        &device, pool, texture, back, pipeline, &timeline, set, depth,
-    );
+    host_frame(&device, pool, texture, back, pipeline, &timeline, set);
     let pixels = unsafe { device.map_buffer::<[u8; 4]>(back) };
     let at = |x: u32, y: u32| pixels[(y * N + x) as usize];
     assert_eq!(

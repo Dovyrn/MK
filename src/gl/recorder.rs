@@ -14,8 +14,8 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{State, set_enabled};
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, Format, FrontFace,
-    IndexType, LoadOp, Stage, StoreOp, Topology, slot,
+    Caps, ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, DynamicState,
+    Format, FrontFace, IndexType, LoadOp, Stage, StoreOp, Topology, VertexPipelineStates, slot,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -74,7 +74,7 @@ pub struct Recorder<'a> {
     vertices: [Option<(Buffer, u64)>; slot::VERTICES as usize],
     index: Option<(Buffer, u64, u32)>,
     mode: u32,
-    state: Option<DepthStateInfo<'static>>,
+    state: Option<DepthStateInfo>,
     references: (u32, u32),
     extent: (i32, i32),
     views: Vec<[f32; 4]>,
@@ -394,6 +394,86 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    fn cull(&self, cull: CullMode) {
+        let gl = self.gl;
+        unsafe {
+            match cull {
+                CullMode::None => gl.disable(glow::CULL_FACE),
+                CullMode::Front | CullMode::Back => {
+                    gl.enable(glow::CULL_FACE);
+                    gl.cull_face(if cull == CullMode::Front {
+                        glow::FRONT
+                    } else {
+                        glow::BACK
+                    });
+                }
+            }
+        }
+    }
+
+    fn face(&self, face: FrontFace) {
+        unsafe {
+            self.gl.front_face(match face {
+                FrontFace::Ccw => glow::CW,
+                FrontFace::Cw => glow::CCW,
+            })
+        }
+    }
+
+    fn depth(&mut self, d: DepthStateInfo) {
+        let gl = self.gl;
+        unsafe {
+            set_enabled(
+                gl,
+                glow::DEPTH_TEST,
+                d.compare != crate::CompareOp::None || d.write,
+            );
+            gl.depth_func(compare(d.compare));
+            gl.depth_mask(d.write);
+            set_enabled(gl, glow::STENCIL_TEST, d.stencil);
+        }
+        self.state = Some(d);
+        self.apply_stencil();
+    }
+
+    fn bias(&self, constant: f32, slope: f32, clamp: f32) {
+        let gl = self.gl;
+        unsafe {
+            let on = constant != 0.0 || slope != 0.0;
+            for mode in OFFSETS {
+                set_enabled(gl, mode, on);
+            }
+            match self.extra.offset_clamp {
+                Some(offset) => offset(slope, constant, clamp),
+                None => gl.polygon_offset(slope, constant),
+            }
+        }
+    }
+
+    fn statics(&mut self, s: &VertexPipelineStates) {
+        let dynamic = s.dynamic;
+        if !dynamic.contains(DynamicState::CULL) {
+            self.cull(s.cull);
+        }
+        if !dynamic.contains(DynamicState::FACE) {
+            self.face(s.face);
+        }
+        if !dynamic.contains(DynamicState::DEPTH_STATE) {
+            self.depth(s.depth);
+        }
+        if !dynamic.contains(DynamicState::STENCIL_REFERENCE) {
+            self.references = (s.front_reference, s.back_reference);
+            self.apply_stencil();
+        }
+        if !dynamic.contains(DynamicState::DEPTH_BIAS) {
+            self.bias(s.bias_constant, s.bias_slope, s.bias_clamp);
+        }
+        if !dynamic.contains(DynamicState::BLEND_COLOR) {
+            let [r, g, b, a] = s.blend_color;
+            unsafe { self.gl.blend_color(r, g, b, a) };
+        }
+    }
+
     fn apply_stencil(&self) {
         let Some(d) = self.state.filter(|d| d.stencil) else {
             return;
@@ -626,7 +706,9 @@ impl<'a> Recorder<'a> {
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
-                    self.mode = gl_primitive_mode(p.topology);
+                    if !p.states.dynamic.contains(DynamicState::TOPOLOGY) {
+                        self.mode = gl_primitive_mode(p.topology);
+                    }
                     let fill = if p.fill == crate::FillMode::Line {
                         glow::LINE
                     } else {
@@ -636,38 +718,14 @@ impl<'a> Recorder<'a> {
                     set_enabled(gl, glow::DEPTH_CLAMP, p.clamp);
                     set_enabled(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
                     self.apply_blend_state(p);
+                    self.statics(&p.states);
                 }
-                Command::SetCullMode { cull: c } => match c {
-                    CullMode::None => gl.disable(glow::CULL_FACE),
-                    CullMode::Front | CullMode::Back => {
-                        gl.enable(glow::CULL_FACE);
-                        gl.cull_face(if c == CullMode::Front {
-                            glow::FRONT
-                        } else {
-                            glow::BACK
-                        });
-                    }
-                },
-                Command::SetFrontFace { face: f } => gl.front_face(match f {
-                    FrontFace::Ccw => glow::CW,
-                    FrontFace::Cw => glow::CCW,
-                }),
+                Command::SetCullMode { cull } => self.cull(cull),
+                Command::SetFrontFace { face } => self.face(face),
                 Command::SetPrimitiveTopology { topology } => {
                     self.mode = gl_primitive_mode(topology)
                 }
-                Command::SetDepthState { state } => {
-                    let d = *res.depths.get(state);
-                    set_enabled(
-                        gl,
-                        glow::DEPTH_TEST,
-                        d.compare != crate::CompareOp::None || d.write,
-                    );
-                    gl.depth_func(compare(d.compare));
-                    gl.depth_mask(d.write);
-                    set_enabled(gl, glow::STENCIL_TEST, d.stencil);
-                    self.state = Some(d);
-                    self.apply_stencil();
-                }
+                Command::SetDepthState { state } => self.depth(*res.depths.get(state)),
                 Command::SetStencilReference { front, back } => {
                     self.references = (front, back);
                     self.apply_stencil();
@@ -676,16 +734,7 @@ impl<'a> Recorder<'a> {
                     constant,
                     slope,
                     clamp,
-                } => {
-                    let on = constant != 0.0 || slope != 0.0;
-                    for mode in OFFSETS {
-                        set_enabled(gl, mode, on);
-                    }
-                    match self.extra.offset_clamp {
-                        Some(offset) => offset(slope, constant, clamp),
-                        None => gl.polygon_offset(slope, constant),
-                    }
-                }
+                } => self.bias(constant, slope, clamp),
                 Command::SetBlendColor {
                     color: [r, g, b, a],
                 } => gl.blend_color(r, g, b, a),

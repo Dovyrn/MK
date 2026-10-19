@@ -5,9 +5,9 @@ use crate::residency::Residency;
 use crate::table::Table;
 use crate::table::lock;
 use crate::{
-    Buffer, BufferUsage, Caps, CommandPool, DescriptorSet, Format, IndexType, IndirectBuffer,
-    LoadOp, Memory, QueryKind, QueryPool, ResourceKind, Stage, StoreOp, Texture, TextureDimension,
-    TextureInfo, TextureUsage, Topology, sets, slot,
+    Buffer, BufferUsage, Caps, CommandPool, DescriptorSet, DynamicState, Format, IndexType,
+    IndirectBuffer, LoadOp, Memory, QueryKind, QueryPool, ResourceKind, Stage, StoreOp, Texture,
+    TextureDimension, TextureInfo, TextureUsage, Topology, sets, slot,
 };
 use std::sync::atomic::Ordering;
 
@@ -37,6 +37,7 @@ pub struct Check<'a> {
     views: u32,
     scissors: u32,
     fresh: u32,
+    dynamic: DynamicState,
     resident: bool,
     ended: bool,
     layouts: [u32; 3],
@@ -44,16 +45,19 @@ pub struct Check<'a> {
     held: Vec<DescriptorSet>,
 }
 
-const STATES: [&str; 8] = [
-    "set_cull_mode",
-    "set_front_face",
-    "set_depth_state",
-    "set_stencil_reference",
-    "set_depth_bias",
-    "set_blend_color",
-    "set_viewport",
-    "set_scissor",
+const STATES: [(&str, &str); 9] = [
+    ("set_cull_mode", "CULL"),
+    ("set_front_face", "FACE"),
+    ("set_depth_state", "DEPTH_STATE"),
+    ("set_stencil_reference", "STENCIL_REFERENCE"),
+    ("set_depth_bias", "DEPTH_BIAS"),
+    ("set_blend_color", "BLEND_COLOR"),
+    ("set_primitive_topology", "TOPOLOGY"),
+    ("set_viewport", ""),
+    ("set_scissor", ""),
 ];
+
+const RECTS: u32 = 1 << 7 | 1 << 8;
 
 fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f32, far: f32) {
     check!(
@@ -64,6 +68,14 @@ fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f3
         (0.0..=1.0).contains(&near) && (0.0..=1.0).contains(&far),
         "{name} depth range {near}..{far} is outside 0..1; keep near and far in 0..1"
     );
+}
+
+fn class(topology: Topology) -> u32 {
+    match topology {
+        Topology::Point => 0,
+        Topology::Line | Topology::LineStrip => 1,
+        Topology::Triangle | Topology::TriangleStrip => 2,
+    }
 }
 
 fn command_name(c: &Command) -> String {
@@ -151,6 +163,7 @@ impl<'a> Check<'a> {
             views: 0,
             scissors: 0,
             fresh: 0,
+            dynamic: DynamicState(0),
             resident: base != "outside",
             ended: false,
             layouts: [0; 3],
@@ -344,6 +357,19 @@ impl<'a> Check<'a> {
         self.fresh |= 1 << state;
     }
 
+    fn set_dynamic(&mut self, name: &str, state: u32) {
+        check!(
+            self.render,
+            "{name} needs a render pipeline bound earlier in this pass"
+        );
+        check!(
+            self.dynamic.0 & 1 << state != 0,
+            "{name} needs the bound pipeline to list DynamicState::{} in its states.dynamic; without it the pipeline's own value applies",
+            STATES[state as usize].1
+        );
+        self.mark_state(state);
+    }
+
     fn switch(&mut self, ids: [u32; 3]) {
         for k in 0..3 {
             if self.sets[k].is_some_and(|(_, at)| at[..=k] != ids[..=k]) {
@@ -475,11 +501,11 @@ impl<'a> Check<'a> {
             self.views,
             self.scissors
         );
-        let missing = !self.fresh & ((1 << STATES.len()) - 1);
+        let missing = (self.dynamic.0 | RECTS) & !self.fresh;
         if missing != 0 {
-            let state = STATES[missing.trailing_zeros() as usize];
+            let (state, _) = STATES[missing.trailing_zeros() as usize];
             panic!(
-                "{} needs {state} earlier in this pass; a render pass starts with no state",
+                "{} needs {state} since the last pipeline that set it statically; a render pass starts with no dynamic state",
                 command_name(c)
             );
         }
@@ -1065,7 +1091,11 @@ impl<'a> Check<'a> {
                 self.render = true;
                 self.bound = samples;
                 self.needs = entry.vertices;
-                self.topology = entry.topology;
+                if !entry.dynamic.contains(DynamicState::TOPOLOGY) {
+                    self.topology = entry.topology;
+                }
+                self.fresh &= entry.dynamic.0 | RECTS;
+                self.dynamic = entry.dynamic;
                 self.mesh = entry.mesh;
                 self.indirect = entry.indirect;
             }
@@ -1110,19 +1140,27 @@ impl<'a> Check<'a> {
                 );
                 self.render = false;
             }
-            Command::SetCullMode { .. } => self.mark_state(0),
-            Command::SetFrontFace { .. } => self.mark_state(1),
-            Command::SetStencilReference { .. } => self.mark_state(3),
-            Command::SetBlendColor { .. } => self.mark_state(5),
-            Command::SetPrimitiveTopology { topology } => self.topology = topology,
+            Command::SetCullMode { .. } => self.set_dynamic(name, 0),
+            Command::SetFrontFace { .. } => self.set_dynamic(name, 1),
+            Command::SetStencilReference { .. } => self.set_dynamic(name, 3),
+            Command::SetBlendColor { .. } => self.set_dynamic(name, 5),
+            Command::SetPrimitiveTopology { topology } => {
+                self.set_dynamic(name, 6);
+                check!(
+                    class(topology) == class(self.topology),
+                    "{name} {topology:?} is not in the same point, line or triangle class as the pipeline's {:?}",
+                    self.topology
+                );
+                self.topology = topology;
+            }
             Command::Draw { .. } => self.check_draw(c, false),
             Command::DrawIndexed { .. } => self.check_draw(c, true),
             Command::SetDepthState { state } => {
                 self.table.states.get(state);
-                self.mark_state(2);
+                self.set_dynamic(name, 2);
             }
             Command::SetDepthBias { clamp, .. } => {
-                self.mark_state(4);
+                self.set_dynamic(name, 4);
                 if clamp != 0.0 {
                     self.require(c, caps.bias_clamp, "bias_clamp")?;
                 }
@@ -1294,7 +1332,7 @@ impl<'a> Check<'a> {
                     assert_viewport(name, v.x, v.y, v.width, v.height, v.near, v.far);
                 }
                 self.views = viewports.len() as u32;
-                self.mark_state(6);
+                self.mark_state(7);
             }
             Command::SetScissor { scissors } => {
                 assert_rects(name, scissors.len(), caps.viewports);
@@ -1306,7 +1344,7 @@ impl<'a> Check<'a> {
                     );
                 }
                 self.scissors = scissors.len() as u32;
-                self.mark_state(7);
+                self.mark_state(8);
             }
         }
         Ok(())

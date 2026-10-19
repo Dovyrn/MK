@@ -240,20 +240,21 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTilePipeline(long device, long pipeline);
 
-    public DepthState createDepthState(DepthStateInfo info) {
+    public DepthState createDepthState(DepthStateInfo info, String label) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
-                return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize()));
+                var labelBytes = label.getBytes(StandardCharsets.UTF_8);
+                return DepthState.of(nCreateDepthState(handle(), infoAddress, info.encodedSize(), arena.bytes(labelBytes), labelBytes.length));
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private static native long nCreateDepthState(long device, long info, int infoLength);
+    private static native long nCreateDepthState(long device, long info, int infoLength, long label, int labelLength);
 
     public void destroyDepthState(DepthState state) {
         lock.readLock().lock();

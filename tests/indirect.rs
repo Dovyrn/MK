@@ -1,8 +1,8 @@
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandBuffer,
-    CommandPool, DepthState, DepthStateInfo, Device, Format, IndexType, IndirectBufferInfo, Memory,
-    RenderPass, RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage,
-    Texture, TextureDiscard, TextureInfo, TextureUsage, Timeline, Viewport,
+    CommandPool, Device, Format, IndexType, IndirectBufferInfo, Memory, RenderPass, RenderPassInfo,
+    RenderPipeline, RenderPipelineInfo, ResidencySet, Scissor, Stage, Texture, TextureDiscard,
+    TextureInfo, TextureUsage, Timeline, Viewport,
 };
 
 use crate::host;
@@ -18,7 +18,6 @@ struct Frame {
     back: Buffer,
     pipeline: RenderPipeline,
     indices: Buffer,
-    depth: DepthState,
 }
 
 impl Frame {
@@ -52,7 +51,6 @@ impl Frame {
                 ..Default::default()
             })
             .unwrap();
-        host::states(&mut pass, self.depth);
         pass.set_viewport(&[Viewport {
             width: N as f32,
             height: N as f32,
@@ -138,9 +136,6 @@ pub fn test() {
     );
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
-    let depth = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let frame = Frame {
         pool,
         set,
@@ -148,7 +143,6 @@ pub fn test() {
         back,
         pipeline,
         indices,
-        depth,
     };
     let single = device.caps().indirect;
     if single {

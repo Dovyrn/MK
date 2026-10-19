@@ -13,6 +13,7 @@ pub struct Pipeline {
     pub fill: crate::FillMode,
     pub clamp: bool,
     pub coverage: bool,
+    pub states: crate::VertexPipelineStates,
 }
 
 impl Pipeline {
@@ -46,10 +47,11 @@ impl Pipeline {
             buffers: info.buffers.to_vec(),
             attributes: info.attributes.to_vec(),
             colors: info.colors.to_vec(),
-            topology: info.topology,
+            topology: info.states.topology,
             fill: info.fill,
             clamp: info.clamp,
             coverage: info.coverage,
+            states: info.states,
         })
     }
 

@@ -3,11 +3,11 @@ mod window;
 
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandPool, CompareOp,
-    CullMode, DepthAttachment, DepthState, DepthStateInfo, DescriptorBinding, DescriptorLayout,
-    DescriptorSet, DescriptorType, DescriptorWrite, Format, FrontFace, IndexType, Memory,
-    RenderPassInfo, RenderPipeline, RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, Stage,
-    StoreOp, Swapchain, SwapchainInfo, Texture, TextureDiscard, TextureInfo, TextureUsage,
-    Timeline, VertexAttribute, VertexBufferLayout, Viewport,
+    DepthAttachment, DepthStateInfo, DescriptorBinding, DescriptorLayout, DescriptorSet,
+    DescriptorType, DescriptorWrite, Format, IndexType, Memory, RenderPassInfo, RenderPipeline,
+    RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, Stage, StoreOp, Swapchain,
+    SwapchainInfo, Texture, TextureDiscard, TextureInfo, TextureUsage, Timeline, VertexAttribute,
+    VertexBufferLayout, VertexPipelineStates, Viewport,
 };
 use model::Model;
 use std::time::Instant;
@@ -34,7 +34,6 @@ struct App {
     set: DescriptorSet,
     sampler: DescriptorSet,
     pipeline: RenderPipeline,
-    less: DepthState,
     depth: Texture,
     resident: ResidencySet,
     commands: CommandPool,
@@ -178,6 +177,14 @@ impl App {
                     ..Default::default()
                 }],
                 depth: Some(Format::D32Float),
+                states: VertexPipelineStates {
+                    depth: DepthStateInfo {
+                        compare: CompareOp::Less,
+                        write: true,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
                 buffers: &[VertexBufferLayout {
                     stride: 32,
                     instance: false,
@@ -189,13 +196,6 @@ impl App {
                 ],
                 sets: &[uniforms, textures, samplers],
                 label: "model",
-                ..Default::default()
-            })
-            .unwrap();
-        let less = device
-            .create_depth_state(&DepthStateInfo {
-                compare: CompareOp::Less,
-                write: true,
                 ..Default::default()
             })
             .unwrap();
@@ -317,7 +317,6 @@ impl App {
             set: bound,
             sampler,
             pipeline,
-            less,
             depth,
             resident,
             commands,
@@ -377,12 +376,6 @@ impl App {
                 ..Default::default()
             })
             .unwrap();
-        pass.set_cull_mode(CullMode::None);
-        pass.set_front_face(FrontFace::Ccw);
-        pass.set_depth_state(self.less);
-        pass.set_stencil_reference(0, 0);
-        pass.set_depth_bias(0.0, 0.0, 0.0);
-        pass.set_blend_color([0.0; 4]);
         pass.set_viewport(&[Viewport {
             width: width as f32,
             height: height as f32,

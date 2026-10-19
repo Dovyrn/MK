@@ -88,7 +88,7 @@ shared = true
 
 [[call]]
 name = "create_depth_state"
-params = [["info", "DepthStateInfo"]]
+params = [["info", "DepthStateInfo"], ["label", "str"]]
 result = "DepthState"
 fails = true
 shared = true

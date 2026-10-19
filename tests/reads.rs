@@ -1,9 +1,8 @@
 #[cfg(not(feature = "gl"))]
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorMask, ColorTarget, DepthAttachment,
-    DepthStateInfo, DescriptorType, DescriptorWrite, Format, LoadOp, Memory, RenderPassInfo,
-    RenderPipelineInfo, Scissor, Stage, StoreOp, TextureDiscard, TextureInfo, TextureUsage,
-    Viewport,
+    DescriptorType, DescriptorWrite, Format, LoadOp, Memory, RenderPassInfo, RenderPipelineInfo,
+    Scissor, Stage, StoreOp, TextureDiscard, TextureInfo, TextureUsage, Viewport,
 };
 
 use crate::host;
@@ -138,9 +137,6 @@ pub fn test() {
     }
     let (count, step) = if ordered { (16, 1.0 / 32.0) } else { (1, 0.5) };
     let timeline = device.create_timeline().unwrap();
-    let none = device
-        .create_depth_state(&DepthStateInfo::default())
-        .unwrap();
     let (constants, stride) = host::constants(
         &device,
         &[&0.25f32.to_le_bytes(), &(step as f32).to_le_bytes()],
@@ -211,7 +207,6 @@ pub fn test() {
         width: n,
         height: n,
     }]);
-    host::states(&mut pass, none);
     pass.bind_render_pipeline(fill);
     pass.bind_descriptor_set(first);
     pass.bind_descriptor_set(read);
