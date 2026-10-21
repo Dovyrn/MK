@@ -3,7 +3,7 @@ mod window;
 
 use mk::{
     Buffer, BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CommandPool, CompareOp,
-    DepthAttachment, DepthStateInfo, DescriptorBinding, DescriptorLayout, DescriptorSet,
+    DepthAttachment, DepthStencilStateInfo, DescriptorBinding, DescriptorLayout, DescriptorSet,
     DescriptorType, DescriptorWrite, Format, IndexType, Memory, PipelineStages, RenderPassInfo,
     RenderPipeline, RenderPipelineInfo, ResidencySet, SamplerInfo, Scissor, StoreOp, Swapchain,
     SwapchainInfo, Texture, TextureContentDiscard, TextureInfo, TextureUsage, Timeline,
@@ -47,7 +47,7 @@ fn info(width: u32, height: u32) -> SwapchainInfo {
         format: Format::Bgra8Unorm,
         width,
         height,
-        usage: TextureUsage::COLOR,
+        usage: TextureUsage::COLOR_ATTACHMENT,
         ..Default::default()
     }
 }
@@ -67,7 +67,7 @@ fn depth(device: &mk::Device, width: u32, height: u32) -> Texture {
             format: Format::D32Float,
             width,
             height,
-            usage: TextureUsage::DEPTH,
+            usage: TextureUsage::DEPTH_STENCIL,
             label: "depth",
             ..Default::default()
         })
@@ -146,7 +146,7 @@ impl App {
             uniforms,
             DescriptorWrite {
                 buffer: camera,
-                size: 112,
+                buffer_size: 112,
                 ..Default::default()
             },
         );
@@ -163,38 +163,38 @@ impl App {
         );
         let attribute = |location, format, offset| VertexAttribute {
             location,
-            buffer: 0,
+            buffer_slot: 0,
             format,
             offset,
         };
         let pipeline = device
             .create_render_pipeline(&RenderPipelineInfo {
-                code: CODE,
-                vertex: "vert",
-                fragment: "frag",
-                colors: &[ColorTarget {
+                bytecode: CODE,
+                vertex_entrypoint: "vert",
+                fragment_entrypoint: "frag",
+                color_targets: &[ColorTarget {
                     format: Format::Bgra8Unorm,
                     ..Default::default()
                 }],
-                depth: Some(Format::D32Float),
+                depth_format: Some(Format::D32Float),
                 states: VertexPipelineStates {
-                    depth: DepthStateInfo {
+                    depth_stencil: DepthStencilStateInfo {
                         compare: CompareOp::Less,
                         write: true,
                         ..Default::default()
                     },
                     ..Default::default()
                 },
-                buffers: &[VertexBufferLayout {
+                vertex_buffers: &[VertexBufferLayout {
                     stride: 32,
-                    instance: false,
+                    instanced: false,
                 }],
-                attributes: &[
+                vertex_attributes: &[
                     attribute(0, Format::Rgb32Float, 0),
                     attribute(1, Format::Rgb32Float, 12),
                     attribute(2, Format::Rg32Float, 24),
                 ],
-                sets: &[uniforms, textures, samplers],
+                descriptor_set_layout: &[uniforms, textures, samplers],
                 label: "model",
                 ..Default::default()
             })
@@ -221,7 +221,7 @@ impl App {
                         format: Format::Rgba8Unorm,
                         width: m.width,
                         height: m.height,
-                        mips: m.levels.len() as u32,
+                        mip_count: m.levels.len() as u32,
                         usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
                         label: &m.name,
                         ..Default::default()
@@ -230,10 +230,10 @@ impl App {
             })
             .collect();
         let resident = device.create_residency_set().unwrap();
-        let list: Vec<mk::Resource> = [vertices, indices, camera]
+        let list: Vec<mk::ResidentResource> = [vertices, indices, camera]
             .into_iter()
             .chain(staging.iter().copied())
-            .map(mk::Resource::from)
+            .map(mk::ResidentResource::from)
             .chain(albedos.iter().chain([&depth]).map(|&t| t.into()))
             .collect();
         device.add_residency(resident, &list);
@@ -278,7 +278,7 @@ impl App {
             for (mip, level) in m.levels.iter().enumerate() {
                 pass.copy_buffer_to_texture(&BufferTextureCopy {
                     buffer: staging[i],
-                    offset,
+                    buffer_offset: offset,
                     texture: albedos[i],
                     mip: mip as u32,
                     width: (m.width >> mip).max(1),
@@ -354,8 +354,8 @@ impl App {
         c.use_residency_set(self.resident);
         c.discard_texture_contents(
             &[
-                (target, PipelineStages::COLOR),
-                (self.depth, PipelineStages::DEPTH),
+                (target, PipelineStages::COLOR_ATTACHMENT),
+                (self.depth, PipelineStages::DEPTH_STENCIL),
             ]
             .map(|(texture, stage)| TextureContentDiscard {
                 texture,
@@ -372,9 +372,9 @@ impl App {
                     clear: [0.05, 0.05, 0.07, 1.0],
                     ..Default::default()
                 }],
-                depth: Some(DepthAttachment {
+                depth_stencil: Some(DepthAttachment {
                     texture: self.depth,
-                    store: StoreOp::DontCare,
+                    store: StoreOp::Discard,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -401,7 +401,7 @@ impl App {
             pass.draw_indexed(count, 1, first, 0, 0);
         }
         pass.end();
-        c.present_barrier(target, PipelineStages::COLOR);
+        c.present_barrier(target, PipelineStages::COLOR_ATTACHMENT);
         c.end().unwrap();
         self.frame += 1;
         self.device

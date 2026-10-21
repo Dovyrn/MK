@@ -1,4 +1,4 @@
-use crate::DepthStateInfo;
+use crate::DepthStencilStateInfo;
 use crate::gl::buffer::BufferObject;
 use crate::gl::fences::Fences;
 use crate::gl::pipeline::Pipeline;
@@ -16,7 +16,7 @@ pub struct Resources {
     pub samplers: Slots<glow::Sampler>,
     pub pipelines: Slots<Program>,
     pub renders: Slots<Pipeline>,
-    pub depths: Slots<DepthStateInfo>,
+    pub depths: Slots<DepthStencilStateInfo>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Rc<RefCell<Fences>>>,
     pub pools: Slots<()>,

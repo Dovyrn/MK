@@ -9,7 +9,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class VertexAttribute {
     public int location = 0;
-    public int buffer = 0;
+    public int bufferSlot = 0;
     public Format format = Format.NONE;
     public int offset = 0;
 
@@ -22,7 +22,7 @@ public class VertexAttribute {
     long encode(long p) {
         memPutInt(p, location);
         p += 4;
-        memPutInt(p, buffer);
+        memPutInt(p, bufferSlot);
         p += 4;
         memPutInt(p, format.value);
         p += 4;
@@ -35,7 +35,7 @@ public class VertexAttribute {
         var r = new VertexAttribute();
         r.location = memGetInt(p);
         p += 4;
-        r.buffer = memGetInt(p);
+        r.bufferSlot = memGetInt(p);
         p += 4;
         r.format = Format.of(memGetInt(p));
         p += 4;

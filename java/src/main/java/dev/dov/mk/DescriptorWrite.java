@@ -11,8 +11,8 @@ public class DescriptorWrite {
     public int binding = 0;
     public int element = 0;
     public Buffer buffer = null;
-    public long offset = 0;
-    public long size = -1;
+    public long bufferOffset = 0;
+    public long bufferSize = -1;
     public Texture texture = null;
     public Sampler sampler = null;
 
@@ -29,9 +29,9 @@ public class DescriptorWrite {
         p += 4;
         memPutLong(p, Buffer.raw(buffer));
         p += 8;
-        memPutLong(p, offset);
+        memPutLong(p, bufferOffset);
         p += 8;
-        memPutLong(p, size);
+        memPutLong(p, bufferSize);
         p += 8;
         memPutLong(p, Texture.raw(texture));
         p += 8;
@@ -48,9 +48,9 @@ public class DescriptorWrite {
         p += 4;
         r.buffer = Buffer.of(memGetLong(p));
         p += 8;
-        r.offset = memGetLong(p);
+        r.bufferOffset = memGetLong(p);
         p += 8;
-        r.size = memGetLong(p);
+        r.bufferSize = memGetLong(p);
         p += 8;
         r.texture = Texture.of(memGetLong(p));
         p += 8;

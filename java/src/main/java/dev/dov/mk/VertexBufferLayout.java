@@ -9,7 +9,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class VertexBufferLayout {
     public int stride = 0;
-    public boolean instance = false;
+    public boolean instanced = false;
 
     public static final int SIZE = 8;
 
@@ -20,7 +20,7 @@ public class VertexBufferLayout {
     long encode(long p) {
         memPutInt(p, stride);
         p += 4;
-        memPutInt(p, instance ? 1 : 0);
+        memPutInt(p, instanced ? 1 : 0);
         p += 4;
         return p;
     }
@@ -29,7 +29,7 @@ public class VertexBufferLayout {
         var r = new VertexBufferLayout();
         r.stride = memGetInt(p);
         p += 4;
-        r.instance = memGetInt(p) != 0;
+        r.instanced = memGetInt(p) != 0;
         p += 4;
         return r;
     }

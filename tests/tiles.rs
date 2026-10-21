@@ -19,15 +19,15 @@ pub fn test() {
         ..Default::default()
     }];
     let made = device.create_tile_pipeline(&TilePipelineInfo {
-        code,
-        entry: "stamp",
-        colors: &colors,
+        bytecode: code,
+        entrypoint: "stamp",
+        color_targets: &colors,
         ..Default::default()
     });
     let stamp = match made {
         Ok(p) => p,
         Err(e) => {
-            assert!(!device.capabilities().tiles, "{e}");
+            assert!(!device.capabilities().tile_shaders, "{e}");
             println!("no tile dispatch: {e}");
             return;
         }
@@ -37,7 +37,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -57,8 +57,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -69,10 +69,10 @@ pub fn test() {
                 clear: [0.0, 0.0, 0.0, 1.0],
                 ..Default::default()
             }],
-            tile: Some(TileInfo {
+            tile_info: Some(TileInfo {
                 width: 16,
                 height: 16,
-                shared: 512,
+                threadgroup_memory: 512,
             }),
             ..Default::default()
         })
@@ -92,7 +92,7 @@ pub fn test() {
     pass.end();
     let mut pass = c
         .begin_compute_pass(
-            PipelineStages::COLOR | PipelineStages::FRAGMENT,
+            PipelineStages::COLOR_ATTACHMENT | PipelineStages::FRAGMENT,
             PipelineStages::COPY,
         )
         .unwrap();

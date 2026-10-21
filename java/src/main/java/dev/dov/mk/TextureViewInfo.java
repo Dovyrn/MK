@@ -11,9 +11,9 @@ public class TextureViewInfo {
     public TextureDimension dimension = TextureDimension.D2;
     public Format format = Format.NONE;
     public int baseMip = 0;
-    public int mips = 1;
+    public int mipCount = 1;
     public int baseLayer = 0;
-    public int layers = 1;
+    public int layerCount = 1;
     public int usage = TextureUsage.SAMPLED;
 
     public static final int SIZE = 28;
@@ -29,11 +29,11 @@ public class TextureViewInfo {
         p += 4;
         memPutInt(p, baseMip);
         p += 4;
-        memPutInt(p, mips);
+        memPutInt(p, mipCount);
         p += 4;
         memPutInt(p, baseLayer);
         p += 4;
-        memPutInt(p, layers);
+        memPutInt(p, layerCount);
         p += 4;
         memPutInt(p, usage);
         p += 4;
@@ -48,11 +48,11 @@ public class TextureViewInfo {
         p += 4;
         r.baseMip = memGetInt(p);
         p += 4;
-        r.mips = memGetInt(p);
+        r.mipCount = memGetInt(p);
         p += 4;
         r.baseLayer = memGetInt(p);
         p += 4;
-        r.layers = memGetInt(p);
+        r.layerCount = memGetInt(p);
         p += 4;
         r.usage = memGetInt(p);
         p += 4;

@@ -170,7 +170,7 @@ impl Recorder<'_> {
             let mut discard: Vec<u32> = self
                 .colors
                 .iter()
-                .filter(|c| c.store == StoreOp::DontCare)
+                .filter(|c| c.store == StoreOp::Discard)
                 .map(|c| {
                     if default {
                         glow::COLOR
@@ -182,7 +182,7 @@ impl Recorder<'_> {
             if self
                 .depth
                 .as_ref()
-                .is_some_and(|d| d.store == StoreOp::DontCare)
+                .is_some_and(|d| d.store == StoreOp::Discard)
             {
                 discard.push(if default {
                     glow::DEPTH

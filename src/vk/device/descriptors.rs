@@ -121,11 +121,15 @@ impl Device {
             kinds.push(kind);
             match kind {
                 kind if set_of(kind) == sets::BUFFERS => {
-                    let size = if w.size == !0 { vk::WHOLE_SIZE } else { w.size };
+                    let size = if w.buffer_size == !0 {
+                        vk::WHOLE_SIZE
+                    } else {
+                        w.buffer_size
+                    };
                     buffers.push(
                         vk::DescriptorBufferInfo::default()
                             .buffer(res.buffers.get(w.buffer).raw)
-                            .offset(w.offset)
+                            .offset(w.buffer_offset)
                             .range(size),
                     );
                 }

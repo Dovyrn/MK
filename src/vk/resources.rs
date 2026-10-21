@@ -1,4 +1,4 @@
-use crate::DepthStateInfo;
+use crate::DepthStencilStateInfo;
 use crate::slots::Slots;
 use crate::vk::buffer::BufferObject;
 use crate::vk::query::Query;
@@ -13,7 +13,7 @@ pub struct Resources {
     pub samplers: Slots<vk::Sampler>,
     pub pipelines: Slots<(vk::Pipeline, vk::PipelineLayout)>,
     pub renders: Slots<(vk::Pipeline, vk::PipelineLayout, Option<vk::FrontFace>)>,
-    pub depths: Slots<DepthStateInfo>,
+    pub depths: Slots<DepthStencilStateInfo>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
     pub sets: Slots<()>,

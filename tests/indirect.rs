@@ -34,8 +34,8 @@ impl Frame {
         before(&mut c);
         c.discard_texture_contents(&[TextureContentDiscard {
             texture: self.color,
-            src_stage: PipelineStages::COLOR,
-            dst_stage: PipelineStages::COLOR,
+            src_stage: PipelineStages::COLOR_ATTACHMENT,
+            dst_stage: PipelineStages::COLOR_ATTACHMENT,
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -67,7 +67,7 @@ impl Frame {
         draw(&mut pass);
         pass.end();
         let mut pass = c
-            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
             .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: self.color,
@@ -95,7 +95,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: N,
             height: N,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -113,11 +113,11 @@ pub fn test() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: host::code!("corners"),
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
-            indirect: true,
+            bytecode: host::code!("corners"),
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            indirect_buffers: true,
             ..Default::default()
         })
         .unwrap();
@@ -146,7 +146,7 @@ pub fn test() {
         pipeline,
         indices,
     };
-    let single = device.capabilities().indirect;
+    let single = device.capabilities().indirect_draws;
     if single {
         let none = |_: &mut CommandBuffer| {};
         let plain = frame.center(&device, &timeline, 1, &none, &|p| p.draw_indirect(args, 0));
@@ -157,14 +157,14 @@ pub fn test() {
         assert_eq!(indexed, RED, "draw_indexed_indirect");
     }
     let kit = device.create_indirect_buffer(&IndirectBufferInfo {
-        draws: 1,
+        max_draws: 1,
         pipeline,
         ..Default::default()
     });
     let counted = match kit {
         Ok(list) => run(&mut device, &frame, list),
         Err(e) => {
-            assert!(!device.capabilities().addresses, "{e}");
+            assert!(!device.capabilities().buffer_addresses, "{e}");
             format!("no indirect buffers: {e}")
         }
     };
@@ -188,20 +188,20 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         .unwrap();
     let indexed = device
         .create_indirect_buffer(&IndirectBufferInfo {
-            draws: 1,
+            max_draws: 1,
             pipeline: p.pipeline,
             indexed: true,
-            indices: p.indices,
-            kind: IndexType::U16,
+            index_buffer: p.indices,
+            index_type: IndexType::U16,
             ..Default::default()
         })
         .unwrap();
     let layout = host::layout(device, &[mk::DescriptorType::UniformBuffer]);
     let encode = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("encode"),
-            entry: "encode",
-            sets: &[layout],
+            bytecode: host::code!("encode"),
+            entrypoint: "encode",
+            descriptor_set_layout: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -258,20 +258,20 @@ fn run(device: &mut Device, p: &Frame, list: mk::IndirectBuffer) -> String {
         let got = p.center(device, &timeline, ran, &encoded, &draw);
         assert_eq!(got, center, "{target} with count {count:?}");
     }
-    let multi = device.capabilities().multi_draw;
+    let multi = device.capabilities().multi_draw_indirect;
     if multi {
         let pair = device
             .create_indirect_buffer(&IndirectBufferInfo {
-                draws: 2,
+                max_draws: 2,
                 pipeline: p.pipeline,
                 ..Default::default()
             })
             .unwrap();
         let encode = device
             .create_compute_pipeline(&mk::ComputePipelineInfo {
-                code: host::code!("encode_pair"),
-                entry: "encode",
-                sets: &[layout],
+                bytecode: host::code!("encode_pair"),
+                entrypoint: "encode",
+                descriptor_set_layout: &[layout],
                 ..Default::default()
             })
             .unwrap();

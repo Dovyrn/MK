@@ -151,17 +151,17 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
     if info.usage.contains(TextureUsage::STORAGE) {
         flags |= MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite;
     }
-    if info.usage.contains(TextureUsage::ATOMIC) {
+    if info.usage.contains(TextureUsage::STORAGE_ATOMIC) {
         flags |= MTLTextureUsage::ShaderAtomic;
     }
-    if !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty() {
+    if !(info.usage & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::DEPTH_STENCIL)).is_empty() {
         flags |= MTLTextureUsage::RenderTarget;
     }
-    if info.usage.contains(TextureUsage::VIEW) {
+    if info.usage.contains(TextureUsage::MUTABLE_VIEW_FORMAT) {
         flags |= MTLTextureUsage::PixelFormatView;
     }
     let desc = MTLTextureDescriptor::new();
-    desc.setTextureType(texture_type(info.dimension, info.samples));
+    desc.setTextureType(texture_type(info.dimension, info.sample_count));
     desc.setPixelFormat(info.format.mtl());
     desc.setUsage(flags);
     desc.setResourceOptions(resource_options(info.memory));
@@ -169,9 +169,13 @@ fn texture_desc(info: &TextureInfo) -> Retained<MTLTextureDescriptor> {
         desc.setWidth(info.width as usize);
         desc.setHeight(info.height as usize);
         desc.setDepth(info.depth as usize);
-        desc.setArrayLength(if cube { info.layers / 6 } else { info.layers } as usize);
-        desc.setMipmapLevelCount(info.mips as usize);
-        desc.setSampleCount(info.samples as usize);
+        desc.setArrayLength(if cube {
+            info.layer_count / 6
+        } else {
+            info.layer_count
+        } as usize);
+        desc.setMipmapLevelCount(info.mip_count as usize);
+        desc.setSampleCount(info.sample_count as usize);
     }
     desc
 }
@@ -365,7 +369,7 @@ impl Device {
         raw: &ProtocolObject<dyn MTL4RenderCommandEncoder>,
         info: &ImportedPassInfo,
     ) -> Result<RenderPass<'_, '_>, Error> {
-        let check = self.check(pool, Kind::Render, info.samples);
+        let check = self.check(pool, Kind::Render, info.sample_count);
         let mut recording = self.recording(check, pool, None, Kind::Render);
         recording
             .recorder

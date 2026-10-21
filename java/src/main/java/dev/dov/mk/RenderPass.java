@@ -81,7 +81,7 @@ public class RenderPass {
 
     private static native void nSetFrontFace(long target, int face);
 
-    public void setPrimitiveTopology(Topology topology) {
+    public void setPrimitiveTopology(PrimitiveTopology topology) {
         nSetPrimitiveTopology(handle(), topology.value);
     }
 

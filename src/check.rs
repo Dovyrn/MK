@@ -6,9 +6,9 @@ use crate::table::Table;
 use crate::table::lock;
 use crate::{
     Buffer, BufferUsage, CommandPool, DescriptorSet, DeviceCapabilities, DynamicPipelineStates,
-    Format, IndexType, IndirectBuffer, LoadOp, Memory, PipelineStages, QueryKind, QueryPool,
-    ResourceKind, StoreOp, Texture, TextureDimension, TextureInfo, TextureUsage, Topology, sets,
-    slot,
+    Format, IndexType, IndirectBuffer, LoadOp, Memory, PipelineStages, PrimitiveTopology,
+    QueryKind, QueryPool, ResourceKind, StoreOp, Texture, TextureDimension, TextureInfo,
+    TextureUsage, sets, slot,
 };
 use std::sync::atomic::Ordering;
 
@@ -23,7 +23,7 @@ pub struct Check<'a> {
     indirect: bool,
     compute: bool,
     render: bool,
-    topology: Topology,
+    topology: PrimitiveTopology,
     heap: Option<QueryPool>,
     targets: Vec<(Texture, bool)>,
     samples: u32,
@@ -47,13 +47,13 @@ pub struct Check<'a> {
 }
 
 const STATES: [(&str, &str); 9] = [
-    ("set_cull_mode", "CULL"),
-    ("set_front_face", "FACE"),
-    ("set_depth_stencil_state", "DEPTH_STATE"),
+    ("set_cull_mode", "CULL_MODE"),
+    ("set_front_face", "FRONT_FACE"),
+    ("set_depth_stencil_state", "DEPTH_STENCIL_STATE"),
     ("set_stencil_reference", "STENCIL_REFERENCE"),
     ("set_depth_bias", "DEPTH_BIAS"),
     ("set_blend_color", "BLEND_COLOR"),
-    ("set_primitive_topology", "TOPOLOGY"),
+    ("set_primitive_topology", "PRIMITIVE_TOPOLOGY"),
     ("set_viewport", ""),
     ("set_scissor", ""),
 ];
@@ -71,11 +71,11 @@ fn assert_viewport(name: &str, x: f32, y: f32, width: f32, height: f32, near: f3
     );
 }
 
-fn class(topology: Topology) -> u32 {
+fn class(topology: PrimitiveTopology) -> u32 {
     match topology {
-        Topology::Point => 0,
-        Topology::Line | Topology::LineStrip => 1,
-        Topology::Triangle | Topology::TriangleStrip => 2,
+        PrimitiveTopology::Point => 0,
+        PrimitiveTopology::Line | PrimitiveTopology::LineStrip => 1,
+        PrimitiveTopology::Triangle | PrimitiveTopology::TriangleStrip => 2,
     }
 }
 
@@ -93,7 +93,7 @@ fn assert_rects(name: &str, count: usize, max: u32) {
     check!(count > 0, "{name} got an empty list; pass at least one");
     check!(
         count <= max as usize,
-        "{name} got {count}, over caps.viewports {max}"
+        "{name} got {count}, over caps.max_viewports {max}"
     );
 }
 
@@ -149,7 +149,7 @@ impl<'a> Check<'a> {
             indirect: false,
             compute: false,
             render: false,
-            topology: Topology::Triangle,
+            topology: PrimitiveTopology::Triangle,
             heap: None,
             targets: Vec::new(),
             samples,
@@ -178,7 +178,7 @@ impl<'a> Check<'a> {
     }
 
     fn graphics(&self) -> bool {
-        self.caps.graphics_queues >> self.queue() & 1 != 0
+        self.caps.graphics_queue_mask >> self.queue() & 1 != 0
     }
 
     pub fn finish(&self) {
@@ -291,7 +291,7 @@ impl<'a> Check<'a> {
         what: &str,
     ) -> &TextureInfo<'static> {
         let t = self.table.textures.get(texture);
-        let copies = if t.usage.contains(TextureUsage::HOST) {
+        let copies = if t.usage.contains(TextureUsage::HOST_COPY) {
             TextureUsage::COPY_SRC | TextureUsage::COPY_DST
         } else {
             TextureUsage::default()
@@ -315,8 +315,8 @@ impl<'a> Check<'a> {
         size: [u32; 3],
     ) -> &TextureInfo<'static> {
         let t = self.table.textures.get(texture);
-        assert_span(name, "mip", mip, 1, t.mips, texture);
-        assert_span(name, "layer", layer, layers, t.layers, texture);
+        assert_span(name, "mip", mip, 1, t.mip_count, texture);
+        assert_span(name, "layer", layer, layers, t.layer_count, texture);
         let end = [t.width, t.height, t.depth].map(|n| (n >> mip).max(1));
         check!(
             (0..3).all(|i| at[i] as u64 + size[i] as u64 <= end[i] as u64),
@@ -365,7 +365,7 @@ impl<'a> Check<'a> {
         );
         check!(
             self.dynamic.0 & 1 << state != 0,
-            "{name} needs the bound pipeline to list DynamicPipelineStates::{} in its states.dynamic; without it the pipeline's own value applies",
+            "{name} needs the bound pipeline to list DynamicPipelineStates::{} in its states.dynamic_states; without it the pipeline's own value applies",
             STATES[state as usize].1
         );
         self.mark_state(state);
@@ -430,12 +430,12 @@ impl<'a> Check<'a> {
             offsets.len(),
             layout.dynamic.len()
         );
-        let alignment = self.caps.bind_alignment.max(1);
+        let alignment = self.caps.buffer_offset_alignment.max(1);
         let resources = lock(&e.resources);
         for (&offset, &(binding, element)) in offsets.iter().zip(&layout.dynamic) {
             check!(
                 offset.is_multiple_of(alignment),
-                "{name} offset {offset} for binding {binding} is not a multiple of caps.bind_alignment {alignment}"
+                "{name} offset {offset} for binding {binding} is not a multiple of caps.buffer_offset_alignment {alignment}"
             );
             let found = resources.iter().find(|r| (r.0, r.1) == (binding, element));
             check!(
@@ -521,7 +521,7 @@ impl<'a> Check<'a> {
         check_eq!(
             missing,
             0,
-            "{} needs bind_vertex_buffer for slots {missing:#b}, which the pipeline's attributes read",
+            "{} needs bind_vertex_buffer for slots {missing:#b}, which the pipeline's vertex_attributes read",
             command_name(c)
         );
         check!(
@@ -533,7 +533,7 @@ impl<'a> Check<'a> {
             let texture = self.inputs[i as usize];
             check!(
                 !texture.is_null(),
-                "{} reads attachment {i}; give the pass a TextureUsage::INPUT color there",
+                "{} reads attachment {i}; give the pass a TextureUsage::INPUT_ATTACHMENT color there",
                 command_name(c)
             );
         }
@@ -565,27 +565,28 @@ impl<'a> Check<'a> {
             e.topology
         );
         if e.info.indexed {
-            let (buffer, offset, kind) = (e.info.indices, e.info.offset, e.info.kind);
+            let (buffer, offset, kind) =
+                (e.info.index_buffer, e.info.index_offset, e.info.index_type);
             check_eq!(
                 self.index,
                 Some((buffer, offset, kind)),
                 "{name} needs bind_index_buffer of {buffer} at offset {offset} with {kind}"
             );
             if offset != 0 {
-                self.require(c, self.caps.indirect_offset, "indirect_offset")?;
+                self.require(c, self.caps.indirect_index_offset, "indirect_index_offset")?;
             }
         }
         if e.mesh {
             self.require(c, self.caps.mesh_indirect, "mesh_indirect")?;
         }
-        Ok(e.info.draws)
+        Ok(e.info.max_draws)
     }
 
     fn check_transient(&self, name: &str, texture: Texture, load: LoadOp, store: StoreOp) {
         if self.table.textures.get(texture).memory == Memory::Transient {
             check!(
-                load != LoadOp::Load && store == StoreOp::DontCare,
-                "{name} loads or stores Memory::Transient {texture}; use LoadOp::Clear or LoadOp::DontCare and StoreOp::DontCare"
+                load != LoadOp::Load && store == StoreOp::Discard,
+                "{name} loads or stores Memory::Transient {texture}; use LoadOp::Clear or LoadOp::Discard and StoreOp::Discard"
             );
         }
     }
@@ -603,9 +604,9 @@ impl<'a> Check<'a> {
     fn check_buffer_copy(&self, c: &Command) {
         let (Command::CopyBufferToTexture {
             buffer,
-            offset,
-            row_length,
-            row_count,
+            buffer_offset,
+            row_texels,
+            slice_rows: row_count,
             texture,
             mip,
             layer,
@@ -618,9 +619,9 @@ impl<'a> Check<'a> {
         }
         | Command::CopyTextureToBuffer {
             buffer,
-            offset,
-            row_length,
-            row_count,
+            buffer_offset,
+            row_texels,
+            slice_rows: row_count,
             texture,
             mip,
             layer,
@@ -658,8 +659,8 @@ impl<'a> Check<'a> {
             "{} region {w}x{h}x{d} has a zero",
             command_name(c)
         );
-        assert_span(&name, "mip", mip, 1, t.mips, texture);
-        assert_span(&name, "layer", layer, 1, t.layers, texture);
+        assert_span(&name, "mip", mip, 1, t.mip_count, texture);
+        assert_span(&name, "layer", layer, 1, t.layer_count, texture);
         let size = [
             (t.width >> mip).max(1),
             (t.height >> mip).max(1),
@@ -683,17 +684,17 @@ impl<'a> Check<'a> {
             command_name(c)
         );
         check!(
-            row_length.is_multiple_of(bw) && row_count.is_multiple_of(bh),
-            "{} rows {row_length}x{row_count} are not multiples of the {bw}x{bh} blocks",
+            row_texels.is_multiple_of(bw) && row_count.is_multiple_of(bh),
+            "{} rows {row_texels}x{row_count} are not multiples of the {bw}x{bh} blocks",
             command_name(c)
         );
         let texel = copy_block_size(t.format).max(4) as u64;
         check!(
-            offset.is_multiple_of(texel),
-            "{} buffer offset {offset} is not a multiple of {texel}",
+            buffer_offset.is_multiple_of(texel),
+            "{} buffer offset {buffer_offset} is not a multiple of {texel}",
             command_name(c)
         );
-        let row = if row_length == 0 { w } else { row_length };
+        let row = if row_texels == 0 { w } else { row_texels };
         let rows = if row_count == 0 { h } else { row_count };
         check!(
             row >= w && rows >= h,
@@ -705,7 +706,7 @@ impl<'a> Check<'a> {
             .checked_mul(rows.div_ceil(bh) as u64)
             .and_then(|n| n.checked_mul(d as u64))
             .unwrap_or_else(|| panic!("{} region size overflows", command_name(c)));
-        self.buffer_range(&name, buffer, offset, total);
+        self.buffer_range(&name, buffer, buffer_offset, total);
     }
 
     pub fn clear_pass(&mut self) {
@@ -750,7 +751,7 @@ impl<'a> Check<'a> {
                 let samples: Vec<u32> = self
                     .targets
                     .iter()
-                    .map(|&(t, _)| self.table.textures.get(t).samples)
+                    .map(|&(t, _)| self.table.textures.get(t).sample_count)
                     .collect();
                 check!(
                     samples.windows(2).all(|w| w[0] == w[1]),
@@ -760,11 +761,11 @@ impl<'a> Check<'a> {
                 for &(texture, clear) in &self.targets {
                     let t = self.table.textures.get(texture);
                     check!(
-                        width <= t.width && height <= t.height && layers <= t.layers,
+                        width <= t.width && height <= t.height && layers <= t.layer_count,
                         "begin_render_pass {width}x{height}x{layers} is larger than {texture} ({}x{}x{})",
                         t.width,
                         t.height,
-                        t.layers
+                        t.layer_count
                     );
                     check!(
                         !clear || (width == t.width && height == t.height),
@@ -814,13 +815,13 @@ impl<'a> Check<'a> {
                 self.clear_pass();
             }
             Command::BindComputePipeline { pipeline } => {
-                self.require(c, caps.compute, "compute")?;
+                self.require(c, caps.compute_shaders, "compute_shaders")?;
                 let ids = *self.table.pipelines.get(pipeline);
                 self.switch(ids);
                 self.compute = true;
             }
             Command::Dispatch { .. } => {
-                self.require(c, caps.compute, "compute")?;
+                self.require(c, caps.compute_shaders, "compute_shaders")?;
                 check!(
                     self.compute,
                     "dispatch needs bind_compute_pipeline earlier in this pass"
@@ -828,7 +829,7 @@ impl<'a> Check<'a> {
                 self.check_sets(name, self.layouts);
             }
             Command::DispatchIndirect { buffer, offset } => {
-                self.require(c, caps.compute, "compute")?;
+                self.require(c, caps.compute_shaders, "compute_shaders")?;
                 check!(
                     self.compute,
                     "dispatch_indirect needs bind_compute_pipeline earlier in this pass"
@@ -961,7 +962,7 @@ impl<'a> Check<'a> {
                 width,
                 height,
                 depth: d,
-                layers,
+                layer_count: layers,
             } => {
                 self.texture_with_usage(name, src, TextureUsage::COPY_SRC, "COPY_SRC");
                 self.texture_with_usage(name, dst, TextureUsage::COPY_DST, "COPY_DST");
@@ -993,11 +994,11 @@ impl<'a> Check<'a> {
                     t.format
                 );
                 check_eq!(
-                    s.samples,
-                    t.samples,
+                    s.sample_count,
+                    t.sample_count,
                     "copy_texture_to_texture sample counts {} and {} differ",
-                    s.samples,
-                    t.samples
+                    s.sample_count,
+                    t.sample_count
                 );
                 check!(
                     src != dst
@@ -1036,18 +1037,28 @@ impl<'a> Check<'a> {
                 ..
             } => {
                 assert_slot(name, index, slot::COLORS);
-                let t = self.texture_with_usage(name, texture, TextureUsage::COLOR, "COLOR");
-                if t.usage.contains(TextureUsage::INPUT) {
+                let t = self.texture_with_usage(
+                    name,
+                    texture,
+                    TextureUsage::COLOR_ATTACHMENT,
+                    "COLOR_ATTACHMENT",
+                );
+                if t.usage.contains(TextureUsage::INPUT_ATTACHMENT) {
                     self.inputs[index as usize] = texture;
                 }
                 self.check_transient(name, texture, ld, st);
                 self.targets.push((texture, ld == LoadOp::Clear));
                 if let Some(resolve) = resolve {
                     self.resolves.push(resolve);
-                    let r = self.texture_with_usage(name, resolve, TextureUsage::COLOR, "COLOR");
+                    let r = self.texture_with_usage(
+                        name,
+                        resolve,
+                        TextureUsage::COLOR_ATTACHMENT,
+                        "COLOR_ATTACHMENT",
+                    );
                     let s = self.table.textures.get(texture);
                     check!(
-                        s.samples > 1 && r.samples == 1,
+                        s.sample_count > 1 && r.sample_count == 1,
                         "{name} resolve needs multisampled {texture} and single-sample {resolve}"
                     );
                     check!(
@@ -1074,7 +1085,12 @@ impl<'a> Check<'a> {
                     (0.0..=1.0).contains(&depth),
                     "{name} clear depth {depth} is outside 0..1"
                 );
-                self.texture_with_usage(name, texture, TextureUsage::DEPTH, "DEPTH");
+                self.texture_with_usage(
+                    name,
+                    texture,
+                    TextureUsage::DEPTH_STENCIL,
+                    "DEPTH_STENCIL",
+                );
                 self.check_transient(name, texture, ld, st);
                 self.check_transient(name, texture, stencil_load, stencil_store);
                 let clear = ld == LoadOp::Clear || stencil_load == LoadOp::Clear;
@@ -1093,7 +1109,10 @@ impl<'a> Check<'a> {
                 self.render = true;
                 self.bound = samples;
                 self.needs = entry.vertices;
-                if !entry.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
+                if !entry
+                    .dynamic
+                    .contains(DynamicPipelineStates::PRIMITIVE_TOPOLOGY)
+                {
                     self.topology = entry.topology;
                 }
                 self.fresh &= entry.dynamic.0 | RECTS;
@@ -1107,9 +1126,9 @@ impl<'a> Check<'a> {
             Command::TileMemory {
                 width,
                 height,
-                shared,
+                threadgroup_memory: shared,
             } => {
-                self.require(c, caps.tiles, "tiles")?;
+                self.require(c, caps.tile_shaders, "tile_shaders")?;
                 let sizes = [8, 16, 32];
                 check!(
                     sizes.contains(&width) && sizes.contains(&height),
@@ -1119,21 +1138,21 @@ impl<'a> Check<'a> {
                     shared.is_multiple_of(16),
                     "{name} shared memory {shared} is not a multiple of 16"
                 );
-                if shared > caps.max_shared {
+                if shared > caps.max_threadgroup_memory {
                     return Err(Error::Unsupported(format!(
-                        "{name} shared memory {shared} is over caps.max_shared {}",
-                        caps.max_shared
+                        "{name} shared memory {shared} is over caps.max_threadgroup_memory {}",
+                        caps.max_threadgroup_memory
                     )));
                 }
                 self.tile = Some((width, height));
             }
             Command::DispatchTile { pipeline } => {
-                self.require(c, caps.tiles, "tiles")?;
+                self.require(c, caps.tile_shaders, "tile_shaders")?;
                 let (samples, ids) = *self.table.tile_pipelines.get(pipeline);
                 self.check_sets(name, ids);
                 check!(
                     self.tile.is_some(),
-                    "dispatch_tile needs RenderPassInfo.tile set in begin_render_pass"
+                    "dispatch_tile needs RenderPassInfo.tile_info set in begin_render_pass"
                 );
                 check!(
                     self.samples == 0 || samples == self.samples,
@@ -1202,15 +1221,15 @@ impl<'a> Check<'a> {
                 self.index = Some((buffer, offset, kind));
             }
             Command::DrawIndirect { buffer, offset } => {
-                self.require(c, caps.indirect, "indirect")?;
+                self.require(c, caps.indirect_draws, "indirect_draws")?;
                 self.check_draw(c, false);
                 self.check_indirect_buffer(name, buffer, offset, 16);
             }
             Command::DrawIndexedIndirect { buffer, offset } => {
-                self.require(c, caps.indirect, "indirect")?;
+                self.require(c, caps.indirect_draws, "indirect_draws")?;
                 self.check_draw(c, true);
                 if self.index.map(|i| i.1) != Some(0) {
-                    self.require(c, caps.indirect_offset, "indirect_offset")?;
+                    self.require(c, caps.indirect_index_offset, "indirect_index_offset")?;
                 }
                 self.check_indirect_buffer(name, buffer, offset, 20);
             }
@@ -1221,7 +1240,7 @@ impl<'a> Check<'a> {
             } => {
                 let draws = self.indirect_list(c, indirect)?;
                 if count > 1 {
-                    self.require(c, caps.multi_draw, "multi_draw")?;
+                    self.require(c, caps.multi_draw_indirect, "multi_draw_indirect")?;
                 }
                 check!(
                     first as u64 + count as u64 <= draws as u64,
@@ -1235,7 +1254,7 @@ impl<'a> Check<'a> {
                 offset,
             } => {
                 if self.indirect_list(c, indirect)? > 1 {
-                    self.require(c, caps.multi_draw, "multi_draw")?;
+                    self.require(c, caps.multi_draw_indirect, "multi_draw_indirect")?;
                 }
                 check!(
                     offset.is_multiple_of(4),
@@ -1247,13 +1266,15 @@ impl<'a> Check<'a> {
                 self.require(c, caps.indirect_count, "indirect_count")?;
             }
             Command::DrawMeshTasks { x, y, z } => {
-                self.require(c, caps.mesh, "mesh")?;
+                self.require(c, caps.mesh_shaders, "mesh_shaders")?;
                 self.check_draw(c, false);
                 let total = x as u64 * y as u64 * z as u64;
-                if x.max(y).max(z) > caps.mesh_axis || total > caps.mesh_groups as u64 {
+                if x.max(y).max(z) > caps.max_mesh_axis_groups
+                    || total > caps.max_mesh_groups as u64
+                {
                     return Err(Error::Unsupported(format!(
-                        "{name} grid {x}x{y}x{z} is over caps.mesh_axis {} or caps.mesh_groups {}",
-                        caps.mesh_axis, caps.mesh_groups
+                        "{name} grid {x}x{y}x{z} is over caps.max_mesh_axis_groups {} or caps.max_mesh_groups {}",
+                        caps.max_mesh_axis_groups, caps.max_mesh_groups
                     )));
                 }
             }
@@ -1263,7 +1284,7 @@ impl<'a> Check<'a> {
                 self.check_indirect_buffer(name, buffer, offset, 12);
             }
             Command::OcclusionPool { pool } => {
-                let kinds = [QueryKind::Occlusion, QueryKind::Precise];
+                let kinds = [QueryKind::OcclusionAny, QueryKind::OcclusionCount];
                 self.query_range(name, pool, &kinds, 0, 0);
                 self.heap = Some(pool);
             }
@@ -1281,13 +1302,13 @@ impl<'a> Check<'a> {
             }
             Command::BeginOcclusionQuery { pool, index }
             | Command::EndOcclusionQuery { pool, index } => {
-                self.require(c, caps.occlusion, "occlusion")?;
+                self.require(c, caps.occlusion_queries, "occlusion_queries")?;
                 check_eq!(
                     self.heap,
                     Some(pool),
-                    "{name} needs RenderPassInfo.occlusion set to {pool} in begin_render_pass"
+                    "{name} needs RenderPassInfo.occlusion_queries set to {pool} in begin_render_pass"
                 );
-                let kinds = [QueryKind::Occlusion, QueryKind::Precise];
+                let kinds = [QueryKind::OcclusionAny, QueryKind::OcclusionCount];
                 self.query_range(name, pool, &kinds, index, 1);
             }
             Command::ResolveTimestamps {
@@ -1307,7 +1328,7 @@ impl<'a> Check<'a> {
                 let kinds: &[QueryKind] = if matches!(c, Command::ResolveTimestamps { .. }) {
                     &[QueryKind::Timestamp]
                 } else {
-                    &[QueryKind::Occlusion, QueryKind::Precise]
+                    &[QueryKind::OcclusionAny, QueryKind::OcclusionCount]
                 };
                 self.query_range(name, pool, kinds, first, count);
                 check!(
@@ -1329,7 +1350,7 @@ impl<'a> Check<'a> {
                 );
             }
             Command::SetViewport { viewports } => {
-                assert_rects(name, viewports.len(), caps.viewports);
+                assert_rects(name, viewports.len(), caps.max_viewports);
                 for v in viewports {
                     assert_viewport(name, v.x, v.y, v.width, v.height, v.near, v.far);
                 }
@@ -1337,7 +1358,7 @@ impl<'a> Check<'a> {
                 self.mark_state(7);
             }
             Command::SetScissor { scissors } => {
-                assert_rects(name, scissors.len(), caps.viewports);
+                assert_rects(name, scissors.len(), caps.max_viewports);
                 for r in scissors {
                     let end = (r.x as u64 + r.width as u64).max(r.y as u64 + r.height as u64);
                     check!(

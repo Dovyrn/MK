@@ -43,7 +43,7 @@ impl Device {
             self.name(t.target, info.label);
         }
         self.res.table.add_texture(id, info);
-        if info.usage.contains(TextureUsage::HOST) {
+        if info.usage.contains(TextureUsage::HOST_COPY) {
             self.to_general(id)?;
         }
         Ok(id)
@@ -82,9 +82,9 @@ impl Device {
         let (image, owner) = (t.image, t.owner.clone());
         let view = TextureViewInfo {
             base_mip: t.base_mip + info.base_mip,
-            mips: count(info.mips, info.base_mip, t.mips),
+            mip_count: count(info.mip_count, info.base_mip, t.mips),
             base_layer: t.base_layer + info.base_layer,
-            layers: count(info.layers, info.base_layer, t.layers),
+            layer_count: count(info.layer_count, info.base_layer, t.layers),
             usage: info.usage & t.usage,
             ..*info
         };
@@ -136,7 +136,7 @@ impl Device {
                     base_mip_level: info.base_mip,
                     level_count: mips,
                     base_array_layer: info.base_layer,
-                    layer_count: info.layers,
+                    layer_count: info.layer_count,
                 })
                 .push_next(&mut usage);
             unsafe { self.raw.create_image_view(&create, None) }
@@ -151,13 +151,13 @@ impl Device {
             format: info.format,
             usage: info.usage,
             base_mip: info.base_mip,
-            mips: info.mips,
+            mips: info.mip_count,
             base_layer: info.base_layer,
-            layers: info.layers,
+            layers: info.layer_count,
         };
         let mut views = || -> Result<(), vk::Result> {
             if !bits.is_empty() {
-                t.view = make(kind, sampled, info.mips, bits)?;
+                t.view = make(kind, sampled, info.mip_count, bits)?;
             }
             if bits.intersects(attach) {
                 t.target = make(target, aspect, 1, bits & attach)?;

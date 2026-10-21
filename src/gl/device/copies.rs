@@ -13,8 +13,8 @@ impl Device {
         self.res.table.check_host_copy(copy, data.len());
         let t = self.res.textures.get(copy.texture);
         let region = BufferTextureCopy {
-            row_length: copy.row_length,
-            row_count: copy.row_count,
+            row_texels: copy.row_texels,
+            slice_rows: copy.slice_rows,
             texture: copy.texture,
             mip: copy.mip,
             layer: copy.layer,
@@ -34,9 +34,9 @@ impl Device {
     pub fn read_texture(&self, copy: &HostTextureCopy, data: &mut [u8]) -> Result<(), Error> {
         self.thread();
         self.res.table.check_host_copy(copy, data.len());
-        if !self.caps.host_read {
+        if !self.caps.host_texture_reads {
             return Err(Error::Unsupported(
-                "read_texture needs caps.host_read".into(),
+                "read_texture needs caps.host_texture_reads".into(),
             ));
         }
         let t = self.res.textures.get(copy.texture);
@@ -55,8 +55,8 @@ impl Device {
         let out = data.as_mut_ptr().cast::<c_void>();
         let e = &self.extra;
         self.with_pixel_state(t.target, false, |gl| unsafe {
-            gl.pixel_store_i32(glow::PACK_ROW_LENGTH, copy.row_length as i32);
-            gl.pixel_store_i32(glow::PACK_IMAGE_HEIGHT, copy.row_count as i32);
+            gl.pixel_store_i32(glow::PACK_ROW_LENGTH, copy.row_texels as i32);
+            gl.pixel_store_i32(glow::PACK_IMAGE_HEIGHT, copy.slice_rows as i32);
             if f == 0 {
                 gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_WIDTH, bw as i32);
                 gl.pixel_store_i32(glow::PACK_COMPRESSED_BLOCK_HEIGHT, bh as i32);

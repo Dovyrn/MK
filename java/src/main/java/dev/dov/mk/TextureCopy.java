@@ -23,7 +23,7 @@ public class TextureCopy {
     public int width = 1;
     public int height = 1;
     public int depth = 1;
-    public int layers = 1;
+    public int layerCount = 1;
 
     public static final int SIZE = 72;
 
@@ -62,7 +62,7 @@ public class TextureCopy {
         p += 4;
         memPutInt(p, depth);
         p += 4;
-        memPutInt(p, layers);
+        memPutInt(p, layerCount);
         p += 4;
         return p;
     }
@@ -99,7 +99,7 @@ public class TextureCopy {
         p += 4;
         r.depth = memGetInt(p);
         p += 4;
-        r.layers = memGetInt(p);
+        r.layerCount = memGetInt(p);
         p += 4;
         return r;
     }

@@ -19,7 +19,7 @@ impl Applied {
     pub fn fresh() -> Self {
         Self {
             cull: Some(CullMode::None),
-            face: Some(FrontFace::Cw),
+            face: Some(FrontFace::Clockwise),
             depth: None,
             reference: Some((0, 0)),
             bias: Some([0.0; 3]),
@@ -37,8 +37,8 @@ impl Applied {
     pub fn face(&mut self, e: &Encoder, face: FrontFace) {
         if self.face != Some(face) {
             e.setFrontFacingWinding(match face {
-                FrontFace::Ccw => MTLWinding::CounterClockwise,
-                FrontFace::Cw => MTLWinding::Clockwise,
+                FrontFace::CounterClockwise => MTLWinding::CounterClockwise,
+                FrontFace::Clockwise => MTLWinding::Clockwise,
             });
             self.face = Some(face);
         }
@@ -76,21 +76,26 @@ impl Applied {
     }
 
     pub fn bind(&mut self, e: &Encoder, p: &Render) {
-        let (s, dynamic) = (&p.states, p.states.dynamic);
-        if !dynamic.contains(DynamicPipelineStates::CULL) {
-            self.cull(e, s.cull);
+        let (s, dynamic) = (&p.states, p.states.dynamic_states);
+        if !dynamic.contains(DynamicPipelineStates::CULL_MODE) {
+            self.cull(e, s.cull_mode);
         }
-        if !dynamic.contains(DynamicPipelineStates::FACE) {
-            self.face(e, s.face);
+        if !dynamic.contains(DynamicPipelineStates::FRONT_FACE) {
+            self.face(e, s.front_face);
         }
-        if !dynamic.contains(DynamicPipelineStates::DEPTH_STATE) {
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_STENCIL_STATE) {
             self.depth(e, &p.depth);
         }
         if !dynamic.contains(DynamicPipelineStates::STENCIL_REFERENCE) {
-            self.reference(e, s.front_reference, s.back_reference);
+            self.reference(e, s.front_stencil_reference, s.back_stencil_reference);
         }
         if !dynamic.contains(DynamicPipelineStates::DEPTH_BIAS) {
-            self.bias(e, s.bias_constant, s.bias_slope, s.bias_clamp);
+            self.bias(
+                e,
+                s.depth_bias_constant,
+                s.depth_bias_slope,
+                s.depth_bias_clamp,
+            );
         }
         if !dynamic.contains(DynamicPipelineStates::BLEND_COLOR) {
             self.blend(e, s.blend_color);

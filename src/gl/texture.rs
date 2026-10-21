@@ -58,10 +58,10 @@ impl TextureObject {
         storage: bool,
     ) -> Result<Self, Error> {
         let [internal, layout, kind_of] = info.format.gl();
-        let kind = target(info.dimension, info.samples);
+        let kind = target(info.dimension, info.sample_count);
         let (w, h, d) = (info.width as i32, info.height as i32, info.depth as i32);
-        let (mips, layers) = (info.mips as i32, info.layers as i32);
-        let samples = info.samples as i32;
+        let (mips, layers) = (info.mip_count as i32, info.layer_count as i32);
+        let samples = info.sample_count as i32;
         unsafe {
             let host = drain(gl);
             let raw = gl.create_texture().map_err(Error::Driver)?;
@@ -213,9 +213,9 @@ impl TextureObject {
                 parent.raw.map_or(0, |t| t.0.get()),
                 internal,
                 info.base_mip,
-                info.mips,
+                info.mip_count,
                 info.base_layer,
-                info.layers,
+                info.layer_count,
             );
             let error = drain(gl).first().copied().unwrap_or(glow::NO_ERROR);
             if error != glow::NO_ERROR {
@@ -255,7 +255,7 @@ impl TextureObject {
         let internal = self.format.gl()[0];
         let (f, ty) = aspect(self.format);
         let (width, height, depth) = (c.width, c.height, c.depth);
-        let (row_length, row_count, layer, z) = (c.row_length, c.row_count, c.layer, c.z);
+        let (row_length, row_count, layer, z) = (c.row_texels, c.slice_rows, c.layer, c.z);
         unsafe {
             gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
             gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, row_length as i32);

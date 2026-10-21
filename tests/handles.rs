@@ -14,7 +14,7 @@ pub fn test() {
     let n = 256u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if !device.capabilities().addresses {
+    if !device.capabilities().buffer_addresses {
         println!("no buffer addresses");
         return;
     }
@@ -32,9 +32,9 @@ pub fn test() {
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
-            code: host::code!("handles"),
-            sets: &[layout],
-            entry: "fill",
+            bytecode: host::code!("handles"),
+            descriptor_set_layout: &[layout],
+            entrypoint: "fill",
             ..Default::default()
         })
         .unwrap();

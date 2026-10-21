@@ -17,7 +17,7 @@ impl Device {
         autoreleasepool(|_| {
             self.supports(info)?;
             let desc = texture_desc(info);
-            if info.usage.contains(TextureUsage::HOST) {
+            if info.usage.contains(TextureUsage::HOST_COPY) {
                 desc.setStorageMode(MTLStorageMode::Shared);
             }
             let raw = self
@@ -73,7 +73,7 @@ impl Device {
             let mode = raw.storageMode();
             let shared = mode == MTLStorageMode::Shared || mode == MTLStorageMode::Managed;
             if !depth && raw.sampleCount() == 1 && shared {
-                usage |= TextureUsage::HOST;
+                usage |= TextureUsage::HOST_COPY;
             }
             if flags.contains(MTLTextureUsage::ShaderRead) {
                 usage |= TextureUsage::SAMPLED;
@@ -83,13 +83,13 @@ impl Device {
             }
             if flags.contains(MTLTextureUsage::RenderTarget) {
                 usage |= if depth {
-                    TextureUsage::DEPTH
+                    TextureUsage::DEPTH_STENCIL
                 } else {
-                    TextureUsage::COLOR
+                    TextureUsage::COLOR_ATTACHMENT
                 };
             }
             if flags.contains(MTLTextureUsage::PixelFormatView) {
-                usage |= TextureUsage::VIEW;
+                usage |= TextureUsage::MUTABLE_VIEW_FORMAT;
             }
             let info = TextureInfo {
                 dimension,
@@ -97,9 +97,9 @@ impl Device {
                 width: raw.width() as u32,
                 height: raw.height() as u32,
                 depth: raw.depth() as u32,
-                layers: raw.arrayLength() as u32 * faces,
-                mips: raw.mipmapLevelCount() as u32,
-                samples: raw.sampleCount() as u32,
+                layer_count: raw.arrayLength() as u32 * faces,
+                mip_count: raw.mipmapLevelCount() as u32,
+                sample_count: raw.sampleCount() as u32,
                 usage,
                 memory: if mode == MTLStorageMode::Memoryless {
                     Memory::Transient
@@ -163,8 +163,8 @@ impl Device {
                     .newTextureViewWithPixelFormat_textureType_levels_slices(
                         info.format.mtl(),
                         texture_type(info.dimension, parent.sampleCount() as u32),
-                        NSRange::new(info.base_mip as usize, info.mips as usize),
-                        NSRange::new(info.base_layer as usize, info.layers as usize),
+                        NSRange::new(info.base_mip as usize, info.mip_count as usize),
+                        NSRange::new(info.base_layer as usize, info.layer_count as usize),
                     )
                     .ok_or_else(|| Error::OutOfMemory("view allocation failed".into()))?
             };

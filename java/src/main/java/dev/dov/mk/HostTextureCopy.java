@@ -17,8 +17,8 @@ public class HostTextureCopy {
     public int width = 1;
     public int height = 1;
     public int depth = 1;
-    public int rowLength = 0;
-    public int rowCount = 0;
+    public int rowTexels = 0;
+    public int sliceRows = 0;
 
     public static final int SIZE = 48;
 
@@ -45,9 +45,9 @@ public class HostTextureCopy {
         p += 4;
         memPutInt(p, depth);
         p += 4;
-        memPutInt(p, rowLength);
+        memPutInt(p, rowTexels);
         p += 4;
-        memPutInt(p, rowCount);
+        memPutInt(p, sliceRows);
         p += 4;
         return p;
     }
@@ -72,9 +72,9 @@ public class HostTextureCopy {
         p += 4;
         r.depth = memGetInt(p);
         p += 4;
-        r.rowLength = memGetInt(p);
+        r.rowTexels = memGetInt(p);
         p += 4;
-        r.rowCount = memGetInt(p);
+        r.sliceRows = memGetInt(p);
         p += 4;
         return r;
     }

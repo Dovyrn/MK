@@ -34,7 +34,7 @@ impl Device {
         let usable = self.format_usage(info.format);
         let counts = self.format_samples(info.format, info.usage);
         self.caps.check_texture(info, usable, counts)?;
-        if info.dimension != TextureDimension::D2 || info.samples > 1 {
+        if info.dimension != TextureDimension::D2 || info.sample_count > 1 {
             return Err(Error::Unsupported(
                 "import_shared_texture takes single-sample 2D textures on GL".into(),
             ));
@@ -52,7 +52,7 @@ impl Device {
             gl.bind_texture(glow::TEXTURE_2D, Some(raw));
             (shared.storage)(
                 glow::TEXTURE_2D,
-                info.mips as i32,
+                info.mip_count as i32,
                 internal,
                 info.width as i32,
                 info.height as i32,

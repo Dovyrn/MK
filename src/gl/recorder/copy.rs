@@ -9,9 +9,9 @@ impl Recorder<'_> {
     pub fn upload(&self, c: Command) {
         let Command::CopyBufferToTexture {
             buffer,
-            offset,
-            row_length,
-            row_count,
+            buffer_offset,
+            row_texels,
+            slice_rows: row_count,
             texture,
             mip,
             layer,
@@ -27,8 +27,8 @@ impl Recorder<'_> {
             return;
         };
         let copy = BufferTextureCopy {
-            row_length,
-            row_count,
+            row_texels,
+            slice_rows: row_count,
             texture,
             mip,
             layer,
@@ -44,7 +44,12 @@ impl Recorder<'_> {
         unsafe {
             self.gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(raw));
             let t = self.res.textures.get(texture);
-            t.upload(self.gl, self.extra, &copy, offset as usize as *const u8);
+            t.upload(
+                self.gl,
+                self.extra,
+                &copy,
+                buffer_offset as usize as *const u8,
+            );
             self.gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
         }
     }
@@ -63,9 +68,9 @@ impl Recorder<'_> {
             height,
             depth,
             buffer,
-            offset,
-            row_length,
-            row_count,
+            buffer_offset,
+            row_texels,
+            slice_rows: row_count,
             ..
         } = c
         else {
@@ -84,7 +89,7 @@ impl Recorder<'_> {
                 gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw));
                 let [bytes, bw, bh] = t.format.block();
                 let store = [
-                    (glow::PACK_ROW_LENGTH, row_length),
+                    (glow::PACK_ROW_LENGTH, row_texels),
                     (glow::PACK_IMAGE_HEIGHT, row_count),
                     (glow::PACK_COMPRESSED_BLOCK_WIDTH, bw),
                     (glow::PACK_COMPRESSED_BLOCK_HEIGHT, bh),
@@ -99,7 +104,7 @@ impl Recorder<'_> {
                     glow::TEXTURE_2D => (0, 1),
                     _ => (layer, 1),
                 };
-                let size = (res.buffers.get(buffer).size - offset).min(i32::MAX as u64);
+                let size = (res.buffers.get(buffer).size - buffer_offset).min(i32::MAX as u64);
                 read(
                     t.raw.map_or(0, |r| r.0.get()),
                     mip as i32,
@@ -110,7 +115,7 @@ impl Recorder<'_> {
                     height as i32,
                     depth as i32,
                     size as i32,
-                    offset as usize as *mut std::ffi::c_void,
+                    buffer_offset as usize as *mut std::ffi::c_void,
                 );
                 for (p, _) in store {
                     gl.pixel_store_i32(p, 0);
@@ -133,12 +138,12 @@ impl Recorder<'_> {
             });
             gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw));
             gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
-            gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_length as i32);
+            gl.pixel_store_i32(glow::PACK_ROW_LENGTH, row_texels as i32);
             let texel = match f {
                 glow::DEPTH_COMPONENT => 4.min(t.format.block()[0]),
                 _ => t.format.block()[0],
             } as u64;
-            let slice = (row_length.max(width) * row_count.max(height)) as u64 * texel;
+            let slice = (row_texels.max(width) * row_count.max(height)) as u64 * texel;
             for s in 0..depth {
                 let mip = mip as i32;
                 match t.target {
@@ -165,7 +170,7 @@ impl Recorder<'_> {
                     height as i32,
                     f,
                     ty,
-                    (offset + s as u64 * slice) as usize as *mut std::ffi::c_void,
+                    (buffer_offset + s as u64 * slice) as usize as *mut std::ffi::c_void,
                 );
             }
             gl.pixel_store_i32(glow::PACK_ROW_LENGTH, 0);

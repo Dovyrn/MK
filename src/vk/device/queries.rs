@@ -17,8 +17,8 @@ impl Device {
         let wanted = kind;
         let (kind, flags) = match kind {
             QueryKind::Timestamp => (vk::QueryType::TIMESTAMP, none),
-            QueryKind::Occlusion => (vk::QueryType::OCCLUSION, none),
-            QueryKind::Precise => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
+            QueryKind::OcclusionAny => (vk::QueryType::OCCLUSION, none),
+            QueryKind::OcclusionCount => (vk::QueryType::OCCLUSION, vk::QueryControlFlags::PRECISE),
         };
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(kind)

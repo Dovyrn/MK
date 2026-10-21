@@ -9,8 +9,8 @@ impl Device {
     ) -> Result<IndirectBuffer, Error> {
         self.thread();
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh, info.draws)?;
-        unreachable!("caps.addresses is false on GL")
+        self.caps.check_indirect(entry.mesh, info.max_draws)?;
+        unreachable!("caps.buffer_addresses is false on GL")
     }
 
     pub fn destroy_indirect_buffer(&self, indirect: IndirectBuffer) {
@@ -20,6 +20,6 @@ impl Device {
 
     pub fn indirect_shader_handle(&self, indirect: IndirectBuffer) -> crate::IndirectShaderHandle {
         self.res.table.indirects.get(indirect);
-        unreachable!("caps.addresses is false on GL")
+        unreachable!("caps.buffer_addresses is false on GL")
     }
 }

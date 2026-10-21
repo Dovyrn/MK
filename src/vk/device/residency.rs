@@ -2,7 +2,7 @@ use super::Device;
 use crate::Error;
 use crate::residency::Members;
 use crate::table::lock;
-use crate::{ResidencySet, Resource};
+use crate::{ResidencySet, ResidentResource};
 
 impl Device {
     pub fn create_residency_set(&self) -> Result<ResidencySet, Error> {
@@ -16,7 +16,7 @@ impl Device {
         self.res.sets.remove(set);
     }
 
-    pub fn add_residency(&self, set: ResidencySet, resources: &[Resource]) {
+    pub fn add_residency(&self, set: ResidencySet, resources: &[ResidentResource]) {
         if cfg!(feature = "validation") {
             self.res
                 .table
@@ -24,7 +24,7 @@ impl Device {
         }
     }
 
-    pub fn remove_residency(&self, set: ResidencySet, resources: &[Resource]) {
+    pub fn remove_residency(&self, set: ResidencySet, resources: &[ResidentResource]) {
         if cfg!(feature = "validation") {
             self.res
                 .table

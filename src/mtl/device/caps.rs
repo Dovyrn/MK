@@ -24,18 +24,18 @@ impl Device {
         };
         let size = if apple10 { 32768 } else { 16384 };
         DeviceCapabilities {
-            subgroup: width,
-            subgroup_sizes: width,
+            subgroup_size: width,
+            subgroup_size_mask: width,
             subgroup_ops: !SubgroupOp::CLUSTERED,
             subgroup_stages: PipelineStages::COMPUTE | PipelineStages::FRAGMENT,
             full_subgroups: true,
-            max_threads: raw.maxThreadsPerThreadgroup().width as u32,
-            max_shared: raw.maxThreadgroupMemoryLength() as u32,
-            transients: true,
-            transient_reads: true,
+            max_threadgroup_threads: raw.maxThreadsPerThreadgroup().width as u32,
+            max_threadgroup_memory: raw.maxThreadgroupMemoryLength() as u32,
+            transient_textures: true,
+            transient_input_attachments: true,
             attachment_reads: true,
             ordered_reads: true,
-            tiles: raw.supportsFamily(MTLGPUFamily::Apple4),
+            tile_shaders: raw.supportsFamily(MTLGPUFamily::Apple4),
             atomics64: if apple9
                 || cfg!(target_os = "macos") && raw.supportsFamily(MTLGPUFamily::Apple8)
             {
@@ -43,63 +43,63 @@ impl Device {
             } else {
                 Atomic64::default()
             },
-            mesh: raw.supportsFamily(MTLGPUFamily::Apple7),
-            task: raw.supportsFamily(MTLGPUFamily::Apple7),
+            mesh_shaders: raw.supportsFamily(MTLGPUFamily::Apple7),
+            object_shaders: raw.supportsFamily(MTLGPUFamily::Apple7),
             mesh_indirect: raw.supportsFamily(MTLGPUFamily::Apple9),
             indirect_count: true,
-            multi_draw: true,
+            multi_draw_indirect: true,
             max_draws: u32::MAX,
-            mesh_groups: groups,
-            mesh_axis: groups,
-            queues: queues as u32,
-            samplers: (raw.maxArgumentBufferSamplerCount() as u32).min(if apple9 {
+            max_mesh_groups: groups,
+            max_mesh_axis_groups: groups,
+            max_queue_count: queues as u32,
+            max_samplers: (raw.maxArgumentBufferSamplerCount() as u32).min(if apple9 {
                 500_000
             } else {
                 996
             }),
-            textures: 500_000,
-            images: 500_000,
-            addresses: true,
+            max_textures: 500_000,
+            max_storage_textures: 500_000,
+            buffer_addresses: true,
             timestamp_period: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise_occlusion: true,
-            viewports: 16,
-            graphics_queues: u32::MAX >> (32 - queues),
-            anisotropy: 16,
+            max_viewports: 16,
+            graphics_queue_mask: u32::MAX >> (32 - queues),
+            max_anisotropy_level: 16,
             depth_clamp: true,
             line_fill: true,
             storage_sets: true,
-            set_uniforms: 31,
-            set_storages: 31,
-            set_dynamic_uniforms: 31,
-            set_dynamic_storages: 31,
-            set_textures: 128,
-            set_images: 128,
-            set_samplers: 16,
-            set_inputs: crate::slot::COLORS,
-            persistent_maps: true,
-            bind_alignment: 256,
-            compute: true,
+            max_set_uniforms: 31,
+            max_set_storages: 31,
+            max_set_dynamic_uniforms: 31,
+            max_set_dynamic_storages: 31,
+            max_set_textures: 128,
+            max_set_storage_textures: 128,
+            max_set_samplers: 16,
+            max_set_input_attachments: crate::slot::COLORS,
+            persistent_mapping: true,
+            buffer_offset_alignment: 256,
+            compute_shaders: true,
             texture_views: true,
-            occlusion: true,
+            occlusion_queries: true,
             bias_clamp: true,
             independent_blend: true,
-            indirect: true,
-            indirect_offset: true,
+            indirect_draws: true,
+            indirect_index_offset: true,
             max_queries: 4096,
             cube_arrays: true,
             mirror_clamp: true,
             buffer_clear: true,
             partial_resolve: false,
             max_buffer: raw.maxBufferLength() as u64,
-            max_uniform: raw.maxBufferLength() as u64,
-            max_storage: raw.maxBufferLength() as u64,
-            max_texture: size,
-            max_cube: size,
-            max_volume: 2048,
-            max_layers: 2048,
-            budget: true,
-            host_read: raw.hasUnifiedMemory(),
+            max_uniform_range: raw.maxBufferLength() as u64,
+            max_storage_range: raw.maxBufferLength() as u64,
+            max_texture_size: size,
+            max_cube_size: size,
+            max_volume_size: 2048,
+            max_texture_layers: 2048,
+            memory_budget: true,
+            host_texture_reads: raw.hasUnifiedMemory(),
         }
     }
 
@@ -112,7 +112,7 @@ impl Device {
             Format::B5g6r5Unorm
             | Format::A1bgr5Unorm
             | Format::Abgr4Unorm
-            | Format::Bgr5a1Unorm => TextureUsage::SAMPLED | TextureUsage::COLOR,
+            | Format::Bgr5a1Unorm => TextureUsage::SAMPLED | TextureUsage::COLOR_ATTACHMENT,
             Format::R8Unorm
             | Format::R8Uint
             | Format::R8Sint
@@ -129,25 +129,25 @@ impl Device {
             | Format::Rgba32Float
             | Format::Rgba32Uint
             | Format::Rgba32Sint => {
-                TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::COLOR
+                TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::COLOR_ATTACHMENT
             }
             Format::R32Uint | Format::R32Sint => {
                 TextureUsage::SAMPLED
                     | TextureUsage::STORAGE
-                    | TextureUsage::ATOMIC
-                    | TextureUsage::COLOR
+                    | TextureUsage::STORAGE_ATOMIC
+                    | TextureUsage::COLOR_ATTACHMENT
             }
             f if (Format::A8Unorm..=Format::Rgba32Float).contains(&f) => {
-                TextureUsage::SAMPLED | TextureUsage::COLOR
+                TextureUsage::SAMPLED | TextureUsage::COLOR_ATTACHMENT
             }
             Format::R64Uint if self.caps.atomics64.contains(Atomic64::IMAGE) => {
-                TextureUsage::STORAGE | TextureUsage::ATOMIC
+                TextureUsage::STORAGE | TextureUsage::STORAGE_ATOMIC
             }
             Format::D24UnormS8 if !self.raw.isDepth24Stencil8PixelFormatSupported() => {
                 TextureUsage::default()
             }
             f if (Format::D16Unorm..=Format::S8Uint).contains(&f) => {
-                TextureUsage::SAMPLED | TextureUsage::DEPTH
+                TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL
             }
             f if (Format::Bc1Unorm..=Format::Bc7Srgb).contains(&f)
                 && !self.raw.supportsBCTextureCompression() =>
@@ -160,8 +160,8 @@ impl Device {
         if usage.is_empty() {
             return usage;
         }
-        let usage = if usage.contains(TextureUsage::COLOR) {
-            usage | TextureUsage::INPUT
+        let usage = if usage.contains(TextureUsage::COLOR_ATTACHMENT) {
+            usage | TextureUsage::INPUT_ATTACHMENT
         } else {
             usage
         };
@@ -169,9 +169,13 @@ impl Device {
         let host = if depth || !self.raw.hasUnifiedMemory() {
             TextureUsage::default()
         } else {
-            TextureUsage::HOST
+            TextureUsage::HOST_COPY
         };
-        usage | TextureUsage::COPY_SRC | TextureUsage::COPY_DST | TextureUsage::VIEW | host
+        usage
+            | TextureUsage::COPY_SRC
+            | TextureUsage::COPY_DST
+            | TextureUsage::MUTABLE_VIEW_FORMAT
+            | host
     }
 
     pub fn format_samples(&self, format: Format, usage: TextureUsage) -> u32 {
@@ -206,7 +210,8 @@ impl Device {
             info.dimension,
             TextureDimension::D1 | TextureDimension::D1Array
         );
-        let target = !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty();
+        let target = !(info.usage & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::DEPTH_STENCIL))
+            .is_empty();
         if line && target {
             return Err(Error::Unsupported(
                 "a 1D texture cannot be a render target on Metal".into(),

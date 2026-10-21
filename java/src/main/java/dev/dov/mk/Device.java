@@ -240,7 +240,7 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyTilePipeline(long device, long pipeline);
 
-    public DepthStencilState createDepthStencilState(DepthStateInfo info, String label) {
+    public DepthStencilState createDepthStencilState(DepthStencilStateInfo info, String label) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
@@ -589,7 +589,7 @@ public class Device implements AutoCloseable {
 
     private static native void nDestroyResidencySet(long device, long set);
 
-    public void addResidency(ResidencySet set, Resource[] resources) {
+    public void addResidency(ResidencySet set, ResidentResource[] resources) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {
@@ -613,7 +613,7 @@ public class Device implements AutoCloseable {
 
     private static native void nAddResidency(long device, long set, long resources, int resourcesLength);
 
-    public void removeResidency(ResidencySet set, Resource[] resources) {
+    public void removeResidency(ResidencySet set, ResidentResource[] resources) {
         lock.readLock().lock();
         try {
             try (var arena = new Arena()) {

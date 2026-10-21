@@ -1,8 +1,8 @@
 use mk::{
     BufferTextureCopy, BufferUsage, ColorAttachment, ColorTarget, CompareOp, DepthAttachment,
-    DepthStateInfo, Format, IndexType, Memory, PipelineStages, RenderPassInfo, RenderPipelineInfo,
-    Scissor, StoreOp, TextureContentDiscard, TextureInfo, TextureUsage, VertexAttribute,
-    VertexBufferLayout, VertexPipelineStates, Viewport,
+    DepthStencilStateInfo, Format, IndexType, Memory, PipelineStages, RenderPassInfo,
+    RenderPipelineInfo, Scissor, StoreOp, TextureContentDiscard, TextureInfo, TextureUsage,
+    VertexAttribute, VertexBufferLayout, VertexPipelineStates, Viewport,
 };
 
 use crate::host;
@@ -21,11 +21,11 @@ pub fn test() {
     let color = device
         .create_texture(&target(
             Format::Rgba8Unorm,
-            TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
         ))
         .unwrap();
     let depth = device
-        .create_texture(&target(Format::D32Float, TextureUsage::DEPTH))
+        .create_texture(&target(Format::D32Float, TextureUsage::DEPTH_STENCIL))
         .unwrap();
     let vertices: [[f32; 5]; 6] = [
         [-0.5, -0.5, 1.0, 0.0, 0.0],
@@ -71,34 +71,34 @@ pub fn test() {
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBufferDynamic]);
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: host::code!("triangle"),
-            sets: &[layout],
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
-            depth: Some(Format::D32Float),
+            bytecode: host::code!("triangle"),
+            descriptor_set_layout: &[layout],
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            depth_format: Some(Format::D32Float),
             states: VertexPipelineStates {
-                depth: DepthStateInfo {
+                depth_stencil: DepthStencilStateInfo {
                     compare: CompareOp::Less,
                     write: true,
                     ..Default::default()
                 },
                 ..Default::default()
             },
-            buffers: &[VertexBufferLayout {
+            vertex_buffers: &[VertexBufferLayout {
                 stride: 20,
-                instance: false,
+                instanced: false,
             }],
-            attributes: &[
+            vertex_attributes: &[
                 VertexAttribute {
                     location: 0,
-                    buffer: 0,
+                    buffer_slot: 0,
                     format: Format::Rg32Float,
                     offset: 0,
                 },
                 VertexAttribute {
                     location: 1,
-                    buffer: 0,
+                    buffer_slot: 0,
                     format: Format::Rgb32Float,
                     offset: 8,
                 },
@@ -127,8 +127,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(
         &[
-            (color, PipelineStages::COLOR),
-            (depth, PipelineStages::DEPTH),
+            (color, PipelineStages::COLOR_ATTACHMENT),
+            (depth, PipelineStages::DEPTH_STENCIL),
         ]
         .map(|(texture, stage)| TextureContentDiscard {
             texture,
@@ -145,9 +145,9 @@ pub fn test() {
                 clear: [0.0, 0.0, 1.0, 1.0],
                 ..Default::default()
             }],
-            depth: Some(DepthAttachment {
+            depth_stencil: Some(DepthAttachment {
                 texture: depth,
-                store: StoreOp::DontCare,
+                store: StoreOp::Discard,
                 ..Default::default()
             }),
             ..Default::default()
@@ -176,7 +176,7 @@ pub fn test() {
     let mut copy = device.begin_commands(pool).unwrap();
     copy.use_residency_set(set);
     let mut pass = copy
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,

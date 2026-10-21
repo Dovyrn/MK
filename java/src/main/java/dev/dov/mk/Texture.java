@@ -9,7 +9,7 @@ public record Texture(long raw) {
         return handle == null ? 0 : handle.raw;
     }
 
-    public Resource resource() {
-        return new Resource().kind(ResourceKind.TEXTURE).handle(raw);
+    public ResidentResource resource() {
+        return new ResidentResource().kind(ResourceKind.TEXTURE).handle(raw);
     }
 }

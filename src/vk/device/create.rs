@@ -126,7 +126,7 @@ impl Device {
         instance: &ash::Instance,
         wanted: &DeviceInfo,
     ) -> Result<Self, Error> {
-        let queues = wanted.queues;
+        let queues = wanted.queue_count;
         let physical = physical(instance)?;
         let slots = slots(instance, physical, queues);
         let count = slots.len() as u32;
@@ -243,71 +243,72 @@ impl Features {
     fn supported(&self, queues: u32) -> DeviceInfo {
         let (c, v11, v12, v13) = (&self.core, &self.v11, &self.v12, &self.v13);
         DeviceInfo {
-            queues,
-            addresses: v12.buffer_device_address != 0,
+            queue_count: queues,
+            buffer_addresses: v12.buffer_device_address != 0,
             timelines: v12.timeline_semaphore != 0,
             partially_bound: v12.descriptor_binding_partially_bound != 0,
             update_after_bind: v12.descriptor_binding_sampled_image_update_after_bind != 0
                 && v12.descriptor_binding_storage_image_update_after_bind != 0,
             standard_layout: v12.uniform_buffer_standard_layout != 0,
-            synchronization: v13.synchronization2 != 0,
+            synchronization2: v13.synchronization2 != 0,
             dynamic_rendering: v13.dynamic_rendering != 0,
-            anisotropy: c.sampler_anisotropy != 0,
+            sampler_anisotropy: c.sampler_anisotropy != 0,
             cube_arrays: c.image_cube_array != 0,
-            multi_viewport: c.multi_viewport != 0,
+            multi_viewports: c.multi_viewport != 0,
             depth_clamp: c.depth_clamp != 0,
             precise_occlusion: c.occlusion_query_precise != 0,
             line_fill: c.fill_mode_non_solid != 0,
-            multi_draw: c.multi_draw_indirect != 0,
+            multi_draw_indirect: c.multi_draw_indirect != 0,
             bias_clamp: c.depth_bias_clamp != 0,
             independent_blend: c.independent_blend != 0,
-            dual_blend: c.dual_src_blend != 0,
-            int64: c.shader_int64 != 0,
+            dual_source_blend: c.dual_src_blend != 0,
+            shader_int64: c.shader_int64 != 0,
             unformatted_reads: c.shader_storage_image_read_without_format != 0,
             unformatted_writes: c.shader_storage_image_write_without_format != 0,
             draw_parameters: v11.shader_draw_parameters != 0,
-            runtime_arrays: v12.runtime_descriptor_array != 0,
-            nonuniform: v12.shader_sampled_image_array_non_uniform_indexing != 0
+            runtime_descriptor_arrays: v12.runtime_descriptor_array != 0,
+            nonuniform_indexing: v12.shader_sampled_image_array_non_uniform_indexing != 0
                 && v12.shader_storage_image_array_non_uniform_indexing != 0,
             indirect_count: v12.draw_indirect_count != 0,
             buffer_atomics64: v12.shader_buffer_int64_atomics != 0,
             shared_atomics64: v12.shader_shared_int64_atomics != 0,
-            memory_model: v12.vulkan_memory_model != 0 && v12.vulkan_memory_model_device_scope != 0,
+            acquire_release_atomics: v12.vulkan_memory_model != 0
+                && v12.vulkan_memory_model_device_scope != 0,
             mirror_clamp: v12.sampler_mirror_clamp_to_edge != 0,
-            viewport_index: v12.shader_output_viewport_index != 0,
-            subgroup_sizes: v13.subgroup_size_control != 0,
+            shader_viewport_index: v12.shader_output_viewport_index != 0,
+            subgroup_size_control: v13.subgroup_size_control != 0,
             full_subgroups: v13.compute_full_subgroups != 0,
             subgroup_rotate: self.rotate.shader_subgroup_rotate != 0,
             dynamic_indexing: c.shader_sampled_image_array_dynamic_indexing != 0
                 && c.shader_storage_image_array_dynamic_indexing != 0,
             fragment_stores: c.fragment_stores_and_atomics != 0,
             vertex_stores: c.vertex_pipeline_stores_and_atomics != 0,
-            mesh: self.mesh.mesh_shader != 0,
-            task: self.mesh.task_shader != 0,
-            host_read: self.copy.host_image_copy != 0,
+            mesh_shaders: self.mesh.mesh_shader != 0,
+            object_shaders: self.mesh.task_shader != 0,
+            host_texture_reads: self.copy.host_image_copy != 0,
             attachment_reads: self.local.dynamic_rendering_local_read != 0,
             ordered_reads: self.order.rasterization_order_color_attachment_access != 0,
             image_atomics64: self.image64.shader_image_int64_atomics != 0,
             swapchain: self.swapchain,
             present_wait: self.id.present_id != 0 && self.wait.present_wait != 0,
-            shared_handles: self.shared,
+            shared_textures: self.shared,
         }
     }
 
     fn enable(info: &DeviceInfo) -> Self {
         let on = |b: bool| b as vk::Bool32;
         let mut e = Self::default();
-        e.core.sampler_anisotropy = on(info.anisotropy);
+        e.core.sampler_anisotropy = on(info.sampler_anisotropy);
         e.core.image_cube_array = on(info.cube_arrays);
-        e.core.multi_viewport = on(info.multi_viewport);
+        e.core.multi_viewport = on(info.multi_viewports);
         e.core.depth_clamp = on(info.depth_clamp);
         e.core.occlusion_query_precise = on(info.precise_occlusion);
         e.core.fill_mode_non_solid = on(info.line_fill);
-        e.core.multi_draw_indirect = on(info.multi_draw);
+        e.core.multi_draw_indirect = on(info.multi_draw_indirect);
         e.core.depth_bias_clamp = on(info.bias_clamp);
         e.core.independent_blend = on(info.independent_blend);
-        e.core.dual_src_blend = on(info.dual_blend);
-        e.core.shader_int64 = on(info.int64);
+        e.core.dual_src_blend = on(info.dual_source_blend);
+        e.core.shader_int64 = on(info.shader_int64);
         e.core.shader_storage_image_read_without_format = on(info.unformatted_reads);
         e.core.shader_storage_image_write_without_format = on(info.unformatted_writes);
         e.core.shader_sampled_image_array_dynamic_indexing = on(info.dynamic_indexing);
@@ -316,35 +317,35 @@ impl Features {
         e.core.vertex_pipeline_stores_and_atomics = on(info.vertex_stores);
         e.v11.shader_draw_parameters = on(info.draw_parameters);
         let v12 = &mut e.v12;
-        v12.buffer_device_address = on(info.addresses);
+        v12.buffer_device_address = on(info.buffer_addresses);
         v12.timeline_semaphore = on(info.timelines);
         v12.descriptor_binding_partially_bound = on(info.partially_bound);
         v12.descriptor_binding_sampled_image_update_after_bind = on(info.update_after_bind);
         v12.descriptor_binding_storage_image_update_after_bind = on(info.update_after_bind);
         v12.uniform_buffer_standard_layout = on(info.standard_layout);
-        v12.runtime_descriptor_array = on(info.runtime_arrays);
-        v12.shader_sampled_image_array_non_uniform_indexing = on(info.nonuniform);
-        v12.shader_storage_image_array_non_uniform_indexing = on(info.nonuniform);
+        v12.runtime_descriptor_array = on(info.runtime_descriptor_arrays);
+        v12.shader_sampled_image_array_non_uniform_indexing = on(info.nonuniform_indexing);
+        v12.shader_storage_image_array_non_uniform_indexing = on(info.nonuniform_indexing);
         v12.draw_indirect_count = on(info.indirect_count);
         v12.shader_buffer_int64_atomics = on(info.buffer_atomics64);
         v12.shader_shared_int64_atomics = on(info.shared_atomics64);
-        v12.vulkan_memory_model = on(info.memory_model);
-        v12.vulkan_memory_model_device_scope = on(info.memory_model);
+        v12.vulkan_memory_model = on(info.acquire_release_atomics);
+        v12.vulkan_memory_model_device_scope = on(info.acquire_release_atomics);
         v12.sampler_mirror_clamp_to_edge = on(info.mirror_clamp);
-        v12.shader_output_viewport_index = on(info.viewport_index);
-        e.v13.synchronization2 = on(info.synchronization);
+        v12.shader_output_viewport_index = on(info.shader_viewport_index);
+        e.v13.synchronization2 = on(info.synchronization2);
         e.v13.dynamic_rendering = on(info.dynamic_rendering);
-        e.v13.subgroup_size_control = on(info.subgroup_sizes);
+        e.v13.subgroup_size_control = on(info.subgroup_size_control);
         e.v13.compute_full_subgroups = on(info.full_subgroups);
         e.rotate.shader_subgroup_rotate = on(info.subgroup_rotate);
-        e.mesh.mesh_shader = on(info.mesh);
-        e.mesh.task_shader = on(info.task);
-        e.copy.host_image_copy = on(info.host_read);
+        e.mesh.mesh_shader = on(info.mesh_shaders);
+        e.mesh.task_shader = on(info.object_shaders);
+        e.copy.host_image_copy = on(info.host_texture_reads);
         e.local.dynamic_rendering_local_read = on(info.attachment_reads);
         e.order.rasterization_order_color_attachment_access = on(info.ordered_reads);
         e.image64.shader_image_int64_atomics = on(info.image_atomics64);
         e.swapchain = info.swapchain;
-        e.shared = info.shared_handles;
+        e.shared = info.shared_textures;
         e.id.present_id = on(info.present_wait);
         e.wait.present_wait = on(info.present_wait);
         e

@@ -3,7 +3,9 @@ use crate::Error;
 use crate::mtl::query::Query;
 use crate::residency::Members;
 use crate::table::lock;
-use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Resource, ResourceKind, Texture};
+use crate::{
+    Buffer, IndirectBuffer, QueryPool, ResidencySet, ResidentResource, ResourceKind, Texture,
+};
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
@@ -26,15 +28,15 @@ impl Device {
         self.res.sets.remove(set);
     }
 
-    pub fn add_residency(&self, set: ResidencySet, resources: &[Resource]) {
+    pub fn add_residency(&self, set: ResidencySet, resources: &[ResidentResource]) {
         self.change_residency(set, resources, true);
     }
 
-    pub fn remove_residency(&self, set: ResidencySet, resources: &[Resource]) {
+    pub fn remove_residency(&self, set: ResidencySet, resources: &[ResidentResource]) {
         self.change_residency(set, resources, false);
     }
 
-    fn change_residency(&self, set: ResidencySet, resources: &[Resource], add: bool) {
+    fn change_residency(&self, set: ResidencySet, resources: &[ResidentResource], add: bool) {
         let _held = lock(&self.residency);
         let res = &self.res;
         let raw = res.sets.get(set);

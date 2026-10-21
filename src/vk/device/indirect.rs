@@ -16,9 +16,9 @@ impl Device {
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, Error> {
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh, info.draws)?;
+        self.caps.check_indirect(entry.mesh, info.max_draws)?;
         let stride = indirect_stride(entry.mesh, info.indexed);
-        let size = info.draws as u64 * stride as u64;
+        let size = info.max_draws as u64 * stride as u64;
         let usage = BufferUsage::INDIRECT | BufferUsage::ADDRESS;
         let buffer = self.create_buffer(size, Memory::Device, usage, info.label)?;
         let id = self.res.indirects.insert(buffer);

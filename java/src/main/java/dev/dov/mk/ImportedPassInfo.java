@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 public class ImportedPassInfo {
     public int width = 1;
     public int height = 1;
-    public int samples = 1;
+    public int sampleCount = 1;
 
     public static final int SIZE = 12;
 
@@ -23,7 +23,7 @@ public class ImportedPassInfo {
         p += 4;
         memPutInt(p, height);
         p += 4;
-        memPutInt(p, samples);
+        memPutInt(p, sampleCount);
         p += 4;
         return p;
     }
@@ -34,7 +34,7 @@ public class ImportedPassInfo {
         p += 4;
         r.height = memGetInt(p);
         p += 4;
-        r.samples = memGetInt(p);
+        r.sampleCount = memGetInt(p);
         p += 4;
         return r;
     }

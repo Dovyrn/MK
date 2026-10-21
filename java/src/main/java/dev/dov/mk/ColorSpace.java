@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 public enum ColorSpace {
     SRGB(0),
     DISPLAY_P3(1),
-    EXTENDED_SRGB(2),
+    EXTENDED_LINEAR_SRGB(2),
     HDR10(3);
 
     final int value;
@@ -15,7 +15,7 @@ public enum ColorSpace {
         return switch (v) {
             case 0 -> SRGB;
             case 1 -> DISPLAY_P3;
-            case 2 -> EXTENDED_SRGB;
+            case 2 -> EXTENDED_LINEAR_SRGB;
             case 3 -> HDR10;
             default -> throw new IllegalArgumentException(v + " is no ColorSpace");
         };

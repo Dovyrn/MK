@@ -43,7 +43,7 @@ impl Recorder<'_> {
             width,
             height,
             depth,
-            layers: n,
+            layer_count: n,
         } = c
         else {
             return;

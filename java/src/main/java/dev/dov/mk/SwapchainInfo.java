@@ -12,8 +12,8 @@ public class SwapchainInfo {
     public int width = 1;
     public int height = 1;
     public int images = 3;
-    public int usage = TextureUsage.COLOR;
-    public PresentMode mode = PresentMode.FIFO;
+    public int usage = TextureUsage.COLOR_ATTACHMENT;
+    public PresentMode presentMode = PresentMode.FIFO;
     public ColorSpace colorSpace = ColorSpace.SRGB;
     public boolean premultiplied = false;
 
@@ -34,7 +34,7 @@ public class SwapchainInfo {
         p += 4;
         memPutInt(p, usage);
         p += 4;
-        memPutInt(p, mode.value);
+        memPutInt(p, presentMode.value);
         p += 4;
         memPutInt(p, colorSpace.value);
         p += 4;
@@ -55,7 +55,7 @@ public class SwapchainInfo {
         p += 4;
         r.usage = memGetInt(p);
         p += 4;
-        r.mode = PresentMode.of(memGetInt(p));
+        r.presentMode = PresentMode.of(memGetInt(p));
         p += 4;
         r.colorSpace = ColorSpace.of(memGetInt(p));
         p += 4;

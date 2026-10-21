@@ -4,12 +4,12 @@ use crate::{AddressMode, BorderColor, Filter, SamplerInfo};
 use glow::HasContext;
 
 pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, Error> {
-    let anisotropy = info.anisotropy as f32;
+    let anisotropy = info.max_anisotropy as f32;
     let filter = |f| match f {
         Filter::Nearest => glow::NEAREST,
         Filter::Linear => glow::LINEAR,
     };
-    let min = match (info.min, info.mip) {
+    let min = match (info.min_filter, info.mip_filter) {
         (Filter::Nearest, Filter::Nearest) => glow::NEAREST_MIPMAP_NEAREST,
         (Filter::Nearest, Filter::Linear) => glow::NEAREST_MIPMAP_LINEAR,
         (Filter::Linear, Filter::Nearest) => glow::LINEAR_MIPMAP_NEAREST,
@@ -22,7 +22,7 @@ pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, E
         AddressMode::Border => glow::CLAMP_TO_BORDER,
         AddressMode::MirrorClamp => glow::MIRROR_CLAMP_TO_EDGE,
     } as i32;
-    let color = match info.border {
+    let color = match info.border_color {
         BorderColor::TransparentBlack => [0.0, 0.0, 0.0, 0.0],
         BorderColor::OpaqueBlack => [0.0, 0.0, 0.0, 1.0],
         BorderColor::OpaqueWhite => [1.0, 1.0, 1.0, 1.0],
@@ -30,7 +30,11 @@ pub fn create(gl: &glow::Context, info: &SamplerInfo) -> Result<glow::Sampler, E
     unsafe {
         let raw = gl.create_sampler().map_err(Error::Driver)?;
         gl.sampler_parameter_i32(raw, glow::TEXTURE_MIN_FILTER, min as i32);
-        gl.sampler_parameter_i32(raw, glow::TEXTURE_MAG_FILTER, filter(info.mag) as i32);
+        gl.sampler_parameter_i32(
+            raw,
+            glow::TEXTURE_MAG_FILTER,
+            filter(info.mag_filter) as i32,
+        );
         gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_S, address(info.u));
         gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_T, address(info.v));
         gl.sampler_parameter_i32(raw, glow::TEXTURE_WRAP_R, address(info.w));

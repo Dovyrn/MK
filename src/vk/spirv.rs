@@ -81,7 +81,7 @@ pub fn atomics(words: &[u32]) -> Atomic64 {
     };
     image
         | if declares(words, 12) {
-            Atomic64::ALL
+            Atomic64::BUFFER_ALL
         } else {
             Atomic64::default()
         }

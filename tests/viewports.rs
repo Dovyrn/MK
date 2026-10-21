@@ -10,7 +10,7 @@ pub fn test() {
     let (w, h) = (64u32, 32u32);
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if device.capabilities().viewports < 2 {
+    if device.capabilities().max_viewports < 2 {
         println!("one viewport only");
         return;
     }
@@ -19,7 +19,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: w,
             height: h,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -37,11 +37,11 @@ pub fn test() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: host::code!("viewports"),
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
-            clamp: true,
+            bytecode: host::code!("viewports"),
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            depth_clamp: true,
             ..Default::default()
         })
         .unwrap();
@@ -80,8 +80,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -101,7 +101,7 @@ pub fn test() {
     pass.draw(3, 2, 0, 0);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,

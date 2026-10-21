@@ -30,9 +30,9 @@ pub fn test() {
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("fill"),
-            sets: &[layout],
-            entry: "fill",
+            bytecode: host::code!("fill"),
+            descriptor_set_layout: &[layout],
+            entrypoint: "fill",
             ..Default::default()
         })
         .unwrap();

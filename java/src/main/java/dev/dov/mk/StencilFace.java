@@ -8,12 +8,12 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class StencilFace {
-    public StencilOp fail = StencilOp.KEEP;
-    public StencilOp depthFail = StencilOp.KEEP;
-    public StencilOp pass = StencilOp.KEEP;
+    public StencilOp failOp = StencilOp.KEEP;
+    public StencilOp depthFailOp = StencilOp.KEEP;
+    public StencilOp passOp = StencilOp.KEEP;
     public CompareOp compare = CompareOp.ALWAYS;
-    public int read = 0xff;
-    public int write = 0xff;
+    public int readMask = 0xff;
+    public int writeMask = 0xff;
 
     public static final int SIZE = 24;
 
@@ -22,34 +22,34 @@ public class StencilFace {
     }
 
     long encode(long p) {
-        memPutInt(p, fail.value);
+        memPutInt(p, failOp.value);
         p += 4;
-        memPutInt(p, depthFail.value);
+        memPutInt(p, depthFailOp.value);
         p += 4;
-        memPutInt(p, pass.value);
+        memPutInt(p, passOp.value);
         p += 4;
         memPutInt(p, compare.value);
         p += 4;
-        memPutInt(p, read);
+        memPutInt(p, readMask);
         p += 4;
-        memPutInt(p, write);
+        memPutInt(p, writeMask);
         p += 4;
         return p;
     }
 
     static StencilFace decode(long p) {
         var r = new StencilFace();
-        r.fail = StencilOp.of(memGetInt(p));
+        r.failOp = StencilOp.of(memGetInt(p));
         p += 4;
-        r.depthFail = StencilOp.of(memGetInt(p));
+        r.depthFailOp = StencilOp.of(memGetInt(p));
         p += 4;
-        r.pass = StencilOp.of(memGetInt(p));
+        r.passOp = StencilOp.of(memGetInt(p));
         p += 4;
         r.compare = CompareOp.of(memGetInt(p));
         p += 4;
-        r.read = memGetInt(p);
+        r.readMask = memGetInt(p);
         p += 4;
-        r.write = memGetInt(p);
+        r.writeMask = memGetInt(p);
         p += 4;
         return r;
     }

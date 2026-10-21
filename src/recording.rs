@@ -51,7 +51,7 @@ impl Recording<'_> {
                 resolve: c.resolve,
             })?;
         }
-        if let Some(d) = &info.depth {
+        if let Some(d) = &info.depth_stencil {
             self.record(Command::DepthAttachment {
                 texture: d.texture,
                 load: d.load,
@@ -62,20 +62,20 @@ impl Recording<'_> {
                 clear_stencil: d.clear_stencil,
             })?;
         }
-        if let Some(pool) = info.occlusion {
+        if let Some(pool) = info.occlusion_queries {
             self.record(Command::OcclusionPool { pool })?;
         }
-        if let Some(t) = &info.tile {
+        if let Some(t) = &info.tile_info {
             self.record(Command::TileMemory {
                 width: t.width,
                 height: t.height,
-                shared: t.shared,
+                threadgroup_memory: t.threadgroup_memory,
             })?;
         }
         self.record(Command::BeginRenderPass {
             width: info.width,
             height: info.height,
-            layers: info.layers,
+            layers: info.layer_count,
             src_stage: info.src_stage,
             dst_stage: info.dst_stage,
         })

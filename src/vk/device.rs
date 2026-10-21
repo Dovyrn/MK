@@ -64,17 +64,23 @@ fn vk_image_usage(usage: TextureUsage) -> vk::ImageUsageFlags {
     let map = [
         (TextureUsage::SAMPLED, vk::ImageUsageFlags::SAMPLED),
         (TextureUsage::STORAGE, vk::ImageUsageFlags::STORAGE),
-        (TextureUsage::ATOMIC, vk::ImageUsageFlags::STORAGE),
-        (TextureUsage::COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT),
-        (TextureUsage::INPUT, vk::ImageUsageFlags::INPUT_ATTACHMENT),
+        (TextureUsage::STORAGE_ATOMIC, vk::ImageUsageFlags::STORAGE),
         (
-            TextureUsage::DEPTH,
+            TextureUsage::COLOR_ATTACHMENT,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ),
+        (
+            TextureUsage::INPUT_ATTACHMENT,
+            vk::ImageUsageFlags::INPUT_ATTACHMENT,
+        ),
+        (
+            TextureUsage::DEPTH_STENCIL,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         ),
         (TextureUsage::COPY_SRC, vk::ImageUsageFlags::TRANSFER_SRC),
         (TextureUsage::COPY_DST, vk::ImageUsageFlags::TRANSFER_DST),
         (
-            TextureUsage::HOST,
+            TextureUsage::HOST_COPY,
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
         ),
     ];
@@ -103,7 +109,7 @@ fn image_create_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
     ) {
         flags |= vk::ImageCreateFlags::CUBE_COMPATIBLE;
     }
-    if info.usage.contains(TextureUsage::VIEW) {
+    if info.usage.contains(TextureUsage::MUTABLE_VIEW_FORMAT) {
         flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
     }
     let mut bits = vk_image_usage(info.usage);
@@ -119,9 +125,9 @@ fn image_create_info(info: &TextureInfo) -> vk::ImageCreateInfo<'static> {
             height: info.height,
             depth: info.depth,
         })
-        .mip_levels(info.mips)
-        .array_layers(info.layers)
-        .samples(vk::SampleCountFlags::from_raw(info.samples))
+        .mip_levels(info.mip_count)
+        .array_layers(info.layer_count)
+        .samples(vk::SampleCountFlags::from_raw(info.sample_count))
         .usage(bits)
 }
 
@@ -160,9 +166,9 @@ fn whole_view(info: &TextureInfo) -> TextureViewInfo {
         dimension: info.dimension,
         format: info.format,
         base_mip: 0,
-        mips: info.mips,
+        mip_count: info.mip_count,
         base_layer: 0,
-        layers: info.layers,
+        layer_count: info.layer_count,
         usage: info.usage,
     }
 }
@@ -230,8 +236,8 @@ impl Device {
             .collect();
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
         let mut caps = probe(&instance, physical, &ext, &list, &bindless, &limits);
-        caps.transient_reads =
-            caps.transients && caps.attachment_reads && supports_lazy_memory(&raw, &memory);
+        caps.transient_input_attachments =
+            caps.transient_textures && caps.attachment_reads && supports_lazy_memory(&raw, &memory);
         Ok(Self {
             surface: ash::khr::surface::Instance::new(entry, &instance),
             caps,
@@ -493,7 +499,7 @@ impl Device {
         raw: vk::CommandBuffer,
         info: &ImportedPassInfo,
     ) -> Result<RenderPass<'_, '_>, Error> {
-        let check = self.check(pool, "render", info.samples);
+        let check = self.check(pool, "render", info.sample_count);
         let mut recording = self.recording(check, raw);
         recording.recorder.imported = true;
         Ok(RenderPass {

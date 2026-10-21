@@ -20,24 +20,24 @@ impl Device {
             AddressMode::MirrorClamp => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
         };
         let sampler_info = vk::SamplerCreateInfo::default()
-            .min_filter(filter(info.min))
-            .mag_filter(filter(info.mag))
-            .mipmap_mode(match info.mip {
+            .min_filter(filter(info.min_filter))
+            .mag_filter(filter(info.mag_filter))
+            .mipmap_mode(match info.mip_filter {
                 Filter::Nearest => vk::SamplerMipmapMode::NEAREST,
                 Filter::Linear => vk::SamplerMipmapMode::LINEAR,
             })
             .address_mode_u(address(info.u))
             .address_mode_v(address(info.v))
             .address_mode_w(address(info.w))
-            .anisotropy_enable(info.anisotropy > 1)
-            .max_anisotropy(info.anisotropy as f32)
+            .anisotropy_enable(info.max_anisotropy > 1)
+            .max_anisotropy(info.max_anisotropy as f32)
             .compare_enable(info.compare != CompareOp::None)
             .compare_op(vk::CompareOp::from_raw(
                 (info.compare as u32).saturating_sub(1) as i32,
             ))
             .min_lod(info.min_lod)
             .max_lod(info.max_lod)
-            .border_color(match info.border {
+            .border_color(match info.border_color {
                 BorderColor::OpaqueBlack => vk::BorderColor::FLOAT_OPAQUE_BLACK,
                 BorderColor::OpaqueWhite => vk::BorderColor::FLOAT_OPAQUE_WHITE,
                 BorderColor::TransparentBlack => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,

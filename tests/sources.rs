@@ -20,7 +20,7 @@ fn run(device: &mk::Device, info: &ComputePipelineInfo, push: &[u8], n: u32) -> 
     let layout = host::layout(device, kinds);
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
-            sets: &[layout],
+            descriptor_set_layout: &[layout],
             ..*info
         })
         .unwrap();
@@ -85,10 +85,10 @@ fn native(device: &mk::Device) {
     let tripled = run(
         device,
         &ComputePipelineInfo {
-            code: SOURCE.as_bytes(),
-            entry: "triple",
-            group: [64, 1, 1],
-            full: true,
+            bytecode: SOURCE.as_bytes(),
+            entrypoint: "triple",
+            threadgroup_size: [64, 1, 1],
+            require_full_subgroups: true,
             label: "triple",
             ..Default::default()
         },
@@ -103,9 +103,9 @@ fn native(device: &mk::Device) {
     let counted = run(
         device,
         &ComputePipelineInfo {
-            code: plain,
-            entry: "fill",
-            group: [64, 1, 1],
+            bytecode: plain,
+            entrypoint: "fill",
+            threadgroup_size: [64, 1, 1],
             ..Default::default()
         },
         &push,
@@ -113,8 +113,8 @@ fn native(device: &mk::Device) {
     );
     assert!(counted.iter().enumerate().all(|(i, &v)| v == i as u32 + 9));
     let missing = device.create_compute_pipeline(&ComputePipelineInfo {
-        code: plain,
-        entry: "fill",
+        bytecode: plain,
+        entrypoint: "fill",
         ..Default::default()
     });
     assert!(matches!(missing, Err(Error::Shader(_))), "{missing:?}");
@@ -143,9 +143,9 @@ fn native(device: &mk::Device) {
     let counted = run(
         device,
         &ComputePipelineInfo {
-            code,
-            entry: "fill",
-            group: [64, 1, 1],
+            bytecode: code,
+            entrypoint: "fill",
+            threadgroup_size: [64, 1, 1],
             label: "count",
             ..Default::default()
         },
@@ -162,14 +162,14 @@ fn native(device: &mk::Device) {
 
 pub fn test() {
     let device = host::device(1);
-    if !device.capabilities().storage_sets || !device.capabilities().compute {
+    if !device.capabilities().storage_sets || !device.capabilities().compute_shaders {
         println!("no compute storage sets");
         return;
     }
     let wrong = device.create_compute_pipeline(&ComputePipelineInfo {
-        code: host::code!("count"),
-        entry: "fill",
-        group: [32, 1, 1],
+        bytecode: host::code!("count"),
+        entrypoint: "fill",
+        threadgroup_size: [32, 1, 1],
         ..Default::default()
     });
     assert!(matches!(wrong, Err(Error::Invalid(_))), "{wrong:?}");

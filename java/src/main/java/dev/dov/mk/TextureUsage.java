@@ -3,12 +3,12 @@ package dev.dov.mk;
 public interface TextureUsage {
     int SAMPLED = 1;
     int STORAGE = 2;
-    int COLOR = 4;
-    int DEPTH = 8;
+    int COLOR_ATTACHMENT = 4;
+    int DEPTH_STENCIL = 8;
     int COPY_SRC = 16;
     int COPY_DST = 32;
-    int VIEW = 64;
-    int HOST = 128;
-    int ATOMIC = 1024;
-    int INPUT = 2048;
+    int MUTABLE_VIEW_FORMAT = 64;
+    int HOST_COPY = 128;
+    int STORAGE_ATOMIC = 1024;
+    int INPUT_ATTACHMENT = 2048;
 }

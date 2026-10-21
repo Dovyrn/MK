@@ -95,8 +95,8 @@ pub fn java(name: &str) -> String {
     let resource = kind.map_or(String::new(), |k| {
         format!(
             "
-    public Resource resource() {{
-        return new Resource().kind(ResourceKind.{k}).handle(raw);
+    public ResidentResource resource() {{
+        return new ResidentResource().kind(ResourceKind.{k}).handle(raw);
     }}
 "
         )

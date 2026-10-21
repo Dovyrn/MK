@@ -26,22 +26,22 @@ impl Device {
                 AddressMode::MirrorClamp => MTLSamplerAddressMode::MirrorClampToEdge,
             };
             let desc = MTLSamplerDescriptor::new();
-            desc.setMinFilter(filter(info.min));
-            desc.setMagFilter(filter(info.mag));
-            desc.setMipFilter(match info.mip {
+            desc.setMinFilter(filter(info.min_filter));
+            desc.setMagFilter(filter(info.mag_filter));
+            desc.setMipFilter(match info.mip_filter {
                 Filter::Nearest => MTLSamplerMipFilter::Nearest,
                 Filter::Linear => MTLSamplerMipFilter::Linear,
             });
             desc.setSAddressMode(address(info.u));
             desc.setTAddressMode(address(info.v));
             desc.setRAddressMode(address(info.w));
-            desc.setMaxAnisotropy(info.anisotropy as usize);
+            desc.setMaxAnisotropy(info.max_anisotropy as usize);
             if info.compare != CompareOp::None {
                 desc.setCompareFunction(mtl_compare(info.compare));
             }
             desc.setLodMinClamp(info.min_lod);
             desc.setLodMaxClamp(info.max_lod);
-            desc.setBorderColor(match info.border {
+            desc.setBorderColor(match info.border_color {
                 BorderColor::OpaqueBlack => MTLSamplerBorderColor::OpaqueBlack,
                 BorderColor::OpaqueWhite => MTLSamplerBorderColor::OpaqueWhite,
                 BorderColor::TransparentBlack => MTLSamplerBorderColor::TransparentBlack,

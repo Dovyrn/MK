@@ -54,21 +54,21 @@ pub fn test() {
     let target = device
         .create_texture(&TextureInfo {
             height: 4,
-            ..texel(TextureUsage::COLOR | TextureUsage::COPY_SRC)
+            ..texel(TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC)
         })
         .unwrap();
     let sampler = device
         .create_sampler(&SamplerInfo {
-            min: Filter::Nearest,
-            mag: Filter::Nearest,
-            mip: Filter::Nearest,
+            min_filter: Filter::Nearest,
+            mag_filter: Filter::Nearest,
+            mip_filter: Filter::Nearest,
             u: AddressMode::Clamp,
             v: AddressMode::Clamp,
             w: AddressMode::Clamp,
             ..Default::default()
         })
         .unwrap();
-    let at = caps.bind_alignment.max(16) as u64;
+    let at = caps.buffer_offset_alignment.max(16) as u64;
     let upload = device
         .create_buffer(
             at + 16,
@@ -95,11 +95,11 @@ pub fn test() {
     let samplers = layout(&device, &[(0, DescriptorType::Sampler)]);
     let draw = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: CODE,
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
-            sets: &[tints, sources, samplers],
+            bytecode: CODE,
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            descriptor_set_layout: &[tints, sources, samplers],
             ..Default::default()
         })
         .unwrap();
@@ -137,7 +137,7 @@ pub fn test() {
         ..Default::default()
     });
     pass.end();
-    c.discard_texture_contents(&[discard(target, PipelineStages::COLOR)]);
+    c.discard_texture_contents(&[discard(target, PipelineStages::COLOR_ATTACHMENT)]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
             width: 4,
@@ -169,7 +169,7 @@ pub fn test() {
     pass.draw(3, 1, 0, 0);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: target,
@@ -205,7 +205,7 @@ pub fn test() {
         assert!(p[0].abs_diff(red) <= 1, "pixel {i} red {} not {red}", p[0]);
     }
     println!("render: uniform, texture and sampler sets drew 16 pixels");
-    if !caps.storage_sets || !caps.compute {
+    if !caps.storage_sets || !caps.compute_shaders {
         println!("compute: storage sets are not supported");
         return;
     }
@@ -243,9 +243,9 @@ pub fn test() {
     );
     let fill = device
         .create_compute_pipeline(&ComputePipelineInfo {
-            code: CODE,
-            entry: "fill",
-            sets: &[buffers, textures, samplers],
+            bytecode: CODE,
+            entrypoint: "fill",
+            descriptor_set_layout: &[buffers, textures, samplers],
             ..Default::default()
         })
         .unwrap();
@@ -282,7 +282,7 @@ pub fn test() {
         texture: image,
         width: 4,
         buffer: out,
-        offset: 256,
+        buffer_offset: 256,
         ..Default::default()
     });
     pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);

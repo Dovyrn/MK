@@ -50,7 +50,7 @@ impl Query {
 fn target(kind: QueryKind) -> u32 {
     match kind {
         QueryKind::Timestamp => glow::TIMESTAMP,
-        QueryKind::Occlusion => glow::ANY_SAMPLES_PASSED,
-        QueryKind::Precise => glow::SAMPLES_PASSED,
+        QueryKind::OcclusionAny => glow::ANY_SAMPLES_PASSED,
+        QueryKind::OcclusionCount => glow::SAMPLES_PASSED,
     }
 }

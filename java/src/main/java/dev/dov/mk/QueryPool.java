@@ -9,7 +9,7 @@ public record QueryPool(long raw) {
         return handle == null ? 0 : handle.raw;
     }
 
-    public Resource resource() {
-        return new Resource().kind(ResourceKind.QUERY_POOL).handle(raw);
+    public ResidentResource resource() {
+        return new ResidentResource().kind(ResourceKind.QUERY_POOL).handle(raw);
     }
 }

@@ -69,14 +69,14 @@ pub fn buffer(binding: u32, buffer: mk::Buffer, offset: u64, size: u64) -> mk::D
     mk::DescriptorWrite {
         binding,
         buffer,
-        offset,
-        size,
+        buffer_offset: offset,
+        buffer_size: size,
         ..Default::default()
     }
 }
 
 pub fn constants(device: &mk::Device, blocks: &[&[u8]]) -> (mk::Buffer, u64) {
-    let stride = device.capabilities().bind_alignment.max(256) as u64;
+    let stride = device.capabilities().buffer_offset_alignment.max(256) as u64;
     let buffer = device
         .create_buffer(
             stride * blocks.len() as u64,

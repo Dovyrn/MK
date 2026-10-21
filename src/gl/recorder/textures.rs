@@ -102,7 +102,7 @@ impl Recorder<'_> {
             width,
             height,
             depth,
-            layers,
+            layer_count: layers,
             ..
         } = c
         else {

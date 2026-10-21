@@ -18,8 +18,8 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: 8,
             height: 8,
-            mips: 2,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            mip_count: 2,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -29,7 +29,7 @@ pub fn test() {
             &TextureViewInfo {
                 format: Format::Rgba8Unorm,
                 base_mip: 1,
-                usage: TextureUsage::COLOR,
+                usage: TextureUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
         )
@@ -45,8 +45,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(&[TextureContentDiscard {
         texture,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -73,7 +73,7 @@ pub fn test() {
     }]);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,

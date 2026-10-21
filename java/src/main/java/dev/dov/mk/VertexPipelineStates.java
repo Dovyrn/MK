@@ -8,41 +8,41 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class VertexPipelineStates {
-    public Topology topology = Topology.TRIANGLE;
-    public CullMode cull = CullMode.NONE;
-    public FrontFace face = FrontFace.CCW;
-    public DepthStateInfo depth = new DepthStateInfo();
-    public int frontReference = 0;
-    public int backReference = 0;
-    public float biasConstant = 0.0f;
-    public float biasSlope = 0.0f;
-    public float biasClamp = 0.0f;
+    public PrimitiveTopology primitiveTopology = PrimitiveTopology.TRIANGLE;
+    public CullMode cullMode = CullMode.NONE;
+    public FrontFace frontFace = FrontFace.COUNTER_CLOCKWISE;
+    public DepthStencilStateInfo depthStencil = new DepthStencilStateInfo();
+    public int frontStencilReference = 0;
+    public int backStencilReference = 0;
+    public float depthBiasConstant = 0.0f;
+    public float depthBiasSlope = 0.0f;
+    public float depthBiasClamp = 0.0f;
     public float[] blendColor = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
-    public int dynamic = 0;
+    public int dynamicStates = 0;
 
-    public static final int SIZE = 52 + DepthStateInfo.SIZE;
+    public static final int SIZE = 52 + DepthStencilStateInfo.SIZE;
 
     int encodedSize() {
-        return 52 + depth.encodedSize();
+        return 52 + depthStencil.encodedSize();
     }
 
     long encode(long p) {
-        memPutInt(p, topology.value);
+        memPutInt(p, primitiveTopology.value);
         p += 4;
-        memPutInt(p, cull.value);
+        memPutInt(p, cullMode.value);
         p += 4;
-        memPutInt(p, face.value);
+        memPutInt(p, frontFace.value);
         p += 4;
-        p = depth.encode(p);
-        memPutInt(p, frontReference);
+        p = depthStencil.encode(p);
+        memPutInt(p, frontStencilReference);
         p += 4;
-        memPutInt(p, backReference);
+        memPutInt(p, backStencilReference);
         p += 4;
-        memPutFloat(p, biasConstant);
+        memPutFloat(p, depthBiasConstant);
         p += 4;
-        memPutFloat(p, biasSlope);
+        memPutFloat(p, depthBiasSlope);
         p += 4;
-        memPutFloat(p, biasClamp);
+        memPutFloat(p, depthBiasClamp);
         p += 4;
         if (blendColor.length != 4) {
             throw new IllegalArgumentException("blendColor has 4 values");
@@ -51,36 +51,36 @@ public class VertexPipelineStates {
             memPutFloat(p, x);
             p += 4;
         }
-        memPutInt(p, dynamic);
+        memPutInt(p, dynamicStates);
         p += 4;
         return p;
     }
 
     static VertexPipelineStates decode(long p) {
         var r = new VertexPipelineStates();
-        r.topology = Topology.of(memGetInt(p));
+        r.primitiveTopology = PrimitiveTopology.of(memGetInt(p));
         p += 4;
-        r.cull = CullMode.of(memGetInt(p));
+        r.cullMode = CullMode.of(memGetInt(p));
         p += 4;
-        r.face = FrontFace.of(memGetInt(p));
+        r.frontFace = FrontFace.of(memGetInt(p));
         p += 4;
-        r.depth = DepthStateInfo.decode(p);
-        p += r.depth.encodedSize();
-        r.frontReference = memGetInt(p);
+        r.depthStencil = DepthStencilStateInfo.decode(p);
+        p += r.depthStencil.encodedSize();
+        r.frontStencilReference = memGetInt(p);
         p += 4;
-        r.backReference = memGetInt(p);
+        r.backStencilReference = memGetInt(p);
         p += 4;
-        r.biasConstant = memGetFloat(p);
+        r.depthBiasConstant = memGetFloat(p);
         p += 4;
-        r.biasSlope = memGetFloat(p);
+        r.depthBiasSlope = memGetFloat(p);
         p += 4;
-        r.biasClamp = memGetFloat(p);
+        r.depthBiasClamp = memGetFloat(p);
         p += 4;
         for (var i = 0; i < 4; i++) {
             r.blendColor[i] = memGetFloat(p);
             p += 4;
         }
-        r.dynamic = memGetInt(p);
+        r.dynamicStates = memGetInt(p);
         p += 4;
         return r;
     }

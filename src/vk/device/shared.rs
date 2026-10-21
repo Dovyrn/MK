@@ -36,7 +36,7 @@ impl Device {
         self.ext
             .win32
             .as_ref()
-            .ok_or_else(|| Error::Unsupported(format!("{name} needs DeviceInfo.shared_handles")))
+            .ok_or_else(|| Error::Unsupported(format!("{name} needs DeviceInfo.shared_textures")))
     }
 
     pub fn import_shared_texture(&self, handle: u64, info: &TextureInfo) -> Result<Texture, Error> {

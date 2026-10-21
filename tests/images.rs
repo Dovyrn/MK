@@ -9,7 +9,7 @@ pub fn test() {
     let n = 16u32;
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
-    if device.capabilities().images == 0 || !device.capabilities().compute {
+    if device.capabilities().max_storage_textures == 0 || !device.capabilities().compute_shaders {
         println!("no image handles or no compute");
         return;
     }
@@ -34,9 +34,9 @@ pub fn test() {
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
-            code: host::code!("images"),
-            sets: &[layout],
-            entry: "fill",
+            bytecode: host::code!("images"),
+            descriptor_set_layout: &[layout],
+            entrypoint: "fill",
             ..Default::default()
         })
         .unwrap();

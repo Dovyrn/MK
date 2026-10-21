@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 public class TileInfo {
     public int width = 0;
     public int height = 0;
-    public int shared = 0;
+    public int threadgroupMemory = 0;
 
     public static final int SIZE = 12;
 
@@ -23,7 +23,7 @@ public class TileInfo {
         p += 4;
         memPutInt(p, height);
         p += 4;
-        memPutInt(p, shared);
+        memPutInt(p, threadgroupMemory);
         p += 4;
         return p;
     }
@@ -34,7 +34,7 @@ public class TileInfo {
         p += 4;
         r.height = memGetInt(p);
         p += 4;
-        r.shared = memGetInt(p);
+        r.threadgroupMemory = memGetInt(p);
         p += 4;
         return r;
     }

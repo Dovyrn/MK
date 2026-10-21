@@ -1,11 +1,11 @@
 [flags.pipeline_stages]
 VERTEX = 1
 FRAGMENT = 2
-TASK = 8
+OBJECT = 8
 MESH = 16
 INDIRECT = 32
-DEPTH = 64
-COLOR = 128
+DEPTH_STENCIL = 64
+COLOR_ATTACHMENT = 128
 HOST = 256
 COMPUTE = 134217728
 COPY = 268435456
@@ -18,7 +18,7 @@ IMMEDIATE = 2
 [enum.color_space]
 SRGB = 0
 DISPLAY_P3 = 1
-EXTENDED_SRGB = 2
+EXTENDED_LINEAR_SRGB = 2
 HDR10 = 3
 
 [enum.descriptor_type]
@@ -40,14 +40,14 @@ INDIRECT_BUFFER = 3
 [flags.texture_usage]
 SAMPLED = 1
 STORAGE = 2
-COLOR = 4
-DEPTH = 8
+COLOR_ATTACHMENT = 4
+DEPTH_STENCIL = 8
 COPY_SRC = 16
 COPY_DST = 32
-VIEW = 64
-HOST = 128
-ATOMIC = 1024
-INPUT = 2048
+MUTABLE_VIEW_FORMAT = 64
+HOST_COPY = 128
+STORAGE_ATOMIC = 1024
+INPUT_ATTACHMENT = 2048
 
 [flags.buffer_usage]
 UNIFORM = 1
@@ -101,7 +101,7 @@ TRANSPARENT_BLACK = 0
 OPAQUE_BLACK = 1
 OPAQUE_WHITE = 2
 
-[enum.topology]
+[enum.primitive_topology]
 POINT = 0
 LINE = 1
 LINE_STRIP = 2
@@ -142,8 +142,8 @@ FRONT = 1
 BACK = 2
 
 [enum.front_face]
-CCW = 0
-CW = 1
+COUNTER_CLOCKWISE = 0
+CLOCKWISE = 1
 
 [enum.fill_mode]
 FILL = 0
@@ -152,11 +152,11 @@ LINE = 1
 [enum.load_op]
 LOAD = 0
 CLEAR = 1
-DONT_CARE = 2
+DISCARD = 2
 
 [enum.store_op]
 STORE = 0
-DONT_CARE = 1
+DISCARD = 1
 
 [enum.index_type]
 U16 = 0
@@ -173,13 +173,13 @@ INCREMENT_WRAP = 6
 DECREMENT_WRAP = 7
 
 [flags.dynamic_pipeline_states]
-CULL = 1
-FACE = 2
-DEPTH_STATE = 4
+CULL_MODE = 1
+FRONT_FACE = 2
+DEPTH_STENCIL_STATE = 4
 STENCIL_REFERENCE = 8
 DEPTH_BIAS = 16
 BLEND_COLOR = 32
-TOPOLOGY = 64
+PRIMITIVE_TOPOLOGY = 64
 
 [flags.color_mask]
 R = 1
@@ -190,8 +190,8 @@ ALL = 15
 
 [enum.query_kind]
 TIMESTAMP = 0
-OCCLUSION = 1
-PRECISE = 4
+OCCLUSION_ANY = 1
+OCCLUSION_COUNT = 4
 
 [flags.subgroup_op]
 BASIC = 1
@@ -206,7 +206,7 @@ ROTATE = 512
 
 [flags.atomic64]
 MIN_MAX = 1
-ALL = 2
+BUFFER_ALL = 2
 SHARED = 4
 SIGNED = 8
 IMAGE = 16

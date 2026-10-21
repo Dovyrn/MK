@@ -34,8 +34,8 @@ pub fn test() {
                 format: f,
                 width: n,
                 height: n,
-                samples: 4,
-                usage: TextureUsage::COLOR,
+                sample_count: 4,
+                usage: TextureUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             })
             .and_then(|ms| {
@@ -43,7 +43,7 @@ pub fn test() {
                     format: f,
                     width: n,
                     height: n,
-                    usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+                    usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
                     ..Default::default()
                 })?;
                 Ok((ms, dst))
@@ -58,8 +58,8 @@ pub fn test() {
         c.use_residency_set(set);
         c.discard_texture_contents(&[ms, dst].map(|t| TextureContentDiscard {
             texture: t,
-            src_stage: PipelineStages::COLOR,
-            dst_stage: PipelineStages::COLOR,
+            src_stage: PipelineStages::COLOR_ATTACHMENT,
+            dst_stage: PipelineStages::COLOR_ATTACHMENT,
         }));
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -87,8 +87,8 @@ pub fn test() {
         pass.end();
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
-                src_stage: PipelineStages::COLOR,
-                dst_stage: PipelineStages::COLOR,
+                src_stage: PipelineStages::COLOR_ATTACHMENT,
+                dst_stage: PipelineStages::COLOR_ATTACHMENT,
                 width: n,
                 height: n,
                 colors: &[ColorAttachment {
@@ -113,8 +113,8 @@ pub fn test() {
         pass.end();
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
-                src_stage: PipelineStages::COLOR,
-                dst_stage: PipelineStages::COLOR,
+                src_stage: PipelineStages::COLOR_ATTACHMENT,
+                dst_stage: PipelineStages::COLOR_ATTACHMENT,
                 width: area,
                 height: area,
                 colors: &[ColorAttachment {
@@ -139,7 +139,7 @@ pub fn test() {
         }]);
         pass.end();
         let mut pass = c
-            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
             .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: dst,

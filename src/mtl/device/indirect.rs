@@ -14,7 +14,7 @@ impl Device {
         info: &IndirectBufferInfo,
     ) -> Result<IndirectBuffer, Error> {
         let entry = self.res.table.check_indirect(info);
-        self.caps.check_indirect(entry.mesh, info.draws)?;
+        self.caps.check_indirect(entry.mesh, info.max_draws)?;
         let render = self.res.renders.get(info.pipeline);
         let (task, mesh) = (render.task, render.mesh);
         let groups = [
@@ -39,7 +39,7 @@ impl Device {
                 self.raw
                     .newIndirectCommandBufferWithDescriptor_maxCommandCount_options(
                         &desc,
-                        info.draws as usize,
+                        info.max_draws as usize,
                         MTLResourceOptions::StorageModePrivate
                             | MTLResourceOptions::HazardTrackingModeUntracked,
                     )
@@ -65,7 +65,7 @@ impl Device {
         let info = self.res.table.indirects.get(indirect).info;
         let list = self.res.indirects.get(indirect);
         let indices = if info.indexed {
-            self.res.buffers.get(info.indices).address + info.offset
+            self.res.buffers.get(info.index_buffer).address + info.index_offset
         } else {
             0
         };

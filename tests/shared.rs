@@ -22,7 +22,7 @@ pub fn test() {
         format: Format::Rgba8Unorm,
         width: size,
         height: size,
-        usage: TextureUsage::COLOR,
+        usage: TextureUsage::COLOR_ATTACHMENT,
         ..Default::default()
     };
     let texture = match device.import_shared_texture(d3d.texture_handle.0 as u64, &info) {
@@ -38,7 +38,7 @@ pub fn test() {
     let pool = device.create_command_pool(0).unwrap();
     let mut c = device.begin_commands(pool).unwrap();
     #[cfg(feature = "vk")]
-    c.acquire_shared_texture(texture, mk::PipelineStages::COLOR);
+    c.acquire_shared_texture(texture, mk::PipelineStages::COLOR_ATTACHMENT);
     let pass = c
         .begin_render_pass(&RenderPassInfo {
             width: size,
@@ -53,7 +53,7 @@ pub fn test() {
         .unwrap();
     pass.end();
     #[cfg(feature = "vk")]
-    c.release_shared_texture(texture, mk::PipelineStages::COLOR);
+    c.release_shared_texture(texture, mk::PipelineStages::COLOR_ATTACHMENT);
     c.end().unwrap();
     #[cfg(feature = "vk")]
     device.submit([c], &[], &[(&timeline, 1)]).unwrap();

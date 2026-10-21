@@ -12,8 +12,8 @@ public class DepthAttachment {
     public LoadOp load = LoadOp.CLEAR;
     public StoreOp store = StoreOp.STORE;
     public float clearDepth = 1.0f;
-    public LoadOp stencilLoad = LoadOp.DONT_CARE;
-    public StoreOp stencilStore = StoreOp.DONT_CARE;
+    public LoadOp stencilLoad = LoadOp.DISCARD;
+    public StoreOp stencilStore = StoreOp.DISCARD;
     public int clearStencil = 0;
 
     public static final int SIZE = 32;

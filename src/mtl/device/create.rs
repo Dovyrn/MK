@@ -28,51 +28,51 @@ fn compiler(
 fn supported(raw: &ProtocolObject<dyn MTLDevice>) -> DeviceInfo {
     let caps = Device::detect(raw, 1, 0);
     DeviceInfo {
-        queues: 32,
-        addresses: true,
+        queue_count: 32,
+        buffer_addresses: true,
         timelines: true,
         partially_bound: true,
         update_after_bind: true,
         standard_layout: true,
-        synchronization: true,
+        synchronization2: true,
         dynamic_rendering: true,
-        anisotropy: true,
+        sampler_anisotropy: true,
         cube_arrays: true,
-        multi_viewport: true,
+        multi_viewports: true,
         depth_clamp: true,
         precise_occlusion: true,
         line_fill: true,
-        multi_draw: true,
+        multi_draw_indirect: true,
         bias_clamp: true,
         independent_blend: true,
-        dual_blend: true,
-        int64: true,
+        dual_source_blend: true,
+        shader_int64: true,
         unformatted_reads: true,
         unformatted_writes: true,
         draw_parameters: true,
-        runtime_arrays: true,
-        nonuniform: true,
+        runtime_descriptor_arrays: true,
+        nonuniform_indexing: true,
         indirect_count: true,
-        buffer_atomics64: caps.atomics64.contains(Atomic64::ALL),
+        buffer_atomics64: caps.atomics64.contains(Atomic64::BUFFER_ALL),
         shared_atomics64: caps.atomics64.contains(Atomic64::SHARED),
-        memory_model: true,
+        acquire_release_atomics: true,
         mirror_clamp: true,
-        viewport_index: true,
-        subgroup_sizes: true,
+        shader_viewport_index: true,
+        subgroup_size_control: true,
         full_subgroups: caps.full_subgroups,
         subgroup_rotate: true,
         dynamic_indexing: true,
         fragment_stores: true,
         vertex_stores: true,
-        mesh: caps.mesh,
-        task: caps.task,
-        host_read: caps.host_read,
+        mesh_shaders: caps.mesh_shaders,
+        object_shaders: caps.object_shaders,
+        host_texture_reads: caps.host_texture_reads,
         attachment_reads: true,
         ordered_reads: true,
         image_atomics64: caps.atomics64.contains(Atomic64::IMAGE),
         swapchain: true,
         present_wait: true,
-        shared_handles: false,
+        shared_textures: false,
     }
 }
 
@@ -90,6 +90,6 @@ impl Device {
         let raw = system()?;
         info.assert_usable(&supported(&raw));
         let compiler = compiler(&raw)?;
-        Self::import_device(raw, compiler, info.queues)
+        Self::import_device(raw, compiler, info.queue_count)
     }
 }

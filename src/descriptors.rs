@@ -1,7 +1,8 @@
 use crate::table::{Table, lock};
 use crate::{
     BufferUsage, DescriptorBinding, DescriptorLayout, DescriptorPool, DescriptorSet,
-    DescriptorType, DescriptorWrite, DeviceCapabilities, Error, Resource, TextureUsage, sets,
+    DescriptorType, DescriptorWrite, DeviceCapabilities, Error, ResidentResource, TextureUsage,
+    sets,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -16,7 +17,7 @@ pub struct LayoutEntry {
 
 pub struct SetEntry {
     pub layout: DescriptorLayout,
-    pub resources: Mutex<Vec<(u32, u32, Resource, u64)>>,
+    pub resources: Mutex<Vec<(u32, u32, ResidentResource, u64)>>,
     pub bound: AtomicU32,
 }
 
@@ -49,15 +50,19 @@ pub fn set_of(kind: DescriptorType) -> u32 {
 fn limit(caps: &DeviceCapabilities, kind: DescriptorType) -> (u32, &'static str) {
     match kind {
         DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-            (caps.set_uniforms, "set_uniforms")
+            (caps.max_set_uniforms, "max_set_uniforms")
         }
         DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
-            (caps.set_storages, "set_storages")
+            (caps.max_set_storages, "max_set_storages")
         }
-        DescriptorType::Texture => (caps.set_textures, "set_textures"),
-        DescriptorType::StorageTexture => (caps.set_images, "set_images"),
-        DescriptorType::InputAttachment => (caps.set_inputs, "set_inputs"),
-        DescriptorType::Sampler => (caps.set_samplers, "set_samplers"),
+        DescriptorType::Texture => (caps.max_set_textures, "max_set_textures"),
+        DescriptorType::StorageTexture => {
+            (caps.max_set_storage_textures, "max_set_storage_textures")
+        }
+        DescriptorType::InputAttachment => {
+            (caps.max_set_input_attachments, "max_set_input_attachments")
+        }
+        DescriptorType::Sampler => (caps.max_set_samplers, "max_set_samplers"),
     }
 }
 
@@ -116,12 +121,12 @@ pub fn check_layout(
     for (kind, max, cap) in [
         (
             DescriptorType::UniformBufferDynamic,
-            caps.set_dynamic_uniforms,
+            caps.max_set_dynamic_uniforms,
             "set_dynamic_uniforms",
         ),
         (
             DescriptorType::StorageBufferDynamic,
-            caps.set_dynamic_storages,
+            caps.max_set_dynamic_storages,
             "set_dynamic_storages",
         ),
     ] {
@@ -304,42 +309,42 @@ impl Table {
                         DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic
                     );
                     let (needs, what, max) = if uniform {
-                        (BufferUsage::UNIFORM, "UNIFORM", caps.max_uniform)
+                        (BufferUsage::UNIFORM, "UNIFORM", caps.max_uniform_range)
                     } else {
-                        (BufferUsage::STORAGE, "STORAGE", caps.max_storage)
+                        (BufferUsage::STORAGE, "STORAGE", caps.max_storage_range)
                     };
                     self.assert_usage(name, w.buffer, needs, what);
                     check!(
-                        !dynamic(b.kind) || w.size != !0,
+                        !dynamic(b.kind) || w.buffer_size != !0,
                         "{name} binding {} is {:?}, which needs an explicit size since its offset moves at bind",
                         w.binding,
                         b.kind
                     );
                     let total = *self.buffers.get(w.buffer);
-                    let end = if w.size == !0 {
+                    let end = if w.buffer_size == !0 {
                         total
                     } else {
-                        w.offset.saturating_add(w.size)
+                        w.buffer_offset.saturating_add(w.buffer_size)
                     };
                     check!(
-                        w.offset < total && end <= total,
+                        w.buffer_offset < total && end <= total,
                         "{name} covers bytes {}..{end} of {}, which has {total}",
-                        w.offset,
+                        w.buffer_offset,
                         w.buffer
                     );
-                    let alignment = caps.bind_alignment.max(1) as u64;
+                    let alignment = caps.buffer_offset_alignment.max(1) as u64;
                     check!(
-                        w.offset.is_multiple_of(alignment),
-                        "{name} offset {} is not a multiple of caps.bind_alignment {alignment}",
-                        w.offset
+                        w.buffer_offset.is_multiple_of(alignment),
+                        "{name} offset {} is not a multiple of caps.buffer_offset_alignment {alignment}",
+                        w.buffer_offset
                     );
                     check!(
-                        end - w.offset <= max,
+                        end - w.buffer_offset <= max,
                         "{name} covers {} bytes of {}, over the limit of {max}",
-                        end - w.offset,
+                        end - w.buffer_offset,
                         w.buffer
                     );
-                    (Resource::from(w.buffer), end)
+                    (ResidentResource::from(w.buffer), end)
                 }
                 DescriptorType::Sampler => {
                     self.samplers.get(w.sampler);
@@ -349,7 +354,7 @@ impl Table {
                     let (needs, what) = match kind {
                         DescriptorType::Texture => (TextureUsage::SAMPLED, "SAMPLED"),
                         DescriptorType::StorageTexture => (TextureUsage::STORAGE, "STORAGE"),
-                        _ => (TextureUsage::INPUT, "INPUT"),
+                        _ => (TextureUsage::INPUT_ATTACHMENT, "INPUT_ATTACHMENT"),
                     };
                     let usage = self.textures.get(w.texture).usage;
                     check!(
@@ -357,7 +362,7 @@ impl Table {
                         "{name} needs {} created with TextureUsage::{what}",
                         w.texture
                     );
-                    (Resource::from(w.texture), 0)
+                    (ResidentResource::from(w.texture), 0)
                 }
             };
             resources.retain(|r| (r.0, r.1) != (w.binding, w.element));

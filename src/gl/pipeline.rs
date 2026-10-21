@@ -9,7 +9,7 @@ pub struct Pipeline {
     pub buffers: Vec<VertexBufferLayout>,
     pub attributes: Vec<VertexAttribute>,
     pub colors: Vec<ColorTarget>,
-    pub topology: crate::Topology,
+    pub topology: crate::PrimitiveTopology,
     pub fill: crate::FillMode,
     pub clamp: bool,
     pub coverage: bool,
@@ -22,7 +22,7 @@ impl Pipeline {
         info: &RenderPipelineInfo,
         stages: &[(u32, &str)],
     ) -> Result<Self, Error> {
-        let program = Program::new(gl, info.code, stages)?;
+        let program = Program::new(gl, info.bytecode, stages)?;
         let raw = program.raw;
         let validate = cfg!(feature = "validation");
         let missing = unsafe {
@@ -34,7 +34,7 @@ impl Pipeline {
                 .filter_map(|i| gl.get_active_attribute(raw, i))
                 .filter(|a| !a.name.starts_with("gl_"))
                 .filter_map(|a| gl.get_attrib_location(raw, &a.name))
-                .find(|&l| !info.attributes.iter().any(|a| a.location == l))
+                .find(|&l| !info.vertex_attributes.iter().any(|a| a.location == l))
         };
         let vao = match missing {
             Some(l) => Err(Error::Shader(format!("vertex input {l} has no attribute"))),
@@ -44,13 +44,13 @@ impl Pipeline {
         Ok(Self {
             program,
             vao,
-            buffers: info.buffers.to_vec(),
-            attributes: info.attributes.to_vec(),
-            colors: info.colors.to_vec(),
-            topology: info.states.topology,
-            fill: info.fill,
-            clamp: info.clamp,
-            coverage: info.coverage,
+            buffers: info.vertex_buffers.to_vec(),
+            attributes: info.vertex_attributes.to_vec(),
+            colors: info.color_targets.to_vec(),
+            topology: info.states.primitive_topology,
+            fill: info.fill_mode,
+            clamp: info.depth_clamp,
+            coverage: info.alpha_to_coverage,
             states: info.states,
         })
     }

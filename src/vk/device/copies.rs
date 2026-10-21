@@ -10,8 +10,8 @@ impl Device {
         let (image, layers) = self.host_copy_target(copy)?;
         let region = vk::MemoryToImageCopyEXT::default()
             .host_pointer(data.as_ptr().cast())
-            .memory_row_length(copy.row_length)
-            .memory_image_height(copy.row_count)
+            .memory_row_length(copy.row_texels)
+            .memory_image_height(copy.slice_rows)
             .image_subresource(layers)
             .image_offset(host_offset(copy))
             .image_extent(host_extent(copy));
@@ -29,8 +29,8 @@ impl Device {
         let (image, layers) = self.host_copy_target(copy)?;
         let region = vk::ImageToMemoryCopyEXT::default()
             .host_pointer(data.as_mut_ptr().cast())
-            .memory_row_length(copy.row_length)
-            .memory_image_height(copy.row_count)
+            .memory_row_length(copy.row_texels)
+            .memory_image_height(copy.slice_rows)
             .image_subresource(layers)
             .image_offset(host_offset(copy))
             .image_extent(host_extent(copy));
@@ -64,7 +64,7 @@ impl Device {
         info: &TextureInfo,
         create: &mut vk::ImageCreateInfo,
     ) -> Result<(), Error> {
-        if !info.usage.contains(TextureUsage::HOST) {
+        if !info.usage.contains(TextureUsage::HOST_COPY) {
             return Ok(());
         }
         create.usage |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
@@ -81,7 +81,7 @@ impl Device {
         .map(|_| ())
         .map_err(|_| {
             Error::Unsupported(format!(
-                "format {} does not support TextureUsage::HOST here",
+                "format {} does not support TextureUsage::HOST_COPY here",
                 info.format
             ))
         })

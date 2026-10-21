@@ -93,7 +93,7 @@ impl Device {
         let bindings = &res.descriptor_pools.get(s.pool).bindings;
         for w in writes {
             let value = match s.set {
-                sets::BUFFERS => res.buffers.get(w.buffer).address + w.offset,
+                sets::BUFFERS => res.buffers.get(w.buffer).address + w.buffer_offset,
                 sets::SAMPLERS => id(res.samplers.get(w.sampler).1),
                 _ => {
                     let input = bindings.iter().any(|b| {

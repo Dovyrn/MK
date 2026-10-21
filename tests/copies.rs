@@ -23,7 +23,7 @@ pub fn test() {
                 format,
                 width,
                 height,
-                layers,
+                layer_count: layers,
                 usage: bits | TextureUsage::COPY_SRC | TextureUsage::COPY_DST,
                 ..Default::default()
             })
@@ -31,7 +31,7 @@ pub fn test() {
     };
     let plain = TextureDimension::D2;
     let view = if caps.texture_views {
-        TextureUsage::VIEW
+        TextureUsage::MUTABLE_VIEW_FORMAT
     } else {
         TextureUsage::default()
     };
@@ -43,9 +43,24 @@ pub fn test() {
         [8, 8, 3],
         TextureUsage::default(),
     );
-    let depth = make(plain, Format::D32Float, [8, 8, 1], TextureUsage::DEPTH);
-    let depth2 = make(plain, Format::D32Float, [8, 8, 1], TextureUsage::DEPTH);
-    let srgb = make(plain, Format::Rgba8Srgb, [4, 4, 1], TextureUsage::COLOR);
+    let depth = make(
+        plain,
+        Format::D32Float,
+        [8, 8, 1],
+        TextureUsage::DEPTH_STENCIL,
+    );
+    let depth2 = make(
+        plain,
+        Format::D32Float,
+        [8, 8, 1],
+        TextureUsage::DEPTH_STENCIL,
+    );
+    let srgb = make(
+        plain,
+        Format::Rgba8Srgb,
+        [4, 4, 1],
+        TextureUsage::COLOR_ATTACHMENT,
+    );
     let line = make(
         TextureDimension::D1,
         Format::Rgba8Unorm,
@@ -93,8 +108,8 @@ pub fn test() {
     });
     let set = device.create_residency_set().unwrap();
     let textures = [a, cast, array, depth, depth2, srgb, line];
-    let mut list: Vec<mk::Resource> = vec![upload.into(), back.into()];
-    list.extend(textures.iter().map(|&t| mk::Resource::from(t)));
+    let mut list: Vec<mk::ResidentResource> = vec![upload.into(), back.into()];
+    list.extend(textures.iter().map(|&t| mk::ResidentResource::from(t)));
     device.add_residency(set, &list);
     device.commit_residency(set);
     let timeline = device.create_timeline().unwrap();
@@ -107,7 +122,9 @@ pub fn test() {
         TextureContentDiscard {
             texture,
             src_stage: PipelineStages::COPY,
-            dst_stage: PipelineStages::COPY | PipelineStages::COLOR | PipelineStages::DEPTH,
+            dst_stage: PipelineStages::COPY
+                | PipelineStages::COLOR_ATTACHMENT
+                | PipelineStages::DEPTH_STENCIL,
         }
     }));
     pass.copy_buffer_to_buffer(upload, 0, back, 0, size);
@@ -121,8 +138,8 @@ pub fn test() {
     ] {
         pass.copy_buffer_to_texture(&BufferTextureCopy {
             buffer: upload,
-            offset,
-            row_length: N,
+            buffer_offset: offset,
+            row_texels: N,
             texture,
             layer,
             width,
@@ -154,7 +171,7 @@ pub fn test() {
     c.begin_render_pass(&RenderPassInfo {
         width: 8,
         height: 8,
-        depth: Some(DepthAttachment {
+        depth_stencil: Some(DepthAttachment {
             texture: depth,
             clear_depth: 0.25,
             ..Default::default()
@@ -178,7 +195,7 @@ pub fn test() {
     .end();
     let mut pass = c
         .begin_compute_pass(
-            PipelineStages::COLOR | PipelineStages::DEPTH | PipelineStages::COPY,
+            PipelineStages::COLOR_ATTACHMENT | PipelineStages::DEPTH_STENCIL | PipelineStages::COPY,
             PipelineStages::COPY,
         )
         .unwrap();
@@ -193,7 +210,7 @@ pub fn test() {
     for (s, &offset) in slots.iter().zip(&offsets) {
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             buffer: back,
-            offset,
+            buffer_offset: offset,
             texture: s.0,
             layer: s.1,
             width: s.2,

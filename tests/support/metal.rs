@@ -26,12 +26,12 @@ pub fn device(queues: u32) -> mk::Device {
 
 pub fn try_device(queues: u32) -> Option<mk::Device> {
     let have = mk::Device::supported_features().ok()?;
-    (have.queues >= queues).then(|| device(queues))
+    (have.queue_count >= queues).then(|| device(queues))
 }
 
 fn features(queues: u32) -> mk::DeviceInfo {
     mk::DeviceInfo {
-        queues,
+        queue_count: queues,
         ..mk::Device::supported_features().unwrap()
     }
 }

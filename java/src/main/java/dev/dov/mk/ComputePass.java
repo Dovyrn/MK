@@ -137,22 +137,22 @@ public class ComputePass {
     private static native void nDiscardTextureContents(long target, long textures, int texturesLength);
 
     public void copyBufferToTexture(BufferTextureCopy info) {
-        nCopyBufferToTexture(handle(), Buffer.raw(info.buffer), info.offset, info.rowLength, info.rowCount, Texture.raw(info.texture), info.mip, info.layer, info.x, info.y, info.z, info.width, info.height, info.depth);
+        nCopyBufferToTexture(handle(), Buffer.raw(info.buffer), info.bufferOffset, info.rowTexels, info.sliceRows, Texture.raw(info.texture), info.mip, info.layer, info.x, info.y, info.z, info.width, info.height, info.depth);
     }
 
-    private static native void nCopyBufferToTexture(long target, long buffer, long offset, int rowLength, int rowCount, long texture, int mip, int layer, int x, int y, int z, int width, int height, int depth);
+    private static native void nCopyBufferToTexture(long target, long buffer, long bufferOffset, int rowTexels, int sliceRows, long texture, int mip, int layer, int x, int y, int z, int width, int height, int depth);
 
     public void copyTextureToBuffer(BufferTextureCopy info) {
-        nCopyTextureToBuffer(handle(), Buffer.raw(info.buffer), info.offset, info.rowLength, info.rowCount, Texture.raw(info.texture), info.mip, info.layer, info.x, info.y, info.z, info.width, info.height, info.depth);
+        nCopyTextureToBuffer(handle(), Buffer.raw(info.buffer), info.bufferOffset, info.rowTexels, info.sliceRows, Texture.raw(info.texture), info.mip, info.layer, info.x, info.y, info.z, info.width, info.height, info.depth);
     }
 
-    private static native void nCopyTextureToBuffer(long target, long buffer, long offset, int rowLength, int rowCount, long texture, int mip, int layer, int x, int y, int z, int width, int height, int depth);
+    private static native void nCopyTextureToBuffer(long target, long buffer, long bufferOffset, int rowTexels, int sliceRows, long texture, int mip, int layer, int x, int y, int z, int width, int height, int depth);
 
     public void copyTextureToTexture(TextureCopy info) {
-        nCopyTextureToTexture(handle(), Texture.raw(info.src), info.srcMip, info.srcLayer, info.srcX, info.srcY, info.srcZ, Texture.raw(info.dst), info.dstMip, info.dstLayer, info.dstX, info.dstY, info.dstZ, info.width, info.height, info.depth, info.layers);
+        nCopyTextureToTexture(handle(), Texture.raw(info.src), info.srcMip, info.srcLayer, info.srcX, info.srcY, info.srcZ, Texture.raw(info.dst), info.dstMip, info.dstLayer, info.dstX, info.dstY, info.dstZ, info.width, info.height, info.depth, info.layerCount);
     }
 
-    private static native void nCopyTextureToTexture(long target, long src, int srcMip, int srcLayer, int srcX, int srcY, int srcZ, long dst, int dstMip, int dstLayer, int dstX, int dstY, int dstZ, int width, int height, int depth, int layers);
+    private static native void nCopyTextureToTexture(long target, long src, int srcMip, int srcLayer, int srcX, int srcY, int srcZ, long dst, int dstMip, int dstLayer, int dstX, int dstY, int dstZ, int width, int height, int depth, int layerCount);
 
     public void bindDescriptorSet(DescriptorSet set) {
         nBindDescriptorSet(handle(), DescriptorSet.raw(set));

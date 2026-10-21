@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 #[derive(Clone, Copy)]
 pub struct RenderEntry {
     pub samples: u32,
-    pub topology: crate::Topology,
+    pub topology: crate::PrimitiveTopology,
     pub mesh: bool,
     pub indirect: bool,
     pub dynamic: crate::DynamicPipelineStates,
@@ -55,7 +55,7 @@ pub struct Table {
 #[derive(Clone, Copy)]
 pub struct IndirectEntry {
     pub info: IndirectBufferInfo<'static>,
-    pub topology: crate::Topology,
+    pub topology: crate::PrimitiveTopology,
     pub mesh: bool,
 }
 
@@ -78,7 +78,9 @@ pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 pub fn vertex_buffer_mask(info: &crate::RenderPipelineInfo) -> u32 {
-    info.attributes.iter().fold(0, |m, a| m | 1 << a.buffer)
+    info.vertex_attributes
+        .iter()
+        .fold(0, |m, a| m | 1 << a.buffer_slot)
 }
 
 impl Table {
@@ -92,7 +94,7 @@ impl Table {
 
     pub fn check_indirect(&self, info: &IndirectBufferInfo) -> IndirectEntry {
         let name = "create_indirect_buffer";
-        check!(info.draws > 0, "{name} draws is 0");
+        check!(info.max_draws > 0, "{name} max_draws is 0");
         let pipeline = info.pipeline;
         let entry = *self.renders.get(pipeline);
         check!(
@@ -101,20 +103,20 @@ impl Table {
         );
         if info.indexed {
             check!(!entry.mesh, "{name} of mesh {pipeline} cannot be indexed");
-            let kind = info.kind;
+            let kind = info.index_type;
             let size = if kind == IndexType::U16 { 2 } else { 4 };
             check!(
-                info.offset.is_multiple_of(size),
+                info.index_offset.is_multiple_of(size),
                 "{name} index offset {} is not a multiple of {size}",
-                info.offset
+                info.index_offset
             );
-            self.assert_usage(name, info.indices, BufferUsage::INDEX, "INDEX");
-            let total = *self.buffers.get(info.indices);
+            self.assert_usage(name, info.index_buffer, BufferUsage::INDEX, "INDEX");
+            let total = *self.buffers.get(info.index_buffer);
             check!(
-                info.offset < total,
+                info.index_offset < total,
                 "{name} index offset {} is past {} ({total} bytes)",
-                info.offset,
-                info.indices
+                info.index_offset,
+                info.index_buffer
             );
         }
         IndirectEntry {
@@ -137,7 +139,7 @@ impl Table {
         if e.mesh {
             words[2..].copy_from_slice(&groups);
         } else if e.info.indexed {
-            let kind = e.info.kind;
+            let kind = e.info.index_type;
             words[2..6].copy_from_slice(&[
                 indices as u32,
                 (indices >> 32) as u32,
@@ -234,7 +236,7 @@ impl Table {
         if info.memory == Memory::Transient {
             lock(&self.residency).exempt_texture(texture);
         }
-        if cfg!(feature = "validation") && !info.usage.contains(TextureUsage::HOST) {
+        if cfg!(feature = "validation") && !info.usage.contains(TextureUsage::HOST_COPY) {
             lock(&self.undefined).push(texture);
         }
     }
@@ -314,8 +316,8 @@ impl Table {
             t.usage
         );
         check!(
-            info.format == t.format || t.usage.contains(TextureUsage::VIEW),
-            "a view of {texture} in format {} needs TextureUsage::VIEW",
+            info.format == t.format || t.usage.contains(TextureUsage::MUTABLE_VIEW_FORMAT),
+            "a view of {texture} in format {} needs TextureUsage::MUTABLE_VIEW_FORMAT",
             info.format
         );
         check_eq!(
@@ -338,8 +340,14 @@ impl Table {
             t.format,
             info.format
         );
-        let mips = rest(info.base_mip, info.mips, t.mips, "mip", texture);
-        let layers = rest(info.base_layer, info.layers, t.layers, "layer", texture);
+        let mips = rest(info.base_mip, info.mip_count, t.mip_count, "mip", texture);
+        let layers = rest(
+            info.base_layer,
+            info.layer_count,
+            t.layer_count,
+            "layer",
+            texture,
+        );
         let family = |d: TextureDimension| match d {
             TextureDimension::D1 | TextureDimension::D1Array => 1,
             TextureDimension::D3 => 3,
@@ -375,8 +383,8 @@ impl Table {
             _ => {}
         }
         TextureViewInfo {
-            mips,
-            layers,
+            mip_count: mips,
+            layer_count: layers,
             ..*info
         }
     }
@@ -395,8 +403,8 @@ impl Table {
                 width: (t.width >> info.base_mip).max(1),
                 height: (t.height >> info.base_mip).max(1),
                 depth: (t.depth >> info.base_mip).max(1),
-                layers: info.layers,
-                mips: info.mips,
+                layer_count: info.layer_count,
+                mip_count: info.mip_count,
                 usage: info.usage,
                 ..t
             },
@@ -407,11 +415,11 @@ impl Table {
         let texture = c.texture;
         let t = self.textures.get(texture);
         check!(
-            t.usage.contains(TextureUsage::HOST),
-            "write_texture and read_texture need {texture} created with TextureUsage::HOST"
+            t.usage.contains(TextureUsage::HOST_COPY),
+            "write_texture and read_texture need {texture} created with TextureUsage::HOST_COPY"
         );
         check!(
-            t.samples == 1 && !(Format::D16Unorm..=Format::S8Uint).contains(&t.format),
+            t.sample_count == 1 && !(Format::D16Unorm..=Format::S8Uint).contains(&t.format),
             "write_texture and read_texture need a single-sampled color texture, not {texture}"
         );
         let (w, h, d) = (c.width, c.height, c.depth);
@@ -420,12 +428,12 @@ impl Table {
             "host copy region {w}x{h}x{d} has a zero"
         );
         check!(
-            c.mip < t.mips && c.layer < t.layers,
+            c.mip < t.mip_count && c.layer < t.layer_count,
             "mip {} layer {} is outside {} mips and {} layers of {texture}",
             c.mip,
             c.layer,
-            t.mips,
-            t.layers
+            t.mip_count,
+            t.layer_count
         );
         let sizes = [t.width, t.height, t.depth].map(|n| (n >> c.mip).max(1));
         let [_, bw, bh] = t.format.block();
@@ -450,8 +458,8 @@ impl Table {
             c.x,
             c.y
         );
-        let row = if c.row_length == 0 { w } else { c.row_length };
-        let rows = if c.row_count == 0 { h } else { c.row_count };
+        let row = if c.row_texels == 0 { w } else { c.row_texels };
+        let rows = if c.slice_rows == 0 { h } else { c.slice_rows };
         check!(
             row >= w && (row.is_multiple_of(bw) || row == w),
             "row length {row} is below width {w} or not a multiple of block width {bw}"

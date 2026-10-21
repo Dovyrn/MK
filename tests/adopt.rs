@@ -26,7 +26,7 @@ fn native(n: u32) -> (Device, mk::Texture, ()) {
                 format: Format::Rgba8Unorm,
                 width: n,
                 height: n,
-                usage: mk::TextureUsage::COLOR | mk::TextureUsage::COPY_SRC,
+                usage: mk::TextureUsage::COLOR_ATTACHMENT | mk::TextureUsage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -139,7 +139,7 @@ fn native(
                 format: Format::Rgba8Unorm,
                 width: n,
                 height: n,
-                usage: mk::TextureUsage::COLOR | mk::TextureUsage::COPY_SRC,
+                usage: mk::TextureUsage::COLOR_ATTACHMENT | mk::TextureUsage::COPY_SRC,
                 ..Default::default()
             },
         )
@@ -242,8 +242,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(&[TextureContentDiscard {
         texture,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -270,7 +270,7 @@ pub fn test() {
     }]);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,

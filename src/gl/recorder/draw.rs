@@ -64,12 +64,12 @@ impl Recorder<'_> {
         let gl = self.gl;
         unsafe {
             for a in &p.attributes {
-                let Some((buffer, offset)) = self.vertices[a.buffer as usize] else {
+                let Some((buffer, offset)) = self.vertices[a.buffer_slot as usize] else {
                     gl.disable_vertex_attrib_array(a.location);
                     continue;
                 };
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.res.buffers.get(buffer).raw));
-                let layout = p.buffers[a.buffer as usize];
+                let layout = p.buffers[a.buffer_slot as usize];
                 let [_, f, ty] = a.format.gl();
                 let size = match f {
                     glow::RED | glow::RED_INTEGER => 1,
@@ -78,7 +78,7 @@ impl Recorder<'_> {
                     glow::BGRA => glow::BGRA as i32,
                     _ => 4,
                 };
-                let skip = if layout.instance {
+                let skip = if layout.instanced {
                     instance as u64 * layout.stride as u64
                 } else {
                     0
@@ -92,7 +92,7 @@ impl Recorder<'_> {
                     (self.extra.attribute)(a.location, size, ty, normalized as u8, stride, at);
                 }
                 gl.enable_vertex_attrib_array(a.location);
-                gl.vertex_attrib_divisor(a.location, layout.instance as u32);
+                gl.vertex_attrib_divisor(a.location, layout.instanced as u32);
             }
         }
     }

@@ -15,13 +15,13 @@ pub fn test() {
     let pool = device.create_command_pool(0).unwrap();
     if !device
         .format_usage(Format::Rgba8Unorm)
-        .contains(TextureUsage::HOST)
+        .contains(TextureUsage::HOST_COPY)
     {
-        println!("no TextureUsage::HOST for RGBA8_UNORM");
+        println!("no TextureUsage::HOST_COPY for RGBA8_UNORM");
         return;
     }
-    if !device.capabilities().host_read {
-        println!("read_texture needs caps.host_read");
+    if !device.capabilities().host_texture_reads {
+        println!("read_texture needs caps.host_texture_reads");
         return;
     }
     let texture = device
@@ -29,8 +29,8 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            mips: 2,
-            usage: TextureUsage::SAMPLED | TextureUsage::HOST,
+            mip_count: 2,
+            usage: TextureUsage::SAMPLED | TextureUsage::HOST_COPY,
             ..Default::default()
         })
         .unwrap();
@@ -92,7 +92,7 @@ pub fn test() {
         y: 4,
         width: 16,
         height: 8,
-        row_length: 20,
+        row_texels: 20,
         ..mip
     };
     device.write_texture(&rows, &patch).unwrap();
@@ -119,7 +119,7 @@ pub fn test() {
                 y: 3,
                 width: 8,
                 height: 8,
-                row_length: 12,
+                row_texels: 12,
                 ..mip
             },
             &mut part,
@@ -138,8 +138,8 @@ pub fn test() {
             format: Format::R32Float,
             width: 16,
             height: 16,
-            layers: 3,
-            usage: TextureUsage::HOST,
+            layer_count: 3,
+            usage: TextureUsage::HOST_COPY,
             ..Default::default()
         })
         .unwrap();
@@ -161,7 +161,7 @@ pub fn test() {
     }
     let bc = device
         .format_usage(Format::Bc1Unorm)
-        .contains(TextureUsage::HOST);
+        .contains(TextureUsage::HOST_COPY);
     let readable = device
         .format_usage(Format::Bc1Unorm)
         .contains(TextureUsage::COPY_SRC);
@@ -176,7 +176,7 @@ pub fn test() {
                 format: Format::Bc1Unorm,
                 width: 16,
                 height: 16,
-                usage: TextureUsage::SAMPLED | TextureUsage::HOST | source,
+                usage: TextureUsage::SAMPLED | TextureUsage::HOST_COPY | source,
                 ..Default::default()
             })
             .unwrap();
@@ -238,11 +238,14 @@ pub fn test() {
     }
     let budget = match device.memory_budget() {
         Ok(b) => {
-            assert!(device.capabilities().budget && b.budget > 0, "budget {b:?}");
+            assert!(
+                device.capabilities().memory_budget && b.budget > 0,
+                "budget {b:?}"
+            );
             format!("{} of {} MB", b.usage >> 20, b.budget >> 20)
         }
         Err(e) => {
-            assert!(!device.capabilities().budget, "{e}");
+            assert!(!device.capabilities().memory_budget, "{e}");
             e.to_string()
         }
     };

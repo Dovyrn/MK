@@ -9,45 +9,45 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class ComputePipelineInfo {
-    public long code = 0;
-    public long codeSize = 0;
-    public String entry = "";
-    public int[] group = new int[] {0, 0, 0};
-    public int subgroup = 0;
-    public boolean full = false;
-    public DescriptorLayout[] sets = new DescriptorLayout[0];
+    public long bytecode = 0;
+    public long bytecodeSize = 0;
+    public String entrypoint = "";
+    public int[] threadgroupSize = new int[] {0, 0, 0};
+    public int requiredSubgroupSize = 0;
+    public boolean requireFullSubgroups = false;
+    public DescriptorLayout[] descriptorSetLayout = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
-        var setsSize = 4;
-        for (var x : sets) {
-            setsSize += 8;
+        var descriptorSetLayoutSize = 4;
+        for (var x : descriptorSetLayout) {
+            descriptorSetLayoutSize += 8;
         }
-        return 44 + entry.getBytes(StandardCharsets.UTF_8).length + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 44 + entrypoint.getBytes(StandardCharsets.UTF_8).length + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
-        memPutLong(p, code);
-        memPutLong(p + 8, codeSize);
+        memPutLong(p, bytecode);
+        memPutLong(p + 8, bytecodeSize);
         p += 16;
-        var entryBytes = entry.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, entryBytes.length);
-        memByteBuffer(p + 4, entryBytes.length).put(entryBytes);
-        p += 4 + entryBytes.length;
-        if (group.length != 3) {
-            throw new IllegalArgumentException("group has 3 values");
+        var entrypointBytes = entrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, entrypointBytes.length);
+        memByteBuffer(p + 4, entrypointBytes.length).put(entrypointBytes);
+        p += 4 + entrypointBytes.length;
+        if (threadgroupSize.length != 3) {
+            throw new IllegalArgumentException("threadgroupSize has 3 values");
         }
-        for (var x : group) {
+        for (var x : threadgroupSize) {
             memPutInt(p, x);
             p += 4;
         }
-        memPutInt(p, subgroup);
+        memPutInt(p, requiredSubgroupSize);
         p += 4;
-        memPutInt(p, full ? 1 : 0);
+        memPutInt(p, requireFullSubgroups ? 1 : 0);
         p += 4;
-        memPutInt(p, sets.length);
+        memPutInt(p, descriptorSetLayout.length);
         p += 4;
-        for (var x : sets) {
+        for (var x : descriptorSetLayout) {
             memPutLong(p, DescriptorLayout.raw(x));
             p += 8;
         }

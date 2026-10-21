@@ -26,8 +26,8 @@ fn draw(pass: &mut mk::RenderPass, pipeline: RenderPipeline) {
 fn discard(texture: Texture) -> TextureContentDiscard {
     TextureContentDiscard {
         texture,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }
 }
 
@@ -39,7 +39,7 @@ fn read_back(
 ) {
     commands.use_residency_set(set);
     let mut pass = commands
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture,
@@ -144,7 +144,7 @@ fn host_frame(
         let info = ImportedPassInfo {
             width: N,
             height: N,
-            samples: 1,
+            sample_count: 1,
         };
         let mut pass = device.import_render_pass(pool, buffer, &info).unwrap();
         draw(&mut pass, pipeline);
@@ -218,7 +218,7 @@ fn host_frame(
     let info = ImportedPassInfo {
         width: N,
         height: N,
-        samples: 1,
+        sample_count: 1,
     };
     let mut pass = device.import_render_pass(pool, &encoder, &info).unwrap();
     draw(&mut pass, pipeline);
@@ -273,7 +273,7 @@ fn host_frame(
     let info = ImportedPassInfo {
         width: N,
         height: N,
-        samples: 1,
+        sample_count: 1,
     };
     let mut pass = device.import_render_pass(pool, &info).unwrap();
     draw(&mut pass, pipeline);
@@ -297,7 +297,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: N,
             height: N,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -315,10 +315,10 @@ pub fn test() {
     }];
     let pipeline = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: host::code!("solid"),
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
+            bytecode: host::code!("solid"),
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
             ..Default::default()
         })
         .unwrap();

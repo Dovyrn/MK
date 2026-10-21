@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 public enum LoadOp {
     LOAD(0),
     CLEAR(1),
-    DONT_CARE(2);
+    DISCARD(2);
 
     final int value;
 
@@ -14,7 +14,7 @@ public enum LoadOp {
         return switch (v) {
             case 0 -> LOAD;
             case 1 -> CLEAR;
-            case 2 -> DONT_CARE;
+            case 2 -> DISCARD;
             default -> throw new IllegalArgumentException(v + " is no LoadOp");
         };
     }

@@ -32,7 +32,7 @@ impl Device {
                     }
                     Query::Timestamp(heap)
                 }
-                QueryKind::Occlusion | QueryKind::Precise => {
+                QueryKind::OcclusionAny | QueryKind::OcclusionCount => {
                     let options = MTLResourceOptions::StorageModePrivate
                         | MTLResourceOptions::HazardTrackingModeUntracked;
                     let buffer = self

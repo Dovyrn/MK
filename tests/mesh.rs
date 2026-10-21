@@ -15,7 +15,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -33,28 +33,28 @@ pub fn test() {
     }];
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = match device.create_mesh_pipeline(&MeshPipelineInfo {
-        code: host::code!("mesh"),
-        sets: &[layout],
-        task: "task",
-        mesh: "mesh",
-        fragment: "frag",
-        colors: &colors,
+        bytecode: host::code!("mesh"),
+        descriptor_set_layout: &[layout],
+        object_entrypoint: "task",
+        mesh_entrypoint: "mesh",
+        fragment_entrypoint: "frag",
+        color_targets: &colors,
         ..Default::default()
     }) {
         Ok(p) => p,
         Err(e) => {
-            assert!(!device.capabilities().mesh, "{e}");
+            assert!(!device.capabilities().mesh_shaders, "{e}");
             println!("no mesh shaders: {e}");
             return;
         }
     };
     let single = device
         .create_mesh_pipeline(&MeshPipelineInfo {
-            code: host::code!("mesh"),
-            sets: &[layout],
-            mesh: "single",
-            fragment: "frag",
-            colors: &colors,
+            bytecode: host::code!("mesh"),
+            descriptor_set_layout: &[layout],
+            mesh_entrypoint: "single",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
             ..Default::default()
         })
         .unwrap();
@@ -81,8 +81,8 @@ pub fn test() {
         c.use_residency_set(set);
         c.discard_texture_contents(&[TextureContentDiscard {
             texture: color,
-            src_stage: PipelineStages::COLOR,
-            dst_stage: PipelineStages::COLOR,
+            src_stage: PipelineStages::COLOR_ATTACHMENT,
+            dst_stage: PipelineStages::COLOR_ATTACHMENT,
         }]);
         let mut pass = c
             .begin_render_pass(&RenderPassInfo {
@@ -116,7 +116,7 @@ pub fn test() {
         }
         pass.end();
         let mut pass = c
-            .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+            .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
             .unwrap();
         pass.copy_texture_to_buffer(&BufferTextureCopy {
             texture: color,
@@ -167,7 +167,7 @@ fn executed(
             format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -189,27 +189,27 @@ fn executed(
     let layout = host::layout(device, &[mk::DescriptorType::UniformBuffer]);
     let single = device
         .create_mesh_pipeline(&mk::MeshPipelineInfo {
-            code: host::code!("mesh"),
-            sets: &[layout],
-            mesh: "single",
-            fragment: "frag",
-            colors: &colors,
-            indirect: true,
+            bytecode: host::code!("mesh"),
+            descriptor_set_layout: &[layout],
+            mesh_entrypoint: "single",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            indirect_buffers: true,
             ..Default::default()
         })
         .unwrap();
     let list = device
         .create_indirect_buffer(&mk::IndirectBufferInfo {
-            draws: 1,
+            max_draws: 1,
             pipeline: single,
             ..Default::default()
         })
         .unwrap();
     let encode = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("encode_mesh"),
-            entry: "encode",
-            sets: &[layout],
+            bytecode: host::code!("encode_mesh"),
+            entrypoint: "encode",
+            descriptor_set_layout: &[layout],
             ..Default::default()
         })
         .unwrap();
@@ -249,8 +249,8 @@ fn executed(
     pass.end();
     c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -282,7 +282,7 @@ fn executed(
     pass.execute_indirect(list, 0, 1);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,

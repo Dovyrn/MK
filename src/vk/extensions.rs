@@ -199,7 +199,7 @@ impl Extensions {
                 full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
                 atomics: v12.map_or(Atomic64::default(), |f| {
                     let buffer = if f.shader_buffer_int64_atomics != 0 {
-                        Atomic64::MIN_MAX | Atomic64::ALL | Atomic64::SIGNED
+                        Atomic64::MIN_MAX | Atomic64::BUFFER_ALL | Atomic64::SIGNED
                     } else {
                         Atomic64::default()
                     };

@@ -65,18 +65,18 @@ pub const VERTICES: usize = 30;
 fn mtl_stages(bits: PipelineStages) -> MTLStages {
     let same = PipelineStages::VERTEX
         | PipelineStages::FRAGMENT
-        | PipelineStages::TASK
+        | PipelineStages::OBJECT
         | PipelineStages::MESH
         | PipelineStages::COMPUTE
         | PipelineStages::COPY;
     let mut s = bits & same;
     if bits.contains(PipelineStages::INDIRECT) {
         s |= PipelineStages::VERTEX
-            | PipelineStages::TASK
+            | PipelineStages::OBJECT
             | PipelineStages::MESH
             | PipelineStages::COMPUTE;
     }
-    if !(bits & (PipelineStages::DEPTH | PipelineStages::COLOR)).is_empty() {
+    if !(bits & (PipelineStages::DEPTH_STENCIL | PipelineStages::COLOR_ATTACHMENT)).is_empty() {
         s |= PipelineStages::FRAGMENT;
     }
     let tile = if s.contains(PipelineStages::FRAGMENT) {
@@ -104,7 +104,7 @@ fn wait(
 fn mtl_render_stage(bits: crate::PipelineStages) -> MTLRenderStages {
     match bits {
         PipelineStages::VERTEX | PipelineStages::INDIRECT => MTLRenderStages::Vertex,
-        PipelineStages::TASK => MTLRenderStages::Object,
+        PipelineStages::OBJECT => MTLRenderStages::Object,
         PipelineStages::MESH => MTLRenderStages::Mesh,
         _ => MTLRenderStages::Fragment,
     }
@@ -148,7 +148,7 @@ fn mtl_load_action(l: crate::LoadOp) -> MTLLoadAction {
     match l {
         LoadOp::Load => MTLLoadAction::Load,
         LoadOp::Clear => MTLLoadAction::Clear,
-        LoadOp::DontCare => MTLLoadAction::DontCare,
+        LoadOp::Discard => MTLLoadAction::DontCare,
     }
 }
 
@@ -156,8 +156,8 @@ fn mtl_store_action(s: StoreOp, resolve: bool) -> MTLStoreAction {
     match (s, resolve) {
         (StoreOp::Store, false) => MTLStoreAction::Store,
         (StoreOp::Store, true) => MTLStoreAction::StoreAndMultisampleResolve,
-        (StoreOp::DontCare, true) => MTLStoreAction::MultisampleResolve,
-        (StoreOp::DontCare, false) => MTLStoreAction::DontCare,
+        (StoreOp::Discard, true) => MTLStoreAction::MultisampleResolve,
+        (StoreOp::Discard, false) => MTLStoreAction::DontCare,
     }
 }
 
@@ -422,9 +422,9 @@ impl<'a> Recorder<'a> {
             Command::DiscardTextureContents { .. } | Command::PresentBarrier { .. } => {}
             Command::CopyBufferToTexture {
                 buffer,
-                offset,
-                row_length,
-                row_count,
+                buffer_offset,
+                row_texels,
+                slice_rows: row_count,
                 texture,
                 mip,
                 layer,
@@ -438,12 +438,12 @@ impl<'a> Recorder<'a> {
             } => {
                 let t = self.res.textures.get(texture);
                 let (row, image, option) =
-                    row_pitch(t.format, width, row_length, height, row_count);
+                    row_pitch(t.format, width, row_texels, height, row_count);
                 unsafe {
                     self.compute_encoder()
                         .copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin_options(
                             &self.res.buffers.get(buffer).raw,
-                            offset as usize,
+                            buffer_offset as usize,
                             row,
                             image,
                             size(width, height, depth),
@@ -466,14 +466,14 @@ impl<'a> Recorder<'a> {
                 height,
                 depth,
                 buffer,
-                offset,
-                row_length,
-                row_count,
+                buffer_offset,
+                row_texels,
+                slice_rows: row_count,
                 ..
             } => {
                 let t = self.res.textures.get(texture);
                 let (row, image, option) =
-                    row_pitch(t.format, width, row_length, height, row_count);
+                    row_pitch(t.format, width, row_texels, height, row_count);
                 unsafe {
                     self.compute_encoder()
                         .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage_options(
@@ -483,7 +483,7 @@ impl<'a> Recorder<'a> {
                             origin(x, y, z),
                             size(width, height, depth),
                             &self.res.buffers.get(buffer).raw,
-                            offset as usize,
+                            buffer_offset as usize,
                             row,
                             image,
                             option,
@@ -591,7 +591,11 @@ impl<'a> Recorder<'a> {
                     e.setDepthClipMode(p.clip);
                 }
                 self.raster = Some((p.fill, p.clip));
-                if !p.states.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
+                if !p
+                    .states
+                    .dynamic_states
+                    .contains(DynamicPipelineStates::PRIMITIVE_TOPOLOGY)
+                {
                     self.primitive = p.primitive;
                 }
                 self.applied.bind(e, p);
@@ -720,7 +724,7 @@ impl<'a> Recorder<'a> {
             Command::TileMemory {
                 width,
                 height,
-                shared,
+                threadgroup_memory: shared,
             } => {
                 self.pass.setTileWidth(width as usize);
                 self.pass.setTileHeight(height as usize);

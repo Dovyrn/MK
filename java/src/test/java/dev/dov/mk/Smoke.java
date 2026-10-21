@@ -13,9 +13,9 @@ public class Smoke {
         System.load(Path.of(args[0]).toAbsolutePath().toString());
         try (var device = device(args[0])) {
             var caps = device.capabilities();
-            System.out.println("caps: mesh " + caps.mesh + ", storage sets " + caps.storageSets + ", tiles " + caps.tiles);
+            System.out.println("caps: mesh " + caps.meshShaders + ", storage sets " + caps.storageSets + ", tiles " + caps.tileShaders);
             clear(device);
-            if (!caps.compute) {
+            if (!caps.computeShaders) {
                 System.out.println("java: no compute");
                 return;
             }
@@ -31,10 +31,10 @@ public class Smoke {
                 new DescriptorBinding().binding(1).kind(DescriptorType.STORAGE_BUFFER)
             });
             var info = new ComputePipelineInfo()
-                    .code(code)
-                    .codeSize(bytes.length)
-                    .entry("fill")
-                    .sets(new DescriptorLayout[] {layout});
+                    .bytecode(code)
+                    .bytecodeSize(bytes.length)
+                    .entrypoint("fill")
+                    .descriptorSetLayout(new DescriptorLayout[] {layout});
             var pipeline = device.createComputePipeline(info);
             var timeline = device.createTimeline();
             var constants = device.createBuffer(8, Memory.UPLOAD, BufferUsage.UNIFORM, "");
@@ -45,11 +45,11 @@ public class Smoke {
             var sets = device.createDescriptorPool(layout, 1);
             var bound = device.allocateDescriptorSet(sets);
             device.writeDescriptorSet(bound, new DescriptorWrite[] {
-                new DescriptorWrite().binding(0).buffer(constants).size(8),
-                new DescriptorWrite().binding(1).buffer(buffer).size(n * 4L)
+                new DescriptorWrite().binding(0).buffer(constants).bufferSize(8),
+                new DescriptorWrite().binding(1).buffer(buffer).bufferSize(n * 4L)
             });
             var set = device.createResidencySet();
-            device.addResidency(set, new Resource[] {buffer.resource(), constants.resource()});
+            device.addResidency(set, new ResidentResource[] {buffer.resource(), constants.resource()});
             device.commitResidency(set);
             commands.useResidencySet(set);
             var compute = commands.beginComputePass(0, 0);
@@ -74,7 +74,7 @@ public class Smoke {
             }
             device.unmapBuffer(buffer);
             try {
-                device.createComputePipeline(info.code(code).codeSize(8));
+                device.createComputePipeline(info.bytecode(code).bytecodeSize(8));
                 throw new IllegalStateException("bad code was accepted");
             } catch (ShaderException e) {
                 System.out.println("bad code rejected: " + e.getMessage().lines().findFirst().orElse(""));
@@ -92,7 +92,7 @@ public class Smoke {
         return new SwapchainInfo()
                 .width(size)
                 .height(size)
-                .usage(TextureUsage.COLOR | TextureUsage.COPY_SRC);
+                .usage(TextureUsage.COLOR_ATTACHMENT | TextureUsage.COPY_SRC);
     }
 
     static void present(String library) {
@@ -128,7 +128,7 @@ public class Smoke {
         var timeline = device.createTimeline();
         var pool = device.createCommandPool(0);
         var set = device.createResidencySet();
-        device.addResidency(set, new Resource[] {pixels.resource()});
+        device.addResidency(set, new ResidentResource[] {pixels.resource()});
         device.commitResidency(set);
         var colors = new float[][] {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         for (var frame = 1; frame <= colors.length; frame++) {
@@ -138,15 +138,15 @@ public class Smoke {
             commands.useResidencySet(set);
             commands.discardTextureContents(new TextureContentDiscard[] {new TextureContentDiscard()
                     .texture(texture)
-                    .srcStage(PipelineStages.COLOR)
-                    .dstStage(PipelineStages.COLOR)});
+                    .srcStage(PipelineStages.COLOR_ATTACHMENT)
+                    .dstStage(PipelineStages.COLOR_ATTACHMENT)});
             var color = new ColorAttachment().texture(texture).clear(new float[] {rgb[0], rgb[1], rgb[2], 1});
             commands.beginRenderPass(new RenderPassInfo()
                     .width(size)
                     .height(size)
                     .colors(new ColorAttachment[] {color}))
                     .end();
-            var copy = commands.beginComputePass(PipelineStages.COLOR, PipelineStages.COPY);
+            var copy = commands.beginComputePass(PipelineStages.COLOR_ATTACHMENT, PipelineStages.COPY);
             copy.copyTextureToBuffer(new BufferTextureCopy()
                     .texture(texture)
                     .width(size)
@@ -185,7 +185,7 @@ public class Smoke {
                 var pool = device.createCommandPool(0);
                 var buffer = device.createBuffer(size, Memory.READBACK, BufferUsage.COPY_DST, "");
                 var set = device.createResidencySet();
-                device.addResidency(set, new Resource[] {buffer.resource()});
+                device.addResidency(set, new ResidentResource[] {buffer.resource()});
                 device.commitResidency(set);
                 var c = device.beginCommands(pool);
                 c.useResidencySet(set);
@@ -224,25 +224,25 @@ public class Smoke {
                 .format(Format.RGBA8_UNORM)
                 .width(size)
                 .height(size)
-                .usage(TextureUsage.COLOR | TextureUsage.COPY_SRC));
+                .usage(TextureUsage.COLOR_ATTACHMENT | TextureUsage.COPY_SRC));
         var pixels = device.createBuffer(size * size * 4L, Memory.READBACK, BufferUsage.COPY_DST, "");
         var timeline = device.createTimeline();
         var pool = device.createCommandPool(0);
         var set = device.createResidencySet();
-        device.addResidency(set, new Resource[] {texture.resource(), pixels.resource()});
+        device.addResidency(set, new ResidentResource[] {texture.resource(), pixels.resource()});
         device.commitResidency(set);
         var commands = device.beginCommands(pool);
         commands.useResidencySet(set);
         commands.discardTextureContents(new TextureContentDiscard[] {new TextureContentDiscard()
                 .texture(texture)
-                .dstStage(PipelineStages.COLOR)});
+                .dstStage(PipelineStages.COLOR_ATTACHMENT)});
         var color = new ColorAttachment().texture(texture).clear(new float[] {1, 0.5f, 0, 1});
         commands.beginRenderPass(new RenderPassInfo()
                 .width(size)
                 .height(size)
                 .colors(new ColorAttachment[] {color}))
                 .end();
-        var copy = commands.beginComputePass(PipelineStages.COLOR, PipelineStages.COPY);
+        var copy = commands.beginComputePass(PipelineStages.COLOR_ATTACHMENT, PipelineStages.COPY);
         copy.copyTextureToBuffer(new BufferTextureCopy()
                 .texture(texture)
                 .width(size)

@@ -9,12 +9,12 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class IndirectBufferInfo {
-    public int draws = 0;
+    public int maxDraws = 0;
     public RenderPipeline pipeline = null;
     public boolean indexed = false;
-    public Buffer indices = null;
-    public long offset = 0;
-    public IndexType kind = IndexType.U16;
+    public Buffer indexBuffer = null;
+    public long indexOffset = 0;
+    public IndexType indexType = IndexType.U16;
     public String label = "";
 
     int encodedSize() {
@@ -22,17 +22,17 @@ public class IndirectBufferInfo {
     }
 
     long encode(long p) {
-        memPutInt(p, draws);
+        memPutInt(p, maxDraws);
         p += 4;
         memPutLong(p, RenderPipeline.raw(pipeline));
         p += 8;
         memPutInt(p, indexed ? 1 : 0);
         p += 4;
-        memPutLong(p, Buffer.raw(indices));
+        memPutLong(p, Buffer.raw(indexBuffer));
         p += 8;
-        memPutLong(p, offset);
+        memPutLong(p, indexOffset);
         p += 8;
-        memPutInt(p, kind.value);
+        memPutInt(p, indexType.value);
         p += 4;
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);

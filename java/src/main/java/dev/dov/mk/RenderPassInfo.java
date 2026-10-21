@@ -10,11 +10,11 @@ import lombok.experimental.Accessors;
 public class RenderPassInfo {
     public int width = 1;
     public int height = 1;
-    public int layers = 1;
+    public int layerCount = 1;
     public ColorAttachment[] colors = new ColorAttachment[0];
-    public DepthAttachment depth = null;
-    public QueryPool occlusion = null;
-    public TileInfo tile = null;
+    public DepthAttachment depthStencil = null;
+    public QueryPool occlusionQueries = null;
+    public TileInfo tileInfo = null;
     public int srcStage = 0;
     public int dstStage = 0;
 
@@ -23,7 +23,7 @@ public class RenderPassInfo {
         for (var x : colors) {
             colorsSize += x.encodedSize();
         }
-        return 36 + colorsSize + (depth == null ? 0 : depth.encodedSize()) + (tile == null ? 0 : tile.encodedSize());
+        return 36 + colorsSize + (depthStencil == null ? 0 : depthStencil.encodedSize()) + (tileInfo == null ? 0 : tileInfo.encodedSize());
     }
 
     long encode(long p) {
@@ -31,24 +31,24 @@ public class RenderPassInfo {
         p += 4;
         memPutInt(p, height);
         p += 4;
-        memPutInt(p, layers);
+        memPutInt(p, layerCount);
         p += 4;
         memPutInt(p, colors.length);
         p += 4;
         for (var x : colors) {
             p = x.encode(p);
         }
-        memPutInt(p, depth == null ? 0 : 1);
+        memPutInt(p, depthStencil == null ? 0 : 1);
         p += 4;
-        if (depth != null) {
-            p = depth.encode(p);
+        if (depthStencil != null) {
+            p = depthStencil.encode(p);
         }
-        memPutLong(p, QueryPool.raw(occlusion));
+        memPutLong(p, QueryPool.raw(occlusionQueries));
         p += 8;
-        memPutInt(p, tile == null ? 0 : 1);
+        memPutInt(p, tileInfo == null ? 0 : 1);
         p += 4;
-        if (tile != null) {
-            p = tile.encode(p);
+        if (tileInfo != null) {
+            p = tileInfo.encode(p);
         }
         memPutInt(p, srcStage);
         p += 4;

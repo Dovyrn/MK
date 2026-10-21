@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 
 @Setter
 @Accessors(fluent = true, chain = true)
-public class Resource {
+public class ResidentResource {
     public ResourceKind kind = ResourceKind.BUFFER;
     public long handle = 0;
 
@@ -25,8 +25,8 @@ public class Resource {
         return p;
     }
 
-    static Resource decode(long p) {
-        var r = new Resource();
+    static ResidentResource decode(long p) {
+        var r = new ResidentResource();
         r.kind = ResourceKind.of(memGetInt(p));
         p += 4;
         r.handle = memGetLong(p);

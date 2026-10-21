@@ -9,100 +9,100 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class RenderPipelineInfo {
-    public long code = 0;
-    public long codeSize = 0;
-    public String vertex = "";
-    public String fragment = "";
-    public ColorTarget[] colors = new ColorTarget[0];
-    public Format depth = null;
-    public Format stencil = null;
-    public int samples = 1;
-    public FillMode fill = FillMode.FILL;
-    public boolean coverage = false;
-    public boolean clamp = false;
-    public boolean ordered = false;
-    public boolean indirect = false;
-    public VertexBufferLayout[] buffers = new VertexBufferLayout[0];
-    public VertexAttribute[] attributes = new VertexAttribute[0];
+    public long bytecode = 0;
+    public long bytecodeSize = 0;
+    public String vertexEntrypoint = "";
+    public String fragmentEntrypoint = "";
+    public ColorTarget[] colorTargets = new ColorTarget[0];
+    public Format depthFormat = null;
+    public Format stencilFormat = null;
+    public int sampleCount = 1;
+    public FillMode fillMode = FillMode.FILL;
+    public boolean alphaToCoverage = false;
+    public boolean depthClamp = false;
+    public boolean orderedReads = false;
+    public boolean indirectBuffers = false;
+    public VertexBufferLayout[] vertexBuffers = new VertexBufferLayout[0];
+    public VertexAttribute[] vertexAttributes = new VertexAttribute[0];
     public VertexPipelineStates states = new VertexPipelineStates();
-    public DescriptorLayout[] sets = new DescriptorLayout[0];
+    public DescriptorLayout[] descriptorSetLayout = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
-        var colorsSize = 4;
-        for (var x : colors) {
-            colorsSize += x.encodedSize();
+        var colorTargetsSize = 4;
+        for (var x : colorTargets) {
+            colorTargetsSize += x.encodedSize();
         }
-        var buffersSize = 4;
-        for (var x : buffers) {
-            buffersSize += x.encodedSize();
+        var vertexBuffersSize = 4;
+        for (var x : vertexBuffers) {
+            vertexBuffersSize += x.encodedSize();
         }
-        var attributesSize = 4;
-        for (var x : attributes) {
-            attributesSize += x.encodedSize();
+        var vertexAttributesSize = 4;
+        for (var x : vertexAttributes) {
+            vertexAttributesSize += x.encodedSize();
         }
-        var setsSize = 4;
-        for (var x : sets) {
-            setsSize += 8;
+        var descriptorSetLayoutSize = 4;
+        for (var x : descriptorSetLayout) {
+            descriptorSetLayoutSize += 8;
         }
-        return 60 + vertex.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + buffersSize + attributesSize + states.encodedSize() + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 60 + vertexEntrypoint.getBytes(StandardCharsets.UTF_8).length + fragmentEntrypoint.getBytes(StandardCharsets.UTF_8).length + colorTargetsSize + (depthFormat == null ? 0 : 4) + (stencilFormat == null ? 0 : 4) + vertexBuffersSize + vertexAttributesSize + states.encodedSize() + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
-        memPutLong(p, code);
-        memPutLong(p + 8, codeSize);
+        memPutLong(p, bytecode);
+        memPutLong(p + 8, bytecodeSize);
         p += 16;
-        var vertexBytes = vertex.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, vertexBytes.length);
-        memByteBuffer(p + 4, vertexBytes.length).put(vertexBytes);
-        p += 4 + vertexBytes.length;
-        var fragmentBytes = fragment.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, fragmentBytes.length);
-        memByteBuffer(p + 4, fragmentBytes.length).put(fragmentBytes);
-        p += 4 + fragmentBytes.length;
-        memPutInt(p, colors.length);
+        var vertexEntrypointBytes = vertexEntrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, vertexEntrypointBytes.length);
+        memByteBuffer(p + 4, vertexEntrypointBytes.length).put(vertexEntrypointBytes);
+        p += 4 + vertexEntrypointBytes.length;
+        var fragmentEntrypointBytes = fragmentEntrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, fragmentEntrypointBytes.length);
+        memByteBuffer(p + 4, fragmentEntrypointBytes.length).put(fragmentEntrypointBytes);
+        p += 4 + fragmentEntrypointBytes.length;
+        memPutInt(p, colorTargets.length);
         p += 4;
-        for (var x : colors) {
+        for (var x : colorTargets) {
             p = x.encode(p);
         }
-        memPutInt(p, depth == null ? 0 : 1);
+        memPutInt(p, depthFormat == null ? 0 : 1);
         p += 4;
-        if (depth != null) {
-            memPutInt(p, depth.value);
+        if (depthFormat != null) {
+            memPutInt(p, depthFormat.value);
             p += 4;
         }
-        memPutInt(p, stencil == null ? 0 : 1);
+        memPutInt(p, stencilFormat == null ? 0 : 1);
         p += 4;
-        if (stencil != null) {
-            memPutInt(p, stencil.value);
+        if (stencilFormat != null) {
+            memPutInt(p, stencilFormat.value);
             p += 4;
         }
-        memPutInt(p, samples);
+        memPutInt(p, sampleCount);
         p += 4;
-        memPutInt(p, fill.value);
+        memPutInt(p, fillMode.value);
         p += 4;
-        memPutInt(p, coverage ? 1 : 0);
+        memPutInt(p, alphaToCoverage ? 1 : 0);
         p += 4;
-        memPutInt(p, clamp ? 1 : 0);
+        memPutInt(p, depthClamp ? 1 : 0);
         p += 4;
-        memPutInt(p, ordered ? 1 : 0);
+        memPutInt(p, orderedReads ? 1 : 0);
         p += 4;
-        memPutInt(p, indirect ? 1 : 0);
+        memPutInt(p, indirectBuffers ? 1 : 0);
         p += 4;
-        memPutInt(p, buffers.length);
+        memPutInt(p, vertexBuffers.length);
         p += 4;
-        for (var x : buffers) {
+        for (var x : vertexBuffers) {
             p = x.encode(p);
         }
-        memPutInt(p, attributes.length);
+        memPutInt(p, vertexAttributes.length);
         p += 4;
-        for (var x : attributes) {
+        for (var x : vertexAttributes) {
             p = x.encode(p);
         }
         p = states.encode(p);
-        memPutInt(p, sets.length);
+        memPutInt(p, descriptorSetLayout.length);
         p += 4;
-        for (var x : sets) {
+        for (var x : descriptorSetLayout) {
             memPutLong(p, DescriptorLayout.raw(x));
             p += 8;
         }

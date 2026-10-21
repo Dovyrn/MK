@@ -13,7 +13,7 @@ fn vk_space(space: ColorSpace) -> vk::ColorSpaceKHR {
     match space {
         ColorSpace::Srgb => vk::ColorSpaceKHR::SRGB_NONLINEAR,
         ColorSpace::DisplayP3 => vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT,
-        ColorSpace::ExtendedSrgb => vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+        ColorSpace::ExtendedLinearSrgb => vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
         ColorSpace::Hdr10 => vk::ColorSpaceKHR::HDR10_ST2084_EXT,
     }
 }
@@ -151,9 +151,9 @@ impl Device {
                 .get_physical_device_surface_present_modes(self.physical, surface)
         }?;
         check!(
-            modes.contains(&vk_mode(info.mode)),
+            modes.contains(&vk_mode(info.present_mode)),
             "the surface has no {:?} present mode",
-            info.mode
+            info.present_mode
         );
         Ok(())
     }
@@ -182,7 +182,7 @@ impl Device {
             .image_usage(vk_image_usage(info.usage))
             .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
             .composite_alpha(vk_alpha(info.premultiplied))
-            .present_mode(vk_mode(info.mode))
+            .present_mode(vk_mode(info.present_mode))
             .clipped(true)
             .old_swapchain(old);
         if self.families.len() > 1 {
@@ -198,7 +198,7 @@ impl Device {
             format: info.format,
             width: info.width,
             height: info.height,
-            usage: info.usage & !TextureUsage::VIEW,
+            usage: info.usage & !TextureUsage::MUTABLE_VIEW_FORMAT,
             ..Default::default()
         };
         let semaphore = || unsafe {

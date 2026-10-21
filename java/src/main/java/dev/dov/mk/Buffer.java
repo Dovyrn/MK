@@ -9,7 +9,7 @@ public record Buffer(long raw) {
         return handle == null ? 0 : handle.raw;
     }
 
-    public Resource resource() {
-        return new Resource().kind(ResourceKind.BUFFER).handle(raw);
+    public ResidentResource resource() {
+        return new ResidentResource().kind(ResourceKind.BUFFER).handle(raw);
     }
 }

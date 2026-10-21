@@ -14,9 +14,9 @@ use crate::gl::resources::Resources;
 use crate::gl::state::{State, set_enabled};
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    ColorMask, CullMode, DepthAttachment, DepthStateInfo, DescriptorType, DeviceCapabilities,
-    DynamicPipelineStates, Format, FrontFace, IndexType, LoadOp, PipelineStages, StoreOp, Topology,
-    VertexPipelineStates, slot,
+    ColorMask, CullMode, DepthAttachment, DepthStencilStateInfo, DescriptorType,
+    DeviceCapabilities, DynamicPipelineStates, Format, FrontFace, IndexType, LoadOp,
+    PipelineStages, PrimitiveTopology, StoreOp, VertexPipelineStates, slot,
 };
 use glow::HasContext;
 use std::cell::Cell;
@@ -75,7 +75,7 @@ pub struct Recorder<'a> {
     vertices: [Option<(Buffer, u64)>; slot::VERTICES as usize],
     index: Option<(Buffer, u64, u32)>,
     mode: u32,
-    state: Option<DepthStateInfo>,
+    state: Option<DepthStencilStateInfo>,
     references: (u32, u32),
     extent: (i32, i32),
     views: Vec<[f32; 4]>,
@@ -93,13 +93,13 @@ pub struct Recorder<'a> {
     fed: Option<glow::VertexArray>,
 }
 
-fn gl_primitive_mode(t: crate::Topology) -> u32 {
+fn gl_primitive_mode(t: crate::PrimitiveTopology) -> u32 {
     match t {
-        Topology::Point => glow::POINTS,
-        Topology::Line => glow::LINES,
-        Topology::LineStrip => glow::LINE_STRIP,
-        Topology::Triangle => glow::TRIANGLES,
-        Topology::TriangleStrip => glow::TRIANGLE_STRIP,
+        PrimitiveTopology::Point => glow::POINTS,
+        PrimitiveTopology::Line => glow::LINES,
+        PrimitiveTopology::LineStrip => glow::LINE_STRIP,
+        PrimitiveTopology::Triangle => glow::TRIANGLES,
+        PrimitiveTopology::TriangleStrip => glow::TRIANGLE_STRIP,
     }
 }
 
@@ -167,13 +167,13 @@ fn gl_barrier_bits(stages: PipelineStages) -> u32 {
         ),
         (
             PipelineStages::FRAGMENT
-                | PipelineStages::TASK
+                | PipelineStages::OBJECT
                 | PipelineStages::MESH
                 | PipelineStages::COMPUTE,
             shader,
         ),
         (
-            PipelineStages::DEPTH | PipelineStages::COLOR,
+            PipelineStages::DEPTH_STENCIL | PipelineStages::COLOR_ATTACHMENT,
             glow::FRAMEBUFFER_BARRIER_BIT,
         ),
         (
@@ -221,8 +221,8 @@ impl<'a> Recorder<'a> {
             render: None,
             colors: Vec::new(),
             depth: None,
-            textures: vec![None; caps.set_textures as usize],
-            samplers: vec![None; caps.set_samplers as usize],
+            textures: vec![None; caps.max_set_textures as usize],
+            samplers: vec![None; caps.max_set_samplers as usize],
             vertices: [None; slot::VERTICES as usize],
             index: None,
             mode: glow::TRIANGLES,
@@ -331,10 +331,10 @@ impl<'a> Recorder<'a> {
                     continue;
                 }
                 gl.enable_draw_buffer(glow::BLEND, i);
-                let (src, dst) = (gl_blend_factor(c.src), gl_blend_factor(c.dst));
+                let (src, dst) = (gl_blend_factor(c.src_color), gl_blend_factor(c.dst_color));
                 let (src_alpha, dst_alpha) =
                     (gl_blend_factor(c.src_alpha), gl_blend_factor(c.dst_alpha));
-                let (op, op_alpha) = (gl_blend_equation(c.op), gl_blend_equation(c.op_alpha));
+                let (op, op_alpha) = (gl_blend_equation(c.op_color), gl_blend_equation(c.op_alpha));
                 if uniform {
                     gl.blend_func_separate(src, dst, src_alpha, dst_alpha);
                     gl.blend_equation_separate(op, op_alpha);
@@ -421,13 +421,13 @@ impl<'a> Recorder<'a> {
     fn face(&self, face: FrontFace) {
         unsafe {
             self.gl.front_face(match face {
-                FrontFace::Ccw => glow::CW,
-                FrontFace::Cw => glow::CCW,
+                FrontFace::CounterClockwise => glow::CW,
+                FrontFace::Clockwise => glow::CCW,
             })
         }
     }
 
-    fn depth(&mut self, d: DepthStateInfo) {
+    fn depth(&mut self, d: DepthStencilStateInfo) {
         let gl = self.gl;
         unsafe {
             set_enabled(
@@ -437,7 +437,7 @@ impl<'a> Recorder<'a> {
             );
             gl.depth_func(compare(d.compare));
             gl.depth_mask(d.write);
-            set_enabled(gl, glow::STENCIL_TEST, d.stencil);
+            set_enabled(gl, glow::STENCIL_TEST, d.stencil_test);
         }
         self.state = Some(d);
         self.apply_stencil();
@@ -458,22 +458,26 @@ impl<'a> Recorder<'a> {
     }
 
     fn statics(&mut self, s: &VertexPipelineStates) {
-        let dynamic = s.dynamic;
-        if !dynamic.contains(DynamicPipelineStates::CULL) {
-            self.cull(s.cull);
+        let dynamic = s.dynamic_states;
+        if !dynamic.contains(DynamicPipelineStates::CULL_MODE) {
+            self.cull(s.cull_mode);
         }
-        if !dynamic.contains(DynamicPipelineStates::FACE) {
-            self.face(s.face);
+        if !dynamic.contains(DynamicPipelineStates::FRONT_FACE) {
+            self.face(s.front_face);
         }
-        if !dynamic.contains(DynamicPipelineStates::DEPTH_STATE) {
-            self.depth(s.depth);
+        if !dynamic.contains(DynamicPipelineStates::DEPTH_STENCIL_STATE) {
+            self.depth(s.depth_stencil);
         }
         if !dynamic.contains(DynamicPipelineStates::STENCIL_REFERENCE) {
-            self.references = (s.front_reference, s.back_reference);
+            self.references = (s.front_stencil_reference, s.back_stencil_reference);
             self.apply_stencil();
         }
         if !dynamic.contains(DynamicPipelineStates::DEPTH_BIAS) {
-            self.bias(s.bias_constant, s.bias_slope, s.bias_clamp);
+            self.bias(
+                s.depth_bias_constant,
+                s.depth_bias_slope,
+                s.depth_bias_clamp,
+            );
         }
         if !dynamic.contains(DynamicPipelineStates::BLEND_COLOR) {
             let [r, g, b, a] = s.blend_color;
@@ -482,7 +486,7 @@ impl<'a> Recorder<'a> {
     }
 
     fn apply_stencil(&self) {
-        let Some(d) = self.state.filter(|d| d.stencil) else {
+        let Some(d) = self.state.filter(|d| d.stencil_test) else {
             return;
         };
         let gl = self.gl;
@@ -493,12 +497,12 @@ impl<'a> Recorder<'a> {
             ] {
                 gl.stencil_op_separate(
                     side,
-                    gl_stencil_op(f.fail),
-                    gl_stencil_op(f.depth_fail),
-                    gl_stencil_op(f.pass),
+                    gl_stencil_op(f.fail_op),
+                    gl_stencil_op(f.depth_fail_op),
+                    gl_stencil_op(f.pass_op),
                 );
-                gl.stencil_func_separate(side, compare(f.compare), reference as i32, f.read);
-                gl.stencil_mask_separate(side, f.write);
+                gl.stencil_func_separate(side, compare(f.compare), reference as i32, f.read_mask);
+                gl.stencil_mask_separate(side, f.write_mask);
             }
         }
     }
@@ -506,7 +510,7 @@ impl<'a> Recorder<'a> {
     fn barrier(&self, src: PipelineStages, dst: PipelineStages) {
         let shaders = PipelineStages::VERTEX
             | PipelineStages::FRAGMENT
-            | PipelineStages::TASK
+            | PipelineStages::OBJECT
             | PipelineStages::MESH
             | PipelineStages::COMPUTE;
         if !(src & shaders).is_empty() && self.caps.storage_sets {
@@ -523,15 +527,20 @@ impl<'a> Recorder<'a> {
             let Some((kind, w)) = *e else {
                 continue;
             };
-            let offset = w.offset + moves[i].map_or(0, |k| offsets[k] as u64);
+            let offset = w.buffer_offset + moves[i].map_or(0, |k| offsets[k] as u64);
             let i = i as u32;
             match kind {
                 DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-                    self.bind_range(glow::UNIFORM_BUFFER, i, w.buffer, offset, w.size)
+                    self.bind_range(glow::UNIFORM_BUFFER, i, w.buffer, offset, w.buffer_size)
                 }
-                DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
-                    self.bind_range(glow::SHADER_STORAGE_BUFFER, i, w.buffer, offset, w.size)
-                }
+                DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => self
+                    .bind_range(
+                        glow::SHADER_STORAGE_BUFFER,
+                        i,
+                        w.buffer,
+                        offset,
+                        w.buffer_size,
+                    ),
                 DescriptorType::StorageTexture => {
                     let t = res.textures.get(w.texture);
                     let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
@@ -712,12 +721,16 @@ impl<'a> Recorder<'a> {
                 Command::InputAttachmentBarrier
                 | Command::TileMemory { .. }
                 | Command::DispatchTile { .. } => {
-                    unreachable!("caps.attachment_reads and caps.tiles are false on GL")
+                    unreachable!("caps.attachment_reads and caps.tile_shaders are false on GL")
                 }
                 Command::BindRenderPipeline { pipeline } => {
                     let p = res.renders.get(pipeline);
                     self.render = Some(p);
-                    if !p.states.dynamic.contains(DynamicPipelineStates::TOPOLOGY) {
+                    if !p
+                        .states
+                        .dynamic_states
+                        .contains(DynamicPipelineStates::PRIMITIVE_TOPOLOGY)
+                    {
                         self.mode = gl_primitive_mode(p.topology);
                     }
                     let fill = if p.fill == crate::FillMode::Line {
@@ -820,7 +833,9 @@ impl<'a> Recorder<'a> {
                     }
                 }
                 Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. } => {
-                    unreachable!("create_indirect_buffer needs caps.addresses, which GL lacks")
+                    unreachable!(
+                        "create_indirect_buffer needs caps.buffer_addresses, which GL lacks"
+                    )
                 }
                 Command::DrawMeshTasksIndirect { buffer, offset } => {
                     if self.bind_draw_state(true)? {

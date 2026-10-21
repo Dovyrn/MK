@@ -88,7 +88,7 @@ shared = true
 
 [[call]]
 name = "create_depth_stencil_state"
-params = [["info", "DepthStateInfo"], ["label", "str"]]
+params = [["info", "DepthStencilStateInfo"], ["label", "str"]]
 result = "DepthStencilState"
 fails = true
 shared = true
@@ -256,12 +256,12 @@ shared = true
 
 [[call]]
 name = "add_residency"
-params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
+params = [["set", "ResidencySet"], ["resources", "[ResidentResource]"]]
 shared = true
 
 [[call]]
 name = "remove_residency"
-params = [["set", "ResidencySet"], ["resources", "[Resource]"]]
+params = [["set", "ResidencySet"], ["resources", "[ResidentResource]"]]
 shared = true
 
 [[call]]

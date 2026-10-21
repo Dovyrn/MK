@@ -6,7 +6,7 @@ pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     println!("{:?}", device.capabilities());
-    if !device.capabilities().compute {
+    if !device.capabilities().compute_shaders {
         println!("no compute shaders");
         return;
     }
@@ -26,9 +26,9 @@ pub fn test() {
     );
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("count"),
-            entry: "fill",
-            sets: &[layout],
+            bytecode: host::code!("count"),
+            entrypoint: "fill",
+            descriptor_set_layout: &[layout],
             ..Default::default()
         })
         .unwrap();

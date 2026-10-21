@@ -9,9 +9,9 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class BufferTextureCopy {
     public Buffer buffer = null;
-    public long offset = 0;
-    public int rowLength = 0;
-    public int rowCount = 0;
+    public long bufferOffset = 0;
+    public int rowTexels = 0;
+    public int sliceRows = 0;
     public Texture texture = null;
     public int mip = 0;
     public int layer = 0;
@@ -31,11 +31,11 @@ public class BufferTextureCopy {
     long encode(long p) {
         memPutLong(p, Buffer.raw(buffer));
         p += 8;
-        memPutLong(p, offset);
+        memPutLong(p, bufferOffset);
         p += 8;
-        memPutInt(p, rowLength);
+        memPutInt(p, rowTexels);
         p += 4;
-        memPutInt(p, rowCount);
+        memPutInt(p, sliceRows);
         p += 4;
         memPutLong(p, Texture.raw(texture));
         p += 8;
@@ -62,11 +62,11 @@ public class BufferTextureCopy {
         var r = new BufferTextureCopy();
         r.buffer = Buffer.of(memGetLong(p));
         p += 8;
-        r.offset = memGetLong(p);
+        r.bufferOffset = memGetLong(p);
         p += 8;
-        r.rowLength = memGetInt(p);
+        r.rowTexels = memGetInt(p);
         p += 4;
-        r.rowCount = memGetInt(p);
+        r.sliceRows = memGetInt(p);
         p += 4;
         r.texture = Texture.of(memGetLong(p));
         p += 8;

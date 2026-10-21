@@ -63,7 +63,7 @@ fn info(n: u32) -> SwapchainInfo {
         format: Format::Bgra8Unorm,
         width: n,
         height: n,
-        usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+        usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
         ..Default::default()
     }
 }
@@ -151,8 +151,8 @@ pub fn test() {
         for (texture, n, buffer, clear) in targets {
             c.discard_texture_contents(&[TextureContentDiscard {
                 texture,
-                src_stage: PipelineStages::COLOR,
-                dst_stage: PipelineStages::COLOR,
+                src_stage: PipelineStages::COLOR_ATTACHMENT,
+                dst_stage: PipelineStages::COLOR_ATTACHMENT,
             }]);
             let pass = c
                 .begin_render_pass(&RenderPassInfo {
@@ -168,7 +168,7 @@ pub fn test() {
                 .unwrap();
             pass.end();
             let mut pass = c
-                .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+                .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
                 .unwrap();
             pass.copy_texture_to_buffer(&BufferTextureCopy {
                 texture,

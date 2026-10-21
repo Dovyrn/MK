@@ -12,7 +12,7 @@ pub fn test() {
         | SubgroupOp::BALLOT
         | SubgroupOp::SHUFFLE
         | SubgroupOp::QUAD;
-    if !caps.compute || !caps.storage_sets || caps.subgroup_ops & need != need {
+    if !caps.compute_shaders || !caps.storage_sets || caps.subgroup_ops & need != need {
         println!("no subgroup ops in compute: {:#x}", caps.subgroup_ops);
         return;
     }
@@ -31,11 +31,11 @@ pub fn test() {
     let bound = host::set(&device, layout, &[host::buffer(0, buffer, 0, 64 * 11 * 4)]);
     let sizes: Vec<u32> = (0..7)
         .map(|i| 1u32 << i)
-        .filter(|n| caps.subgroup_sizes & n != 0 && *n >= 4)
+        .filter(|n| caps.subgroup_size_mask & n != 0 && *n >= 4)
         .collect();
     let mut runs = vec![(0, false)];
     runs.extend(sizes.iter().map(|&n| (n, false)));
-    let largest = 1u32 << (31 - caps.subgroup_sizes.leading_zeros());
+    let largest = 1u32 << (31 - caps.subgroup_size_mask.leading_zeros());
     if caps.full_subgroups && largest <= 64 {
         runs.push((0, true));
     }
@@ -43,11 +43,11 @@ pub fn test() {
     for (value, &(size, full)) in (1..).zip(&runs) {
         let pipeline = device
             .create_compute_pipeline(&ComputePipelineInfo {
-                code: host::code!("subgroups"),
-                entry: "lanes",
-                subgroup: size,
-                full,
-                sets: &[layout],
+                bytecode: host::code!("subgroups"),
+                entrypoint: "lanes",
+                required_subgroup_size: size,
+                require_full_subgroups: full,
+                descriptor_set_layout: &[layout],
                 ..Default::default()
             })
             .unwrap();

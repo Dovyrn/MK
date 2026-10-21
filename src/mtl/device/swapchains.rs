@@ -44,7 +44,7 @@ impl Device {
         let narrow = matches!(format, Format::Bgra8Unorm | Format::Bgra8Srgb);
         Ok(match space {
             ColorSpace::Srgb | ColorSpace::DisplayP3 => deep || wide || narrow,
-            ColorSpace::ExtendedSrgb => deep,
+            ColorSpace::ExtendedLinearSrgb => deep,
             ColorSpace::Hdr10 => deep || wide,
         })
     }
@@ -62,7 +62,7 @@ impl Device {
                 self.supports_surface_format(layer, format, space)?,
                 "the layer does not take {format} in {space:?}"
             );
-            let mode = info.mode;
+            let mode = info.present_mode;
             check!(
                 mode == PresentMode::Fifo || mode == PresentMode::Immediate && caps.immediate,
                 "the layer has no {mode:?} present mode"
@@ -72,7 +72,7 @@ impl Device {
             match info.color_space {
                 ColorSpace::Srgb => kCGColorSpaceSRGB,
                 ColorSpace::DisplayP3 => kCGColorSpaceDisplayP3,
-                ColorSpace::ExtendedSrgb => kCGColorSpaceExtendedLinearSRGB,
+                ColorSpace::ExtendedLinearSrgb => kCGColorSpaceExtendedLinearSRGB,
                 ColorSpace::Hdr10 => kCGColorSpaceITUR_2100_PQ,
             }
         };
@@ -81,18 +81,18 @@ impl Device {
         layer.setColorspace(CGColorSpace::with_name(Some(name)).as_deref());
         layer.setWantsExtendedDynamicRangeContent(matches!(
             info.color_space,
-            ColorSpace::ExtendedSrgb | ColorSpace::Hdr10
+            ColorSpace::ExtendedLinearSrgb | ColorSpace::Hdr10
         ));
         layer.setDrawableSize(CGSize {
             width: info.width as f64,
             height: info.height as f64,
         });
         layer.setMaximumDrawableCount(info.images as usize);
-        layer.setFramebufferOnly(info.usage == TextureUsage::COLOR);
+        layer.setFramebufferOnly(info.usage == TextureUsage::COLOR_ATTACHMENT);
         layer.setAllowsNextDrawableTimeout(false);
         layer.setOpaque(!info.premultiplied);
         #[cfg(target_os = "macos")]
-        layer.setDisplaySyncEnabled(info.mode == PresentMode::Fifo);
+        layer.setDisplaySyncEnabled(info.present_mode == PresentMode::Fifo);
         Ok(())
     }
 

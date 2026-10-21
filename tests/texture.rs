@@ -52,9 +52,9 @@ pub fn test() {
         .unwrap();
     let sampler = device
         .create_sampler(&SamplerInfo {
-            min: Filter::Nearest,
-            mag: Filter::Nearest,
-            mip: Filter::Nearest,
+            min_filter: Filter::Nearest,
+            mag_filter: Filter::Nearest,
+            mip_filter: Filter::Nearest,
             u: AddressMode::Clamp,
             v: AddressMode::Clamp,
             w: AddressMode::Clamp,
@@ -64,9 +64,9 @@ pub fn test() {
     let layout = host::layout(&device, &[mk::DescriptorType::UniformBuffer]);
     let pipeline = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("blit"),
-            sets: &[layout],
-            entry: "blit",
+            bytecode: host::code!("blit"),
+            descriptor_set_layout: &[layout],
+            entrypoint: "blit",
             ..Default::default()
         })
         .unwrap();

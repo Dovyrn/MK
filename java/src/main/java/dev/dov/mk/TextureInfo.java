@@ -14,9 +14,9 @@ public class TextureInfo {
     public int width = 1;
     public int height = 1;
     public int depth = 1;
-    public int layers = 1;
-    public int mips = 1;
-    public int samples = 1;
+    public int layerCount = 1;
+    public int mipCount = 1;
+    public int sampleCount = 1;
     public int usage = 0;
     public Memory memory = Memory.DEVICE;
     public String label = "";
@@ -36,11 +36,11 @@ public class TextureInfo {
         p += 4;
         memPutInt(p, depth);
         p += 4;
-        memPutInt(p, layers);
+        memPutInt(p, layerCount);
         p += 4;
-        memPutInt(p, mips);
+        memPutInt(p, mipCount);
         p += 4;
-        memPutInt(p, samples);
+        memPutInt(p, sampleCount);
         p += 4;
         memPutInt(p, usage);
         p += 4;

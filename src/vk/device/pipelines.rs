@@ -4,7 +4,7 @@ use crate::descriptors::set_of;
 use crate::vk::recorder::vk_compare_op;
 use crate::vk::spirv;
 use crate::{
-    ColorTarget, CompareOp, ComputePipelineInfo, DepthStateInfo, DescriptorLayout,
+    ColorTarget, CompareOp, ComputePipelineInfo, DepthStencilStateInfo, DescriptorLayout,
     DynamicPipelineStates, FillMode, Format, FrontFace, MeshPipelineInfo, PipelineStages,
     RenderPipelineInfo, StencilFace, TilePipelineInfo, VertexPipelineStates,
 };
@@ -81,7 +81,7 @@ impl Device {
             let stage = [
                 (vk::ShaderStageFlags::VERTEX, PipelineStages::VERTEX),
                 (vk::ShaderStageFlags::FRAGMENT, PipelineStages::FRAGMENT),
-                (vk::ShaderStageFlags::TASK_EXT, PipelineStages::TASK),
+                (vk::ShaderStageFlags::TASK_EXT, PipelineStages::OBJECT),
                 (vk::ShaderStageFlags::MESH_EXT, PipelineStages::MESH),
             ]
             .into_iter()
@@ -92,16 +92,16 @@ impl Device {
             }
         }
         if let Some(v) = vertex {
-            let inputs = spirv::inputs(&words, v.vertex);
+            let inputs = spirv::inputs(&words, v.vertex_entrypoint);
             let missing = inputs
                 .iter()
-                .find(|&&l| !v.attributes.iter().any(|a| a.location == l));
+                .find(|&&l| !v.vertex_attributes.iter().any(|a| a.location == l));
             if let Some(location) = missing.filter(|_| cfg!(feature = "validation")) {
                 return Err(Error::Shader(format!(
                     "vertex input {location} has no attribute"
                 )));
             }
-            for a in v.attributes {
+            for a in v.vertex_attributes {
                 let features = unsafe {
                     self.instance
                         .get_physical_device_format_properties(self.physical, a.format.vk())
@@ -138,15 +138,16 @@ impl Device {
                     .name(name)
             })
             .collect();
-        let (buffers, attributes) =
-            vertex.map_or((&[][..], &[][..]), |v| (v.buffers, v.attributes));
+        let (buffers, attributes) = vertex.map_or((&[][..], &[][..]), |v| {
+            (v.vertex_buffers, v.vertex_attributes)
+        });
         let bindings: Vec<_> = buffers
             .iter()
             .enumerate()
             .map(|(i, b)| vk::VertexInputBindingDescription {
                 binding: i as u32,
                 stride: b.stride,
-                input_rate: if b.instance {
+                input_rate: if b.instanced {
                     vk::VertexInputRate::INSTANCE
                 } else {
                     vk::VertexInputRate::VERTEX
@@ -157,7 +158,7 @@ impl Device {
             .iter()
             .map(|a| vk::VertexInputAttributeDescription {
                 location: a.location,
-                binding: a.buffer,
+                binding: a.buffer_slot,
                 format: a.format.vk(),
                 offset: a.offset,
             })
@@ -165,12 +166,13 @@ impl Device {
         let input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&bindings)
             .vertex_attribute_descriptions(&attributes);
-        let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .topology(vk::PrimitiveTopology::from_raw(states.topology as i32));
+        let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(
+            vk::PrimitiveTopology::from_raw(states.primitive_topology as i32),
+        );
         let viewport = vk::PipelineViewportStateCreateInfo::default();
-        let winding = match states.face {
-            FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
-            FrontFace::Cw => vk::FrontFace::CLOCKWISE,
+        let winding = match states.front_face {
+            FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
+            FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
         };
         let raster = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(match fill {
@@ -178,40 +180,40 @@ impl Device {
                 FillMode::Fill => vk::PolygonMode::FILL,
             })
             .depth_clamp_enable(clamp)
-            .cull_mode(vk::CullModeFlags::from_raw(states.cull as u32))
+            .cull_mode(vk::CullModeFlags::from_raw(states.cull_mode as u32))
             .front_face(winding)
-            .depth_bias_enable(states.bias_constant != 0.0 || states.bias_slope != 0.0)
-            .depth_bias_constant_factor(states.bias_constant)
-            .depth_bias_slope_factor(states.bias_slope)
-            .depth_bias_clamp(states.bias_clamp)
+            .depth_bias_enable(states.depth_bias_constant != 0.0 || states.depth_bias_slope != 0.0)
+            .depth_bias_constant_factor(states.depth_bias_constant)
+            .depth_bias_slope_factor(states.depth_bias_slope)
+            .depth_bias_clamp(states.depth_bias_clamp)
             .line_width(1.0);
         let multisample = vk::PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(vk::SampleCountFlags::from_raw(samples))
             .alpha_to_coverage_enable(coverage);
-        let d = &states.depth;
+        let d = &states.depth_stencil;
         let face = |f: &StencilFace, reference: u32| vk::StencilOpState {
-            fail_op: vk::StencilOp::from_raw(f.fail as i32),
-            pass_op: vk::StencilOp::from_raw(f.pass as i32),
-            depth_fail_op: vk::StencilOp::from_raw(f.depth_fail as i32),
+            fail_op: vk::StencilOp::from_raw(f.fail_op as i32),
+            pass_op: vk::StencilOp::from_raw(f.pass_op as i32),
+            depth_fail_op: vk::StencilOp::from_raw(f.depth_fail_op as i32),
             compare_op: vk_compare_op(f.compare),
-            compare_mask: f.read,
-            write_mask: f.write,
+            compare_mask: f.read_mask,
+            write_mask: f.write_mask,
             reference,
         };
         let depth_state = vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(d.compare != CompareOp::None || d.write)
             .depth_write_enable(d.write)
             .depth_compare_op(vk_compare_op(d.compare))
-            .stencil_test_enable(d.stencil)
-            .front(face(&d.front, states.front_reference))
-            .back(face(&d.back, states.back_reference));
+            .stencil_test_enable(d.stencil_test)
+            .front(face(&d.front, states.front_stencil_reference))
+            .back(face(&d.back, states.back_stencil_reference));
         let blends: Vec<_> = colors
             .iter()
             .map(|c| vk::PipelineColorBlendAttachmentState {
                 blend_enable: c.blend as u32,
-                src_color_blend_factor: vk::BlendFactor::from_raw(c.src as i32),
-                dst_color_blend_factor: vk::BlendFactor::from_raw(c.dst as i32),
-                color_blend_op: vk::BlendOp::from_raw(c.op as i32),
+                src_color_blend_factor: vk::BlendFactor::from_raw(c.src_color as i32),
+                dst_color_blend_factor: vk::BlendFactor::from_raw(c.dst_color as i32),
+                color_blend_op: vk::BlendOp::from_raw(c.op_color as i32),
                 src_alpha_blend_factor: vk::BlendFactor::from_raw(c.src_alpha as i32),
                 dst_alpha_blend_factor: vk::BlendFactor::from_raw(c.dst_alpha as i32),
                 alpha_blend_op: vk::BlendOp::from_raw(c.op_alpha as i32),
@@ -233,12 +235,15 @@ impl Device {
         ];
         for (flag, more) in [
             (
-                DynamicPipelineStates::CULL,
+                DynamicPipelineStates::CULL_MODE,
                 &[vk::DynamicState::CULL_MODE][..],
             ),
-            (DynamicPipelineStates::FACE, &[vk::DynamicState::FRONT_FACE]),
             (
-                DynamicPipelineStates::DEPTH_STATE,
+                DynamicPipelineStates::FRONT_FACE,
+                &[vk::DynamicState::FRONT_FACE],
+            ),
+            (
+                DynamicPipelineStates::DEPTH_STENCIL_STATE,
                 &[
                     vk::DynamicState::DEPTH_TEST_ENABLE,
                     vk::DynamicState::DEPTH_WRITE_ENABLE,
@@ -265,11 +270,11 @@ impl Device {
                 &[vk::DynamicState::BLEND_CONSTANTS],
             ),
             (
-                DynamicPipelineStates::TOPOLOGY,
+                DynamicPipelineStates::PRIMITIVE_TOPOLOGY,
                 &[vk::DynamicState::PRIMITIVE_TOPOLOGY],
             ),
         ] {
-            if states.dynamic.contains(flag) {
+            if states.dynamic_states.contains(flag) {
                 list.extend(more);
             }
         }
@@ -306,12 +311,15 @@ impl Device {
         if !label.is_empty() {
             self.name(pipeline, label);
         }
-        let stuck = self.ext.moltenvk && !states.dynamic.contains(DynamicPipelineStates::FACE);
+        let stuck = self.ext.moltenvk
+            && !states
+                .dynamic_states
+                .contains(DynamicPipelineStates::FRONT_FACE);
         let id = self
             .res
             .renders
             .insert((pipeline, layout, stuck.then_some(winding)));
-        let shape = states.topology;
+        let shape = states.primitive_topology;
         self.res.table.renders.set(
             id,
             crate::table::RenderEntry {
@@ -319,7 +327,7 @@ impl Device {
                 topology: shape,
                 mesh: vertex.is_none(),
                 indirect,
-                dynamic: states.dynamic,
+                dynamic: states.dynamic_states,
                 vertices: vertex.map_or(0, crate::table::vertex_buffer_mask),
                 reads,
                 layouts,
@@ -334,53 +342,53 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         self.caps.check_render_pipeline(info)?;
         self.graphics(
-            info.code,
+            info.bytecode,
             &[
-                (vk::ShaderStageFlags::VERTEX, info.vertex),
-                (vk::ShaderStageFlags::FRAGMENT, info.fragment),
+                (vk::ShaderStageFlags::VERTEX, info.vertex_entrypoint),
+                (vk::ShaderStageFlags::FRAGMENT, info.fragment_entrypoint),
             ],
             Some(info),
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-            info.coverage,
-            info.clamp,
-            info.ordered,
-            info.indirect,
+            info.color_targets,
+            info.depth_format,
+            info.stencil_format,
+            info.sample_count,
+            info.fill_mode,
+            info.alpha_to_coverage,
+            info.depth_clamp,
+            info.ordered_reads,
+            info.indirect_buffers,
             &info.states,
-            info.sets,
+            info.descriptor_set_layout,
             info.label,
         )
     }
 
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.caps.check_mesh_pipeline(info)?;
-        let words = spirv::read(info.code, &[info.mesh])?;
-        check_group(&words, info.mesh, info.mesh_group)?;
-        if !info.task.is_empty() {
-            check_group(&words, info.task, info.task_group)?;
+        let words = spirv::read(info.bytecode, &[info.mesh_entrypoint])?;
+        check_group(&words, info.mesh_entrypoint, info.mesh_threadgroup_size)?;
+        if !info.object_entrypoint.is_empty() {
+            check_group(&words, info.object_entrypoint, info.object_threadgroup_size)?;
         }
         self.graphics(
-            info.code,
+            info.bytecode,
             &[
-                (vk::ShaderStageFlags::TASK_EXT, info.task),
-                (vk::ShaderStageFlags::MESH_EXT, info.mesh),
-                (vk::ShaderStageFlags::FRAGMENT, info.fragment),
+                (vk::ShaderStageFlags::TASK_EXT, info.object_entrypoint),
+                (vk::ShaderStageFlags::MESH_EXT, info.mesh_entrypoint),
+                (vk::ShaderStageFlags::FRAGMENT, info.fragment_entrypoint),
             ],
             None,
-            info.colors,
-            info.depth,
-            info.stencil,
-            info.samples,
-            info.fill,
-            info.coverage,
-            info.clamp,
-            info.ordered,
-            info.indirect,
+            info.color_targets,
+            info.depth_format,
+            info.stencil_format,
+            info.sample_count,
+            info.fill_mode,
+            info.alpha_to_coverage,
+            info.depth_clamp,
+            info.ordered_reads,
+            info.indirect_buffers,
             &info.states.vertex(),
-            info.sets,
+            info.descriptor_set_layout,
             info.label,
         )
     }
@@ -397,7 +405,7 @@ impl Device {
     pub fn create_tile_pipeline(&self, info: &TilePipelineInfo) -> Result<TilePipeline, Error> {
         crate::device_capabilities::check_tile_pipeline(info);
         Err(Error::Unsupported(
-            "create_tile_pipeline needs caps.tiles".into(),
+            "create_tile_pipeline needs caps.tile_shaders".into(),
         ))
     }
 
@@ -407,7 +415,7 @@ impl Device {
 
     pub fn create_depth_stencil_state(
         &self,
-        info: &DepthStateInfo,
+        info: &DepthStencilStateInfo,
         _label: &str,
     ) -> Result<DepthStencilState, Error> {
         let id = self.res.depths.insert(*info);
@@ -424,7 +432,7 @@ impl Device {
         self.caps.check_atomics(spirv::atomics(words))?;
         if spirv::declares(words, MODEL) && !self.ext.model {
             return Err(Error::Unsupported(
-                "the shader uses the Vulkan memory model, which the host did not enable".into(),
+                "the shader uses acquire_release_atomics, which the host did not enable".into(),
             ));
         }
         Ok(())
@@ -440,19 +448,19 @@ impl Device {
         info: &ComputePipelineInfo,
     ) -> Result<ComputePipeline, Error> {
         self.caps.check_compute_pipeline(info)?;
-        let layouts = self.res.table.layout_ids(info.sets);
-        let (code, entry, label) = (info.code, info.entry, info.label);
-        let sets = info.sets;
+        let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
+        let (code, entry, label) = (info.bytecode, info.entrypoint, info.label);
+        let sets = info.descriptor_set_layout;
         let words = spirv::read(code, &[entry])?;
         self.caps
             .check_subgroups(spirv::subgroups(&words), PipelineStages::COMPUTE)?;
         self.check_shader(&words)?;
-        check_group(&words, entry, info.group)?;
-        if info.full {
-            let size = if info.subgroup == 0 {
-                1 << (31 - self.caps.subgroup_sizes.leading_zeros())
+        check_group(&words, entry, info.threadgroup_size)?;
+        if info.require_full_subgroups {
+            let size = if info.required_subgroup_size == 0 {
+                1 << (31 - self.caps.subgroup_size_mask.leading_zeros())
             } else {
-                info.subgroup
+                info.required_subgroup_size
             };
             let width = spirv::size(&words, entry).map_or(0, |s| s[0]);
             self.caps.assert_full_subgroups(width, size);
@@ -460,8 +468,8 @@ impl Device {
         let module = self.module(&words)?;
         let name = CString::new(entry).unwrap();
         let mut required = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default()
-            .required_subgroup_size(info.subgroup);
-        let flags = if info.full {
+            .required_subgroup_size(info.required_subgroup_size);
+        let flags = if info.require_full_subgroups {
             vk::PipelineShaderStageCreateFlags::REQUIRE_FULL_SUBGROUPS
         } else {
             vk::PipelineShaderStageCreateFlags::empty()
@@ -471,7 +479,7 @@ impl Device {
             .flags(flags)
             .module(module)
             .name(&name);
-        if info.subgroup != 0 && self.ext.sizes {
+        if info.required_subgroup_size != 0 && self.ext.sizes {
             stage = stage.push_next(&mut required);
         }
         let layout = match self.pipeline_layout(sets) {

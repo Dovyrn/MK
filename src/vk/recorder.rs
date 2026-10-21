@@ -10,7 +10,7 @@ use crate::vk::extensions::Extensions;
 use crate::vk::resources::Resources;
 use crate::vk::texture::TextureObject;
 use crate::{
-    CompareOp, DepthStateInfo, FrontFace, IndexType, LoadOp, PipelineStages, StoreOp, slot,
+    CompareOp, DepthStencilStateInfo, FrontFace, IndexType, LoadOp, PipelineStages, StoreOp, slot,
 };
 use ash::vk;
 use std::ffi::CString;
@@ -38,14 +38,14 @@ fn vk_load_op(l: crate::LoadOp) -> vk::AttachmentLoadOp {
     match l {
         LoadOp::Load => vk::AttachmentLoadOp::LOAD,
         LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
-        LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
+        LoadOp::Discard => vk::AttachmentLoadOp::DONT_CARE,
     }
 }
 
 fn vk_store_op(s: crate::StoreOp) -> vk::AttachmentStoreOp {
     match s {
         StoreOp::Store => vk::AttachmentStoreOp::STORE,
-        StoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
+        StoreOp::Discard => vk::AttachmentStoreOp::DONT_CARE,
     }
 }
 
@@ -69,7 +69,7 @@ fn vk_stages(bits: PipelineStages) -> vk::PipelineStageFlags2 {
             vk::PipelineStageFlags2::FRAGMENT_SHADER,
         ),
         (
-            PipelineStages::TASK,
+            PipelineStages::OBJECT,
             vk::PipelineStageFlags2::TASK_SHADER_EXT,
         ),
         (
@@ -81,12 +81,12 @@ fn vk_stages(bits: PipelineStages) -> vk::PipelineStageFlags2 {
             vk::PipelineStageFlags2::DRAW_INDIRECT,
         ),
         (
-            PipelineStages::DEPTH,
+            PipelineStages::DEPTH_STENCIL,
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
                 | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
         ),
         (
-            PipelineStages::COLOR,
+            PipelineStages::COLOR_ATTACHMENT,
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
         ),
         (PipelineStages::HOST, vk::PipelineStageFlags2::HOST),
@@ -108,7 +108,7 @@ fn vk_stages(bits: PipelineStages) -> vk::PipelineStageFlags2 {
 fn vk_access(bits: PipelineStages, reads: bool) -> vk::AccessFlags2 {
     let shader = PipelineStages::VERTEX
         | PipelineStages::FRAGMENT
-        | PipelineStages::TASK
+        | PipelineStages::OBJECT
         | PipelineStages::MESH
         | PipelineStages::COMPUTE;
     let map = [
@@ -133,12 +133,12 @@ fn vk_access(bits: PipelineStages, reads: bool) -> vk::AccessFlags2 {
             vk::AccessFlags2::NONE,
         ),
         (
-            PipelineStages::DEPTH,
+            PipelineStages::DEPTH_STENCIL,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
         (
-            PipelineStages::COLOR,
+            PipelineStages::COLOR_ATTACHMENT,
             vk::AccessFlags2::COLOR_ATTACHMENT_READ,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
@@ -192,14 +192,18 @@ impl Recorder<'_> {
         let (flag, valid) = match bit {
             PipelineStages::VERTEX => (vk::PipelineStageFlags2::VERTEX_SHADER, graphics),
             PipelineStages::FRAGMENT => (vk::PipelineStageFlags2::FRAGMENT_SHADER, graphics),
-            PipelineStages::TASK => (
+            PipelineStages::OBJECT => (
                 vk::PipelineStageFlags2::TASK_SHADER_EXT,
                 graphics && self.ext.task,
             ),
             PipelineStages::MESH => (vk::PipelineStageFlags2::MESH_SHADER_EXT, mesh),
             PipelineStages::INDIRECT => (vk::PipelineStageFlags2::DRAW_INDIRECT, true),
-            PipelineStages::DEPTH => (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics),
-            PipelineStages::COLOR => (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics),
+            PipelineStages::DEPTH_STENCIL => {
+                (vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS, graphics)
+            }
+            PipelineStages::COLOR_ATTACHMENT => {
+                (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, graphics)
+            }
             PipelineStages::COMPUTE => (vk::PipelineStageFlags2::COMPUTE_SHADER, true),
             PipelineStages::COPY => (vk::PipelineStageFlags2::ALL_TRANSFER, true),
             _ => (vk::PipelineStageFlags2::ALL_COMMANDS, true),
@@ -211,14 +215,14 @@ impl Recorder<'_> {
         }
     }
 
-    fn record_depth_state(&self, d: &DepthStateInfo) {
+    fn record_depth_state(&self, d: &DepthStencilStateInfo) {
         let (dev, b) = (self.device, self.buffer);
         unsafe {
             dev.cmd_set_depth_test_enable(b, d.compare != CompareOp::None || d.write);
             dev.cmd_set_depth_write_enable(b, d.write);
             dev.cmd_set_depth_compare_op(b, vk_compare_op(d.compare));
-            dev.cmd_set_stencil_test_enable(b, d.stencil);
-            if !d.stencil {
+            dev.cmd_set_stencil_test_enable(b, d.stencil_test);
+            if !d.stencil_test {
                 return;
             }
             for (mask, f) in [
@@ -228,13 +232,13 @@ impl Recorder<'_> {
                 dev.cmd_set_stencil_op(
                     b,
                     mask,
-                    vk::StencilOp::from_raw(f.fail as i32),
-                    vk::StencilOp::from_raw(f.pass as i32),
-                    vk::StencilOp::from_raw(f.depth_fail as i32),
+                    vk::StencilOp::from_raw(f.fail_op as i32),
+                    vk::StencilOp::from_raw(f.pass_op as i32),
+                    vk::StencilOp::from_raw(f.depth_fail_op as i32),
                     vk_compare_op(f.compare),
                 );
-                dev.cmd_set_stencil_compare_mask(b, mask, f.read);
-                dev.cmd_set_stencil_write_mask(b, mask, f.write);
+                dev.cmd_set_stencil_compare_mask(b, mask, f.read_mask);
+                dev.cmd_set_stencil_write_mask(b, mask, f.write_mask);
             }
         }
     }
@@ -317,7 +321,7 @@ impl Recorder<'_> {
             gone |= PipelineStages::MESH;
         }
         if !self.ext.task {
-            gone |= PipelineStages::TASK;
+            gone |= PipelineStages::OBJECT;
         }
         bits & !gone
     }
@@ -494,9 +498,9 @@ impl Recorder<'_> {
                 }
                 Command::CopyBufferToTexture {
                     buffer,
-                    offset,
-                    row_length,
-                    row_count,
+                    buffer_offset,
+                    row_texels,
+                    slice_rows: row_count,
                     texture,
                     mip,
                     layer,
@@ -513,8 +517,8 @@ impl Recorder<'_> {
                         layer,
                         [x, y, z],
                         [width, height, depth],
-                        offset,
-                        row_length,
+                        buffer_offset,
+                        row_texels,
                         row_count,
                     );
                     d.cmd_copy_buffer_to_image(
@@ -536,9 +540,9 @@ impl Recorder<'_> {
                     height,
                     depth,
                     buffer,
-                    offset,
-                    row_length,
-                    row_count,
+                    buffer_offset,
+                    row_texels,
+                    slice_rows: row_count,
                 } => {
                     let (t, region) = self.buffer_image_copy(
                         texture,
@@ -546,8 +550,8 @@ impl Recorder<'_> {
                         layer,
                         [x, y, z],
                         [width, height, depth],
-                        offset,
-                        row_length,
+                        buffer_offset,
+                        row_texels,
                         row_count,
                     );
                     d.cmd_copy_image_to_buffer(
@@ -667,7 +671,7 @@ impl Recorder<'_> {
                     d.cmd_pipeline_barrier2(b, &info);
                 }
                 Command::TileMemory { .. } | Command::DispatchTile { .. } => {
-                    unreachable!("caps.tiles is false on Vulkan")
+                    unreachable!("caps.tile_shaders is false on Vulkan")
                 }
                 Command::BindRenderPipeline { pipeline } => {
                     let (raw, layout, stuck) = *self.res.renders.get(pipeline);
@@ -683,8 +687,8 @@ impl Recorder<'_> {
                 Command::SetFrontFace { face: f } => d.cmd_set_front_face(
                     b,
                     match f {
-                        FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
-                        FrontFace::Cw => vk::FrontFace::CLOCKWISE,
+                        FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
+                        FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
                     },
                 ),
                 Command::SetPrimitiveTopology { topology } => d.cmd_set_primitive_topology(
@@ -794,7 +798,7 @@ impl Recorder<'_> {
                     let stride = indirect_stride(e.mesh, e.info.indexed);
                     let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
                     let range = self.res.buffers.get(buffer).raw;
-                    let (at, max) = (offset + 4, e.info.draws);
+                    let (at, max) = (offset + 4, e.info.max_draws);
                     match (e.mesh, e.info.indexed) {
                         (true, _) => self
                             .ext

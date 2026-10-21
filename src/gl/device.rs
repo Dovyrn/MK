@@ -24,9 +24,9 @@ use crate::gl::texture::{TextureObject, target};
 use crate::recording::{Held, Recording};
 use crate::table::lock;
 use crate::{
-    Atomic64, BufferUsage, ComputePipelineInfo, DepthStateInfo, DeviceCapabilities, Format, Memory,
-    MeshPipelineInfo, PipelineStages, RenderPipelineInfo, SamplerInfo, SubgroupOp, TextureInfo,
-    TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, slot,
+    Atomic64, BufferUsage, ComputePipelineInfo, DepthStencilStateInfo, DeviceCapabilities, Format,
+    Memory, MeshPipelineInfo, PipelineStages, RenderPipelineInfo, SamplerInfo, SubgroupOp,
+    TextureInfo, TextureUsage, TextureViewInfo, TilePipelineInfo, Timeline, slot,
 };
 use crate::{
     Buffer, CommandBuffer, CommandPool, ComputePipeline, DepthStencilState, ImportedPassInfo,
@@ -151,23 +151,23 @@ impl Device {
                 (glow::FRAGMENT_SHADER_BIT, PipelineStages::FRAGMENT),
                 (glow::COMPUTE_SHADER_BIT, PipelineStages::COMPUTE),
                 (MESH_SHADER_BIT, PipelineStages::MESH),
-                (TASK_SHADER_BIT, PipelineStages::TASK),
+                (TASK_SHADER_BIT, PipelineStages::OBJECT),
             ]
             .into_iter()
             .filter(|(g, _)| group(SUBGROUP_STAGES) & g != 0)
             .fold(PipelineStages::default(), |m, (_, s)| m | s);
             let caps = DeviceCapabilities {
-                queues: 1,
+                max_queue_count: 1,
                 timestamp_period: 1.0,
                 timestamps: results,
                 precise_occlusion: results,
-                viewports: if has(99, "GL_ARB_shader_viewport_layer_array") {
+                max_viewports: if has(99, "GL_ARB_shader_viewport_layer_array") {
                     (int(glow::MAX_VIEWPORTS) as u32).min(slot::VIEWPORTS)
                 } else {
                     1
                 },
-                graphics_queues: 1,
-                anisotropy: if has(46, "GL_ARB_texture_filter_anisotropic")
+                graphics_queue_mask: 1,
+                max_anisotropy_level: if has(46, "GL_ARB_texture_filter_anisotropic")
                     || has(99, "GL_EXT_texture_filter_anisotropic")
                 {
                     gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY) as u32
@@ -177,69 +177,69 @@ impl Device {
                 depth_clamp: true,
                 line_fill: true,
                 storage_sets: storage,
-                set_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
-                set_storages: if storage {
+                max_set_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
+                max_set_storages: if storage {
                     int(glow::MAX_SHADER_STORAGE_BUFFER_BINDINGS) as u32
                 } else {
                     0
                 },
-                set_dynamic_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
-                set_dynamic_storages: if storage {
+                max_set_dynamic_uniforms: int(glow::MAX_UNIFORM_BUFFER_BINDINGS) as u32,
+                max_set_dynamic_storages: if storage {
                     int(glow::MAX_SHADER_STORAGE_BUFFER_BINDINGS) as u32
                 } else {
                     0
                 },
-                set_textures: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
-                set_images: if storage {
+                max_set_textures: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
+                max_set_storage_textures: if storage {
                     int(glow::MAX_IMAGE_UNITS) as u32
                 } else {
                     0
                 },
-                set_samplers: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
-                set_inputs: 0,
-                persistent_maps: has(44, "GL_ARB_buffer_storage"),
-                bind_alignment: if storage {
+                max_set_samplers: int(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS) as u32,
+                max_set_input_attachments: 0,
+                persistent_mapping: has(44, "GL_ARB_buffer_storage"),
+                buffer_offset_alignment: if storage {
                     int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT)
                         .max(int(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT))
                         as u32
                 } else {
                     int(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT) as u32
                 },
-                compute,
+                compute_shaders: compute,
                 texture_views: has(43, "GL_ARB_texture_view"),
-                occlusion: results,
+                occlusion_queries: results,
                 bias_clamp: has(46, "GL_ARB_polygon_offset_clamp"),
                 independent_blend: has(40, "GL_ARB_draw_buffers_blend"),
-                indirect: has(42, "GL_ARB_draw_indirect")
+                indirect_draws: has(42, "GL_ARB_draw_indirect")
                     && has(42, "GL_ARB_base_instance")
                     && extra.parameters,
-                indirect_offset: false,
+                indirect_index_offset: false,
                 max_queries: 65536,
                 cube_arrays: has(40, "GL_ARB_texture_cube_map_array"),
                 mirror_clamp: has(44, "GL_ARB_texture_mirror_clamp_to_edge"),
                 buffer_clear: extra.clear.is_some(),
                 partial_resolve: true,
                 max_buffer: isize::MAX as u64,
-                max_uniform: gl.get_parameter_i64(glow::MAX_UNIFORM_BLOCK_SIZE) as u64,
-                max_storage: if storage {
+                max_uniform_range: gl.get_parameter_i64(glow::MAX_UNIFORM_BLOCK_SIZE) as u64,
+                max_storage_range: if storage {
                     gl.get_parameter_i64(glow::MAX_SHADER_STORAGE_BLOCK_SIZE) as u64
                 } else {
                     0
                 },
-                max_texture: int(glow::MAX_TEXTURE_SIZE) as u32,
-                max_cube: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
-                max_volume: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
-                max_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
-                subgroup: group(SUBGROUP_SIZE),
-                subgroup_sizes: group(SUBGROUP_SIZE),
+                max_texture_size: int(glow::MAX_TEXTURE_SIZE) as u32,
+                max_cube_size: int(glow::MAX_CUBE_MAP_TEXTURE_SIZE) as u32,
+                max_volume_size: int(glow::MAX_3D_TEXTURE_SIZE) as u32,
+                max_texture_layers: int(glow::MAX_ARRAY_TEXTURE_LAYERS) as u32,
+                subgroup_size: group(SUBGROUP_SIZE),
+                subgroup_size_mask: group(SUBGROUP_SIZE),
                 subgroup_ops: SubgroupOp(group(SUBGROUP_FEATURES) & SubgroupOp::BITS),
                 subgroup_stages: stages,
-                max_threads: if compute {
+                max_threadgroup_threads: if compute {
                     int(glow::MAX_COMPUTE_WORK_GROUP_INVOCATIONS) as u32
                 } else {
                     0
                 },
-                max_shared: if compute {
+                max_threadgroup_memory: if compute {
                     int(glow::MAX_COMPUTE_SHARED_MEMORY_SIZE) as u32
                 } else {
                     0
@@ -249,18 +249,18 @@ impl Device {
                 } else {
                     Atomic64::default()
                 },
-                mesh: extra.mesh.is_some(),
-                task: extra.mesh.is_some(),
+                mesh_shaders: extra.mesh.is_some(),
+                object_shaders: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
                 indirect_count: false,
-                multi_draw: false,
+                multi_draw_indirect: false,
                 max_draws: 0,
-                mesh_groups: if extra.mesh.is_some() {
+                max_mesh_groups: if extra.mesh.is_some() {
                     int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
                 } else {
                     0
                 },
-                mesh_axis: if extra.mesh.is_some() {
+                max_mesh_axis_groups: if extra.mesh.is_some() {
                     (0..3)
                         .flat_map(|i| [MAX_TASK_COUNT, MAX_MESH_COUNT].map(|p| (p, i)))
                         .map(|(p, i)| gl.get_parameter_indexed_i32(p, i))
@@ -269,9 +269,9 @@ impl Device {
                 } else {
                     0
                 },
-                budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
-                host_read: has(45, "GL_ARB_get_texture_sub_image"),
-                images: if extra.bindless.is_some() {
+                memory_budget: has(99, "GL_NVX_gpu_memory_info") || has(99, "GL_ATI_meminfo"),
+                host_texture_reads: has(45, "GL_ARB_get_texture_sub_image"),
+                max_storage_textures: if extra.bindless.is_some() {
                     u32::MAX
                 } else {
                     0
@@ -428,7 +428,7 @@ impl Device {
             .table
             .assert_usage(name, buffer, BufferUsage::ADDRESS, "ADDRESS");
         self.caps.assert_addresses();
-        unreachable!("caps.addresses is false on GL")
+        unreachable!("caps.buffer_addresses is false on GL")
     }
 
     pub fn create_compute_pipeline(
@@ -438,9 +438,13 @@ impl Device {
         self.thread();
         self.caps.check_compute_pipeline(info)?;
         self.check_host_programs()?;
-        let layouts = self.res.table.layout_ids(info.sets);
-        program::check_group(info.code, info.entry, info.group)?;
-        let program = Program::new(&self.gl, info.code, &[(glow::COMPUTE_SHADER, info.entry)])?;
+        let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
+        program::check_group(info.bytecode, info.entrypoint, info.threadgroup_size)?;
+        let program = Program::new(
+            &self.gl,
+            info.bytecode,
+            &[(glow::COMPUTE_SHADER, info.entrypoint)],
+        )?;
         if !info.label.is_empty() {
             self.name(glow::PROGRAM, program.raw.0.get(), info.label);
         }
@@ -461,7 +465,7 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_render_pipeline(info)?;
-        for a in info.attributes {
+        for a in info.vertex_attributes {
             let packed = a.format == Format::Rg11b10Float
                 && !self.has(44, "GL_ARB_vertex_type_10f_11f_11f_rev");
             if a.format == Format::Rgb9e5Float || packed {
@@ -472,8 +476,8 @@ impl Device {
             }
         }
         let stages = [
-            (glow::VERTEX_SHADER, info.vertex),
-            (glow::FRAGMENT_SHADER, info.fragment),
+            (glow::VERTEX_SHADER, info.vertex_entrypoint),
+            (glow::FRAGMENT_SHADER, info.fragment_entrypoint),
         ];
         self.render(info, &stages)
     }
@@ -481,26 +485,34 @@ impl Device {
     pub fn create_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<RenderPipeline, Error> {
         self.thread();
         self.caps.check_mesh_pipeline(info)?;
-        program::check_group(info.code, info.mesh, info.mesh_group)?;
-        if !info.task.is_empty() {
-            program::check_group(info.code, info.task, info.task_group)?;
+        program::check_group(
+            info.bytecode,
+            info.mesh_entrypoint,
+            info.mesh_threadgroup_size,
+        )?;
+        if !info.object_entrypoint.is_empty() {
+            program::check_group(
+                info.bytecode,
+                info.object_entrypoint,
+                info.object_threadgroup_size,
+            )?;
         }
         let mut stages = Vec::new();
-        if !info.task.is_empty() {
-            stages.push((TASK_SHADER, info.task));
+        if !info.object_entrypoint.is_empty() {
+            stages.push((TASK_SHADER, info.object_entrypoint));
         }
-        stages.push((MESH_SHADER, info.mesh));
-        stages.push((glow::FRAGMENT_SHADER, info.fragment));
+        stages.push((MESH_SHADER, info.mesh_entrypoint));
+        stages.push((glow::FRAGMENT_SHADER, info.fragment_entrypoint));
         let render = RenderPipelineInfo {
-            code: info.code,
-            colors: info.colors,
-            fill: info.fill,
-            coverage: info.coverage,
-            clamp: info.clamp,
-            ordered: info.ordered,
-            indirect: info.indirect,
+            bytecode: info.bytecode,
+            color_targets: info.color_targets,
+            fill_mode: info.fill_mode,
+            alpha_to_coverage: info.alpha_to_coverage,
+            depth_clamp: info.depth_clamp,
+            ordered_reads: info.ordered_reads,
+            indirect_buffers: info.indirect_buffers,
             states: info.states.vertex(),
-            sets: info.sets,
+            descriptor_set_layout: info.descriptor_set_layout,
             label: info.label,
             ..Default::default()
         };
@@ -513,7 +525,7 @@ impl Device {
         stages: &[(u32, &str)],
     ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
-        let layouts = self.res.table.layout_ids(info.sets);
+        let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
         let p = Pipeline::new(&self.gl, info, stages)?;
         if !info.label.is_empty() {
             self.name(glow::PROGRAM, p.program.raw.0.get(), info.label);
@@ -523,11 +535,11 @@ impl Device {
         self.res.table.renders.set(
             id,
             crate::table::RenderEntry {
-                samples: info.samples,
-                topology: info.states.topology,
+                samples: info.sample_count,
+                topology: info.states.primitive_topology,
                 mesh,
-                indirect: info.indirect,
-                dynamic: info.states.dynamic,
+                indirect: info.indirect_buffers,
+                dynamic: info.states.dynamic_states,
                 vertices: crate::table::vertex_buffer_mask(info),
                 reads: 0,
                 layouts,
@@ -546,7 +558,7 @@ impl Device {
         self.thread();
         crate::device_capabilities::check_tile_pipeline(info);
         Err(Error::Unsupported(
-            "create_tile_pipeline needs caps.tiles".into(),
+            "create_tile_pipeline needs caps.tile_shaders".into(),
         ))
     }
 
@@ -557,7 +569,7 @@ impl Device {
 
     pub fn create_depth_stencil_state(
         &self,
-        info: &DepthStateInfo,
+        info: &DepthStencilStateInfo,
         _label: &str,
     ) -> Result<DepthStencilState, Error> {
         self.thread();
@@ -591,7 +603,7 @@ impl Device {
         self.thread();
         let id = self.res.textures.insert(TextureObject {
             raw: std::num::NonZeroU32::new(raw).map(glow::NativeTexture),
-            target: target(info.dimension, info.samples),
+            target: target(info.dimension, info.sample_count),
             format: info.format,
             own: false,
             image: Cell::new(0),
@@ -661,18 +673,22 @@ impl Device {
         let views = self.has(43, "GL_ARB_texture_view") && self.has(42, "GL_ARB_texture_storage");
         let base = TextureUsage::SAMPLED
             | if views {
-                TextureUsage::VIEW
+                TextureUsage::MUTABLE_VIEW_FORMAT
             } else {
                 TextureUsage::default()
             };
         let copies = TextureUsage::COPY_SRC | TextureUsage::COPY_DST;
         let readable = self.extra.compressed_sub.is_some() && self.extra.copy_image.is_some();
         match kind {
-            0 if readable => base | copies | TextureUsage::HOST,
-            0 => base | TextureUsage::COPY_DST | TextureUsage::HOST,
-            glow::DEPTH_STENCIL if format == Format::D24UnormS8 => base | TextureUsage::DEPTH,
-            glow::DEPTH_STENCIL => base | TextureUsage::DEPTH | TextureUsage::COPY_SRC,
-            glow::DEPTH_COMPONENT | glow::STENCIL_INDEX => base | TextureUsage::DEPTH | copies,
+            0 if readable => base | copies | TextureUsage::HOST_COPY,
+            0 => base | TextureUsage::COPY_DST | TextureUsage::HOST_COPY,
+            glow::DEPTH_STENCIL if format == Format::D24UnormS8 => {
+                base | TextureUsage::DEPTH_STENCIL
+            }
+            glow::DEPTH_STENCIL => base | TextureUsage::DEPTH_STENCIL | TextureUsage::COPY_SRC,
+            glow::DEPTH_COMPONENT | glow::STENCIL_INDEX => {
+                base | TextureUsage::DEPTH_STENCIL | copies
+            }
             _ => {
                 let unrenderable = matches!(
                     format,
@@ -697,14 +713,14 @@ impl Device {
                         | Format::Rgb32Sint
                         | Format::Rgb32Float
                 );
-                let mut u = base | TextureUsage::COPY_DST | TextureUsage::HOST;
+                let mut u = base | TextureUsage::COPY_DST | TextureUsage::HOST_COPY;
                 if !unrenderable {
-                    u |= TextureUsage::COLOR | TextureUsage::COPY_SRC;
+                    u |= TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC;
                 }
                 if !unstorable && self.has(43, "GL_ARB_shader_storage_buffer_object") {
                     u |= TextureUsage::STORAGE;
                     if matches!(format, Format::R32Uint | Format::R32Sint) {
-                        u |= TextureUsage::ATOMIC;
+                        u |= TextureUsage::STORAGE_ATOMIC;
                     }
                 }
                 u
@@ -751,7 +767,7 @@ impl Device {
         device_capabilities::check_support(
             "create_texture_view",
             info.format,
-            info.usage | TextureUsage::VIEW,
+            info.usage | TextureUsage::MUTABLE_VIEW_FORMAT,
             1,
             usable,
             counts,
@@ -931,7 +947,7 @@ impl Device {
         pool: CommandPool,
         info: &ImportedPassInfo,
     ) -> Result<RenderPass<'_, '_>, Error> {
-        let mut recording = self.recording(pool, "render", info.samples)?;
+        let mut recording = self.recording(pool, "render", info.sample_count)?;
         recording.recorder.import(info.width, info.height);
         Ok(RenderPass {
             recording: Held::Owned(Box::new(recording)),

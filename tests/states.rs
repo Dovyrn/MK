@@ -17,7 +17,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: w,
             height: h,
-            usage: TextureUsage::COLOR | TextureUsage::COPY_SRC,
+            usage: TextureUsage::COLOR_ATTACHMENT | TextureUsage::COPY_SRC,
             ..Default::default()
         })
         .unwrap();
@@ -36,30 +36,30 @@ pub fn test() {
     let pipeline = |states| {
         device
             .create_render_pipeline(&RenderPipelineInfo {
-                code: host::code!("solid"),
-                vertex: "vert",
-                fragment: "frag",
-                colors: &colors,
+                bytecode: host::code!("solid"),
+                vertex_entrypoint: "vert",
+                fragment_entrypoint: "frag",
+                color_targets: &colors,
                 states,
                 ..Default::default()
             })
             .unwrap()
     };
     let backs = pipeline(VertexPipelineStates {
-        cull: CullMode::Back,
+        cull_mode: CullMode::Back,
         ..Default::default()
     });
     let fronts = pipeline(VertexPipelineStates {
-        cull: CullMode::Front,
+        cull_mode: CullMode::Front,
         ..Default::default()
     });
     let flipped = pipeline(VertexPipelineStates {
-        cull: CullMode::Back,
-        face: FrontFace::Cw,
+        cull_mode: CullMode::Back,
+        front_face: FrontFace::Clockwise,
         ..Default::default()
     });
     let dynamic = pipeline(VertexPipelineStates {
-        dynamic: DynamicPipelineStates::CULL | DynamicPipelineStates::FACE,
+        dynamic_states: DynamicPipelineStates::CULL_MODE | DynamicPipelineStates::FRONT_FACE,
         ..Default::default()
     });
     let set = device.create_residency_set().unwrap();
@@ -70,8 +70,8 @@ pub fn test() {
     c.use_residency_set(set);
     c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -104,25 +104,25 @@ pub fn test() {
     cell(&mut pass, 0);
     pass.bind_render_pipeline(dynamic);
     pass.set_cull_mode(CullMode::Front);
-    pass.set_front_face(FrontFace::Ccw);
+    pass.set_front_face(FrontFace::CounterClockwise);
     cell(&mut pass, 4);
     pass.bind_render_pipeline(fronts);
     cell(&mut pass, 1);
     pass.bind_render_pipeline(dynamic);
     pass.set_cull_mode(CullMode::Back);
-    pass.set_front_face(FrontFace::Ccw);
+    pass.set_front_face(FrontFace::CounterClockwise);
     cell(&mut pass, 3);
     pass.bind_render_pipeline(flipped);
     cell(&mut pass, 2);
     pass.bind_render_pipeline(dynamic);
     pass.set_cull_mode(CullMode::Back);
-    pass.set_front_face(FrontFace::Cw);
+    pass.set_front_face(FrontFace::Clockwise);
     cell(&mut pass, 5);
     pass.bind_render_pipeline(backs);
     cell(&mut pass, 6);
     pass.end();
     let mut pass = c
-        .begin_compute_pass(PipelineStages::COLOR, PipelineStages::COPY)
+        .begin_compute_pass(PipelineStages::COLOR_ATTACHMENT, PipelineStages::COPY)
         .unwrap();
     pass.copy_texture_to_buffer(&BufferTextureCopy {
         texture: color,

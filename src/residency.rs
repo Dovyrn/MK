@@ -1,6 +1,8 @@
 use crate::entries::Entries;
 use crate::handle::Handle;
-use crate::{Buffer, IndirectBuffer, QueryPool, ResidencySet, Resource, ResourceKind, Texture};
+use crate::{
+    Buffer, IndirectBuffer, QueryPool, ResidencySet, ResidentResource, ResourceKind, Texture,
+};
 
 const EXEMPT: u32 = 1 << 31;
 
@@ -12,7 +14,7 @@ pub struct Members {
     pub indirects: Vec<IndirectBuffer>,
 }
 
-impl From<Buffer> for Resource {
+impl From<Buffer> for ResidentResource {
     fn from(h: Buffer) -> Self {
         Self {
             kind: ResourceKind::Buffer,
@@ -21,7 +23,7 @@ impl From<Buffer> for Resource {
     }
 }
 
-impl From<Texture> for Resource {
+impl From<Texture> for ResidentResource {
     fn from(h: Texture) -> Self {
         Self {
             kind: ResourceKind::Texture,
@@ -30,7 +32,7 @@ impl From<Texture> for Resource {
     }
 }
 
-impl From<QueryPool> for Resource {
+impl From<QueryPool> for ResidentResource {
     fn from(h: QueryPool) -> Self {
         Self {
             kind: ResourceKind::QueryPool,
@@ -39,7 +41,7 @@ impl From<QueryPool> for Resource {
     }
 }
 
-impl From<IndirectBuffer> for Resource {
+impl From<IndirectBuffer> for ResidentResource {
     fn from(h: IndirectBuffer) -> Self {
         Self {
             kind: ResourceKind::IndirectBuffer,
@@ -48,8 +50,8 @@ impl From<IndirectBuffer> for Resource {
     }
 }
 
-impl From<&[Resource]> for Members {
-    fn from(list: &[Resource]) -> Self {
+impl From<&[ResidentResource]> for Members {
+    fn from(list: &[ResidentResource]) -> Self {
         let mut m = Members::default();
         for r in list {
             match r.kind {

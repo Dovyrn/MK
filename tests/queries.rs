@@ -11,7 +11,7 @@ pub fn test() {
     let device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.capabilities();
-    if !caps.occlusion || !caps.compute {
+    if !caps.occlusion_queries || !caps.compute_shaders {
         println!("no occlusion queries or no compute");
         return;
     }
@@ -21,9 +21,9 @@ pub fn test() {
             .unwrap()
     });
     let kind = if caps.precise_occlusion {
-        QueryKind::Precise
+        QueryKind::OcclusionCount
     } else {
-        QueryKind::Occlusion
+        QueryKind::OcclusionAny
     };
     let samples = device.create_query_pool(kind, 1, "samples").unwrap();
     let out = device
@@ -39,9 +39,9 @@ pub fn test() {
     let layout = host::layout(&device, &[DescriptorType::UniformBuffer]);
     let fill = device
         .create_compute_pipeline(&mk::ComputePipelineInfo {
-            code: host::code!("count"),
-            entry: "fill",
-            sets: &[both],
+            bytecode: host::code!("count"),
+            entrypoint: "fill",
+            descriptor_set_layout: &[both],
             ..Default::default()
         })
         .unwrap();
@@ -50,7 +50,7 @@ pub fn test() {
             format: Format::Rgba8Unorm,
             width: n,
             height: n,
-            usage: TextureUsage::COLOR,
+            usage: TextureUsage::COLOR_ATTACHMENT,
             ..Default::default()
         })
         .unwrap();
@@ -60,25 +60,25 @@ pub fn test() {
     }];
     let triangle = device
         .create_render_pipeline(&RenderPipelineInfo {
-            code: host::code!("triangle"),
-            sets: &[layout],
-            vertex: "vert",
-            fragment: "frag",
-            colors: &colors,
-            buffers: &[VertexBufferLayout {
+            bytecode: host::code!("triangle"),
+            descriptor_set_layout: &[layout],
+            vertex_entrypoint: "vert",
+            fragment_entrypoint: "frag",
+            color_targets: &colors,
+            vertex_buffers: &[VertexBufferLayout {
                 stride: 20,
-                instance: false,
+                instanced: false,
             }],
-            attributes: &[
+            vertex_attributes: &[
                 VertexAttribute {
                     location: 0,
-                    buffer: 0,
+                    buffer_slot: 0,
                     format: Format::Rg32Float,
                     offset: 0,
                 },
                 VertexAttribute {
                     location: 1,
-                    buffer: 0,
+                    buffer_slot: 0,
                     format: Format::Rgb32Float,
                     offset: 8,
                 },
@@ -117,14 +117,14 @@ pub fn test() {
     let shade = host::set(&device, layout, &[host::buffer(0, constants, stride, 4)]);
     let set = device.create_residency_set().unwrap();
     let queries: Vec<_> = times.into_iter().chain([samples]).collect();
-    let mut list: Vec<mk::Resource> = vec![
+    let mut list: Vec<mk::ResidentResource> = vec![
         out.into(),
         data.into(),
         vbuf.into(),
         constants.into(),
         color.into(),
     ];
-    list.extend(queries.iter().map(|&q| mk::Resource::from(q)));
+    list.extend(queries.iter().map(|&q| mk::ResidentResource::from(q)));
     device.add_residency(set, &list);
     device.commit_residency(set);
     let mut c = device.begin_commands(pool).unwrap();
@@ -148,8 +148,8 @@ pub fn test() {
     pass.end();
     c.discard_texture_contents(&[TextureContentDiscard {
         texture: color,
-        src_stage: PipelineStages::COLOR,
-        dst_stage: PipelineStages::COLOR,
+        src_stage: PipelineStages::COLOR_ATTACHMENT,
+        dst_stage: PipelineStages::COLOR_ATTACHMENT,
     }]);
     let mut pass = c
         .begin_render_pass(&RenderPassInfo {
@@ -160,7 +160,7 @@ pub fn test() {
                 clear: [0.0, 0.0, 0.0, 1.0],
                 ..Default::default()
             }],
-            occlusion: Some(samples),
+            occlusion_queries: Some(samples),
             ..Default::default()
         })
         .unwrap();

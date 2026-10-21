@@ -9,101 +9,101 @@ import lombok.experimental.Accessors;
 @Setter
 @Accessors(fluent = true, chain = true)
 public class MeshPipelineInfo {
-    public long code = 0;
-    public long codeSize = 0;
-    public String task = "";
-    public String mesh = "";
-    public String fragment = "";
-    public int[] taskGroup = new int[] {0, 0, 0};
-    public int[] meshGroup = new int[] {0, 0, 0};
-    public ColorTarget[] colors = new ColorTarget[0];
-    public Format depth = null;
-    public Format stencil = null;
-    public int samples = 1;
-    public FillMode fill = FillMode.FILL;
-    public boolean coverage = false;
-    public boolean clamp = false;
-    public boolean ordered = false;
-    public boolean indirect = false;
+    public long bytecode = 0;
+    public long bytecodeSize = 0;
+    public String objectEntrypoint = "";
+    public String meshEntrypoint = "";
+    public String fragmentEntrypoint = "";
+    public int[] objectThreadgroupSize = new int[] {0, 0, 0};
+    public int[] meshThreadgroupSize = new int[] {0, 0, 0};
+    public ColorTarget[] colorTargets = new ColorTarget[0];
+    public Format depthFormat = null;
+    public Format stencilFormat = null;
+    public int sampleCount = 1;
+    public FillMode fillMode = FillMode.FILL;
+    public boolean alphaToCoverage = false;
+    public boolean depthClamp = false;
+    public boolean orderedReads = false;
+    public boolean indirectBuffers = false;
     public MeshPipelineStates states = new MeshPipelineStates();
-    public DescriptorLayout[] sets = new DescriptorLayout[0];
+    public DescriptorLayout[] descriptorSetLayout = new DescriptorLayout[0];
     public String label = "";
 
     int encodedSize() {
-        var colorsSize = 4;
-        for (var x : colors) {
-            colorsSize += x.encodedSize();
+        var colorTargetsSize = 4;
+        for (var x : colorTargets) {
+            colorTargetsSize += x.encodedSize();
         }
-        var setsSize = 4;
-        for (var x : sets) {
-            setsSize += 8;
+        var descriptorSetLayoutSize = 4;
+        for (var x : descriptorSetLayout) {
+            descriptorSetLayoutSize += 8;
         }
-        return 88 + task.getBytes(StandardCharsets.UTF_8).length + mesh.getBytes(StandardCharsets.UTF_8).length + fragment.getBytes(StandardCharsets.UTF_8).length + colorsSize + (depth == null ? 0 : 4) + (stencil == null ? 0 : 4) + states.encodedSize() + setsSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 88 + objectEntrypoint.getBytes(StandardCharsets.UTF_8).length + meshEntrypoint.getBytes(StandardCharsets.UTF_8).length + fragmentEntrypoint.getBytes(StandardCharsets.UTF_8).length + colorTargetsSize + (depthFormat == null ? 0 : 4) + (stencilFormat == null ? 0 : 4) + states.encodedSize() + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
-        memPutLong(p, code);
-        memPutLong(p + 8, codeSize);
+        memPutLong(p, bytecode);
+        memPutLong(p + 8, bytecodeSize);
         p += 16;
-        var taskBytes = task.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, taskBytes.length);
-        memByteBuffer(p + 4, taskBytes.length).put(taskBytes);
-        p += 4 + taskBytes.length;
-        var meshBytes = mesh.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, meshBytes.length);
-        memByteBuffer(p + 4, meshBytes.length).put(meshBytes);
-        p += 4 + meshBytes.length;
-        var fragmentBytes = fragment.getBytes(StandardCharsets.UTF_8);
-        memPutInt(p, fragmentBytes.length);
-        memByteBuffer(p + 4, fragmentBytes.length).put(fragmentBytes);
-        p += 4 + fragmentBytes.length;
-        if (taskGroup.length != 3) {
-            throw new IllegalArgumentException("taskGroup has 3 values");
+        var objectEntrypointBytes = objectEntrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, objectEntrypointBytes.length);
+        memByteBuffer(p + 4, objectEntrypointBytes.length).put(objectEntrypointBytes);
+        p += 4 + objectEntrypointBytes.length;
+        var meshEntrypointBytes = meshEntrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, meshEntrypointBytes.length);
+        memByteBuffer(p + 4, meshEntrypointBytes.length).put(meshEntrypointBytes);
+        p += 4 + meshEntrypointBytes.length;
+        var fragmentEntrypointBytes = fragmentEntrypoint.getBytes(StandardCharsets.UTF_8);
+        memPutInt(p, fragmentEntrypointBytes.length);
+        memByteBuffer(p + 4, fragmentEntrypointBytes.length).put(fragmentEntrypointBytes);
+        p += 4 + fragmentEntrypointBytes.length;
+        if (objectThreadgroupSize.length != 3) {
+            throw new IllegalArgumentException("objectThreadgroupSize has 3 values");
         }
-        for (var x : taskGroup) {
+        for (var x : objectThreadgroupSize) {
             memPutInt(p, x);
             p += 4;
         }
-        if (meshGroup.length != 3) {
-            throw new IllegalArgumentException("meshGroup has 3 values");
+        if (meshThreadgroupSize.length != 3) {
+            throw new IllegalArgumentException("meshThreadgroupSize has 3 values");
         }
-        for (var x : meshGroup) {
+        for (var x : meshThreadgroupSize) {
             memPutInt(p, x);
             p += 4;
         }
-        memPutInt(p, colors.length);
+        memPutInt(p, colorTargets.length);
         p += 4;
-        for (var x : colors) {
+        for (var x : colorTargets) {
             p = x.encode(p);
         }
-        memPutInt(p, depth == null ? 0 : 1);
+        memPutInt(p, depthFormat == null ? 0 : 1);
         p += 4;
-        if (depth != null) {
-            memPutInt(p, depth.value);
+        if (depthFormat != null) {
+            memPutInt(p, depthFormat.value);
             p += 4;
         }
-        memPutInt(p, stencil == null ? 0 : 1);
+        memPutInt(p, stencilFormat == null ? 0 : 1);
         p += 4;
-        if (stencil != null) {
-            memPutInt(p, stencil.value);
+        if (stencilFormat != null) {
+            memPutInt(p, stencilFormat.value);
             p += 4;
         }
-        memPutInt(p, samples);
+        memPutInt(p, sampleCount);
         p += 4;
-        memPutInt(p, fill.value);
+        memPutInt(p, fillMode.value);
         p += 4;
-        memPutInt(p, coverage ? 1 : 0);
+        memPutInt(p, alphaToCoverage ? 1 : 0);
         p += 4;
-        memPutInt(p, clamp ? 1 : 0);
+        memPutInt(p, depthClamp ? 1 : 0);
         p += 4;
-        memPutInt(p, ordered ? 1 : 0);
+        memPutInt(p, orderedReads ? 1 : 0);
         p += 4;
-        memPutInt(p, indirect ? 1 : 0);
+        memPutInt(p, indirectBuffers ? 1 : 0);
         p += 4;
         p = states.encode(p);
-        memPutInt(p, sets.length);
+        memPutInt(p, descriptorSetLayout.length);
         p += 4;
-        for (var x : sets) {
+        for (var x : descriptorSetLayout) {
             memPutLong(p, DescriptorLayout.raw(x));
             p += 8;
         }

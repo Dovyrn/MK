@@ -10,14 +10,14 @@ pub fn test() {
     let mut device = host::device(1);
     let pool = device.create_command_pool(0).unwrap();
     let caps = device.capabilities();
-    if !caps.compute || !caps.storage_sets {
+    if !caps.compute_shaders || !caps.storage_sets {
         println!("no compute or storage");
         return;
     }
     let timeline = device.create_timeline().unwrap();
     let texels = if device
         .format_usage(Format::R32Uint)
-        .contains(TextureUsage::ATOMIC)
+        .contains(TextureUsage::STORAGE_ATOMIC)
     {
         textures(&mut device, pool, &timeline, Format::R32Uint, 1);
         "texture adds match"
@@ -27,7 +27,7 @@ pub fn test() {
     let wide = caps.atomics64.contains(Atomic64::IMAGE)
         && device
             .format_usage(Format::R64Uint)
-            .contains(TextureUsage::ATOMIC);
+            .contains(TextureUsage::STORAGE_ATOMIC);
     if wide {
         textures(&mut device, pool, &timeline, Format::R64Uint, 2);
     }
@@ -48,7 +48,7 @@ pub fn test() {
     device.add_residency(set, &[buffer.into()]);
     device.commit_residency(set);
     let mut entries = vec![("extremes", [0, u64::MAX], [63 << 33, 63])];
-    if caps.atomics64.contains(Atomic64::ALL) {
+    if caps.atomics64.contains(Atomic64::BUFFER_ALL) {
         entries.push(("sums", [0, 0], [64 << 32, u64::MAX]));
     }
     if caps.atomics64.contains(Atomic64::SIGNED) {
@@ -70,9 +70,9 @@ pub fn test() {
     for (value, (entry, start, want)) in (1..).zip(&entries) {
         let pipeline = device
             .create_compute_pipeline(&ComputePipelineInfo {
-                code: host::code!("atomics"),
-                entry,
-                sets: &[layout],
+                bytecode: host::code!("atomics"),
+                entrypoint: entry,
+                descriptor_set_layout: &[layout],
                 ..Default::default()
             })
             .unwrap();
@@ -120,7 +120,7 @@ fn textures(
             width: 4,
             height: 4,
             usage: TextureUsage::STORAGE
-                | TextureUsage::ATOMIC
+                | TextureUsage::STORAGE_ATOMIC
                 | TextureUsage::COPY_SRC
                 | TextureUsage::COPY_DST,
             ..Default::default()
@@ -151,9 +151,9 @@ fn textures(
     );
     let pipeline = device
         .create_compute_pipeline(&ComputePipelineInfo {
-            code,
-            entry,
-            sets: &[layout],
+            bytecode: code,
+            entrypoint: entry,
+            descriptor_set_layout: &[layout],
             ..Default::default()
         })
         .unwrap();

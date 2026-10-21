@@ -37,7 +37,16 @@ pub(crate) fn is_depth_format(f: Format) -> bool {
 }
 
 pub(crate) fn same_blend(colors: &[ColorTarget]) -> bool {
-    let key = |c: &ColorTarget| (c.src, c.dst, c.op, c.src_alpha, c.dst_alpha, c.op_alpha);
+    let key = |c: &ColorTarget| {
+        (
+            c.src_color,
+            c.dst_color,
+            c.op_color,
+            c.src_alpha,
+            c.dst_alpha,
+            c.op_alpha,
+        )
+    };
     let mut on = colors.iter().filter(|c| c.blend).map(key);
     let first = on.next();
     on.all(|k| Some(k) == first)
@@ -111,10 +120,10 @@ pub(crate) fn check_tile_pipeline(info: &crate::TilePipelineInfo) {
     }
     check_targets(
         "create_tile_pipeline",
-        info.colors,
+        info.color_targets,
         None,
         None,
-        info.samples,
+        info.sample_count,
     );
 }
 
@@ -124,17 +133,29 @@ impl DeviceCapabilities {
             return Ok(());
         }
         let name = "create_render_pipeline";
-        check_targets(name, info.colors, info.depth, info.stencil, info.samples);
+        check_targets(
+            name,
+            info.color_targets,
+            info.depth_format,
+            info.stencil_format,
+            info.sample_count,
+        );
         check!(
-            info.buffers.iter().all(|b| b.stride > 0),
+            info.vertex_buffers.iter().all(|b| b.stride > 0),
             "{name} vertex buffer stride 0 means a different thing on each API; give a stride"
         );
         need(
             name,
-            info.states.bias_clamp == 0.0 || self.bias_clamp,
+            info.states.depth_bias_clamp == 0.0 || self.bias_clamp,
             "bias_clamp",
         )?;
-        self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
+        self.check_raster(
+            name,
+            info.color_targets,
+            info.fill_mode,
+            info.depth_clamp,
+            info.ordered_reads,
+        )
     }
 
     pub(crate) fn check_mesh_pipeline(&self, info: &MeshPipelineInfo) -> Result<(), Error> {
@@ -142,22 +163,38 @@ impl DeviceCapabilities {
             return Ok(());
         }
         let name = "create_mesh_pipeline";
-        check_targets(name, info.colors, info.depth, info.stencil, info.samples);
-        need(name, self.mesh, "mesh")?;
-        need(name, info.task.is_empty() || self.task, "task")?;
+        check_targets(
+            name,
+            info.color_targets,
+            info.depth_format,
+            info.stencil_format,
+            info.sample_count,
+        );
+        need(name, self.mesh_shaders, "mesh_shaders")?;
+        need(
+            name,
+            info.object_entrypoint.is_empty() || self.object_shaders,
+            "object_shaders",
+        )?;
         check!(
             !info
                 .states
-                .dynamic
-                .contains(DynamicPipelineStates::TOPOLOGY),
-            "{name} lists DynamicPipelineStates::TOPOLOGY in MeshPipelineStates.dynamic, but mesh pipelines have no primitive topology"
+                .dynamic_states
+                .contains(DynamicPipelineStates::PRIMITIVE_TOPOLOGY),
+            "{name} lists DynamicPipelineStates::PRIMITIVE_TOPOLOGY in MeshPipelineStates.dynamic, but mesh pipelines have no primitive topology"
         );
         need(
             name,
-            info.states.bias_clamp == 0.0 || self.bias_clamp,
+            info.states.depth_bias_clamp == 0.0 || self.bias_clamp,
             "bias_clamp",
         )?;
-        self.check_raster(name, info.colors, info.fill, info.clamp, info.ordered)
+        self.check_raster(
+            name,
+            info.color_targets,
+            info.fill_mode,
+            info.depth_clamp,
+            info.ordered_reads,
+        )
     }
 
     fn check_raster(
@@ -186,7 +223,7 @@ impl DeviceCapabilities {
             return Ok(());
         }
         let name = "create_indirect_buffer";
-        need(name, self.addresses, "addresses")?;
+        need(name, self.buffer_addresses, "buffer_addresses")?;
         need(name, !mesh || self.mesh_indirect, "mesh_indirect")?;
         if draws > self.max_draws {
             return Err(Error::Unsupported(format!(
@@ -205,18 +242,22 @@ impl DeviceCapabilities {
             return Ok(());
         }
         let name = "create_compute_pipeline";
-        need(name, self.compute, "compute")?;
-        let n = info.subgroup;
+        need(name, self.compute_shaders, "compute_shaders")?;
+        let n = info.required_subgroup_size;
         check!(
             n == 0 || n.is_power_of_two(),
             "{name} subgroup {n} is not a power of two"
         );
         need(
             name,
-            n == 0 || self.subgroup_sizes & n != 0,
-            "subgroup_sizes",
+            n == 0 || self.subgroup_size_mask & n != 0,
+            "subgroup_size_mask",
         )?;
-        need(name, !info.full || self.full_subgroups, "full_subgroups")
+        need(
+            name,
+            !info.require_full_subgroups || self.full_subgroups,
+            "full_subgroups",
+        )
     }
 
     #[cfg(feature = "vk")]
@@ -282,14 +323,17 @@ impl DeviceCapabilities {
         check!(!usage.is_empty(), "{name} usage is empty");
         need(name, size <= self.max_buffer, "max_buffer")?;
         let address = usage.contains(BufferUsage::ADDRESS);
-        need(name, !address || self.addresses, "addresses")
+        need(name, !address || self.buffer_addresses, "buffer_addresses")
     }
 
     pub(crate) fn assert_addresses(&self) {
         if !cfg!(feature = "validation") {
             return;
         }
-        check!(self.addresses, "buffer_address needs caps.addresses");
+        check!(
+            self.buffer_addresses,
+            "buffer_address needs caps.buffer_addresses"
+        );
     }
 
     pub(crate) fn assert_image_slot(&self, texture: crate::Texture) {
@@ -297,9 +341,9 @@ impl DeviceCapabilities {
             return;
         }
         check!(
-            crate::handle::Handle::index(texture) < self.images,
-            "bindless_storage_texture_id of {texture} is outside caps.images {}",
-            self.images
+            crate::handle::Handle::index(texture) < self.max_storage_textures,
+            "bindless_storage_texture_id of {texture} is outside caps.max_storage_textures {}",
+            self.max_storage_textures
         );
     }
 
@@ -309,9 +353,9 @@ impl DeviceCapabilities {
             return;
         }
         check!(
-            crate::handle::Handle::index(texture) < self.textures,
-            "bindless_texture_id of {texture} is outside caps.textures {}",
-            self.textures
+            crate::handle::Handle::index(texture) < self.max_textures,
+            "bindless_texture_id of {texture} is outside caps.max_textures {}",
+            self.max_textures
         );
     }
 
@@ -321,9 +365,9 @@ impl DeviceCapabilities {
             return;
         }
         check!(
-            crate::handle::Handle::index(sampler) < self.samplers,
-            "bindless_sampler_id of {sampler} is outside caps.samplers {}",
-            self.samplers
+            crate::handle::Handle::index(sampler) < self.max_samplers,
+            "bindless_sampler_id of {sampler} is outside caps.max_samplers {}",
+            self.max_samplers
         );
     }
 
@@ -337,57 +381,74 @@ impl DeviceCapabilities {
             return Ok(());
         }
         let name = "create_texture";
-        let sizes = [info.width, info.height, info.depth, info.layers, info.mips];
+        let sizes = [
+            info.width,
+            info.height,
+            info.depth,
+            info.layer_count,
+            info.mip_count,
+        ];
         check!(
             sizes.iter().all(|&n| n > 0),
-            "{name} width, height, depth, layers and mips are {sizes:?}; none may be 0"
+            "{name} width, height, depth, layer_count and mip_count are {sizes:?}; none may be 0"
         );
         assert_format(name, "format", info.format);
         check!(
-            !(info.usage & !TextureUsage::VIEW).is_empty(),
-            "{name} usage {:#x} needs more than TextureUsage::VIEW",
+            !(info.usage & !TextureUsage::MUTABLE_VIEW_FORMAT).is_empty(),
+            "{name} usage {:#x} needs more than TextureUsage::MUTABLE_VIEW_FORMAT",
             info.usage
         );
         check!(
-            !info.usage.contains(TextureUsage::ATOMIC)
+            !info.usage.contains(TextureUsage::STORAGE_ATOMIC)
                 || info.usage.contains(TextureUsage::STORAGE),
-            "{name} usage TextureUsage::ATOMIC needs TextureUsage::STORAGE"
+            "{name} usage TextureUsage::STORAGE_ATOMIC needs TextureUsage::STORAGE"
         );
         check!(
-            !info.usage.contains(TextureUsage::INPUT) || info.usage.contains(TextureUsage::COLOR),
-            "{name} usage TextureUsage::INPUT needs TextureUsage::COLOR"
+            !info.usage.contains(TextureUsage::INPUT_ATTACHMENT)
+                || info.usage.contains(TextureUsage::COLOR_ATTACHMENT),
+            "{name} usage TextureUsage::INPUT_ATTACHMENT needs TextureUsage::COLOR_ATTACHMENT"
         );
         if info.memory == Memory::Transient {
-            let attachment = TextureUsage::COLOR | TextureUsage::DEPTH | TextureUsage::INPUT;
+            let attachment = TextureUsage::COLOR_ATTACHMENT
+                | TextureUsage::DEPTH_STENCIL
+                | TextureUsage::INPUT_ATTACHMENT;
             check!(
                 attachment.contains(info.usage)
-                    && !(info.usage & (TextureUsage::COLOR | TextureUsage::DEPTH)).is_empty(),
+                    && !(info.usage
+                        & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::DEPTH_STENCIL))
+                        .is_empty(),
                 "{name} Memory::Transient holds attachments only, not usage {:#x}",
                 info.usage
             );
-            need(name, self.transients, "transients")?;
-            let input = info.usage.contains(TextureUsage::INPUT);
-            need(name, !input || self.transient_reads, "transient_reads")?;
+            need(name, self.transient_textures, "transient_textures")?;
+            let input = info.usage.contains(TextureUsage::INPUT_ATTACHMENT);
+            need(
+                name,
+                !input || self.transient_input_attachments,
+                "transient_input_attachments",
+            )?;
         }
-        let input = info.usage.contains(TextureUsage::INPUT);
+        let input = info.usage.contains(TextureUsage::INPUT_ATTACHMENT);
         need(name, !input || self.attachment_reads, "attachment_reads")?;
-        assert_samples(name, info.samples);
+        assert_samples(name, info.sample_count);
         let largest = info.width.max(info.height).max(info.depth);
         check!(
-            info.mips <= 32 - largest.leading_zeros(),
-            "{name} mips {} is more than a {largest} texture has",
-            info.mips
+            info.mip_count <= 32 - largest.leading_zeros(),
+            "{name} mip_count {} is more than a {largest} texture has",
+            info.mip_count
         );
-        let (w, h, d, l) = (info.width, info.height, info.depth, info.layers);
+        let (w, h, d, l) = (info.width, info.height, info.depth, info.layer_count);
         match info.dimension {
             TextureDimension::D1 | TextureDimension::D1Array => check!(
-                h == 1 && d == 1 && info.mips == 1,
+                h == 1 && d == 1 && info.mip_count == 1,
                 "{name} 1D texture needs height 1, depth 1 and one mip"
             ),
             TextureDimension::D3 => {
                 check_eq!(l, 1, "{name} 3D texture needs one layer");
                 check!(
-                    (info.usage & (TextureUsage::COLOR | TextureUsage::INPUT)).is_empty(),
+                    (info.usage
+                        & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::INPUT_ATTACHMENT))
+                        .is_empty(),
                     "{name} 3D texture cannot be an attachment"
                 );
             }
@@ -407,15 +468,15 @@ impl DeviceCapabilities {
             check_eq!(l, 6, "{name} cube texture needs 6 layers");
         }
         check!(
-            !info.usage.contains(TextureUsage::HOST) || info.samples == 1,
-            "{name} TextureUsage::HOST texture needs one sample"
+            !info.usage.contains(TextureUsage::HOST_COPY) || info.sample_count == 1,
+            "{name} TextureUsage::HOST_COPY texture needs one sample"
         );
-        if info.samples > 1 {
+        if info.sample_count > 1 {
             check!(
                 matches!(
                     info.dimension,
                     TextureDimension::D2 | TextureDimension::D2Array
-                ) && info.mips == 1,
+                ) && info.mip_count == 1,
                 "{name} multisampled texture needs 2D and one mip"
             );
         }
@@ -433,17 +494,24 @@ impl DeviceCapabilities {
         need(name, !cube || self.cube_arrays, "cube_arrays")?;
         let side = w.max(h);
         let (size, limit) = match info.dimension {
-            TextureDimension::D3 => (largest, self.max_volume),
-            TextureDimension::Cube | TextureDimension::CubeArray => (side, self.max_cube),
-            _ => (side, self.max_texture),
+            TextureDimension::D3 => (largest, self.max_volume_size),
+            TextureDimension::Cube | TextureDimension::CubeArray => (side, self.max_cube_size),
+            _ => (side, self.max_texture_size),
         };
         if size > limit {
             return Err(Error::Unsupported(format!(
                 "{name} size {size} is over the limit {limit}"
             )));
         }
-        need(name, l <= self.max_layers, "max_layers")?;
-        check_support(name, info.format, info.usage, info.samples, usable, counts)
+        need(name, l <= self.max_texture_layers, "max_texture_layers")?;
+        check_support(
+            name,
+            info.format,
+            info.usage,
+            info.sample_count,
+            usable,
+            counts,
+        )
     }
 
     pub(crate) fn check_view(&self, kind: TextureDimension) -> Result<(), Error> {
@@ -464,10 +532,14 @@ impl DeviceCapabilities {
         }
         let name = "create_sampler";
         check!(
-            info.anisotropy > 0,
-            "{name} anisotropy is 0; use 1 for none"
+            info.max_anisotropy > 0,
+            "{name} max_anisotropy is 0; use 1 for none"
         );
-        need(name, info.anisotropy <= self.anisotropy, "anisotropy")?;
+        need(
+            name,
+            info.max_anisotropy <= self.max_anisotropy_level,
+            "max_anisotropy_level",
+        )?;
         let mirror = [info.u, info.v, info.w].contains(&AddressMode::MirrorClamp);
         need(name, !mirror || self.mirror_clamp, "mirror_clamp")
     }
@@ -486,12 +558,12 @@ impl DeviceCapabilities {
         )?;
         need(
             name,
-            kind != QueryKind::Precise || self.precise_occlusion,
+            kind != QueryKind::OcclusionCount || self.precise_occlusion,
             "precise_occlusion",
         )?;
         need(
             name,
-            kind != QueryKind::Occlusion || self.occlusion,
+            kind != QueryKind::OcclusionAny || self.occlusion_queries,
             "occlusion",
         )
     }
