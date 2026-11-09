@@ -162,6 +162,24 @@ fn supports_lazy_memory(device: &ash::Device, memory: &vk::PhysicalDeviceMemoryP
     })
 }
 
+const SUFFIXES: [&str; 2] = ["KHR", "EXT"];
+
+fn with_extensions(instance: &ash::Instance, device: vk::Device) -> ash::Device {
+    let get = instance.fp_v1_0().get_device_proc_addr;
+    let load = |name: &std::ffi::CStr| {
+        let core = unsafe { get(device, name.as_ptr()) };
+        let found = core.or_else(|| {
+            SUFFIXES.iter().find_map(|s| {
+                let alias =
+                    std::ffi::CString::new([name.to_bytes(), s.as_bytes()].concat()).ok()?;
+                unsafe { get(device, alias.as_ptr()) }
+            })
+        });
+        found.map_or(std::ptr::null(), |f| f as *const std::ffi::c_void)
+    };
+    unsafe { ash::Device::load_with(load, device) }
+}
+
 fn whole_view(info: &TextureInfo) -> TextureViewInfo {
     TextureViewInfo {
         dimension: info.dimension,
@@ -204,6 +222,7 @@ impl Device {
                 "queue {i} of family {f} is not on this device"
             );
         }
+        let raw = with_extensions(&instance, raw.handle());
         let ext = unsafe { Extensions::new(&instance, physical, &raw, features) }?;
         let basic = unsafe { instance.get_physical_device_properties(physical) };
         let limits = basic.limits;
