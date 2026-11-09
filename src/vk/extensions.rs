@@ -69,9 +69,19 @@ impl Extensions {
         unsafe {
             let v12 = chained::<vk::PhysicalDeviceVulkan12Features>(features);
             let v13 = chained::<vk::PhysicalDeviceVulkan13Features>(features);
-            if !v13.is_some_and(|f| f.synchronization2 != 0) {
+            let indexing = chained::<vk::PhysicalDeviceDescriptorIndexingFeatures>(features);
+            let int64 = chained::<vk::PhysicalDeviceShaderAtomicInt64Features>(features);
+            let buffer64 = v12.is_some_and(|f| f.shader_buffer_int64_atomics != 0)
+                || int64.is_some_and(|f| f.shader_buffer_int64_atomics != 0);
+            let shared64 = v12.is_some_and(|f| f.shader_shared_int64_atomics != 0)
+                || int64.is_some_and(|f| f.shader_shared_int64_atomics != 0);
+            let groups = chained::<vk::PhysicalDeviceSubgroupSizeControlFeatures>(features);
+            let synchronization2 = v13.is_some_and(|f| f.synchronization2 != 0)
+                || chained::<vk::PhysicalDeviceSynchronization2Features>(features)
+                    .is_some_and(|f| f.synchronization2 != 0);
+            if !synchronization2 {
                 return Err(Error::Unsupported(
-                    "import_device needs VkPhysicalDeviceVulkan13Features.synchronization2".into(),
+                    "import_device needs the synchronization2 feature".into(),
                 ));
             }
             let has = |name: &std::ffi::CStr| {
@@ -151,37 +161,46 @@ impl Extensions {
             Ok(Self {
                 debug,
                 mesh,
-                addresses: v12.is_some_and(|f| f.buffer_device_address != 0),
+                addresses: v12.is_some_and(|f| f.buffer_device_address != 0)
+                    || chained::<vk::PhysicalDeviceBufferDeviceAddressFeatures>(features)
+                        .is_some_and(|f| f.buffer_device_address != 0),
                 heap: v12.is_some_and(|f| {
                     f.descriptor_binding_partially_bound != 0
                         && f.descriptor_binding_sampled_image_update_after_bind != 0
                         && f.descriptor_binding_storage_image_update_after_bind != 0
+                }) || indexing.is_some_and(|f| {
+                    f.descriptor_binding_partially_bound != 0
+                        && f.descriptor_binding_sampled_image_update_after_bind != 0
+                        && f.descriptor_binding_storage_image_update_after_bind != 0
                 }),
-                timelines: v12.is_some_and(|f| f.timeline_semaphore != 0),
-                rendering: v13.is_some_and(|f| f.dynamic_rendering != 0),
+                timelines: v12.is_some_and(|f| f.timeline_semaphore != 0)
+                    || chained::<vk::PhysicalDeviceTimelineSemaphoreFeatures>(features)
+                        .is_some_and(|f| f.timeline_semaphore != 0),
+                rendering: v13.is_some_and(|f| f.dynamic_rendering != 0)
+                    || chained::<vk::PhysicalDeviceDynamicRenderingFeatures>(features)
+                        .is_some_and(|f| f.dynamic_rendering != 0),
                 task,
-                sizes: v13.is_some_and(|f| f.subgroup_size_control != 0)
+                sizes: (v13.is_some_and(|f| f.subgroup_size_control != 0)
+                    || groups.is_some_and(|f| f.subgroup_size_control != 0))
                     && sizes
                         .required_subgroup_size_stages
                         .contains(vk::ShaderStageFlags::COMPUTE),
                 rotate: chained::<vk::PhysicalDeviceShaderSubgroupRotateFeaturesKHR>(features)
                     .is_some_and(|f| f.shader_subgroup_rotate != 0)
                     || v14(features, 1),
-                count: v12.is_some_and(|f| f.draw_indirect_count != 0),
-                full: v13.is_some_and(|f| f.compute_full_subgroups != 0),
-                atomics: v12.map_or(Atomic64::default(), |f| {
-                    let buffer = if f.shader_buffer_int64_atomics != 0 {
-                        Atomic64::MIN_MAX | Atomic64::BUFFER_ALL | Atomic64::SIGNED
-                    } else {
-                        Atomic64::default()
-                    };
-                    let shared = if f.shader_shared_int64_atomics != 0 {
-                        Atomic64::SHARED
-                    } else {
-                        Atomic64::default()
-                    };
-                    buffer | shared
-                }) | if chained::<vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT>(
+                count: v12.is_some_and(|f| f.draw_indirect_count != 0)
+                    || has(c"vkCmdDrawIndirectCountKHR"),
+                full: v13.is_some_and(|f| f.compute_full_subgroups != 0)
+                    || groups.is_some_and(|f| f.compute_full_subgroups != 0),
+                atomics: if buffer64 {
+                    Atomic64::MIN_MAX | Atomic64::BUFFER_ALL | Atomic64::SIGNED
+                } else {
+                    Atomic64::default()
+                } | if shared64 {
+                    Atomic64::SHARED
+                } else {
+                    Atomic64::default()
+                } | if chained::<vk::PhysicalDeviceShaderImageAtomicInt64FeaturesEXT>(
                     features,
                 )
                 .is_some_and(|f| f.shader_image_int64_atomics != 0)
@@ -190,7 +209,9 @@ impl Extensions {
                 } else {
                     Atomic64::default()
                 },
-                model: v12.is_some_and(|f| f.vulkan_memory_model != 0),
+                model: v12.is_some_and(|f| f.vulkan_memory_model != 0)
+                    || chained::<vk::PhysicalDeviceVulkanMemoryModelFeatures>(features)
+                        .is_some_and(|f| f.vulkan_memory_model != 0),
                 moltenvk,
                 features: features.features,
                 mirror: v12.is_some_and(|f| f.sampler_mirror_clamp_to_edge != 0),
