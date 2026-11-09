@@ -14,7 +14,7 @@ pub(super) fn probe(
     physical: vk::PhysicalDevice,
     ext: &Extensions,
     queues: &[Queue],
-    bindless: &Bindless,
+    bindless: Option<&Bindless>,
     limits: &vk::PhysicalDeviceLimits,
 ) -> DeviceCapabilities {
     let mut buffer = vk::PhysicalDeviceVulkan13Properties::default();
@@ -90,10 +90,12 @@ pub(super) fn probe(
             .min()
             .unwrap(),
         max_queue_count: queues.len() as u32,
-        max_samplers: bindless.samplers.min(limits.max_sampler_allocation_count),
-        max_textures: bindless.textures,
-        max_storage_textures: bindless.textures,
-        buffer_addresses: true,
+        max_samplers: bindless.map_or(0, |b| b.samplers.min(limits.max_sampler_allocation_count)),
+        max_textures: bindless.map_or(0, |b| b.textures),
+        max_storage_textures: bindless.map_or(0, |b| b.textures),
+        buffer_addresses: ext.addresses,
+        timelines: ext.timelines,
+        dynamic_rendering: ext.rendering,
         timestamp_period: limits.timestamp_period,
         timestamps: queues
             .iter()

@@ -2,13 +2,13 @@
 name = "DeviceInfo"
 fields = [
     ["queue_count", "u32", "1"],
-    ["buffer_addresses", "bool", "true"],
-    ["timelines", "bool", "true"],
-    ["partially_bound", "bool", "true"],
-    ["update_after_bind", "bool", "true"],
-    ["standard_layout", "bool", "true"],
+    ["buffer_addresses", "bool", "false"],
+    ["timelines", "bool", "false"],
+    ["partially_bound", "bool", "false"],
+    ["update_after_bind", "bool", "false"],
+    ["standard_layout", "bool", "false"],
     ["synchronization2", "bool", "true"],
-    ["dynamic_rendering", "bool", "true"],
+    ["dynamic_rendering", "bool", "false"],
     ["sampler_anisotropy", "bool", "false"],
     ["cube_arrays", "bool", "false"],
     ["multi_viewports", "bool", "false"],
@@ -138,10 +138,12 @@ fields = [
     ["depth_clamp", "bool", "false"],
     ["ordered_reads", "bool", "false"],
     ["indirect_buffers", "bool", "false"],
+    ["preserve_invariance", "bool", "false"],
     ["vertex_buffers", "[VertexBufferLayout]", ""],
     ["vertex_attributes", "[VertexAttribute]", ""],
     ["states", "VertexPipelineStates", ""],
     ["descriptor_set_layout", "[DescriptorLayout]", ""],
+    ["cache", "PipelineCache?", ""],
     ["label", "str", ""],
 ]
 
@@ -165,6 +167,7 @@ fields = [
     ["indirect_buffers", "bool", "false"],
     ["states", "MeshPipelineStates", ""],
     ["descriptor_set_layout", "[DescriptorLayout]", ""],
+    ["cache", "PipelineCache?", ""],
     ["label", "str", ""],
 ]
 
@@ -176,6 +179,7 @@ fields = [
     ["color_targets", "[ColorTarget]", ""],
     ["sample_count", "u32", "1"],
     ["descriptor_set_layout", "[DescriptorLayout]", ""],
+    ["cache", "PipelineCache?", ""],
     ["label", "str", ""],
 ]
 
@@ -247,6 +251,8 @@ fields = [
     ["max_textures", "u32", "0"],
     ["max_storage_textures", "u32", "0"],
     ["buffer_addresses", "bool", "false"],
+    ["timelines", "bool", "false"],
+    ["dynamic_rendering", "bool", "false"],
     ["timestamp_period", "f32", "0.0"],
     ["timestamps", "bool", "false"],
     ["precise_occlusion", "bool", "false"],
@@ -318,6 +324,7 @@ fields = [
     ["required_subgroup_size", "u32", "0"],
     ["require_full_subgroups", "bool", "false"],
     ["descriptor_set_layout", "[DescriptorLayout]", ""],
+    ["cache", "PipelineCache?", ""],
     ["label", "str", ""],
 ]
 

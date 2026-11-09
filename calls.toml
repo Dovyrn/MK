@@ -87,6 +87,27 @@ params = [["pipeline", "TilePipeline"]]
 shared = true
 
 [[call]]
+name = "create_pipeline_cache"
+backend = "vk mtl"
+params = [["path", "str"]]
+result = "PipelineCache"
+fails = true
+shared = true
+
+[[call]]
+name = "save_pipeline_cache"
+backend = "vk mtl"
+params = [["cache", "PipelineCache"], ["path", "str"]]
+fails = true
+shared = true
+
+[[call]]
+name = "destroy_pipeline_cache"
+backend = "vk mtl"
+params = [["cache", "PipelineCache"]]
+shared = true
+
+[[call]]
 name = "create_depth_stencil_state"
 params = [["info", "DepthStencilStateInfo"], ["label", "str"]]
 result = "DepthStencilState"
@@ -267,6 +288,16 @@ shared = true
 [[call]]
 name = "commit_residency"
 params = [["set", "ResidencySet"]]
+shared = true
+
+[[call]]
+name = "attach_residency_set"
+params = [["queue", "u32"], ["set", "ResidencySet"]]
+shared = true
+
+[[call]]
+name = "detach_residency_set"
+params = [["queue", "u32"], ["set", "ResidencySet"]]
 shared = true
 
 [[call]]

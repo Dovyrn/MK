@@ -173,6 +173,12 @@ impl<'a> Check<'a> {
         }
     }
 
+    pub fn inherit_queue_sets(&mut self) {
+        if cfg!(feature = "validation") {
+            self.resident = lock(&self.table.residency).has_attached(self.queue());
+        }
+    }
+
     pub fn queue(&self) -> usize {
         self.table.pools.get(self.pool).0
     }
@@ -233,7 +239,7 @@ impl<'a> Check<'a> {
         );
         check!(
             self.resident,
-            "{name} uses {what} before use_residency_set in this command buffer"
+            "{name} uses {what} before use_residency_set in this command buffer or attach_residency_set on its queue"
         );
     }
 
@@ -743,6 +749,7 @@ impl<'a> Check<'a> {
                 dst_stage,
             } => {
                 self.check_wait(name, src_stage, dst_stage);
+                self.require(c, caps.dynamic_rendering, "dynamic_rendering")?;
                 check!(self.graphics(), "begin_render_pass needs a graphics queue");
                 check!(
                     width > 0 && height > 0 && layers > 0,

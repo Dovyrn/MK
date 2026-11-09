@@ -158,6 +158,8 @@ impl Device {
             .fold(PipelineStages::default(), |m, (_, s)| m | s);
             let caps = DeviceCapabilities {
                 max_queue_count: 1,
+                timelines: true,
+                dynamic_rendering: true,
                 timestamp_period: 1.0,
                 timestamps: results,
                 precise_occlusion: results,
@@ -938,6 +940,7 @@ impl Device {
 
     pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
         let mut recording = self.recording(pool, "outside", 0)?;
+        recording.check.inherit_queue_sets();
         recording.recorder.begin()?;
         Ok(CommandBuffer { recording })
     }

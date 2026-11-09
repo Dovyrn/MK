@@ -208,6 +208,7 @@ impl DeviceCapabilities {
         if !cfg!(feature = "validation") {
             return Ok(());
         }
+        need(name, self.dynamic_rendering, "dynamic_rendering")?;
         need(name, !clamp || self.depth_clamp, "depth_clamp")?;
         need(name, fill != FillMode::Line || self.line_fill, "line_fill")?;
         need(name, !ordered || self.ordered_reads, "ordered_reads")?;
@@ -324,6 +325,10 @@ impl DeviceCapabilities {
         need(name, size <= self.max_buffer, "max_buffer")?;
         let address = usage.contains(BufferUsage::ADDRESS);
         need(name, !address || self.buffer_addresses, "buffer_addresses")
+    }
+
+    pub(crate) fn check_timelines(&self, name: &str) -> Result<(), Error> {
+        need(name, self.timelines, "timelines")
     }
 
     pub(crate) fn assert_addresses(&self) {

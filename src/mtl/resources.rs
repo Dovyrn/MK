@@ -20,6 +20,7 @@ pub struct Resources {
     pub renders: Slots<Render>,
     pub tiles: Slots<Retained<ProtocolObject<dyn MTLRenderPipelineState>>>,
     pub depths: Slots<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
+    pub caches: Slots<crate::mtl::cache::Cache>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Retained<ProtocolObject<dyn MTLSharedEvent>>>,
     pub indirects: Slots<crate::mtl::indirect::Indirect>,

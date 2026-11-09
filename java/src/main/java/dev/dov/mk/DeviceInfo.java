@@ -9,13 +9,13 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class DeviceInfo {
     public int queueCount = 1;
-    public boolean bufferAddresses = true;
-    public boolean timelines = true;
-    public boolean partiallyBound = true;
-    public boolean updateAfterBind = true;
-    public boolean standardLayout = true;
+    public boolean bufferAddresses = false;
+    public boolean timelines = false;
+    public boolean partiallyBound = false;
+    public boolean updateAfterBind = false;
+    public boolean standardLayout = false;
     public boolean synchronization2 = true;
-    public boolean dynamicRendering = true;
+    public boolean dynamicRendering = false;
     public boolean samplerAnisotropy = false;
     public boolean cubeArrays = false;
     public boolean multiViewports = false;

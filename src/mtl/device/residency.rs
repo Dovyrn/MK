@@ -8,7 +8,9 @@ use crate::{
 };
 use objc2::rc::autoreleasepool;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor};
+use objc2_metal::{
+    MTL4CommandQueue, MTLAllocation, MTLDevice, MTLResidencySet, MTLResidencySetDescriptor,
+};
 
 impl Device {
     pub fn create_residency_set(&self) -> Result<ResidencySet, Error> {
@@ -75,6 +77,28 @@ impl Device {
             lock(&self.res.table.residency).commit(set);
         }
         self.res.sets.get(set).commit();
+    }
+
+    pub fn attach_residency_set(&self, queue: u32, set: ResidencySet) {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).attach(queue, set);
+        }
+        self.queues[queue]
+            .raw
+            .addResidencySet(self.res.sets.get(set));
+    }
+
+    pub fn detach_residency_set(&self, queue: u32, set: ResidencySet) {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).detach(queue, set);
+        }
+        self.queues[queue]
+            .raw
+            .removeResidencySet(self.res.sets.get(set));
     }
 
     pub fn raw_residency_set(&self, set: ResidencySet) -> &ProtocolObject<dyn MTLResidencySet> {

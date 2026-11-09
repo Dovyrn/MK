@@ -1,5 +1,6 @@
 mod budget;
 mod buffers;
+mod caches;
 mod caps;
 mod copies;
 mod create;
@@ -50,7 +51,7 @@ pub struct Device {
     limits: vk::PhysicalDeviceLimits,
     memory: vk::PhysicalDeviceMemoryProperties,
     families: Vec<u32>,
-    bindless: Bindless,
+    bindless: Option<Bindless>,
     empty: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     res: Resources,
@@ -211,14 +212,20 @@ impl Device {
         unsafe { instance.get_physical_device_properties2(physical, &mut properties) };
         let empty = bindings::set_layout(&raw, &[]).map_err(Error::from)?;
         let unset = || unsafe { raw.destroy_descriptor_set_layout(empty, None) };
-        let bindless = Bindless::new(&raw, &properties12).map_err(|e| {
-            unset();
-            Error::from(e)
-        })?;
-        let sets = [bindless.layout];
+        let bindless = ext
+            .heap
+            .then(|| Bindless::new(&raw, &properties12))
+            .transpose()
+            .map_err(|e| {
+                unset();
+                Error::from(e)
+            })?;
+        let sets = [bindless.as_ref().map_or(empty, |b| b.layout)];
         let info = vk::PipelineLayoutCreateInfo::default().set_layouts(&sets);
         let layout = unsafe { raw.create_pipeline_layout(&info, None) }.map_err(|e| {
-            bindless.destroy(&raw);
+            if let Some(b) = &bindless {
+                b.destroy(&raw);
+            }
             unset();
             Error::from(e)
         })?;
@@ -235,7 +242,7 @@ impl Device {
             })
             .collect();
         let memory = unsafe { instance.get_physical_device_memory_properties(physical) };
-        let mut caps = probe(&instance, physical, &ext, &list, &bindless, &limits);
+        let mut caps = probe(&instance, physical, &ext, &list, bindless.as_ref(), &limits);
         caps.transient_input_attachments =
             caps.transient_textures && caps.attachment_reads && supports_lazy_memory(&raw, &memory);
         Ok(Self {
@@ -399,6 +406,12 @@ impl Device {
         self.queues[queue].raw
     }
 
+    fn heap(&self) -> &Bindless {
+        self.bindless
+            .as_ref()
+            .expect("the bindless heap needs DeviceInfo.partially_bound and update_after_bind")
+    }
+
     pub fn wait_idle(&self, queue: u32) -> Result<(), Error> {
         let queue = queue as usize;
         self.check_queue(queue);
@@ -459,7 +472,10 @@ impl Device {
             colors: Vec::new(),
             depth: None,
             stencil: vk::RenderingAttachmentInfo::default(),
-            heap: self.bindless.set,
+            heap: self
+                .bindless
+                .as_ref()
+                .map_or(vk::DescriptorSet::null(), |b| b.set),
             point: vk::PipelineBindPoint::GRAPHICS,
             imported: false,
             family: if self.families.len() > 1 {
@@ -468,12 +484,15 @@ impl Device {
                 queue.family
             },
         };
-        recorder.bind_heap_set();
+        if self.bindless.is_some() {
+            recorder.bind_heap_set();
+        }
         Recording { check, recorder }
     }
 
     pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
-        let check = self.check(pool, "outside", 0);
+        let mut check = self.check(pool, "outside", 0);
+        check.inherit_queue_sets();
         let buffer = self.pools.get(pool).next(&self.raw).map_err(Error::from)?;
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -622,6 +641,9 @@ impl Drop for Device {
             for query in res.queries.drain() {
                 self.raw.destroy_query_pool(query.pool, None);
             }
+            for cache in res.caches.drain() {
+                self.raw.destroy_pipeline_cache(cache, None);
+            }
             for (pipeline, layout, _) in res.renders.drain() {
                 self.raw.destroy_pipeline(pipeline, None);
                 self.raw.destroy_pipeline_layout(layout, None);
@@ -640,7 +662,9 @@ impl Drop for Device {
                 semaphore.free(&self.raw);
             }
             self.raw.destroy_pipeline_layout(self.layout, None);
-            self.bindless.destroy(&self.raw);
+            if let Some(b) = &self.bindless {
+                b.destroy(&self.raw);
+            }
             self.raw.destroy_descriptor_set_layout(self.empty, None);
             if self.entry.is_some() {
                 self.raw.destroy_device(None);

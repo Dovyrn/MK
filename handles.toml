@@ -5,6 +5,7 @@ handles = [
     "ComputePipeline",
     "RenderPipeline",
     "TilePipeline",
+    "PipelineCache",
     "DepthStencilState",
     "QueryPool",
     "ResidencySet",

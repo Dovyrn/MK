@@ -8,7 +8,7 @@ use crate::{
     DynamicPipelineStates, FillMode, Format, FrontFace, MeshPipelineInfo, PipelineStages,
     RenderPipelineInfo, StencilFace, TilePipelineInfo, VertexPipelineStates,
 };
-use crate::{ComputePipeline, DepthStencilState, RenderPipeline, TilePipeline};
+use crate::{ComputePipeline, DepthStencilState, PipelineCache, RenderPipeline, TilePipeline};
 use ash::vk;
 use std::ffi::CString;
 
@@ -25,7 +25,7 @@ fn check_group(words: &[u32], entry: &str, given: [u32; 3]) -> Result<(), Error>
 
 impl Device {
     fn pipeline_layout(&self, sets: &[DescriptorLayout]) -> Result<vk::PipelineLayout, Error> {
-        let mut list = vec![self.bindless.layout];
+        let mut list = vec![self.bindless.as_ref().map_or(self.empty, |b| b.layout)];
         for &layout in sets {
             let (raw, bindings) = self.res.layouts.get(layout);
             let i = set_of(bindings[0].kind) as usize;
@@ -55,6 +55,7 @@ impl Device {
         indirect: bool,
         states: &VertexPipelineStates,
         sets: &[DescriptorLayout],
+        cache: Option<PipelineCache>,
         label: &str,
     ) -> Result<RenderPipeline, Error> {
         let layouts = self.res.table.layout_ids(sets);
@@ -301,7 +302,7 @@ impl Device {
         }
         let result = unsafe {
             self.raw
-                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+                .create_graphics_pipelines(self.raw_cache(cache), &[pipeline_info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| {
@@ -359,6 +360,7 @@ impl Device {
             info.indirect_buffers,
             &info.states,
             info.descriptor_set_layout,
+            info.cache,
             info.label,
         )
     }
@@ -389,6 +391,7 @@ impl Device {
             info.indirect_buffers,
             &info.states.vertex(),
             info.descriptor_set_layout,
+            info.cache,
             info.label,
         )
     }
@@ -450,7 +453,7 @@ impl Device {
         self.caps.check_compute_pipeline(info)?;
         let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
         let (code, entry, label) = (info.bytecode, info.entrypoint, info.label);
-        let sets = info.descriptor_set_layout;
+        let (sets, cache) = (info.descriptor_set_layout, info.cache);
         let words = spirv::read(code, &[entry])?;
         self.caps
             .check_subgroups(spirv::subgroups(&words), PipelineStages::COMPUTE)?;
@@ -494,7 +497,7 @@ impl Device {
             .layout(layout);
         let result = unsafe {
             self.raw
-                .create_compute_pipelines(vk::PipelineCache::null(), &[info], None)
+                .create_compute_pipelines(self.raw_cache(cache), &[info], None)
         };
         unsafe { self.raw.destroy_shader_module(module, None) };
         let pipeline = result.map_err(|(_, e)| {

@@ -3,6 +3,7 @@ mod host;
 
 mod adopt;
 mod atomics;
+mod caches;
 mod compute;
 mod copies;
 mod handles;
@@ -42,7 +43,7 @@ macro_rules! tests {
 }
 
 tests!(
-    adopt, atomics, compute, copies, handles, images, imports, indirect, mesh, native, present,
-    queries, queues, reads, render, residency, resolve, sets, shared, sources, states, subgroups,
-    texture, threads, tiles, uploads, view, viewports
+    adopt, atomics, caches, compute, copies, handles, images, imports, indirect, mesh, native,
+    present, queries, queues, reads, render, residency, resolve, sets, shared, sources, states,
+    subgroups, texture, threads, tiles, uploads, view, viewports
 );

@@ -74,6 +74,7 @@ pub struct Residency {
     textures: Vec<u32>,
     queries: Vec<u32>,
     indirects: Vec<u32>,
+    attached: Vec<(usize, ResidencySet)>,
 }
 
 fn count<H: Handle>(counts: &mut Vec<u32>, h: H) -> &mut u32 {
@@ -118,6 +119,10 @@ impl Residency {
     }
 
     pub fn destroy(&mut self, set: ResidencySet) {
+        check!(
+            !self.attached.iter().any(|&(_, s)| s == set),
+            "destroy_residency_set on {set}, which a queue still has; detach_residency_set first"
+        );
         let (_, committed) = self.sets.get(set).clone();
         shift(&mut self.buffers, &committed.buffers, false);
         shift(&mut self.textures, &committed.textures, false);
@@ -173,6 +178,30 @@ impl Residency {
 
     pub fn assert_set(&self, set: ResidencySet) {
         self.sets.get(set);
+    }
+
+    pub fn attach(&mut self, queue: usize, set: ResidencySet) {
+        self.sets.get(set);
+        check!(
+            !self.attached.contains(&(queue, set)),
+            "attach_residency_set on {set}, which queue {queue} already has"
+        );
+        self.attached.push((queue, set));
+    }
+
+    pub fn detach(&mut self, queue: usize, set: ResidencySet) {
+        let at = self.attached.iter().position(|&a| a == (queue, set));
+        check!(
+            at.is_some(),
+            "detach_residency_set on {set}, which queue {queue} does not have"
+        );
+        if let Some(at) = at {
+            self.attached.swap_remove(at);
+        }
+    }
+
+    pub fn has_attached(&self, queue: usize) -> bool {
+        self.attached.iter().any(|&(q, _)| q == queue)
     }
 
     pub fn exempt_buffer(&mut self, buffer: Buffer) {

@@ -16,6 +16,7 @@ public class ComputePipelineInfo {
     public int requiredSubgroupSize = 0;
     public boolean requireFullSubgroups = false;
     public DescriptorLayout[] descriptorSetLayout = new DescriptorLayout[0];
+    public PipelineCache cache = null;
     public String label = "";
 
     int encodedSize() {
@@ -23,7 +24,7 @@ public class ComputePipelineInfo {
         for (var x : descriptorSetLayout) {
             descriptorSetLayoutSize += 8;
         }
-        return 44 + entrypoint.getBytes(StandardCharsets.UTF_8).length + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 52 + entrypoint.getBytes(StandardCharsets.UTF_8).length + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -51,6 +52,8 @@ public class ComputePipelineInfo {
             memPutLong(p, DescriptorLayout.raw(x));
             p += 8;
         }
+        memPutLong(p, PipelineCache.raw(cache));
+        p += 8;
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);
         memByteBuffer(p + 4, labelBytes.length).put(labelBytes);

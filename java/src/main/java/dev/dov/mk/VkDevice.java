@@ -9,6 +9,45 @@ public class VkDevice extends Device {
         super(handle);
     }
 
+    public PipelineCache createPipelineCache(String path) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var pathBytes = path.getBytes(StandardCharsets.UTF_8);
+                return PipelineCache.of(nCreatePipelineCache(handle(), arena.bytes(pathBytes), pathBytes.length));
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native long nCreatePipelineCache(long device, long path, int pathLength);
+
+    public void savePipelineCache(PipelineCache cache, String path) {
+        lock.readLock().lock();
+        try {
+            try (var arena = new Arena()) {
+                var pathBytes = path.getBytes(StandardCharsets.UTF_8);
+                nSavePipelineCache(handle(), PipelineCache.raw(cache), arena.bytes(pathBytes), pathBytes.length);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nSavePipelineCache(long device, long cache, long path, int pathLength);
+
+    public void destroyPipelineCache(PipelineCache cache) {
+        lock.readLock().lock();
+        try {
+            nDestroyPipelineCache(handle(), PipelineCache.raw(cache));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nDestroyPipelineCache(long device, long cache);
+
     public long bindlessTextureId(Texture texture) {
         lock.readLock().lock();
         try {

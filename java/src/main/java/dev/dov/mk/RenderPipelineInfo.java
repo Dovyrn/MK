@@ -22,10 +22,12 @@ public class RenderPipelineInfo {
     public boolean depthClamp = false;
     public boolean orderedReads = false;
     public boolean indirectBuffers = false;
+    public boolean preserveInvariance = false;
     public VertexBufferLayout[] vertexBuffers = new VertexBufferLayout[0];
     public VertexAttribute[] vertexAttributes = new VertexAttribute[0];
     public VertexPipelineStates states = new VertexPipelineStates();
     public DescriptorLayout[] descriptorSetLayout = new DescriptorLayout[0];
+    public PipelineCache cache = null;
     public String label = "";
 
     int encodedSize() {
@@ -45,7 +47,7 @@ public class RenderPipelineInfo {
         for (var x : descriptorSetLayout) {
             descriptorSetLayoutSize += 8;
         }
-        return 60 + vertexEntrypoint.getBytes(StandardCharsets.UTF_8).length + fragmentEntrypoint.getBytes(StandardCharsets.UTF_8).length + colorTargetsSize + (depthFormat == null ? 0 : 4) + (stencilFormat == null ? 0 : 4) + vertexBuffersSize + vertexAttributesSize + states.encodedSize() + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
+        return 72 + vertexEntrypoint.getBytes(StandardCharsets.UTF_8).length + fragmentEntrypoint.getBytes(StandardCharsets.UTF_8).length + colorTargetsSize + (depthFormat == null ? 0 : 4) + (stencilFormat == null ? 0 : 4) + vertexBuffersSize + vertexAttributesSize + states.encodedSize() + descriptorSetLayoutSize + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
@@ -89,6 +91,8 @@ public class RenderPipelineInfo {
         p += 4;
         memPutInt(p, indirectBuffers ? 1 : 0);
         p += 4;
+        memPutInt(p, preserveInvariance ? 1 : 0);
+        p += 4;
         memPutInt(p, vertexBuffers.length);
         p += 4;
         for (var x : vertexBuffers) {
@@ -106,6 +110,8 @@ public class RenderPipelineInfo {
             memPutLong(p, DescriptorLayout.raw(x));
             p += 8;
         }
+        memPutLong(p, PipelineCache.raw(cache));
+        p += 8;
         var labelBytes = label.getBytes(StandardCharsets.UTF_8);
         memPutInt(p, labelBytes.length);
         memByteBuffer(p + 4, labelBytes.length).put(labelBytes);

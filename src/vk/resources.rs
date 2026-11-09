@@ -14,6 +14,7 @@ pub struct Resources {
     pub pipelines: Slots<(vk::Pipeline, vk::PipelineLayout)>,
     pub renders: Slots<(vk::Pipeline, vk::PipelineLayout, Option<vk::FrontFace>)>,
     pub depths: Slots<DepthStencilStateInfo>,
+    pub caches: Slots<vk::PipelineCache>,
     pub queries: Slots<Query>,
     pub timelines: Slots<Semaphore>,
     pub sets: Slots<()>,

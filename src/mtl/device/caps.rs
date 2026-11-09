@@ -60,6 +60,8 @@ impl Device {
             max_textures: 500_000,
             max_storage_textures: 500_000,
             buffer_addresses: true,
+            timelines: true,
+            dynamic_rendering: true,
             timestamp_period: 1e9 / raw.queryTimestampFrequency() as f32,
             timestamps: true,
             precise_occlusion: true,

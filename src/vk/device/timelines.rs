@@ -7,6 +7,7 @@ use ash::vk;
 
 impl Device {
     pub fn create_timeline(&self) -> Result<Timeline, Error> {
+        self.caps.check_timelines("create_timeline")?;
         let raw = timeline(&self.raw).map_err(Error::from)?;
         Ok(self.add_timeline(raw, true))
     }

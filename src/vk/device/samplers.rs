@@ -64,7 +64,7 @@ impl Device {
     pub fn bindless_sampler_id(&self, sampler: Sampler) -> u64 {
         self.res.table.samplers.get(sampler);
         self.caps.assert_sampler_slot(sampler);
-        self.bindless
+        self.heap()
             .write_sampler(&self.raw, sampler.index(), *self.res.samplers.get(sampler));
         sampler.index() as u64
     }

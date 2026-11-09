@@ -181,8 +181,7 @@ impl Device {
         self.res.table.textures.get(texture);
         self.caps.assert_texture_slot(texture);
         let view = self.res.textures.get(texture).view;
-        self.bindless
-            .write_texture(&self.raw, texture.index(), view);
+        self.heap().write_texture(&self.raw, texture.index(), view);
         texture.index() as u64
     }
 
@@ -190,7 +189,7 @@ impl Device {
         self.res.table.textures.get(texture);
         self.caps.assert_image_slot(texture);
         let view = self.res.textures.get(texture).view;
-        self.bindless.write_image(&self.raw, texture.index(), view);
+        self.heap().write_image(&self.raw, texture.index(), view);
         texture.index() as u64
     }
 }

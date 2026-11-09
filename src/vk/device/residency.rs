@@ -32,6 +32,22 @@ impl Device {
         }
     }
 
+    pub fn attach_residency_set(&self, queue: u32, set: ResidencySet) {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).attach(queue, set);
+        }
+    }
+
+    pub fn detach_residency_set(&self, queue: u32, set: ResidencySet) {
+        let queue = queue as usize;
+        self.check_queue(queue);
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).detach(queue, set);
+        }
+    }
+
     pub fn commit_residency(&self, set: ResidencySet) {
         if cfg!(feature = "validation") {
             lock(&self.res.table.residency).commit(set);

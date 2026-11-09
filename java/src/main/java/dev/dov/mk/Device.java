@@ -16,7 +16,7 @@ public class Device implements AutoCloseable {
         this.handle = handle;
     }
 
-    long handle() {
+    public long handle() {
         if (handle == 0) {
             throw new IllegalStateException("device used after close");
         }
@@ -647,6 +647,28 @@ public class Device implements AutoCloseable {
     }
 
     private static native void nCommitResidency(long device, long set);
+
+    public void attachResidencySet(int queue, ResidencySet set) {
+        lock.readLock().lock();
+        try {
+            nAttachResidencySet(handle(), queue, ResidencySet.raw(set));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nAttachResidencySet(long device, int queue, long set);
+
+    public void detachResidencySet(int queue, ResidencySet set) {
+        lock.readLock().lock();
+        try {
+            nDetachResidencySet(handle(), queue, ResidencySet.raw(set));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nDetachResidencySet(long device, int queue, long set);
 
     public Timeline createTimeline() {
         lock.readLock().lock();

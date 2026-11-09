@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn compile(dir: &Path) {
+pub fn compile(dir: &Path, invariant: bool) {
     let out = dir.join("out");
     fs::create_dir_all(&out).unwrap();
     let mut sources: Vec<PathBuf> = fs::read_dir(dir)
@@ -31,7 +31,7 @@ pub fn compile(dir: &Path) {
             glsl::glsl(&out, &name);
         }
         if cfg!(target_os = "macos") {
-            metal::metal(dir, &out, &name);
+            metal::metal(dir, &out, &name, invariant);
         }
         let json = out.join(format!("{name}.json"));
         if json.exists() {

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn metal(dir: &Path, out: &Path, name: &str) {
+pub fn metal(dir: &Path, out: &Path, name: &str, invariant: bool) {
     let slang = dir.join(format!("{name}.slang"));
     let metal = dir.join(format!("{name}.metal"));
     let mut airs = Vec::new();
@@ -44,11 +44,20 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
         bases(&msl, &json);
         local(&msl);
         indices(&msl);
+        if invariant {
+            let text = fs::read_to_string(&msl).unwrap();
+            fs::write(
+                &msl,
+                text.replace("[[position]];", "[[position, invariant]];"),
+            )
+            .unwrap();
+        }
         fs::remove_file(&json).unwrap();
         if !metal.exists() {
             let air = out.join(format!("{name}.{entry}.air"));
             let built = Command::new("xcrun")
                 .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
+                .args(flags(invariant))
                 .arg(&msl)
                 .arg("-o")
                 .arg(&air)
@@ -65,7 +74,7 @@ pub fn metal(dir: &Path, out: &Path, name: &str) {
     }
     if metal.exists() {
         let air = out.join(format!("{name}.air"));
-        compile(&metal, &air);
+        compile(&metal, &air, invariant);
         airs.push(air);
     }
     let path = out.join(format!("{name}.metallib"));
@@ -101,9 +110,18 @@ fn entries(out: &Path, name: &str) -> Vec<(String, String, Option<[u32; 3]>)> {
         .collect()
 }
 
-fn compile(source: &Path, air: &Path) {
+fn flags(invariant: bool) -> &'static [&'static str] {
+    if invariant {
+        &["-fpreserve-invariance"]
+    } else {
+        &[]
+    }
+}
+
+fn compile(source: &Path, air: &Path, invariant: bool) {
     run(Command::new("xcrun")
         .args(["-sdk", "macosx", "metal", "-std=metal4.0", "-c"])
+        .args(flags(invariant))
         .arg(source)
         .arg("-o")
         .arg(air));

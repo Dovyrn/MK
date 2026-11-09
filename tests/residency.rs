@@ -61,11 +61,35 @@ pub fn test() {
     ] {
         assert!(text.contains(want), "{what}: {text}");
     }
+    unsafe { device.map_buffer::<u32>(a) }.copy_from_slice(&[7, 8, 9, 10]);
+    device.unmap_buffer(a);
+    device.attach_residency_set(0, set);
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let attached = message(|| device.destroy_residency_set(set));
+    std::panic::set_hook(hook);
+    assert!(
+        attached.contains("detach_residency_set first"),
+        "{attached}"
+    );
+    let mut c = device.begin_commands(pool).unwrap();
+    let mut pass = c
+        .begin_compute_pass(PipelineStages::default(), PipelineStages::default())
+        .unwrap();
+    pass.copy_buffer_to_buffer(a, 0, b, 0, 16);
+    pass.memory_barrier(PipelineStages::COPY, PipelineStages::HOST);
+    pass.end();
+    c.end().unwrap();
+    let timeline = device.create_timeline().unwrap();
+    device.submit([c], &[], &[(&timeline, 1)]).unwrap();
+    assert!(timeline.wait(1, 1000).unwrap(), "the wait timed out");
+    assert_eq!(unsafe { device.map_buffer::<u32>(b) }, [7, 8, 9, 10]);
+    device.detach_residency_set(0, set);
     device.remove_residency(set, &[a.into(), b.into()]);
     device.commit_residency(set);
     device.destroy_buffer(a);
     device.destroy_buffer(b);
     println!(
-        "residency panics on missing, uncommitted and unused sets and on destroying a held buffer"
+        "residency panics on missing, uncommitted and unused sets and on destroying a held buffer; a queue-attached set covers a copy"
     );
 }

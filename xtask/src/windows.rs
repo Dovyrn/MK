@@ -34,7 +34,7 @@ fn copy(from: &Path, to: &Path) {
 }
 
 pub fn bundle(root: &Path) -> i32 {
-    crate::shaders::compile(&root.join("tests/shaders"));
+    crate::shaders::compile(&root.join("tests/shaders"), false);
     let out = root.join("target/windows");
     let _ = std::fs::remove_dir_all(&out);
     std::fs::create_dir_all(&out).unwrap();

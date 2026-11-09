@@ -28,6 +28,20 @@ impl Device {
             .change_residency(set, Members::from(resources), false);
     }
 
+    pub fn attach_residency_set(&self, queue: u32, set: ResidencySet) {
+        check_eq!(queue, 0, "GL has one queue");
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).attach(0, set);
+        }
+    }
+
+    pub fn detach_residency_set(&self, queue: u32, set: ResidencySet) {
+        check_eq!(queue, 0, "GL has one queue");
+        if cfg!(feature = "validation") {
+            lock(&self.res.table.residency).detach(0, set);
+        }
+    }
+
     pub fn commit_residency(&self, set: ResidencySet) {
         self.thread();
         let (entered, left) = lock(&self.res.table.residency).commit(set);

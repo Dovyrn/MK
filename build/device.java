@@ -7,7 +7,7 @@ public class Device implements AutoCloseable {
         this.handle = handle;
     }
 
-    long handle() {
+    public long handle() {
         if (handle == 0) {
             throw new IllegalStateException("device used after close");
         }

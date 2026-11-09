@@ -21,6 +21,8 @@ public class DeviceCapabilities {
     public int maxTextures = 0;
     public int maxStorageTextures = 0;
     public boolean bufferAddresses = false;
+    public boolean timelines = false;
+    public boolean dynamicRendering = false;
     public float timestampPeriod = 0.0f;
     public boolean timestamps = false;
     public boolean preciseOcclusion = false;
@@ -75,10 +77,10 @@ public class DeviceCapabilities {
     public boolean orderedReads = false;
     public boolean tileShaders = false;
 
-    public static final int SIZE = 276;
+    public static final int SIZE = 284;
 
     int encodedSize() {
-        return 276;
+        return 284;
     }
 
     long encode(long p) {
@@ -107,6 +109,10 @@ public class DeviceCapabilities {
         memPutInt(p, maxStorageTextures);
         p += 4;
         memPutInt(p, bufferAddresses ? 1 : 0);
+        p += 4;
+        memPutInt(p, timelines ? 1 : 0);
+        p += 4;
+        memPutInt(p, dynamicRendering ? 1 : 0);
         p += 4;
         memPutFloat(p, timestampPeriod);
         p += 4;
@@ -244,6 +250,10 @@ public class DeviceCapabilities {
         r.maxStorageTextures = memGetInt(p);
         p += 4;
         r.bufferAddresses = memGetInt(p) != 0;
+        p += 4;
+        r.timelines = memGetInt(p) != 0;
+        p += 4;
+        r.dynamicRendering = memGetInt(p) != 0;
         p += 4;
         r.timestampPeriod = memGetFloat(p);
         p += 4;

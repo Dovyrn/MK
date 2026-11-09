@@ -13,7 +13,7 @@ public class CommandBuffer implements AutoCloseable {
         return new CommandBuffer(device, handle);
     }
 
-    long handle() {
+    public long handle() {
         if (handle == 0) {
             throw new IllegalStateException("command buffer used after submit or close");
         }

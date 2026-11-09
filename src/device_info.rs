@@ -1,6 +1,6 @@
 use crate::DeviceInfo;
 
-const NEEDED: usize = 7;
+const NEEDED: usize = 1;
 
 fn report(what: &str, names: Vec<&str>) {
     if !names.is_empty() {
@@ -11,13 +11,13 @@ fn report(what: &str, names: Vec<&str>) {
 impl DeviceInfo {
     fn flags(&self) -> [(&'static str, bool); 44] {
         [
-            ("buffer_addresses", self.buffer_addresses),
+            ("synchronization2", self.synchronization2),
             ("timelines", self.timelines),
             ("partially_bound", self.partially_bound),
             ("update_after_bind", self.update_after_bind),
             ("standard_layout", self.standard_layout),
-            ("synchronization2", self.synchronization2),
             ("dynamic_rendering", self.dynamic_rendering),
+            ("buffer_addresses", self.buffer_addresses),
             ("sampler_anisotropy", self.sampler_anisotropy),
             ("cube_arrays", self.cube_arrays),
             ("multi_viewports", self.multi_viewports),

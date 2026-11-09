@@ -8,21 +8,22 @@ use crate::{
     BlendFactor, ColorMask, ColorTarget, ComputePipelineInfo, DepthStencilStateInfo, FillMode,
     MeshPipelineInfo, PrimitiveTopology, RenderPipelineInfo, StencilFace, TilePipelineInfo,
 };
-use crate::{ComputePipeline, DepthStencilState, RenderPipeline, TilePipeline};
+use crate::{ComputePipeline, DepthStencilState, PipelineCache, RenderPipeline, TilePipeline};
 use crate::{DescriptorLayout, sets};
 use dispatch2::DispatchData;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSError, NSString};
 use objc2_metal::{
-    MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4ComputePipelineDescriptor,
-    MTL4IndirectCommandBufferSupportState, MTL4LibraryDescriptor, MTL4MeshRenderPipelineDescriptor,
-    MTL4PipelineDescriptor, MTL4RenderPipelineColorAttachmentDescriptorArray,
-    MTL4RenderPipelineDescriptor, MTL4TileRenderPipelineDescriptor, MTLBlendFactor,
-    MTLBlendOperation, MTLColorWriteMask, MTLComputePipelineState, MTLDepthClipMode,
-    MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLFunction, MTLLibrary,
-    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor,
-    MTLStencilOperation, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
+    MTL4AlphaToCoverageState, MTL4BlendState, MTL4Compiler, MTL4CompilerTaskOptions,
+    MTL4ComputePipelineDescriptor, MTL4IndirectCommandBufferSupportState, MTL4LibraryDescriptor,
+    MTL4MeshRenderPipelineDescriptor, MTL4PipelineDescriptor,
+    MTL4RenderPipelineColorAttachmentDescriptorArray, MTL4RenderPipelineDescriptor,
+    MTL4TileRenderPipelineDescriptor, MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask,
+    MTLCompileOptions, MTLComputePipelineState, MTLDepthClipMode, MTLDepthStencilDescriptor,
+    MTLDepthStencilState, MTLDevice, MTLFunction, MTLLibrary, MTLPrimitiveTopologyClass,
+    MTLPrimitiveType, MTLRenderPipelineState, MTLStencilDescriptor, MTLStencilOperation,
+    MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexStepFunction,
 };
 use std::sync::Mutex;
 
@@ -169,7 +170,7 @@ fn colors(array: &MTL4RenderPipelineColorAttachmentDescriptorArray, targets: &[C
     }
 }
 
-static COMPILE: Mutex<()> = Mutex::new(());
+pub(super) static COMPILE: Mutex<()> = Mutex::new(());
 
 impl Device {
     fn buffer_room(&self, layouts: &[DescriptorLayout], vertices: usize) -> Result<(), Error> {
@@ -205,28 +206,46 @@ fn support(on: bool) -> MTL4IndirectCommandBufferSupportState {
 }
 
 impl Device {
+    fn compiler(
+        &self,
+        cache: Option<PipelineCache>,
+    ) -> (&ProtocolObject<dyn MTL4Compiler>, &MTL4CompilerTaskOptions) {
+        match cache {
+            Some(c) => {
+                let cache = self.res.caches.get(c);
+                (&cache.compiler, &cache.options)
+            }
+            None => (&self.compiler, &self.options),
+        }
+    }
+
     fn compile(
         &self,
         desc: &MTL4PipelineDescriptor,
+        cache: Option<PipelineCache>,
     ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, Error> {
+        let (compiler, options) = self.compiler(cache);
         let _held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
-        self.compiler
-            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(
-                desc,
-                Some(&self.options),
-            )
+        compiler
+            .newRenderPipelineStateWithDescriptor_compilerTaskOptions_error(desc, Some(options))
             .map_err(|e| Error::Shader(e.localizedDescription().to_string()))
     }
 
     fn library(
         &self,
         code: &[u8],
+        invariant: bool,
     ) -> Result<(Retained<ProtocolObject<dyn MTLLibrary>>, Groups), Error> {
         let shader = |e: Retained<NSError>| Error::Shader(e.localizedDescription().to_string());
         if !code.contains(&0) {
             let source = std::str::from_utf8(code).map_err(|e| Error::Shader(e.to_string()))?;
             let desc = MTL4LibraryDescriptor::new();
             desc.setSource(Some(&NSString::from_str(source)));
+            if invariant {
+                let options = MTLCompileOptions::new();
+                options.setPreserveInvariance(true);
+                desc.setOptions(Some(&options));
+            }
             let _held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
             let library = self
                 .compiler
@@ -255,7 +274,7 @@ impl Device {
         self.caps.check_compute_pipeline(info)?;
         let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
         autoreleasepool(|_| {
-            let (library, groups) = self.library(info.bytecode)?;
+            let (library, groups) = self.library(info.bytecode, false)?;
             let shape = group(&groups, info.entrypoint, info.threadgroup_size)?;
             let desc = MTL4ComputePipelineDescriptor::new();
             desc.setComputeFunctionDescriptor(Some(&*function_descriptor(
@@ -268,12 +287,12 @@ impl Device {
                 desc.setThreadGroupSizeIsMultipleOfThreadExecutionWidth(true);
             }
             label(&desc, info.label);
+            let (compiler, options) = self.compiler(info.cache);
             let held = COMPILE.lock().unwrap_or_else(|e| e.into_inner());
-            let state = self
-                .compiler
+            let state = compiler
                 .newComputePipelineStateWithDescriptor_compilerTaskOptions_error(
                     &desc,
-                    Some(&self.options),
+                    Some(options),
                 )
                 .map_err(|e| Error::Shader(e.localizedDescription().to_string()))?;
             drop(held);
@@ -299,7 +318,7 @@ impl Device {
             self.caps.check_render_pipeline(info)?;
             let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
             self.buffer_room(info.descriptor_set_layout, info.vertex_buffers.len())?;
-            let (library, groups) = self.library(info.bytecode)?;
+            let (library, groups) = self.library(info.bytecode, info.preserve_invariance)?;
             let desc = MTL4RenderPipelineDescriptor::new();
             label(&desc, info.label);
             desc.setSupportIndirectCommandBuffers(support(info.indirect_buffers));
@@ -365,7 +384,7 @@ impl Device {
                 }
             });
             desc.setAlphaToCoverageState(alpha_coverage(info.alpha_to_coverage));
-            let state = self.compile(&desc)?;
+            let state = self.compile(&desc, info.cache)?;
             let id = self.res.renders.insert(Render {
                 state,
                 fill: mtl_fill_mode(info.fill_mode),
@@ -397,7 +416,7 @@ impl Device {
         autoreleasepool(|_| {
             self.caps.check_mesh_pipeline(info)?;
             let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
-            let (library, groups) = self.library(info.bytecode)?;
+            let (library, groups) = self.library(info.bytecode, false)?;
             let mesh = group(&groups, info.mesh_entrypoint, info.mesh_threadgroup_size)?;
             let task = if info.object_entrypoint.is_empty() {
                 [1, 1, 1]
@@ -430,7 +449,7 @@ impl Device {
             colors(&desc.colorAttachments(), info.color_targets);
             unsafe { desc.setRasterSampleCount(info.sample_count as usize) };
             desc.setAlphaToCoverageState(alpha_coverage(info.alpha_to_coverage));
-            let state = self.compile(&desc)?;
+            let state = self.compile(&desc, info.cache)?;
             check_threads(mesh, state.maxTotalThreadsPerMeshThreadgroup())?;
             if !info.object_entrypoint.is_empty() {
                 check_threads(task, state.maxTotalThreadsPerObjectThreadgroup())?;
@@ -477,7 +496,7 @@ impl Device {
                     "create_tile_pipeline needs caps.tile_shaders".into(),
                 ));
             }
-            let (library, _) = self.library(info.bytecode)?;
+            let (library, _) = self.library(info.bytecode, false)?;
             let desc = MTL4TileRenderPipelineDescriptor::new();
             label(&desc, info.label);
             desc.setTileFunctionDescriptor(Some(&*function_descriptor(&library, info.entrypoint)?));
@@ -487,7 +506,7 @@ impl Device {
             }
             unsafe { desc.setRasterSampleCount(info.sample_count as usize) };
             desc.setThreadgroupSizeMatchesTileSize(true);
-            let state = self.compile(&desc)?;
+            let state = self.compile(&desc, info.cache)?;
             let id = self.res.tiles.insert(state);
             self.res
                 .table

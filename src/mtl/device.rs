@@ -1,5 +1,6 @@
 mod budget;
 mod buffers;
+mod caches;
 mod caps;
 mod copies;
 mod create;
@@ -340,7 +341,8 @@ impl Device {
     }
 
     pub fn begin_commands(&self, pool: CommandPool) -> Result<CommandBuffer<'_>, Error> {
-        let check = self.check(pool, Kind::Owned, 0);
+        let mut check = self.check(pool, Kind::Owned, 0);
+        check.inherit_queue_sets();
         let p = self.pools.get(pool);
         let buffer = p.next(&self.raw)?;
         let recording = self.recording(check, pool, Some(buffer.clone()), Kind::Owned);

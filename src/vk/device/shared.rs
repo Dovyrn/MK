@@ -112,6 +112,7 @@ impl Device {
     }
 
     pub fn import_shared_timeline(&self, handle: u64) -> Result<Timeline, Error> {
+        self.caps.check_timelines("import_shared_timeline")?;
         let (_, semaphore) = self.win32("import_shared_timeline")?;
         let raw = timeline(&self.raw).map_err(Error::from)?;
         let info = vk::ImportSemaphoreWin32HandleInfoKHR::default()
