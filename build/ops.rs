@@ -301,7 +301,7 @@ pub fn jni(ops: &[Op]) -> String {
             }
             writeln!(
                 s,
-                "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{class}_n{}<'local>({}) {{\n    crate::java::call(&mut env, |_| {{\n        {body}\n    }})\n}}",
+                "#[cfg_attr(not(feature = \"registered\"), unsafe(no_mangle))]\npub extern \"system\" fn Java_dev_dov_mk_{class}_n{}<'local>({}) {{\n    crate::java::call(&mut env, |_| {{\n        {body}\n    }})\n}}",
                 pascal(&op.name),
                 params.join(", ")
             )

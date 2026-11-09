@@ -1,9 +1,10 @@
 use crate::Error;
 use crate::gl::extra::Extra;
 use glow::HasContext;
+use std::collections::VecDeque;
 
 pub struct Fences {
-    pub fences: Vec<(u64, glow::Fence)>,
+    pub fences: VecDeque<(u64, glow::Fence)>,
     pub value: u64,
     pub semaphore: u32,
 }
@@ -46,19 +47,15 @@ impl Fences {
             gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0)
                 .map_err(Error::Driver)?
         };
-        let done: Vec<usize> = self
-            .fences
-            .iter()
-            .enumerate()
-            .filter(|(_, (_, f))| unsafe { gl.get_sync_status(*f) } == glow::SIGNALED)
-            .map(|(i, _)| i)
-            .collect();
-        for i in done.into_iter().rev() {
-            let (v, f) = self.fences.remove(i);
+        while let Some(&(v, f)) = self.fences.front() {
+            if unsafe { gl.get_sync_status(f) } != glow::SIGNALED {
+                break;
+            }
+            self.fences.pop_front();
             self.value = self.value.max(v);
             unsafe { gl.delete_sync(f) };
         }
-        self.fences.push((value, fence));
+        self.fences.push_back((value, fence));
         Ok(())
     }
 

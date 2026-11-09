@@ -1,7 +1,8 @@
 use super::{Recorder, is_integer_format};
 use crate::Buffer;
 use crate::Error;
-use crate::gl::pipeline::Pipeline;
+use crate::gl::pipeline::{Pipeline, attribute_size};
+use crate::slot;
 use glow::HasContext;
 
 impl Recorder<'_> {
@@ -44,20 +45,51 @@ impl Recorder<'_> {
             let Some(p) = self.render.filter(|_| render) else {
                 return Ok(true);
             };
-            if self.fed == Some(p.vao) {
-                return Ok(true);
+            if self.vao != Some(p.vao) {
+                self.vao = Some(p.vao);
+                self.fed = false;
+                self.slots = [None; slot::VERTICES as usize];
+                self.elements = None;
+                gl.bind_vertex_array(Some(p.vao));
             }
-            self.fed = Some(p.vao);
-            gl.bind_vertex_array(Some(p.vao));
-            self.bind_attributes(p, 0);
+            if p.baked {
+                self.shift(p, 0);
+            } else if !self.fed {
+                self.fed = true;
+                self.bind_attributes(p, 0);
+            }
             if let Some((buffer, _, _)) = self.index {
-                gl.bind_buffer(
-                    glow::ELEMENT_ARRAY_BUFFER,
-                    Some(self.res.buffers.get(buffer).raw),
-                );
+                let raw = self.res.buffers.get(buffer).raw;
+                if self.elements != Some(raw.0.get()) {
+                    self.elements = Some(raw.0.get());
+                    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(raw));
+                }
             }
         }
         Ok(true)
+    }
+
+    fn shift(&mut self, p: &Pipeline, instance: u32) {
+        if !p.baked {
+            self.bind_attributes(p, instance);
+            return;
+        }
+        for (s, layout) in p.buffers.iter().enumerate() {
+            if p.slots & 1 << s == 0 || (instance != 0 && !layout.instanced) {
+                continue;
+            }
+            let Some((buffer, offset)) = self.vertices[s] else {
+                continue;
+            };
+            let at = offset + instance as u64 * layout.stride as u64;
+            let raw = self.res.buffers.get(buffer).raw.0.get();
+            if self.slots[s] == Some((raw, at)) {
+                continue;
+            }
+            self.slots[s] = Some((raw, at));
+            let stride = layout.stride as i32;
+            unsafe { self.extra.bind_vertex.unwrap()(s as u32, raw, at as isize, stride) };
+        }
     }
 
     fn bind_attributes(&self, p: &Pipeline, instance: u32) {
@@ -70,14 +102,8 @@ impl Recorder<'_> {
                 };
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.res.buffers.get(buffer).raw));
                 let layout = p.buffers[a.buffer_slot as usize];
-                let [_, f, ty] = a.format.gl();
-                let size = match f {
-                    glow::RED | glow::RED_INTEGER => 1,
-                    glow::RG | glow::RG_INTEGER => 2,
-                    glow::RGB | glow::RGB_INTEGER => 3,
-                    glow::BGRA => glow::BGRA as i32,
-                    _ => 4,
-                };
+                let [_, _, ty] = a.format.gl();
+                let size = attribute_size(a.format);
                 let skip = if layout.instanced {
                     instance as u64 * layout.stride as u64
                 } else {
@@ -98,7 +124,7 @@ impl Recorder<'_> {
     }
 
     pub fn draw_direct(
-        &self,
+        &mut self,
         indexed: bool,
         count: u32,
         instances: u32,
@@ -112,12 +138,11 @@ impl Recorder<'_> {
         };
         let native = self.extra.elements_base.is_some();
         unsafe {
-            if let Some(l) = &p.program.instance {
-                let given = native && self.extra.parameters;
-                gl.uniform_1_i32(Some(l), if given { 0 } else { instance as i32 });
-            }
+            let given = native && self.extra.parameters;
+            p.program
+                .set_instance(gl, if given { 0 } else { instance as i32 });
             if instance != 0 && !native {
-                self.bind_attributes(p, instance);
+                self.shift(p, instance);
             }
             let (count, instances) = (count as i32, instances as i32);
             match self.index.filter(|_| indexed) {
@@ -142,7 +167,7 @@ impl Recorder<'_> {
                 None => gl.draw_arrays_instanced(self.mode, first as i32, count, instances),
             }
             if instance != 0 && !native {
-                self.bind_attributes(p, 0);
+                self.shift(p, 0);
             }
         }
     }
@@ -160,8 +185,8 @@ impl Recorder<'_> {
         let raw = self.res.buffers.get(buffer).raw;
         let pointer = offset as usize as *const std::ffi::c_void;
         unsafe {
-            if let Some(l) = self.render.and_then(|p| p.program.instance.as_ref()) {
-                self.gl.uniform_1_i32(Some(l), 0);
+            if let Some(p) = self.render {
+                p.program.set_instance(self.gl, 0);
             }
             self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
             if indexed {

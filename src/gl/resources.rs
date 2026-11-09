@@ -25,4 +25,5 @@ pub struct Resources {
     pub descriptor_pools: Slots<crate::gl::descriptor_pool::DescriptorPoolObject>,
     pub descriptor_sets: Slots<crate::gl::descriptor_set::DescriptorSetObject>,
     pub table: crate::table::Table,
+    pub framebuffers: RefCell<Vec<(Vec<u32>, glow::Framebuffer)>>,
 }

@@ -1,0 +1,39 @@
+[package]
+name = "mk-mtl-core"
+version = "0.1.0"
+edition = "2024"
+build = "../../../build.rs"
+
+[lib]
+path = "../../../src/lib.rs"
+
+[features]
+default = ["mtl", "jni", "registered"]
+validation = []
+vk = []
+mtl = []
+gl = []
+jni = []
+registered = []
+sdl = []
+
+[dependencies]
+jni = "0.21"
+block2 = { version = "0.6" }
+objc2 = { version = "0.6" }
+objc2-foundation = { version = "0.3" }
+objc2-core-foundation = { version = "0.3" }
+objc2-metal = { version = "0.3" }
+objc2-quartz-core = { version = "0.3", features = [
+    "CALayer",
+    "CAMetalLayer",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "objc2-metal",
+] }
+objc2-core-graphics = { version = "0.3", features = ["CGColorSpace"] }
+dispatch2 = { version = "0.3" }
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", features = ["preserve_order"] }

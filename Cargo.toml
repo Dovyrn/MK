@@ -24,6 +24,7 @@ mtl = [
 ]
 gl = ["dep:glow"]
 jni = ["dep:jni"]
+registered = ["jni"]
 sdl = ["dep:sdl3-sys"]
 
 [dependencies]

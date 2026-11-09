@@ -18,6 +18,7 @@ type Indirect = unsafe extern "system" fn(u32, *const c_void);
 type IndexedIndirect = unsafe extern "system" fn(u32, u32, *const c_void);
 type Elements = unsafe extern "system" fn(u32, i32, u32, *const c_void, i32, i32);
 type ElementsBase = unsafe extern "system" fn(u32, i32, u32, *const c_void, i32, i32, u32);
+type BindVertex = unsafe extern "system" fn(u32, u32, isize, i32);
 type Attribute = unsafe extern "system" fn(u32, i32, u32, u8, i32, *const c_void);
 type Integer = unsafe extern "system" fn(u32, i32, u32, i32, *const c_void);
 type Image1 = unsafe extern "system" fn(u32, i32, i32, i32, u32, u32, *const c_void);
@@ -85,6 +86,7 @@ pub struct Extra {
     pub indexed_indirect: Option<IndexedIndirect>,
     pub elements: Elements,
     pub elements_base: Option<ElementsBase>,
+    pub bind_vertex: Option<BindVertex>,
     pub attribute: Attribute,
     pub integer: Integer,
     pub image1: Image1,
@@ -170,6 +172,8 @@ impl Extra {
                     "GL_ARB_base_instance",
                 )
                 .map(|p| cast(p)),
+                bind_vertex: get("glBindVertexBuffer", 43, "GL_ARB_vertex_attrib_binding")
+                    .map(|p| cast(p)),
                 attribute: cast(need("glVertexAttribPointer")?),
                 integer: cast(need("glVertexAttribIPointer")?),
                 image1: cast(need("glTexSubImage1D")?),

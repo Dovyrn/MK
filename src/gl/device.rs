@@ -19,7 +19,7 @@ use crate::gl::query::Query;
 use crate::gl::recorder::Recorder;
 use crate::gl::resources::Resources;
 use crate::gl::sampler;
-use crate::gl::state::{self, State};
+use crate::gl::state::{self, State, group};
 use crate::gl::texture::{TextureObject, target};
 use crate::recording::{Held, Recording};
 use crate::table::lock;
@@ -528,7 +528,7 @@ impl Device {
     ) -> Result<RenderPipeline, Error> {
         self.check_host_programs()?;
         let layouts = self.res.table.layout_ids(info.descriptor_set_layout);
-        let p = Pipeline::new(&self.gl, info, stages)?;
+        let p = Pipeline::new(&self.gl, info, stages, self.extra.bind_vertex.is_some())?;
         if !info.label.is_empty() {
             self.name(glow::PROGRAM, p.program.raw.0.get(), info.label);
         }
@@ -783,10 +783,16 @@ impl Device {
     pub fn destroy_texture(&self, texture: Texture) {
         self.thread();
         self.res.table.drop_texture(texture);
-        self.res
-            .textures
-            .remove(texture)
-            .delete(&self.gl, &self.extra);
+        let t = self.res.textures.remove(texture);
+        let raw = t.raw.map_or(0, |r| r.0.get());
+        self.res.framebuffers.borrow_mut().retain(|(key, f)| {
+            let used = key[1..].chunks(2).any(|p| p[1] == raw);
+            if used {
+                unsafe { self.gl.delete_framebuffer(*f) };
+            }
+            !used
+        });
+        t.delete(&self.gl, &self.extra);
     }
 
     pub fn create_sampler(&self, info: &SamplerInfo) -> Result<Sampler, Error> {
@@ -839,7 +845,7 @@ impl Device {
 
     fn add_timeline(&self, semaphore: u32) -> Timeline {
         let fences = Rc::new(RefCell::new(Fences {
-            fences: Vec::new(),
+            fences: Default::default(),
             value: 0,
             semaphore,
         }));
@@ -915,7 +921,7 @@ impl Device {
         self.check_host_queries()?;
         self.healthy()?;
         let errors = crate::gl::errors::drain(&self.gl);
-        let state = State::save(
+        let mut state = State::new(
             &self.gl,
             &self.extra,
             &self.caps,
@@ -923,6 +929,11 @@ impl Device {
             &|v, e| self.has(v, e),
         );
         if base == "outside" {
+            state.save(
+                &self.gl,
+                &self.extra,
+                group::PIXELS | group::RASTER | group::ENABLES,
+            );
             state.clear(&self.gl, &self.extra);
         }
         let recorder = Recorder::new(
@@ -1035,6 +1046,9 @@ impl Drop for Device {
             }
             for t in self.res.timelines.drain() {
                 t.borrow().delete(gl, &self.extra);
+            }
+            for (_, f) in self.res.framebuffers.take() {
+                gl.delete_framebuffer(f);
             }
             gl.delete_framebuffer(self.fbo);
             gl.delete_framebuffer(self.read);

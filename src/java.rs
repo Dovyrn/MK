@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use crate::{CommandBuffer, ComputePass, Device, Error, RenderPass, Timeline};
 use jni::JNIEnv;
 use jni::objects::JClass;
@@ -89,7 +91,7 @@ fn raw_commands<T: ?Sized>(raw: &T) -> jlong {
     pointer(raw)
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
     mut env: JNIEnv,
     _: JClass,
@@ -108,7 +110,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginComputePass(
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginRenderPass(
     mut env: JNIEnv,
     _: JClass,
@@ -125,7 +127,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nBeginRenderPass(
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nEnd(
     mut env: JNIEnv,
     _: JClass,
@@ -134,7 +136,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nEnd(
     call(&mut env, |_| command_buffer(commands).end())
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nDrop(
     mut env: JNIEnv,
     _: JClass,
@@ -146,7 +148,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nDrop(
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nRaw(
     mut env: JNIEnv,
     _: JClass,
@@ -161,7 +163,7 @@ pub extern "system" fn Java_dev_dov_mk_CommandBuffer_nRaw(
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_ComputePass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
     call(&mut env, |_| {
         unsafe { Box::from_raw(pass as *mut ComputePass<'static, 'static>) }.end();
@@ -169,7 +171,7 @@ pub extern "system" fn Java_dev_dov_mk_ComputePass_nEnd(mut env: JNIEnv, _: JCla
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_RenderPass_nEnd(mut env: JNIEnv, _: JClass, pass: jlong) {
     call(&mut env, |_| {
         unsafe { Box::from_raw(pass as *mut RenderPass<'static, 'static>) }.end();
@@ -177,7 +179,7 @@ pub extern "system" fn Java_dev_dov_mk_RenderPass_nEnd(mut env: JNIEnv, _: JClas
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_ComputePass_nRaw(
     mut env: JNIEnv,
     _: JClass,
@@ -192,7 +194,7 @@ pub extern "system" fn Java_dev_dov_mk_ComputePass_nRaw(
     })
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "registered"), unsafe(no_mangle))]
 pub extern "system" fn Java_dev_dov_mk_RenderPass_nRaw(
     mut env: JNIEnv,
     _: JClass,
@@ -287,3 +289,5 @@ pub fn pointer<T: ?Sized>(r: &T) -> jlong {
 
 include!(concat!(env!("OUT_DIR"), "/java.rs"));
 include!(concat!(env!("OUT_DIR"), "/commands_jni.rs"));
+#[cfg(feature = "registered")]
+include!(concat!(env!("OUT_DIR"), "/natives.rs"));

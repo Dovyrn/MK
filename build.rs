@@ -10,6 +10,8 @@ mod formats;
 mod handles;
 #[path = "build/infos.rs"]
 mod infos;
+#[path = "build/natives.rs"]
+mod natives;
 #[path = "build/ops.rs"]
 mod ops;
 
@@ -19,6 +21,13 @@ use std::{env, fs, path::Path};
 const JAVA: &str = "java/src/main/java/dev/dov/mk";
 
 fn main() {
+    let manifest = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let root = Path::new(&manifest)
+        .ancestors()
+        .find(|d| d.join("commands.toml").exists())
+        .unwrap()
+        .to_path_buf();
+    env::set_current_dir(&root).unwrap();
     for file in [
         "build.rs",
         "build",
@@ -28,8 +37,9 @@ fn main() {
         "infos.toml",
         "calls.toml",
         "handles.toml",
+        "src/java.rs",
     ] {
-        println!("cargo:rerun-if-changed={file}");
+        println!("cargo:rerun-if-changed={}", root.join(file).display());
     }
     let out = env::var("OUT_DIR").unwrap();
     let out = Path::new(&out);
@@ -58,7 +68,8 @@ fn main() {
     ops::resolve(&mut list, &infos);
     fs::write(out.join("command.rs"), ops::command(&list)).unwrap();
     fs::write(out.join("methods.rs"), ops::methods(&list)).unwrap();
-    fs::write(out.join("commands_jni.rs"), ops::jni(&list)).unwrap();
+    let commands_jni = ops::jni(&list);
+    fs::write(out.join("commands_jni.rs"), &commands_jni).unwrap();
     for (scope, class) in [
         ("outside", "CommandBuffer"),
         ("compute", "ComputePass"),
@@ -124,7 +135,18 @@ fn main() {
         save(&dir.join(format!("{}.java", info.name)), &infos::java(info));
     }
     let calls: Vec<calls::Call> = load("calls.toml", "call");
-    fs::write(out.join("java.rs"), calls::rust(&calls, &borrowing)).unwrap();
+    let calls_jni = calls::rust(&calls, &borrowing);
+    fs::write(out.join("java.rs"), &calls_jni).unwrap();
+    let java = fs::read_to_string("src/java.rs").unwrap();
+    fs::write(
+        out.join("natives.rs"),
+        natives::rust(&[&java, &calls_jni, &commands_jni]),
+    )
+    .unwrap();
+    save(
+        &dir.join("Natives.java"),
+        include_str!("build/natives.java"),
+    );
     for backend in [None, Some("vk"), Some("mtl"), Some("gl")] {
         let path = dir.join(format!("{}.java", class(backend, "Device")));
         save(&path, &calls::java(&calls, backend));
@@ -181,6 +203,9 @@ fn constant(value: &str) -> String {
 static SAVED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
 
 fn save(path: &Path, text: &str) {
+    if env::var("CARGO_PKG_NAME").unwrap() != "mk" {
+        return;
+    }
     let mut saved = SAVED.lock().unwrap();
     assert!(
         !saved.iter().any(|p| p == path),

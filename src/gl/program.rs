@@ -1,10 +1,12 @@
 use crate::Error;
 use glow::HasContext;
+use std::cell::Cell;
 
 pub struct Program {
     pub raw: glow::Program,
     pub pairs: Vec<(u32, Option<u32>)>,
     pub instance: Option<glow::UniformLocation>,
+    pub given: Cell<Option<i32>>,
 }
 
 fn entry_section<'a>(text: &'a str, entry: &str) -> Result<&'a str, Error> {
@@ -148,7 +150,17 @@ impl Program {
                 raw,
                 pairs,
                 instance: gl.get_uniform_location(raw, "mk_BaseInstance"),
+                given: Cell::new(None),
             })
+        }
+    }
+
+    pub fn set_instance(&self, gl: &glow::Context, value: i32) {
+        let Some(l) = &self.instance else {
+            return;
+        };
+        if self.given.replace(Some(value)) != Some(value) {
+            unsafe { gl.uniform_1_i32(Some(l), value) };
         }
     }
 

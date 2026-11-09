@@ -57,13 +57,13 @@ impl Recorder<'_> {
     }
 
     fn bind_copy_targets(
-        &self,
+        &mut self,
         (src, src_mip, src_layer): (&TextureObject, u32, u32),
         (dst, dst_mip, dst_layer): (&TextureObject, u32, u32),
     ) -> u32 {
         let gl = self.gl;
+        self.enable(glow::SCISSOR_TEST, false);
         unsafe {
-            gl.disable(glow::SCISSOR_TEST);
             gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.read));
             gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.fbo));
             self.detach_all(glow::DRAW_FRAMEBUFFER);
@@ -85,7 +85,7 @@ impl Recorder<'_> {
         }
     }
 
-    pub fn copy_texture_to_texture(&self, c: Command) {
+    pub fn copy_texture_to_texture(&mut self, c: Command) {
         let Command::CopyTextureToTexture {
             src,
             src_mip,
@@ -109,7 +109,8 @@ impl Recorder<'_> {
             return;
         };
         let gl = self.gl;
-        let (s, d) = (self.res.textures.get(src), self.res.textures.get(dst));
+        let res = self.res;
+        let (s, d) = (res.textures.get(src), res.textures.get(dst));
         let line =
             |t: &TextureObject| matches!(t.target, glow::TEXTURE_1D | glow::TEXTURE_1D_ARRAY);
         if let Some(copy) = self.extra.copy_image {
@@ -162,15 +163,16 @@ impl Recorder<'_> {
         let (x, y) = (src_x as i32, src_y as i32);
         let (u, v) = (dst_x as i32, dst_y as i32);
         let (w, h) = (width as i32, height as i32);
-        unsafe {
-            gl.disable(glow::FRAMEBUFFER_SRGB);
-            for i in 0..layers * depth {
-                let at = self.bind_copy_targets((s, src_mip, from + i), (d, dst_mip, to + i));
-                let bits = clear_bits(at);
-                gl.blit_framebuffer(x, y, x + w, y + h, u, v, u + w, v + h, bits, glow::NEAREST);
-                self.unbind_copy_targets(at);
-            }
-            gl.enable(glow::FRAMEBUFFER_SRGB);
+        let srgb = self.enabled.contains(&(glow::FRAMEBUFFER_SRGB, true));
+        self.enable(glow::FRAMEBUFFER_SRGB, false);
+        for i in 0..layers * depth {
+            let at = self.bind_copy_targets((s, src_mip, from + i), (d, dst_mip, to + i));
+            let bits = clear_bits(at);
+            unsafe {
+                gl.blit_framebuffer(x, y, x + w, y + h, u, v, u + w, v + h, bits, glow::NEAREST)
+            };
+            self.unbind_copy_targets(at);
         }
+        self.enable(glow::FRAMEBUFFER_SRGB, srgb);
     }
 }

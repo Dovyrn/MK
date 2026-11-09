@@ -119,7 +119,7 @@ fn rust_arg(p: &Field) -> String {
 
 pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
     let mut s = String::from(
-        "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(mut env: JNIEnv, _: JClass, device: jlong) {\n",
+        "#[cfg_attr(not(feature = \"registered\"), unsafe(no_mangle))]\npub extern \"system\" fn Java_dev_dov_mk_Device_nFree(mut env: JNIEnv, _: JClass, device: jlong) {\n",
     );
     s += "    crate::java::call(&mut env, |_| {\n        drop(unsafe { Box::from_raw(device as *mut crate::Device) });\n        Ok(())\n    })\n}\n";
     s += include_str!("timeline.rs");
@@ -225,7 +225,7 @@ pub fn rust(calls: &[Call], borrowing: &[String]) -> String {
             }
             writeln!(
                 s,
-                "#[unsafe(no_mangle)]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
+                "#[cfg_attr(not(feature = \"registered\"), unsafe(no_mangle))]\npub extern \"system\" fn Java_dev_dov_mk_{}_{}<'local>({}){ret} {{",
                 class(b, "Device"),
                 native(call),
                 params.join(", ")

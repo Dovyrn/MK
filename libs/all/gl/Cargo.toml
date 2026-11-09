@@ -1,0 +1,26 @@
+[package]
+name = "mk-gl-core"
+version = "0.1.0"
+edition = "2024"
+build = "../../../build.rs"
+
+[lib]
+path = "../../../src/lib.rs"
+
+[features]
+default = ["gl", "jni", "registered"]
+validation = []
+vk = []
+mtl = []
+gl = []
+jni = []
+registered = []
+sdl = []
+
+[dependencies]
+jni = "0.21"
+glow = "0.17"
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", features = ["preserve_order"] }

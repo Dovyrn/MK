@@ -1,0 +1,26 @@
+[package]
+name = "mk-all"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["vk", "mtl", "gl"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21"
+vk = { package = "mk-vk-core", path = "vk" }
+gl = { package = "mk-gl-core", path = "gl" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mtl = { package = "mk-mtl-core", path = "mtl" }
+
+[profile.release]
+strip = "symbols"
+lto = "fat"
+codegen-units = 1
+
+[profile.dev]
+split-debuginfo = "packed"

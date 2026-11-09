@@ -11,10 +11,10 @@ use crate::gl::extra::Extra;
 use crate::gl::pipeline::Pipeline;
 use crate::gl::program::Program;
 use crate::gl::resources::Resources;
-use crate::gl::state::{State, set_enabled};
+use crate::gl::state::{State, group, set_enabled};
 use crate::{Buffer, Sampler, Texture};
 use crate::{
-    ColorMask, CullMode, DepthAttachment, DepthStencilStateInfo, DescriptorType,
+    ColorMask, ColorTarget, CullMode, DepthAttachment, DepthStencilStateInfo, DescriptorType,
     DeviceCapabilities, DynamicPipelineStates, Format, FrontFace, IndexType, LoadOp,
     PipelineStages, PrimitiveTopology, StoreOp, VertexPipelineStates, slot,
 };
@@ -90,7 +90,81 @@ pub struct Recorder<'a> {
     pub imported: bool,
     used: Option<glow::Program>,
     units: Vec<Option<(Option<Texture>, Option<Sampler>)>>,
-    fed: Option<glow::VertexArray>,
+    vao: Option<glow::VertexArray>,
+    fed: bool,
+    slots: [Option<(u32, u64)>; slot::VERTICES as usize],
+    elements: Option<u32>,
+    pass: Option<glow::Framebuffer>,
+    enabled: Vec<(u32, bool)>,
+    culled: Option<CullMode>,
+    faced: Option<FrontFace>,
+    depthed: Option<DepthStencilStateInfo>,
+    stenciled: Option<(DepthStencilStateInfo, (u32, u32))>,
+    biased: Option<[f32; 3]>,
+    tint: Option<[f32; 4]>,
+    filled: Option<u32>,
+    blended: Option<Vec<ColorTarget>>,
+    ranges: Vec<(u32, u32, u32, u64, u64)>,
+    images: Vec<Option<u32>>,
+}
+
+fn groups(c: &Command) -> u32 {
+    use group::*;
+    let draw = PROGRAM | UNITS | VAO | BUFFERS;
+    let raster = ENABLES | RASTER;
+    match c {
+        Command::Dispatch { .. } => PROGRAM | UNITS,
+        Command::DispatchIndirect { .. } => PROGRAM | UNITS | BUFFERS,
+        Command::CopyBufferToBuffer { .. }
+        | Command::FillBuffer { .. }
+        | Command::ResolveTimestamps { .. }
+        | Command::ResolveOcclusion { .. } => BUFFERS,
+        Command::CopyBufferToTexture { .. } => BUFFERS | UNITS | PIXELS,
+        Command::CopyTextureToBuffer { .. } => BUFFERS | PIXELS | FRAMEBUFFERS,
+        Command::CopyTextureToTexture { .. } | Command::EndRenderPass => {
+            FRAMEBUFFERS | ENABLES | VIEWPORTS
+        }
+        Command::BeginRenderPass { .. } => FRAMEBUFFERS | raster | BLEND | STENCIL | VIEWPORTS,
+        Command::BindRenderPipeline { .. } => raster | BLEND | STENCIL,
+        Command::SetCullMode { .. } | Command::SetDepthBias { .. } => raster,
+        Command::SetFrontFace { .. } => RASTER,
+        Command::SetDepthStencilState { .. } => raster | STENCIL,
+        Command::SetStencilReference { .. } => STENCIL,
+        Command::SetBlendColor { .. } => BLEND,
+        Command::Draw { .. }
+        | Command::DrawIndexed { .. }
+        | Command::DrawIndirect { .. }
+        | Command::DrawIndexedIndirect { .. }
+        | Command::DrawMeshTasks { .. }
+        | Command::DrawMeshTasksIndirect { .. } => draw,
+        Command::SetViewport { .. } | Command::SetScissor { .. } => VIEWPORTS | ENABLES,
+        Command::BindDescriptorSet { .. } | Command::BindDescriptorSetDynamic { .. } => {
+            RANGES | BUFFERS | IMAGES
+        }
+        Command::BeginComputePass { .. }
+        | Command::EndComputePass
+        | Command::DiscardTextureContents { .. }
+        | Command::OcclusionPool { .. }
+        | Command::ResetQueries { .. }
+        | Command::BindComputePipeline { .. }
+        | Command::MemoryBarrier { .. }
+        | Command::BeginDebugLabel { .. }
+        | Command::EndDebugLabel
+        | Command::ColorAttachment { .. }
+        | Command::DepthAttachment { .. }
+        | Command::InputAttachmentBarrier
+        | Command::TileMemory { .. }
+        | Command::DispatchTile { .. }
+        | Command::SetPrimitiveTopology { .. }
+        | Command::BindVertexBuffer { .. }
+        | Command::BindIndexBuffer { .. }
+        | Command::ExecuteIndirect { .. }
+        | Command::ExecuteIndirectCount { .. }
+        | Command::WriteTimestamp { .. }
+        | Command::BeginOcclusionQuery { .. }
+        | Command::EndOcclusionQuery { .. }
+        | Command::UseResidencySet { .. } => 0,
+    }
 }
 
 fn gl_primitive_mode(t: crate::PrimitiveTopology) -> u32 {
@@ -241,11 +315,27 @@ impl<'a> Recorder<'a> {
             imported: false,
             used: None,
             units: Vec::new(),
-            fed: None,
+            vao: None,
+            fed: false,
+            slots: [None; slot::VERTICES as usize],
+            elements: None,
+            pass: None,
+            enabled: Vec::new(),
+            culled: None,
+            faced: None,
+            depthed: None,
+            stenciled: None,
+            biased: None,
+            tint: None,
+            filled: None,
+            blended: None,
+            ranges: Vec::new(),
+            images: Vec::new(),
         }
     }
 
     pub fn begin(&mut self) -> Result<(), Error> {
+        self.touch(group::ENABLES | group::BLEND | group::RASTER);
         self.reset_state();
         self.check_errors("begin_commands")
     }
@@ -254,8 +344,24 @@ impl<'a> Recorder<'a> {
         self.imported = true;
         self.rendering = true;
         self.extent = (width as i32, height as i32);
-        self.views = vec![[0.0, 0.0, width as f32, height as f32]];
+        self.views.clear();
+        self.views.push([0.0, 0.0, width as f32, height as f32]);
         self.layers = 1;
+    }
+
+    pub fn touch(&mut self, groups: u32) {
+        if let Some(host) = &mut self.host {
+            host.save(self.gl, self.extra, groups);
+        }
+    }
+
+    pub fn enable(&mut self, cap: u32, on: bool) {
+        match self.enabled.iter_mut().find(|e| e.0 == cap) {
+            Some(e) if e.1 == on => return,
+            Some(e) => e.1 = on,
+            None => self.enabled.push((cap, on)),
+        }
+        set_enabled(self.gl, cap, on);
     }
 
     pub fn step(&mut self, command: Command) -> Result<(), Error> {
@@ -306,13 +412,28 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn bind_range(&self, target: u32, index: u32, buffer: Buffer, offset: u64, size: u64) {
+    fn bind_range(&mut self, target: u32, index: u32, buffer: Buffer, offset: u64, size: u64) {
         let b = self.res.buffers.get(buffer);
         let size = if size == !0 { b.size - offset } else { size };
-        unsafe { (self.extra.range)(target, index, b.raw.0.get(), offset as isize, size as isize) };
+        let raw = b.raw.0.get();
+        let bound = (target, index, raw, offset, size);
+        match self
+            .ranges
+            .iter_mut()
+            .find(|r| (r.0, r.1) == (target, index))
+        {
+            Some(r) if *r == bound => return,
+            Some(r) => *r = bound,
+            None => self.ranges.push(bound),
+        }
+        unsafe { (self.extra.range)(target, index, raw, offset as isize, size as isize) };
     }
 
-    fn apply_blend_state(&self, p: &Pipeline) {
+    fn apply_blend_state(&mut self, p: &Pipeline) {
+        if self.blended.as_deref() == Some(&p.colors[..]) {
+            return;
+        }
+        self.blended = Some(p.colors.clone());
         let gl = self.gl;
         let uniform = same_blend(&p.colors);
         unsafe {
@@ -348,27 +469,28 @@ impl<'a> Recorder<'a> {
 
     fn reset_state(&mut self) {
         let gl = self.gl;
+        for (cap, on) in [
+            (glow::FRAMEBUFFER_SRGB, true),
+            (glow::TEXTURE_CUBE_MAP_SEAMLESS, true),
+            (glow::PROGRAM_POINT_SIZE, true),
+            (glow::MULTISAMPLE, true),
+            (glow::DEPTH_TEST, false),
+            (glow::STENCIL_TEST, false),
+        ] {
+            self.enable(cap, on);
+        }
+        for e in UNUSED {
+            self.enable(e, false);
+        }
+        self.cull(CullMode::None);
+        self.face(FrontFace::CounterClockwise);
+        self.bias(0.0, 0.0, 0.0);
+        self.blend_color([0.0; 4]);
+        self.fill(glow::FILL);
         unsafe {
             (self.extra.provoking)(glow::FIRST_VERTEX_CONVENTION);
-            gl.enable(glow::FRAMEBUFFER_SRGB);
-            gl.enable(glow::TEXTURE_CUBE_MAP_SEAMLESS);
-            gl.enable(glow::PROGRAM_POINT_SIZE);
-            gl.disable(glow::CULL_FACE);
-            gl.front_face(glow::CW);
-            for mode in OFFSETS {
-                gl.disable(mode);
-            }
-            gl.polygon_offset(0.0, 0.0);
-            gl.blend_color(0.0, 0.0, 0.0, 0.0);
-            gl.disable(glow::DEPTH_TEST);
             gl.depth_mask(false);
-            gl.disable(glow::STENCIL_TEST);
             gl.line_width(1.0);
-            for e in UNUSED {
-                gl.disable(e);
-            }
-            gl.enable(glow::MULTISAMPLE);
-            gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
             (self.extra.clamp_color)(glow::CLAMP_READ_COLOR, glow::FIXED_ONLY);
             for i in 0..slot::COLORS {
                 gl.color_mask_draw_buffer(i, true, true, true, true);
@@ -377,48 +499,63 @@ impl<'a> Recorder<'a> {
         }
     }
 
-    fn apply_scissors(&self) {
+    fn fill(&mut self, mode: u32) {
+        if self.filled != Some(mode) {
+            self.filled = Some(mode);
+            unsafe { self.gl.polygon_mode(glow::FRONT_AND_BACK, mode) };
+        }
+    }
+
+    fn blend_color(&mut self, color: [f32; 4]) {
+        if self.tint != Some(color) {
+            self.tint = Some(color);
+            let [r, g, b, a] = color;
+            unsafe { self.gl.blend_color(r, g, b, a) };
+        }
+    }
+
+    fn apply_scissors(&mut self) {
         let (w, h) = self.extent;
         let edge = |a: f32| (a - 0.5).ceil() as i32;
-        let boxes: Vec<[i32; 4]> = self
-            .views
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let s = self.scissors.get(i).copied().unwrap_or([0, 0, w, h]);
-                let (x, y) = (edge(v[0]).max(s[0]), edge(v[1]).max(s[1]));
-                let right = edge(v[0] + v[2]).min(s[0] + s[2]);
-                let top = edge(v[1] + v[3]).min(s[1] + s[3]);
-                [x, y, (right - x).max(0), (top - y).max(0)]
-            })
-            .collect();
+        let mut boxes = [[0; 4]; slot::VIEWPORTS as usize];
+        for (i, v) in self.views.iter().enumerate() {
+            let s = self.scissors.get(i).copied().unwrap_or([0, 0, w, h]);
+            let (x, y) = (edge(v[0]).max(s[0]), edge(v[1]).max(s[1]));
+            let right = edge(v[0] + v[2]).min(s[0] + s[2]);
+            let top = edge(v[1] + v[3]).min(s[1] + s[3]);
+            boxes[i] = [x, y, (right - x).max(0), (top - y).max(0)];
+        }
+        let boxes = &boxes[..self.views.len()];
+        self.enable(glow::SCISSOR_TEST, true);
         unsafe {
-            self.gl.enable(glow::SCISSOR_TEST);
-            match boxes.as_slice() {
+            match boxes {
                 [b] => self.gl.scissor(b[0], b[1], b[2], b[3]),
-                _ => self.gl.scissor_slice(0, boxes.len() as i32, &boxes),
+                _ => self.gl.scissor_slice(0, boxes.len() as i32, boxes),
             }
         }
     }
 
-    fn cull(&self, cull: CullMode) {
-        let gl = self.gl;
-        unsafe {
-            match cull {
-                CullMode::None => gl.disable(glow::CULL_FACE),
-                CullMode::Front | CullMode::Back => {
-                    gl.enable(glow::CULL_FACE);
-                    gl.cull_face(if cull == CullMode::Front {
-                        glow::FRONT
-                    } else {
-                        glow::BACK
-                    });
-                }
-            }
+    fn cull(&mut self, cull: CullMode) {
+        if self.culled == Some(cull) {
+            return;
+        }
+        self.culled = Some(cull);
+        self.enable(glow::CULL_FACE, cull != CullMode::None);
+        if cull != CullMode::None {
+            let mode = if cull == CullMode::Front {
+                glow::FRONT
+            } else {
+                glow::BACK
+            };
+            unsafe { self.gl.cull_face(mode) };
         }
     }
 
-    fn face(&self, face: FrontFace) {
+    fn face(&mut self, face: FrontFace) {
+        if self.faced == Some(face) {
+            return;
+        }
+        self.faced = Some(face);
         unsafe {
             self.gl.front_face(match face {
                 FrontFace::CounterClockwise => glow::CW,
@@ -428,28 +565,33 @@ impl<'a> Recorder<'a> {
     }
 
     fn depth(&mut self, d: DepthStencilStateInfo) {
-        let gl = self.gl;
-        unsafe {
-            set_enabled(
-                gl,
+        self.state = Some(d);
+        if self.depthed != Some(d) {
+            self.depthed = Some(d);
+            self.enable(
                 glow::DEPTH_TEST,
                 d.compare != crate::CompareOp::None || d.write,
             );
-            gl.depth_func(compare(d.compare));
-            gl.depth_mask(d.write);
-            set_enabled(gl, glow::STENCIL_TEST, d.stencil_test);
+            self.enable(glow::STENCIL_TEST, d.stencil_test);
+            unsafe {
+                self.gl.depth_func(compare(d.compare));
+                self.gl.depth_mask(d.write);
+            }
         }
-        self.state = Some(d);
         self.apply_stencil();
     }
 
-    fn bias(&self, constant: f32, slope: f32, clamp: f32) {
+    fn bias(&mut self, constant: f32, slope: f32, clamp: f32) {
+        if self.biased == Some([constant, slope, clamp]) {
+            return;
+        }
+        self.biased = Some([constant, slope, clamp]);
         let gl = self.gl;
+        let on = constant != 0.0 || slope != 0.0;
+        for mode in OFFSETS {
+            self.enable(mode, on);
+        }
         unsafe {
-            let on = constant != 0.0 || slope != 0.0;
-            for mode in OFFSETS {
-                set_enabled(gl, mode, on);
-            }
             match self.extra.offset_clamp {
                 Some(offset) => offset(slope, constant, clamp),
                 None => gl.polygon_offset(slope, constant),
@@ -480,15 +622,18 @@ impl<'a> Recorder<'a> {
             );
         }
         if !dynamic.contains(DynamicPipelineStates::BLEND_COLOR) {
-            let [r, g, b, a] = s.blend_color;
-            unsafe { self.gl.blend_color(r, g, b, a) };
+            self.blend_color(s.blend_color);
         }
     }
 
-    fn apply_stencil(&self) {
+    fn apply_stencil(&mut self) {
         let Some(d) = self.state.filter(|d| d.stencil_test) else {
             return;
         };
+        if self.stenciled == Some((d, self.references)) {
+            return;
+        }
+        self.stenciled = Some((d, self.references));
         let gl = self.gl;
         unsafe {
             for (side, f, reference) in [
@@ -543,6 +688,14 @@ impl<'a> Recorder<'a> {
                     ),
                 DescriptorType::StorageTexture => {
                     let t = res.textures.get(w.texture);
+                    let raw = t.raw.map_or(0, |r| r.0.get());
+                    if self.images.len() <= i as usize {
+                        self.images.resize(i as usize + 1, None);
+                    }
+                    if self.images[i as usize] == Some(raw) {
+                        continue;
+                    }
+                    self.images[i as usize] = Some(raw);
                     let layered = !matches!(t.target, glow::TEXTURE_2D | glow::TEXTURE_1D);
                     unsafe {
                         gl.bind_image_texture(
@@ -564,6 +717,7 @@ impl<'a> Recorder<'a> {
     }
 
     fn apply(&mut self, command: Command) -> Result<(), Error> {
+        self.touch(groups(&command));
         let gl = self.gl;
         let res = self.res;
         unsafe {
@@ -711,11 +865,6 @@ impl<'a> Recorder<'a> {
                 } => {
                     self.barrier(src_stage, dst_stage);
                     self.begin_render(width, height, layers)?;
-                    gl.viewport(0, 0, width as i32, height as i32);
-                    gl.depth_range(0.0, 1.0);
-                    self.views = vec![[0.0, 0.0, width as f32, height as f32]];
-                    self.scissors = vec![[0, 0, width as i32, height as i32]];
-                    self.apply_scissors();
                 }
                 Command::EndRenderPass => self.end_render()?,
                 Command::InputAttachmentBarrier
@@ -733,14 +882,13 @@ impl<'a> Recorder<'a> {
                     {
                         self.mode = gl_primitive_mode(p.topology);
                     }
-                    let fill = if p.fill == crate::FillMode::Line {
+                    self.fill(if p.fill == crate::FillMode::Line {
                         glow::LINE
                     } else {
                         glow::FILL
-                    };
-                    gl.polygon_mode(glow::FRONT_AND_BACK, fill);
-                    set_enabled(gl, glow::DEPTH_CLAMP, p.clamp);
-                    set_enabled(gl, glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
+                    });
+                    self.enable(glow::DEPTH_CLAMP, p.clamp);
+                    self.enable(glow::SAMPLE_ALPHA_TO_COVERAGE, p.coverage);
                     self.apply_blend_state(p);
                     self.statics(&p.states);
                 }
@@ -759,16 +907,14 @@ impl<'a> Recorder<'a> {
                     slope,
                     clamp,
                 } => self.bias(constant, slope, clamp),
-                Command::SetBlendColor {
-                    color: [r, g, b, a],
-                } => gl.blend_color(r, g, b, a),
+                Command::SetBlendColor { color } => self.blend_color(color),
                 Command::BindVertexBuffer {
                     slot,
                     buffer,
                     offset,
                 } => {
                     self.vertices[slot as usize] = Some((buffer, offset));
-                    self.fed = None;
+                    self.fed = false;
                 }
                 Command::BindIndexBuffer {
                     buffer,
@@ -780,7 +926,6 @@ impl<'a> Recorder<'a> {
                         IndexType::U32 => glow::UNSIGNED_INT,
                     };
                     self.index = Some((buffer, offset, kind));
-                    self.fed = None;
                 }
                 Command::Draw {
                     vertices,
@@ -901,36 +1046,31 @@ impl<'a> Recorder<'a> {
                     gl.bind_buffer(glow::QUERY_BUFFER, None);
                 }
                 Command::SetViewport { viewports } => {
-                    let views: Vec<_> = viewports.iter().collect();
-                    match views.as_slice() {
+                    let mut ranges = [[0.0; 2]; slot::VIEWPORTS as usize];
+                    self.views.clear();
+                    for (i, v) in viewports.iter().enumerate() {
+                        self.views.push([v.x, v.y, v.width, v.height]);
+                        ranges[i] = [v.near as f64, v.far as f64];
+                    }
+                    match self.views.as_slice() {
                         [v] => {
-                            gl.viewport(v.x as i32, v.y as i32, v.width as i32, v.height as i32);
-                            gl.depth_range(v.near as f64, v.far as f64);
+                            gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
+                            gl.depth_range(ranges[0][0], ranges[0][1]);
                         }
-                        _ => {
-                            let rects: Vec<[f32; 4]> = views
-                                .iter()
-                                .map(|v| [v.x, v.y, v.width, v.height])
-                                .collect();
-                            let ranges: Vec<[f64; 2]> = views
-                                .iter()
-                                .map(|v| [v.near as f64, v.far as f64])
-                                .collect();
-                            gl.viewport_f32_slice(0, rects.len() as i32, &rects);
-                            gl.depth_range_f64_slice(0, ranges.len() as i32, &ranges);
+                        views => {
+                            let n = views.len();
+                            gl.viewport_f32_slice(0, n as i32, views);
+                            gl.depth_range_f64_slice(0, n as i32, &ranges[..n]);
                         }
                     }
-                    self.views = views
-                        .iter()
-                        .map(|v| [v.x, v.y, v.width, v.height])
-                        .collect();
                     self.apply_scissors();
                 }
                 Command::SetScissor { scissors } => {
-                    self.scissors = scissors
-                        .iter()
-                        .map(|r| [r.x as i32, r.y as i32, r.width as i32, r.height as i32])
-                        .collect();
+                    self.scissors.clear();
+                    for r in scissors.iter() {
+                        let rect = [r.x as i32, r.y as i32, r.width as i32, r.height as i32];
+                        self.scissors.push(rect);
+                    }
                     self.apply_scissors();
                 }
                 Command::UseResidencySet { .. } => {}
