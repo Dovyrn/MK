@@ -12,7 +12,7 @@ public class VkDevice extends Device {
     public PipelineCache createPipelineCache(String path) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var pathBytes = path.getBytes(StandardCharsets.UTF_8);
                 return PipelineCache.of(nCreatePipelineCache(handle(), arena.bytes(pathBytes), pathBytes.length));
             }
@@ -26,7 +26,7 @@ public class VkDevice extends Device {
     public void savePipelineCache(PipelineCache cache, String path) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var pathBytes = path.getBytes(StandardCharsets.UTF_8);
                 nSavePipelineCache(handle(), PipelineCache.raw(cache), arena.bytes(pathBytes), pathBytes.length);
             }
@@ -71,7 +71,7 @@ public class VkDevice extends Device {
     private static native long nBindlessSamplerId(long device, long sampler);
 
     public static DeviceInfo supportedFeatures() {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var out = arena.alloc(DeviceInfo.SIZE);
             nSupportedFeatures(out);
             return DeviceInfo.decode(out);
@@ -81,7 +81,7 @@ public class VkDevice extends Device {
     private static native void nSupportedFeatures(long out);
 
     public static VkDevice createDevice(DeviceInfo info) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var infoAddress = arena.alloc(info.encodedSize());
             info.encode(infoAddress);
             return new VkDevice(nCreateDevice(infoAddress, info.encodedSize()));
@@ -126,7 +126,7 @@ public class VkDevice extends Device {
     public boolean submitAndPresent(Swapchain[] swapchains, CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var swapchainsSize = 4;
                 for (var x : swapchains) {
                     swapchainsSize += 8;
@@ -168,7 +168,7 @@ public class VkDevice extends Device {
     public void recreateSwapchain(Swapchain swapchain, SwapchainInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 nRecreateSwapchain(handle(), Swapchain.raw(swapchain), infoAddress, info.encodedSize());
@@ -194,7 +194,7 @@ public class VkDevice extends Device {
     public Swapchain createSwapchain(int queue, long surface, SwapchainInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Swapchain.of(nCreateSwapchain(handle(), queue, surface, infoAddress, info.encodedSize()));
@@ -209,7 +209,7 @@ public class VkDevice extends Device {
     public SurfaceCapabilities surfaceCapabilities(long surface) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var out = arena.alloc(SurfaceCapabilities.SIZE);
                 nSurfaceCapabilities(handle(), surface, out);
                 return SurfaceCapabilities.decode(out);
@@ -244,7 +244,7 @@ public class VkDevice extends Device {
     private static native long nRawInstance(long device);
 
     public static VkDevice importRawDevice(long proc, long instance, long physical, long device, int[] queues, long features) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             if (queues.length % 2 != 0) {
                 throw new IllegalArgumentException("queues holds pairs");
             }
@@ -268,7 +268,7 @@ public class VkDevice extends Device {
     public Texture importTexture(long image, TextureInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nImportTexture(handle(), image, infoAddress, info.encodedSize()));
@@ -294,7 +294,7 @@ public class VkDevice extends Device {
     public Texture importSharedTexture(long handle, TextureInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nImportSharedTexture(handle(), handle, infoAddress, info.encodedSize()));
@@ -342,7 +342,7 @@ public class VkDevice extends Device {
     public RenderPass importRenderPass(CommandPool pool, long raw, ImportedPassInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return RenderPass.adopt(this, nImportRenderPass(handle(), CommandPool.raw(pool), raw, infoAddress, info.encodedSize()));
@@ -368,7 +368,7 @@ public class VkDevice extends Device {
     public long[] rawTexture(Texture texture) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var out = arena.alloc(16);
                 nRawTexture(handle(), Texture.raw(texture), out);
                 return new long[] {memGetLong(out), memGetLong(out + 8)};

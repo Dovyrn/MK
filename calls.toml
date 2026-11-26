@@ -265,6 +265,11 @@ params = [["indirect", "IndirectBuffer"]]
 result = "u32x8"
 
 [[call]]
+name = "write_indirect_draws"
+params = [["indirect", "IndirectBuffer"], ["first", "u32"], ["draws", "bytes"]]
+shared = true
+
+[[call]]
 name = "create_residency_set"
 result = "ResidencySet"
 fails = true

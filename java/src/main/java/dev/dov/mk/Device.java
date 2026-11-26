@@ -51,7 +51,7 @@ public class Device implements AutoCloseable {
     public DeviceCapabilities capabilities() {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var out = arena.alloc(DeviceCapabilities.SIZE);
                 nCapabilities(handle(), out);
                 return DeviceCapabilities.decode(out);
@@ -77,7 +77,7 @@ public class Device implements AutoCloseable {
     public Buffer createBuffer(long size, Memory memory, int usage, String label) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var labelBytes = label.getBytes(StandardCharsets.UTF_8);
                 return Buffer.of(nCreateBuffer(handle(), size, memory.value, usage, arena.bytes(labelBytes), labelBytes.length));
             }
@@ -135,7 +135,7 @@ public class Device implements AutoCloseable {
     public MemoryBudget memoryBudget() {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var out = arena.alloc(MemoryBudget.SIZE);
                 nMemoryBudget(handle(), out);
                 return MemoryBudget.decode(out);
@@ -150,7 +150,7 @@ public class Device implements AutoCloseable {
     public ComputePipeline createComputePipeline(ComputePipelineInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return ComputePipeline.of(nCreateComputePipeline(handle(), infoAddress, info.encodedSize()));
@@ -176,7 +176,7 @@ public class Device implements AutoCloseable {
     public RenderPipeline createRenderPipeline(RenderPipelineInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return RenderPipeline.of(nCreateRenderPipeline(handle(), infoAddress, info.encodedSize()));
@@ -191,7 +191,7 @@ public class Device implements AutoCloseable {
     public RenderPipeline createMeshPipeline(MeshPipelineInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return RenderPipeline.of(nCreateMeshPipeline(handle(), infoAddress, info.encodedSize()));
@@ -217,7 +217,7 @@ public class Device implements AutoCloseable {
     public TilePipeline createTilePipeline(TilePipelineInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return TilePipeline.of(nCreateTilePipeline(handle(), infoAddress, info.encodedSize()));
@@ -243,7 +243,7 @@ public class Device implements AutoCloseable {
     public DepthStencilState createDepthStencilState(DepthStencilStateInfo info, String label) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 var labelBytes = label.getBytes(StandardCharsets.UTF_8);
@@ -270,7 +270,7 @@ public class Device implements AutoCloseable {
     public Texture createTexture(TextureInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nCreateTexture(handle(), infoAddress, info.encodedSize()));
@@ -285,7 +285,7 @@ public class Device implements AutoCloseable {
     public void writeTexture(HostTextureCopy copy, long data, long dataSize) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var copyAddress = arena.alloc(copy.encodedSize());
                 copy.encode(copyAddress);
                 nWriteTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
@@ -300,7 +300,7 @@ public class Device implements AutoCloseable {
     public void readTexture(HostTextureCopy copy, long data, long dataSize) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var copyAddress = arena.alloc(copy.encodedSize());
                 copy.encode(copyAddress);
                 nReadTexture(handle(), copyAddress, copy.encodedSize(), data, dataSize);
@@ -337,7 +337,7 @@ public class Device implements AutoCloseable {
     public Texture createTextureView(Texture texture, TextureViewInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nCreateTextureView(handle(), Texture.raw(texture), infoAddress, info.encodedSize()));
@@ -374,7 +374,7 @@ public class Device implements AutoCloseable {
     public DescriptorLayout createDescriptorLayout(DescriptorBinding[] bindings) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var bindingsSize = 4;
                 for (var x : bindings) {
                     bindingsSize += x.encodedSize();
@@ -453,7 +453,7 @@ public class Device implements AutoCloseable {
     public void writeDescriptorSet(DescriptorSet set, DescriptorWrite[] writes) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var writesSize = 4;
                 for (var x : writes) {
                     writesSize += x.encodedSize();
@@ -477,7 +477,7 @@ public class Device implements AutoCloseable {
     public Sampler createSampler(SamplerInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Sampler.of(nCreateSampler(handle(), infoAddress, info.encodedSize()));
@@ -503,7 +503,7 @@ public class Device implements AutoCloseable {
     public QueryPool createQueryPool(QueryKind kind, int count, String label) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var labelBytes = label.getBytes(StandardCharsets.UTF_8);
                 return QueryPool.of(nCreateQueryPool(handle(), kind.value, count, arena.bytes(labelBytes), labelBytes.length));
             }
@@ -528,7 +528,7 @@ public class Device implements AutoCloseable {
     public IndirectBuffer createIndirectBuffer(IndirectBufferInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return IndirectBuffer.of(nCreateIndirectBuffer(handle(), infoAddress, info.encodedSize()));
@@ -555,7 +555,7 @@ public class Device implements AutoCloseable {
         lock.writeLock().lock();
         try {
             idle("indirectShaderHandle");
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var out = arena.alloc(32);
                 nIndirectShaderHandle(handle(), IndirectBuffer.raw(indirect), out);
                 return new int[] {memGetInt(out + 0), memGetInt(out + 4), memGetInt(out + 8), memGetInt(out + 12), memGetInt(out + 16), memGetInt(out + 20), memGetInt(out + 24), memGetInt(out + 28)};
@@ -566,6 +566,17 @@ public class Device implements AutoCloseable {
     }
 
     private static native void nIndirectShaderHandle(long device, long indirect, long out);
+
+    public void writeIndirectDraws(IndirectBuffer indirect, int first, long draws, long drawsSize) {
+        lock.readLock().lock();
+        try {
+            nWriteIndirectDraws(handle(), IndirectBuffer.raw(indirect), first, draws, drawsSize);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private static native void nWriteIndirectDraws(long device, long indirect, int first, long draws, long drawsLength);
 
     public ResidencySet createResidencySet() {
         lock.readLock().lock();
@@ -592,7 +603,7 @@ public class Device implements AutoCloseable {
     public void addResidency(ResidencySet set, ResidentResource[] resources) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var resourcesSize = 4;
                 for (var x : resources) {
                     resourcesSize += x.encodedSize();
@@ -616,7 +627,7 @@ public class Device implements AutoCloseable {
     public void removeResidency(ResidencySet set, ResidentResource[] resources) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var resourcesSize = 4;
                 for (var x : resources) {
                     resourcesSize += x.encodedSize();
@@ -740,7 +751,7 @@ public class Device implements AutoCloseable {
     public void submit(CommandBuffer[] commands, TimelinePoint[] waits, TimelinePoint[] signals) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 for (var c : commands) {
                     c.handle();
                 }

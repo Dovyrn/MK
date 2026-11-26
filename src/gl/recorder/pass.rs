@@ -1,10 +1,11 @@
 use super::Recorder;
 use crate::Error;
 use crate::Texture;
+use crate::handle::Handle;
 use crate::{Format, LoadOp, StoreOp, slot};
 use glow::HasContext;
 
-const KEY: usize = 1 + 2 * (slot::COLORS as usize + 1);
+const KEY: usize = 1 + 3 * (slot::COLORS as usize + 1);
 
 fn is_srgb(f: Format) -> bool {
     matches!(f.gl()[0], glow::SRGB8 | glow::SRGB8_ALPHA8)
@@ -61,14 +62,18 @@ impl Recorder<'_> {
             self.pass = None;
             return Ok(());
         }
-        let raw = |t: Texture| res.textures.get(t).raw.map_or(0, |r| r.0.get());
         let mut key = [0; KEY];
         key[0] = (layers > 1) as u32;
         let mut n = 1;
         for i in 0..slot::COLORS {
             if let Some(c) = self.colors.iter().find(|c| c.index == i) {
-                key[n..n + 2].copy_from_slice(&[glow::COLOR_ATTACHMENT0 + i, raw(c.texture)]);
-                n += 2;
+                let t = c.texture;
+                key[n..n + 3].copy_from_slice(&[
+                    glow::COLOR_ATTACHMENT0 + i,
+                    t.index(),
+                    t.generation(),
+                ]);
+                n += 3;
             }
         }
         let depth = self.depth.map(|d| {
@@ -77,8 +82,9 @@ impl Recorder<'_> {
                 glow::STENCIL_INDEX => glow::STENCIL_ATTACHMENT,
                 _ => glow::DEPTH_ATTACHMENT,
             };
-            key[n..n + 2].copy_from_slice(&[point, raw(d.texture)]);
-            n += 2;
+            let t = d.texture;
+            key[n..n + 3].copy_from_slice(&[point, t.index(), t.generation()]);
+            n += 3;
             (point, d.texture)
         });
         let key = &key[..n];
@@ -132,12 +138,16 @@ impl Recorder<'_> {
                 .depth
                 .is_some_and(|d| d.load == LoadOp::Clear || d.stencil_load == LoadOp::Clear);
         if clears {
-            self.enable(glow::SCISSOR_TEST, false);
+            self.scissor_test(false);
             self.enable(glow::FRAMEBUFFER_SRGB, false);
             self.blended = None;
             self.stenciled = None;
+            let count = self.colors.iter().map(|c| c.index + 1).max().unwrap_or(1);
+            self.save_colors(count as usize);
             unsafe {
-                gl.color_mask(true, true, true, true);
+                for i in 0..count {
+                    gl.color_mask_draw_buffer(i, true, true, true, true);
+                }
                 gl.depth_mask(true);
                 gl.stencil_mask(0xff);
                 for c in &self.colors {
@@ -178,14 +188,11 @@ impl Recorder<'_> {
         }
         let srgb = self.srgb();
         self.enable(glow::FRAMEBUFFER_SRGB, srgb);
-        unsafe {
-            gl.viewport(0, 0, width as i32, height as i32);
-            gl.depth_range(0.0, 1.0);
-        }
         self.rendering = true;
         self.extent = (width as i32, height as i32);
         self.views.clear();
         self.views.push([0.0, 0.0, width as f32, height as f32]);
+        self.apply_views(&[[0.0, 1.0]]);
         self.scissors.clear();
         self.apply_scissors();
         self.layers = layers;
@@ -217,7 +224,7 @@ impl Recorder<'_> {
         let (w, h) = self.extent;
         let resolves = self.colors.iter().any(|c| c.resolve.is_some());
         if resolves {
-            self.enable(glow::SCISSOR_TEST, false);
+            self.scissor_test(false);
         }
         unsafe {
             for c in &self.colors {

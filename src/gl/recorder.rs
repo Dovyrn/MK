@@ -85,6 +85,9 @@ pub struct Recorder<'a> {
     query: Option<u32>,
     labels: u32,
     host: Option<State>,
+    audit: Option<State>,
+    arrays: bool,
+    tested: Option<(bool, usize)>,
     errors: Vec<u32>,
     open: &'a Cell<bool>,
     pub imported: bool,
@@ -136,7 +139,8 @@ fn groups(c: &Command) -> u32 {
         | Command::DrawIndirect { .. }
         | Command::DrawIndexedIndirect { .. }
         | Command::DrawMeshTasks { .. }
-        | Command::DrawMeshTasksIndirect { .. } => draw,
+        | Command::DrawMeshTasksIndirect { .. }
+        | Command::ExecuteIndirect { .. } => draw,
         Command::SetViewport { .. } | Command::SetScissor { .. } => VIEWPORTS | ENABLES,
         Command::BindDescriptorSet { .. } | Command::BindDescriptorSetDynamic { .. } => {
             RANGES | BUFFERS | IMAGES
@@ -158,7 +162,6 @@ fn groups(c: &Command) -> u32 {
         | Command::SetPrimitiveTopology { .. }
         | Command::BindVertexBuffer { .. }
         | Command::BindIndexBuffer { .. }
-        | Command::ExecuteIndirect { .. }
         | Command::ExecuteIndirectCount { .. }
         | Command::WriteTimestamp { .. }
         | Command::BeginOcclusionQuery { .. }
@@ -309,6 +312,9 @@ impl<'a> Recorder<'a> {
             rendering: false,
             query: None,
             labels: 0,
+            audit: cfg!(feature = "validation").then(|| host.audit(gl, extra)),
+            arrays: extra.floats.is_some() && extra.doubles.is_some(),
+            tested: None,
             host: Some(host),
             errors,
             open,
@@ -351,7 +357,63 @@ impl<'a> Recorder<'a> {
 
     pub fn touch(&mut self, groups: u32) {
         if let Some(host) = &mut self.host {
+            let pixels = groups & group::PIXELS != 0 && !host.saved(group::PIXELS);
             host.save(self.gl, self.extra, groups);
+            if pixels {
+                host.default_pixels(self.gl);
+            }
+        }
+    }
+
+    pub fn save_colors(&mut self, count: usize) {
+        if let Some(host) = &mut self.host {
+            host.save_colors(self.extra, count);
+        }
+    }
+
+    fn save_views(&mut self, count: usize) {
+        if let Some(host) = &mut self.host {
+            host.save_views(self.extra, count);
+        }
+    }
+
+    pub fn scissor_test(&mut self, on: bool) {
+        if !self.arrays {
+            self.enable(glow::SCISSOR_TEST, on);
+            return;
+        }
+        let count = self.views.len().max(1);
+        if self.tested == Some((on, count)) {
+            return;
+        }
+        self.tested = Some((on, count));
+        self.save_views(count);
+        for i in 0..count as u32 {
+            unsafe {
+                if on {
+                    self.gl.enable_draw_buffer(glow::SCISSOR_TEST, i);
+                } else {
+                    self.gl.disable_draw_buffer(glow::SCISSOR_TEST, i);
+                }
+            }
+        }
+    }
+
+    pub fn apply_views(&mut self, ranges: &[[f64; 2]]) {
+        let gl = self.gl;
+        let count = self.views.len();
+        if self.arrays {
+            self.save_views(count);
+            unsafe {
+                gl.viewport_f32_slice(0, count as i32, &self.views);
+                gl.depth_range_f64_slice(0, count as i32, &ranges[..count]);
+            }
+            return;
+        }
+        let v = self.views[0];
+        unsafe {
+            gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
+            gl.depth_range(ranges[0][0], ranges[0][1]);
         }
     }
 
@@ -401,8 +463,17 @@ impl<'a> Recorder<'a> {
         self.labels = 0;
         let mine = crate::gl::errors::drain(gl);
         let restored = host.restore(gl, self.extra);
+        let kept = self
+            .audit
+            .take()
+            .is_none_or(|before| before.audit(gl, self.extra) == before);
         crate::gl::errors::raise(gl, self.extra, &self.errors);
         restored?;
+        if !kept {
+            return Err(Error::Invalid(
+                "host GL state differs after the command buffer".into(),
+            ));
+        }
         if mine.is_empty() {
             Ok(())
         } else {
@@ -434,6 +505,7 @@ impl<'a> Recorder<'a> {
             return;
         }
         self.blended = Some(p.colors.clone());
+        self.save_colors(p.colors.len());
         let gl = self.gl;
         let uniform = same_blend(&p.colors);
         unsafe {
@@ -492,10 +564,6 @@ impl<'a> Recorder<'a> {
             gl.depth_mask(false);
             gl.line_width(1.0);
             (self.extra.clamp_color)(glow::CLAMP_READ_COLOR, glow::FIXED_ONLY);
-            for i in 0..slot::COLORS {
-                gl.color_mask_draw_buffer(i, true, true, true, true);
-                gl.disable_draw_buffer(glow::BLEND, i);
-            }
         }
     }
 
@@ -526,11 +594,13 @@ impl<'a> Recorder<'a> {
             boxes[i] = [x, y, (right - x).max(0), (top - y).max(0)];
         }
         let boxes = &boxes[..self.views.len()];
-        self.enable(glow::SCISSOR_TEST, true);
+        self.scissor_test(true);
         unsafe {
-            match boxes {
-                [b] => self.gl.scissor(b[0], b[1], b[2], b[3]),
-                _ => self.gl.scissor_slice(0, boxes.len() as i32, boxes),
+            if self.arrays {
+                self.gl.scissor_slice(0, boxes.len() as i32, boxes);
+            } else {
+                let b = boxes[0];
+                self.gl.scissor(b[0], b[1], b[2], b[3]);
             }
         }
     }
@@ -809,9 +879,9 @@ impl<'a> Recorder<'a> {
                         self.labels -= 1;
                     }
                 }
-                Command::CopyBufferToTexture { .. } => {
+                Command::CopyBufferToTexture { texture, .. } => {
                     if let Some(host) = &mut self.host {
-                        host.save_units(gl, 1);
+                        host.save_unit(gl, 0, self.res.textures.get(texture).target);
                     }
                     self.upload(command);
                     self.units.clear();
@@ -977,10 +1047,17 @@ impl<'a> Recorder<'a> {
                         self.extra.mesh.unwrap()(x, y, z);
                     }
                 }
-                Command::ExecuteIndirect { .. } | Command::ExecuteIndirectCount { .. } => {
-                    unreachable!(
-                        "create_indirect_buffer needs caps.buffer_addresses, which GL lacks"
-                    )
+                Command::ExecuteIndirect {
+                    indirect,
+                    first,
+                    count,
+                } => {
+                    if count > 0 && self.bind_draw_state(true)? {
+                        self.execute_indirect(indirect, first, count);
+                    }
+                }
+                Command::ExecuteIndirectCount { .. } => {
+                    unreachable!("caps.indirect_count is false on GL")
                 }
                 Command::DrawMeshTasksIndirect { buffer, offset } => {
                     if self.bind_draw_state(true)? {
@@ -1052,17 +1129,7 @@ impl<'a> Recorder<'a> {
                         self.views.push([v.x, v.y, v.width, v.height]);
                         ranges[i] = [v.near as f64, v.far as f64];
                     }
-                    match self.views.as_slice() {
-                        [v] => {
-                            gl.viewport(v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32);
-                            gl.depth_range(ranges[0][0], ranges[0][1]);
-                        }
-                        views => {
-                            let n = views.len();
-                            gl.viewport_f32_slice(0, n as i32, views);
-                            gl.depth_range_f64_slice(0, n as i32, &ranges[..n]);
-                        }
-                    }
+                    self.apply_views(&ranges);
                     self.apply_scissors();
                 }
                 Command::SetScissor { scissors } => {

@@ -328,7 +328,7 @@ pub fn java(calls: &[Call], backend: Option<&str>) -> String {
         let arena = outs(call) || !call.params.iter().all(|p| direct(&p.kind));
         let indent = if arena { "            " } else { "        " };
         if arena {
-            s += "        try (var arena = new Arena()) {\n";
+            s += "        try (var arena = Arena.open()) {\n";
         }
         let mut args = Vec::new();
         if !statics(call) {

@@ -71,6 +71,7 @@ pub fn metal(dir: &Path, out: &Path, name: &str, invariant: bool) {
                 eprintln!("{name}.metallib skips entry {entry}: {first}");
             }
         }
+        fs::remove_file(&msl).unwrap();
     }
     if metal.exists() {
         let air = out.join(format!("{name}.air"));

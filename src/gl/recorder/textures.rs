@@ -62,7 +62,7 @@ impl Recorder<'_> {
         (dst, dst_mip, dst_layer): (&TextureObject, u32, u32),
     ) -> u32 {
         let gl = self.gl;
-        self.enable(glow::SCISSOR_TEST, false);
+        self.scissor_test(false);
         unsafe {
             gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.read));
             gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.fbo));

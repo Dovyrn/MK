@@ -10,6 +10,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true, chain = true)
 public class IndirectBufferInfo {
     public int maxDraws = 0;
+    public Memory memory = Memory.DEVICE;
     public RenderPipeline pipeline = null;
     public boolean indexed = false;
     public Buffer indexBuffer = null;
@@ -18,11 +19,13 @@ public class IndirectBufferInfo {
     public String label = "";
 
     int encodedSize() {
-        return 40 + label.getBytes(StandardCharsets.UTF_8).length;
+        return 44 + label.getBytes(StandardCharsets.UTF_8).length;
     }
 
     long encode(long p) {
         memPutInt(p, maxDraws);
+        p += 4;
+        memPutInt(p, memory.value);
         p += 4;
         memPutLong(p, RenderPipeline.raw(pipeline));
         p += 8;

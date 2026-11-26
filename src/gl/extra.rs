@@ -16,6 +16,8 @@ type Range = unsafe extern "system" fn(u32, u32, u32, isize, isize);
 type Dispatch = unsafe extern "system" fn(isize);
 type Indirect = unsafe extern "system" fn(u32, *const c_void);
 type IndexedIndirect = unsafe extern "system" fn(u32, u32, *const c_void);
+type MultiIndirect = unsafe extern "system" fn(u32, *const c_void, i32, i32);
+type MultiIndexedIndirect = unsafe extern "system" fn(u32, u32, *const c_void, i32, i32);
 type Elements = unsafe extern "system" fn(u32, i32, u32, *const c_void, i32, i32);
 type ElementsBase = unsafe extern "system" fn(u32, i32, u32, *const c_void, i32, i32, u32);
 type BindVertex = unsafe extern "system" fn(u32, u32, isize, i32);
@@ -84,6 +86,8 @@ pub struct Extra {
     pub dispatch: Option<Dispatch>,
     pub indirect: Option<Indirect>,
     pub indexed_indirect: Option<IndexedIndirect>,
+    pub multi_indirect: Option<MultiIndirect>,
+    pub multi_indexed_indirect: Option<MultiIndexedIndirect>,
     pub elements: Elements,
     pub elements_base: Option<ElementsBase>,
     pub bind_vertex: Option<BindVertex>,
@@ -144,6 +148,9 @@ impl Extra {
         };
         let mesh = |name| get(name, 99, "GL_EXT_mesh_shader");
         let indirect = |name| get(name, 40, "GL_ARB_draw_indirect");
+        let multi = |name| {
+            get(name, 43, "GL_ARB_multi_draw_indirect").filter(|_| has(42, "GL_ARB_base_instance"))
+        };
         let multisample = |name| get(name, 43, "GL_ARB_texture_storage_multisample");
         unsafe {
             Ok(Self {
@@ -165,6 +172,8 @@ impl Extra {
                     .map(|p| cast(p)),
                 indirect: indirect("glDrawArraysIndirect").map(|p| cast(p)),
                 indexed_indirect: indirect("glDrawElementsIndirect").map(|p| cast(p)),
+                multi_indirect: multi("glMultiDrawArraysIndirect").map(|p| cast(p)),
+                multi_indexed_indirect: multi("glMultiDrawElementsIndirect").map(|p| cast(p)),
                 elements: cast(need("glDrawElementsInstancedBaseVertex")?),
                 elements_base: get(
                     "glDrawElementsInstancedBaseVertexBaseInstance",

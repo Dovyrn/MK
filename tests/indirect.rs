@@ -156,6 +156,7 @@ pub fn test() {
         });
         assert_eq!(indexed, RED, "draw_indexed_indirect");
     }
+    let written = written(&device, &frame);
     let kit = device.create_indirect_buffer(&IndirectBufferInfo {
         max_draws: 1,
         pipeline,
@@ -168,7 +169,63 @@ pub fn test() {
             format!("no indirect buffers: {e}")
         }
     };
-    println!("single draws from GPU arguments, plain and indexed: {single}; {counted}");
+    println!("single draws from GPU arguments, plain and indexed: {single}; {counted}; {written}");
+}
+
+fn written(device: &Device, p: &Frame) -> String {
+    let caps = device.capabilities();
+    if caps.max_draws == 0 {
+        return "no draws written from the CPU".into();
+    }
+    let list = |indexed| {
+        device
+            .create_indirect_buffer(&IndirectBufferInfo {
+                max_draws: 2,
+                memory: Memory::Upload,
+                pipeline: p.pipeline,
+                indexed,
+                index_buffer: p.indices,
+                index_type: IndexType::U16,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let (plain, indexed) = (list(false), list(true));
+    device.write_indirect_draws(
+        plain,
+        1,
+        [3u32, 1, 0, 0].map(u32::to_ne_bytes).as_flattened(),
+    );
+    device.write_indirect_draws(
+        indexed,
+        1,
+        [3u32, 1, 1, 0, 0].map(u32::to_ne_bytes).as_flattened(),
+    );
+    device.add_residency(p.set, &[plain.into(), indexed.into()]);
+    device.commit_residency(p.set);
+    let timeline = device.create_timeline().unwrap();
+    let none = |_: &mut CommandBuffer| {};
+    for (value, target) in [(1, plain), (2, indexed)] {
+        let got = p.center(device, &timeline, value, &none, &|pass| {
+            pass.execute_indirect(target, 1, 1)
+        });
+        assert_eq!(got, RED, "{target} written from the CPU");
+    }
+    if caps.multi_draw_indirect {
+        device.write_indirect_draws(
+            plain,
+            0,
+            [3u32, 1, 0, 0].map(u32::to_ne_bytes).as_flattened(),
+        );
+        let got = p.center(device, &timeline, 3, &none, &|pass| {
+            pass.execute_indirect(plain, 0, 2)
+        });
+        assert_eq!(got, RED, "two draws written from the CPU");
+    }
+    format!(
+        "draws and indexed draws written from the CPU, two in one call: {}",
+        caps.multi_draw_indirect
+    )
 }
 
 #[cfg(feature = "gl")]

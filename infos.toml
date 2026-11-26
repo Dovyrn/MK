@@ -359,6 +359,7 @@ fields = [
 name = "IndirectBufferInfo"
 fields = [
     ["max_draws", "u32", "0"],
+    ["memory", "Memory", "memory::DEVICE"],
     ["pipeline", "RenderPipeline", ""],
     ["indexed", "bool", "false"],
     ["index_buffer", "Buffer", ""],

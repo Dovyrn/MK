@@ -18,6 +18,7 @@ pub struct Resources {
     pub renders: Slots<Pipeline>,
     pub depths: Slots<DepthStencilStateInfo>,
     pub queries: Slots<Query>,
+    pub indirects: Slots<crate::Buffer>,
     pub timelines: Slots<Rc<RefCell<Fences>>>,
     pub pools: Slots<()>,
     pub sets: Slots<()>,

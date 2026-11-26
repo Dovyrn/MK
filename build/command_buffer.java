@@ -41,7 +41,7 @@ public class CommandBuffer implements AutoCloseable {
     }
 
     public RenderPass beginRenderPass(RenderPassInfo info) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var size = info.encodedSize();
             var address = arena.alloc(size);
             info.encode(address);

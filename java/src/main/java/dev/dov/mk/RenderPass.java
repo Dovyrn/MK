@@ -49,7 +49,7 @@ public class RenderPass {
     private static native long nRaw(long pass);
 
     public void beginDebugLabel(String text) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var encoded = text.getBytes(StandardCharsets.UTF_8);
             nBeginDebugLabel(handle(), arena.bytes(encoded), encoded.length);
         }
@@ -118,7 +118,7 @@ public class RenderPass {
     private static native void nBindDescriptorSet(long target, long set);
 
     public void bindDescriptorSetDynamic(DescriptorSet set, int[] offsets) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var offsetsSize = 4;
             for (var x : offsets) {
                 offsetsSize += 4;
@@ -216,7 +216,7 @@ public class RenderPass {
     private static native void nEndOcclusionQuery(long target, long pool, int index);
 
     public void setViewport(Viewport[] viewports) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var viewportsSize = 4;
             for (var x : viewports) {
                 viewportsSize += x.encodedSize();
@@ -235,7 +235,7 @@ public class RenderPass {
     private static native void nSetViewport(long target, long viewports, int viewportsLength);
 
     public void setScissor(Scissor[] scissors) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var scissorsSize = 4;
             for (var x : scissors) {
                 scissorsSize += x.encodedSize();

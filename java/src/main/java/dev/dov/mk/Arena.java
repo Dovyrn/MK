@@ -6,22 +6,51 @@ import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 
 class Arena implements AutoCloseable {
-    private final ArrayList<Long> blocks = new ArrayList<>();
+    private static final long START = 4096;
+    private static final long ALIGN = 16;
+    private static final ThreadLocal<Arena> LOCAL = ThreadLocal.withInitial(() -> new Arena(true));
+
+    private final ArrayList<Long> spills = new ArrayList<>();
     private final ArrayList<Lock> locks = new ArrayList<>();
+    private final boolean shared;
+    private long block;
+    private long size;
+    private long used;
+    private long wanted;
+    private boolean open;
+
+    private Arena(boolean shared) {
+        this.shared = shared;
+    }
+
+    static Arena open() {
+        var arena = LOCAL.get();
+        if (arena.open) {
+            return new Arena(false);
+        }
+        arena.open = true;
+        return arena;
+    }
 
     void unlockOnClose(Lock lock) {
         locks.add(lock);
     }
 
-    long alloc(long size) {
-        if (size == 0) {
+    long alloc(long bytes) {
+        if (bytes == 0) {
             return NULL;
         }
-        var address = nmemAlloc(size);
-        if (address == NULL) {
-            throw new OutOfMemoryError(size + " bytes of call arguments");
+        var at = (used + ALIGN - 1) & -ALIGN;
+        if (at + bytes <= size) {
+            used = at + bytes;
+            return block + at;
         }
-        blocks.add(address);
+        var address = nmemAlloc(bytes);
+        if (address == NULL) {
+            throw new OutOfMemoryError(bytes + " bytes of call arguments");
+        }
+        wanted += bytes + ALIGN;
+        spills.add(address);
         return address;
     }
 
@@ -51,11 +80,27 @@ class Arena implements AutoCloseable {
 
     @Override
     public void close() {
-        for (var address : blocks) {
-            nmemFree(address);
+        for (var i = 0; i < spills.size(); i++) {
+            nmemFree(spills.get(i));
         }
-        for (var lock : locks) {
-            lock.unlock();
+        spills.clear();
+        for (var i = 0; i < locks.size(); i++) {
+            locks.get(i).unlock();
         }
+        locks.clear();
+        if (!shared) {
+            return;
+        }
+        if (wanted > 0) {
+            nmemFree(block);
+            size = Math.max(START, Long.highestOneBit(used + wanted) << 1);
+            block = nmemAlloc(size);
+            if (block == NULL) {
+                size = 0;
+            }
+            wanted = 0;
+        }
+        used = 0;
+        open = false;
     }
 }

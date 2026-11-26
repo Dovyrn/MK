@@ -219,12 +219,12 @@ impl DeviceCapabilities {
         )
     }
 
-    pub(crate) fn check_indirect(&self, mesh: bool, draws: u32) -> Result<(), Error> {
+    pub(crate) fn check_indirect(&self, mesh: bool, shader: bool, draws: u32) -> Result<(), Error> {
         if !cfg!(feature = "validation") {
             return Ok(());
         }
         let name = "create_indirect_buffer";
-        need(name, self.buffer_addresses, "buffer_addresses")?;
+        need(name, !shader || self.buffer_addresses, "buffer_addresses")?;
         need(name, !mesh || self.mesh_indirect, "mesh_indirect")?;
         if draws > self.max_draws {
             return Err(Error::Unsupported(format!(

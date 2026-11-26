@@ -21,6 +21,7 @@ use crate::gl::resources::Resources;
 use crate::gl::sampler;
 use crate::gl::state::{self, State, group};
 use crate::gl::texture::{TextureObject, target};
+use crate::handle::Handle;
 use crate::recording::{Held, Recording};
 use crate::table::lock;
 use crate::{
@@ -255,8 +256,12 @@ impl Device {
                 object_shaders: extra.mesh.is_some(),
                 mesh_indirect: extra.mesh.is_some(),
                 indirect_count: false,
-                multi_draw_indirect: false,
-                max_draws: 0,
+                multi_draw_indirect: extra.multi_indirect.is_some(),
+                max_draws: if extra.multi_indirect.is_some() {
+                    i32::MAX as u32
+                } else {
+                    0
+                },
                 max_mesh_groups: if extra.mesh.is_some() {
                     int(MAX_TASK_TOTAL).min(int(MAX_MESH_TOTAL)) as u32
                 } else {
@@ -784,9 +789,9 @@ impl Device {
         self.thread();
         self.res.table.drop_texture(texture);
         let t = self.res.textures.remove(texture);
-        let raw = t.raw.map_or(0, |r| r.0.get());
+        let id = [texture.index(), texture.generation()];
         self.res.framebuffers.borrow_mut().retain(|(key, f)| {
-            let used = key[1..].chunks(2).any(|p| p[1] == raw);
+            let used = key[1..].chunks(3).any(|p| p[1..] == id);
             if used {
                 unsafe { self.gl.delete_framebuffer(*f) };
             }
@@ -929,11 +934,7 @@ impl Device {
             &|v, e| self.has(v, e),
         );
         if base == "outside" {
-            state.save(
-                &self.gl,
-                &self.extra,
-                group::PIXELS | group::RASTER | group::ENABLES,
-            );
+            state.save(&self.gl, &self.extra, group::RASTER | group::ENABLES);
             state.clear(&self.gl, &self.extra);
         }
         let recorder = Recorder::new(

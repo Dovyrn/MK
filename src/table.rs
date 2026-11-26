@@ -126,6 +126,32 @@ impl Table {
         }
     }
 
+    pub fn check_indirect_write(
+        &self,
+        indirect: IndirectBuffer,
+        first: u32,
+        bytes: usize,
+    ) -> IndirectEntry {
+        let name = "write_indirect_draws";
+        let e = *self.indirects.get(indirect);
+        check!(
+            e.info.memory == crate::Memory::Upload,
+            "{name} needs {indirect} created with Memory::Upload"
+        );
+        let stride = crate::indirect::indirect_stride(e.mesh, e.info.indexed) as usize;
+        check!(
+            bytes.is_multiple_of(stride),
+            "{name} got {bytes} bytes, not a multiple of the {stride} byte draw of {indirect}"
+        );
+        let end = first as u64 + (bytes / stride) as u64;
+        check!(
+            end <= e.info.max_draws as u64,
+            "{name} writes draws {first}..{end} past the {} draws of {indirect}",
+            e.info.max_draws
+        );
+        e
+    }
+
     #[cfg(any(feature = "vk", feature = "mtl"))]
     pub fn shader_handle(
         &self,

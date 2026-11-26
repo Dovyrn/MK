@@ -1,7 +1,9 @@
 use super::{Recorder, is_integer_format};
 use crate::Buffer;
 use crate::Error;
+use crate::IndirectBuffer;
 use crate::gl::pipeline::{Pipeline, attribute_size};
+use crate::indirect::indirect_stride;
 use crate::slot;
 use glow::HasContext;
 
@@ -19,9 +21,7 @@ impl Recorder<'_> {
                 gl.use_program(Some(program.raw));
                 self.used = Some(program.raw);
             }
-            if let Some(host) = &mut self.host {
-                host.save_units(gl, program.pairs.len());
-            }
+            let res = self.res;
             for (unit, &(t, s)) in program.pairs.iter().enumerate() {
                 let pair = (
                     self.textures[t as usize],
@@ -34,8 +34,14 @@ impl Recorder<'_> {
                     continue;
                 }
                 self.units[unit] = Some(pair);
+                if let Some(host) = &mut self.host {
+                    host.save_sampler(gl, unit as u32);
+                }
                 if let Some(texture) = pair.0 {
-                    let texture = self.res.textures.get(texture);
+                    let texture = res.textures.get(texture);
+                    if let Some(host) = &mut self.host {
+                        host.save_unit(gl, unit as u32, texture.target);
+                    }
                     gl.active_texture(glow::TEXTURE0 + unit as u32);
                     gl.bind_texture(texture.target, texture.raw);
                 }
@@ -177,6 +183,26 @@ impl Recorder<'_> {
         unsafe {
             self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
             self.extra.mesh_indirect.unwrap()(offset as isize);
+        }
+    }
+
+    pub fn execute_indirect(&self, indirect: IndirectBuffer, first: u32, count: u32) {
+        let e = *self.res.table.indirects.get(indirect);
+        let stride = indirect_stride(e.mesh, e.info.indexed);
+        let raw = self.res.buffers.get(*self.res.indirects.get(indirect)).raw;
+        let pointer = (first as usize * stride as usize) as *const std::ffi::c_void;
+        let kind = self.index.map_or(0, |(_, _, k)| k);
+        let (count, stride) = (count as i32, stride as i32);
+        unsafe {
+            if let Some(p) = self.render {
+                p.program.set_instance(self.gl, 0);
+            }
+            self.gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw));
+            if e.info.indexed {
+                self.extra.multi_indexed_indirect.unwrap()(self.mode, kind, pointer, count, stride);
+            } else {
+                self.extra.multi_indirect.unwrap()(self.mode, pointer, count, stride);
+            }
         }
     }
 

@@ -29,7 +29,7 @@ public class GlDevice extends Device {
     public Texture importTexture(int raw, TextureInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nImportTexture(handle(), raw, infoAddress, info.encodedSize()));
@@ -44,7 +44,7 @@ public class GlDevice extends Device {
     public Texture importSharedTexture(long handle, TextureInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return Texture.of(nImportSharedTexture(handle(), handle, infoAddress, info.encodedSize()));
@@ -70,7 +70,7 @@ public class GlDevice extends Device {
     public void waitShared(Timeline timeline, long value, Texture[] textures) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var texturesSize = 4;
                 for (var x : textures) {
                     texturesSize += 8;
@@ -95,7 +95,7 @@ public class GlDevice extends Device {
     public void signalShared(Timeline timeline, long value, Texture[] textures) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var texturesSize = 4;
                 for (var x : textures) {
                     texturesSize += 8;
@@ -131,7 +131,7 @@ public class GlDevice extends Device {
     public RenderPass importRenderPass(CommandPool pool, ImportedPassInfo info) {
         lock.readLock().lock();
         try {
-            try (var arena = new Arena()) {
+            try (var arena = Arena.open()) {
                 var infoAddress = arena.alloc(info.encodedSize());
                 info.encode(infoAddress);
                 return RenderPass.adopt(this, nImportRenderPass(handle(), CommandPool.raw(pool), infoAddress, info.encodedSize()));

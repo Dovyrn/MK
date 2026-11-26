@@ -85,7 +85,7 @@ public class ComputePass {
     private static native void nMemoryBarrier(long target, int srcStage, int dstStage);
 
     public void beginDebugLabel(String text) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var encoded = text.getBytes(StandardCharsets.UTF_8);
             nBeginDebugLabel(handle(), arena.bytes(encoded), encoded.length);
         }
@@ -118,7 +118,7 @@ public class ComputePass {
     private static native void nReleaseSharedTexture(long target, long texture, int srcStage);
 
     public void discardTextureContents(TextureContentDiscard[] textures) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var texturesSize = 4;
             for (var x : textures) {
                 texturesSize += x.encodedSize();
@@ -161,7 +161,7 @@ public class ComputePass {
     private static native void nBindDescriptorSet(long target, long set);
 
     public void bindDescriptorSetDynamic(DescriptorSet set, int[] offsets) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var offsetsSize = 4;
             for (var x : offsets) {
                 offsetsSize += 4;

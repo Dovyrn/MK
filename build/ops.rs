@@ -388,7 +388,7 @@ pub fn java(ops: &[Op], scope: &str, class: &str) -> String {
         }
         let call = format!("n{}({});", pascal(&op.name), args.join(", "));
         if arena {
-            writeln!(s, "        try (var arena = new Arena()) {{").unwrap();
+            writeln!(s, "        try (var arena = Arena.open()) {{").unwrap();
             s.push_str(&body);
             writeln!(s, "            {call}\n        }}").unwrap();
         } else {

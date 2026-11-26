@@ -133,7 +133,8 @@ fn container(out: &Path, name: &str) -> Result<String, String> {
             let modern = text.lines().any(|l| {
                 let l = l.trim_start();
                 (l.starts_with("layout(") || l.starts_with("uniform"))
-                    && (l.contains("buffer") || l.contains("image") || l.contains("local_size"))
+                    && l.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .any(|t| t == "buffer" || t.starts_with("local_size") || image(t))
             });
             if plain.status.success() && !(version == "330" && modern) {
                 let packed = String::from_utf8(base(&[]).stdout).unwrap();
@@ -439,4 +440,11 @@ fn binding(line: &str) -> Option<(String, u32)> {
         .last()?
         .to_string();
     Some((name, slot))
+}
+
+fn image(token: &str) -> bool {
+    ["", "i", "u"]
+        .iter()
+        .find_map(|p| token.strip_prefix(p)?.strip_prefix("image"))
+        .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_digit() || c.is_ascii_uppercase()))
 }

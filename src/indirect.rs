@@ -9,3 +9,11 @@ impl std::ops::Deref for IndirectShaderHandle {
         &self.0
     }
 }
+
+pub fn indirect_stride(mesh: bool, indexed: bool) -> u32 {
+    match (mesh, indexed) {
+        (true, _) => 12,
+        (_, true) => 20,
+        _ => 16,
+    }
+}

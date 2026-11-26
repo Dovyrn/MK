@@ -47,7 +47,7 @@ public class CommandBuffer implements AutoCloseable {
     }
 
     public RenderPass beginRenderPass(RenderPassInfo info) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var size = info.encodedSize();
             var address = arena.alloc(size);
             info.encode(address);
@@ -89,7 +89,7 @@ public class CommandBuffer implements AutoCloseable {
     private static native void nDrop(long commands);
 
     public void beginDebugLabel(String text) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var encoded = text.getBytes(StandardCharsets.UTF_8);
             nBeginDebugLabel(handle(), arena.bytes(encoded), encoded.length);
         }
@@ -122,7 +122,7 @@ public class CommandBuffer implements AutoCloseable {
     private static native void nReleaseSharedTexture(long target, long texture, int srcStage);
 
     public void discardTextureContents(TextureContentDiscard[] textures) {
-        try (var arena = new Arena()) {
+        try (var arena = Arena.open()) {
             var texturesSize = 4;
             for (var x : textures) {
                 texturesSize += x.encodedSize();
