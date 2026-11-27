@@ -121,11 +121,8 @@ fn camera(angle: f32, width: u32, height: u32) -> Vec<u8> {
 }
 
 impl App {
-    fn init(window: &mut Window) -> Self {
-        let model = Model::load(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/examples/model/sponza.obj"
-        ));
+    fn init(window: &mut Window, path: &str) -> Self {
+        let model = Model::load(path);
         let device = mk::Device::create_device(&mk::Device::supported_features().unwrap()).unwrap();
         #[cfg(feature = "vk")]
         let surface = window.surface(&device);
@@ -423,8 +420,9 @@ impl App {
 }
 
 fn main() {
+    let path = std::env::args().nth(1).expect("usage: model <file.obj>");
     let mut window = Window::new(c"MK model", 1280, 720);
-    let mut app = App::init(&mut window);
+    let mut app = App::init(&mut window, &path);
     let mut resized = false;
     while !window.closed(&mut resized) {
         if resized {
